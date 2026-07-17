@@ -55,11 +55,11 @@ npm run db:generate
 
 Phase 1 uses ordered migrations through `drizzle/0003_unusual_midnight.sql`. Sites packages migrations under `.openai/drizzle` during deployment. Local development also initializes missing tables safely with `CREATE TABLE IF NOT EXISTS` so a new workspace can run immediately.
 
-## Demo seed data
+## Clean workspace initialization
 
-The first CRM request safely seeds an organization named Brizuela Leads and a client named Segovia Pest Management. It includes fictional `.example` contacts, companies, opportunities, custom data, appointments, tasks, activities, and revenue. No real customer information is included.
+The first CRM request safely initializes the Brizuela Leads organization, the main admin membership, feature flags, and the default pipeline stages. It does not create fake clients, contacts, leads, appointments, tasks, companies, or revenue.
 
-Seed inserts use stable IDs and `INSERT OR IGNORE`, so user changes are not overwritten on later requests.
+Baseline inserts use stable IDs and `INSERT OR IGNORE`, so user changes are not overwritten on later requests.
 
 ## Testing
 

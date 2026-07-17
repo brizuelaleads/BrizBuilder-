@@ -34,7 +34,7 @@ Phase 1 is an MVP-complete, durable foundation consisting of:
 - Tasks, notes, appointments, activity timeline, and attribution reports.
 - Agency audit-log viewer and immutable mutation records.
 - Persisted feature flags and a domain-event outbox for future modules.
-- D1 schema, generated migrations, fictional idempotent seed data, and integration tests.
+- D1 schema, generated migrations, clean baseline initialization, and integration tests.
 
 The current `crm_leads` aggregate is the Phase 1 opportunity record. That name is retained to avoid a destructive migration; application language uses **opportunity** where a deal has entered a pipeline.
 

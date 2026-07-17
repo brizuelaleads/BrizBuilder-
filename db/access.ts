@@ -85,52 +85,6 @@ export function hasAccessDatabase(): boolean {
 export async function ensureAccessSchema(): Promise<void> {
   const db = database();
   await db.batch(schemaStatements.map((statement) => db.prepare(statement)));
-
-  const seedClients: ClientIdentity[] = [
-    { id: "client_summit", name: "Summit Roofing Co.", slug: "summit-roofing", industry: "Roofing", city: "Austin", state: "TX", domain: "summitroofing.com" },
-    { id: "client_coolbreeze", name: "CoolBreeze HVAC", slug: "coolbreeze-hvac", industry: "HVAC", city: "Phoenix", state: "AZ", domain: null },
-    { id: "client_oakstone", name: "Oak & Stone Plumbing", slug: "oak-stone-plumbing", industry: "Plumbing", city: "Denver", state: "CO", domain: "oakstoneplumbing.com" },
-    { id: "client_greenline", name: "Greenline Landscapes", slug: "greenline-landscapes", industry: "Landscaping", city: "Nashville", state: "TN", domain: null },
-  ];
-
-  for (const client of seedClients) {
-    await db
-      .prepare(
-        `INSERT INTO clients (id, name, slug, industry, city, state, domain)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
-           name = excluded.name,
-           slug = excluded.slug,
-           industry = excluded.industry,
-           city = excluded.city,
-           state = excluded.state,
-           domain = excluded.domain`,
-      )
-      .bind(client.id, client.name, client.slug, client.industry, client.city, client.state, client.domain)
-      .run();
-  }
-
-  const seedLeads = [
-    ["lead_summit_1", "client_summit", "Maria Gonzalez", "Roof replacement", "2026-07-15 18:48:00"],
-    ["lead_summit_2", "client_summit", "Noah Lee", "Roof inspection", "2026-07-14 10:30:00"],
-    ["lead_coolbreeze_1", "client_coolbreeze", "Ethan Brooks", "AC repair", "2026-07-15 17:10:00"],
-    ["lead_oakstone_1", "client_oakstone", "Ava Turner", "Water heater", "2026-07-15 15:45:00"],
-    ["lead_greenline_1", "client_greenline", "Sofia Patel", "Landscape design", "2026-07-13 09:15:00"],
-  ];
-  for (const lead of seedLeads) {
-    await db
-      .prepare(
-        `INSERT INTO leads (id, client_id, contact_name, service, created_at)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
-           client_id = excluded.client_id,
-           contact_name = excluded.contact_name,
-           service = excluded.service,
-           created_at = excluded.created_at`,
-      )
-      .bind(...lead)
-      .run();
-  }
 }
 
 export async function getAccountAccess(

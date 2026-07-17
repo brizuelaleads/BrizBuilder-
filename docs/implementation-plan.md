@@ -11,7 +11,7 @@
 - pipeline stages, drag/drop, accessible move control, and stage history
 - tasks and appointments
 - basic performance and funnel reports
-- seed data, migration, audit logging, error/loading/empty states, mobile layouts, and integration tests
+- clean baseline initialization, migration, audit logging, error/loading/empty states, mobile layouts, and integration tests
 
 ## Phase 2
 

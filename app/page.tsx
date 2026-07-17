@@ -89,7 +89,7 @@ export default function MarketingHome() {
             <section>
               <div>
                 <p>Client website</p>
-                <strong>Segovia Pest Management</strong>
+                <strong>Your client business</strong>
               </div>
               <div className="site-preview-page">
                 <small>Hero section</small>

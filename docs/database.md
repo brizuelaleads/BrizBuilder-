@@ -34,6 +34,6 @@ Foreign keys prevent cross-table orphaning. Leads and contacts use soft deletion
 
 `drizzle/0002_curly_post.sql` adds the Phase 1 tables and indexes without deleting the legacy access tables. Generate later migrations with `npm run db:generate` and inspect the SQL before deployment.
 
-## Seed strategy
+## Baseline initialization strategy
 
-Runtime initialization uses stable fictional IDs and `INSERT OR IGNORE`. This gives a new local or hosted D1 database a safe demo workspace while preserving edits on subsequent requests. Seed email domains use `.example`, and phone numbers use fictional 555 values.
+Runtime initialization uses stable IDs and `INSERT OR IGNORE` for required platform records only: the agency organization, the main admin membership, feature flags, and the default pipeline stages. It does not create fake clients, contacts, leads, appointments, companies, tasks, or revenue.

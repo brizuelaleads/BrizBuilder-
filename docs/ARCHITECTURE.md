@@ -82,7 +82,7 @@ flowchart LR
 - Custom field definitions are scoped and typed; values are JSON with server validation.
 - Reusable custom values use an allowlisted token renderer. Arbitrary evaluation is prohibited.
 - Audit logs are append-only through application workflows.
-- Seed data uses fictional `.example` addresses and stable, idempotent inserts.
+- Baseline initialization uses stable, idempotent inserts for the organization, admin membership, feature flags, and pipeline stages only.
 
 ## Future infrastructure seams
 
@@ -94,4 +94,3 @@ flowchart LR
 6. An analytics projection separates operational queries from long-running reporting workloads.
 
 These are architecture-ready seams, not claims that the corresponding product modules exist today.
-

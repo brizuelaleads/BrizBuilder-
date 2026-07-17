@@ -286,8 +286,6 @@ type TenantContext = {
 };
 
 const ORGANIZATION_ID = "org_brizuela_leads";
-const CRM_CLIENT_ID = "crm_client_segovia";
-const LEGACY_CLIENT_ID = "client_segovia";
 const PIPELINE_ID = "pipeline_brizuela_default";
 
 const schemaStatements = [
@@ -359,18 +357,12 @@ async function initializeCrm() {
   await ensureAccessSchema();
   const db = database();
   await db.batch(schemaStatements.map((statement) => db.prepare(statement)));
-  await seedDemoData(db);
+  await ensureAgencyBaseline(db);
 }
 
-async function seedDemoData(db: D1Database) {
-  await db.prepare(`INSERT OR IGNORE INTO clients (id, name, slug, industry, city, state, domain) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-    .bind(LEGACY_CLIENT_ID, "Segovia Pest Management", "segovia-pest-management", "Pest control", "Round Rock", "TX", "segoviapest.example")
-    .run();
+async function ensureAgencyBaseline(db: D1Database) {
   await db.prepare(`INSERT OR IGNORE INTO organizations (id, name, slug, status) VALUES (?, ?, ?, 'active')`)
     .bind(ORGANIZATION_ID, "Brizuela Leads", "brizuela-leads")
-    .run();
-  await db.prepare(`INSERT OR IGNORE INTO crm_clients (id, organization_id, legacy_client_id, business_name, industry, website, phone, email, address, city, state, zip, time_zone, status, monthly_ad_budget_cents, assigned_account_manager, service_areas_json, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`)
-    .bind(CRM_CLIENT_ID, ORGANIZATION_ID, LEGACY_CLIENT_ID, "Segovia Pest Management", "Pest control", "https://segoviapest.example", "(512) 555-0140", "office@segoviapest.example", "1100 Example Commerce Dr", "Round Rock", "TX", "78664", "America/Chicago", 650000, "Luciano Brizuela", JSON.stringify(["Round Rock", "Austin", "Pflugerville", "Georgetown", "Hutto"]), "Demo client used for safe product evaluation. No real customer data.")
     .run();
   await db.prepare(`INSERT OR IGNORE INTO pipelines (id, organization_id, name, is_default) VALUES (?, ?, 'Default sales pipeline', 1)`)
     .bind(PIPELINE_ID, ORGANIZATION_ID)
@@ -395,8 +387,8 @@ async function seedDemoData(db: D1Database) {
     ["developer_platform", 0, "disabled"],
   ];
   for (const flag of moduleFlags) {
-    await db.prepare(`INSERT OR IGNORE INTO feature_flags (id, organization_id, client_id, module_key, enabled, rollout_status, source) VALUES (?, ?, ?, ?, ?, ?, 'platform')`)
-      .bind(`flag_${flag[0]}`, ORGANIZATION_ID, CRM_CLIENT_ID, ...flag)
+    await db.prepare(`INSERT OR IGNORE INTO feature_flags (id, organization_id, client_id, module_key, enabled, rollout_status, source) VALUES (?, ?, NULL, ?, ?, ?, 'platform')`)
+      .bind(`flag_${flag[0]}`, ORGANIZATION_ID, ...flag)
       .run();
   }
 
@@ -416,116 +408,13 @@ async function seedDemoData(db: D1Database) {
       .run();
   }
 
-  const contacts = [
-    ["contact_ava", "Ava", "Martinez", "(512) 555-0101", "ava.martinez@example.com", "410 Cedar Walk", "Round Rock", "TX", "78664", '["Homeowner","High intent"]', "granted", 185000],
-    ["contact_marcus", "Marcus", "Green", "(512) 555-0102", "marcus.green@example.com", "28 Lakeview Dr", "Pflugerville", "TX", "78660", '["Homeowner"]', "granted", 0],
-    ["contact_nina", "Nina", "Patel", "(512) 555-0103", "nina.patel@example.com", "905 Oak Terrace", "Austin", "TX", "78758", '["Repeat customer"]', "granted", 42500],
-    ["contact_jordan", "Jordan", "Reed", "(512) 555-0104", "jordan.reed@example.com", "1900 Valley Ln", "Georgetown", "TX", "78626", '["Urgent"]', "unknown", 0],
-    ["contact_elena", "Elena", "Torres", "(512) 555-0105", "elena.torres@example.com", "77 Maple Run", "Hutto", "TX", "78634", '[]', "granted", 0],
-    ["contact_noah", "Noah", "Williams", "(512) 555-0106", "noah.williams@example.com", "660 Canyon Bend", "Austin", "TX", "78727", '["Commercial"]', "granted", 0],
-    ["contact_sophia", "Sophia", "Kim", "(512) 555-0107", "sophia.kim@example.com", "811 Meadow Park", "Round Rock", "TX", "78665", '[]', "unknown", 0],
-    ["contact_liam", "Liam", "Brooks", "(512) 555-0108", "liam.brooks@example.com", "303 Walnut St", "Austin", "TX", "78753", '["Homeowner"]', "revoked", 0],
-  ];
-  for (const contact of contacts) {
-    await db.prepare(`INSERT OR IGNORE INTO contacts (id, organization_id, client_id, first_name, last_name, phone, email, address, city, state, zip, tags_json, marketing_consent, lifetime_value_cents, last_interaction_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '2026-07-15 14:00:00')`)
-      .bind(contact[0], ORGANIZATION_ID, CRM_CLIENT_ID, ...contact.slice(1))
-      .run();
-  }
-
-  const companiesSeed = [
-    ["company_hill_country_bakery", "Hill Country Demo Bakery", "Food service", "https://hillcountrybakery.example", "(512) 555-0160", "ops@hillcountrybakery.example", "660 Canyon Bend", "Austin", "TX", "78727", '["Commercial","Recurring"]', "Fictional commercial account used for product evaluation."],
-    ["company_lone_star_property", "Lone Star Demo Property Group", "Property management", "https://lonestarproperty.example", "(512) 555-0172", "service@lonestarproperty.example", "2400 Sample Plaza", "Round Rock", "TX", "78664", '["Property manager"]', "Fictional property-management prospect."],
-  ];
-  for (const company of companiesSeed) {
-    await db.prepare(`INSERT OR IGNORE INTO companies (id, organization_id, client_id, name, industry, website, phone, email, address, city, state, zip, tags_json, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(company[0], ORGANIZATION_ID, CRM_CLIENT_ID, ...company.slice(1))
-      .run();
-  }
-  await db.prepare(`INSERT OR IGNORE INTO contact_company_links (id, organization_id, client_id, contact_id, company_id, relationship, is_primary) VALUES ('company_link_noah', ?, ?, 'contact_noah', 'company_hill_country_bakery', 'operations manager', 1)`)
-    .bind(ORGANIZATION_ID, CRM_CLIENT_ID)
-    .run();
-
-  const customFieldsSeed = [
-    ["custom_field_property_type", "CONTACT", "property_type", "Property type", "DROPDOWN", '["Single-family home","Apartment","Commercial","Other"]', 0, 1],
-    ["custom_field_preferred_contact", "CONTACT", "preferred_contact_method", "Preferred contact method", "DROPDOWN", '["Phone","SMS","Email"]', 0, 2],
-    ["custom_field_service_frequency", "OPPORTUNITY", "service_frequency", "Service frequency", "DROPDOWN", '["One-time","Monthly","Quarterly","Annual"]', 0, 1],
-  ];
-  for (const field of customFieldsSeed) {
-    await db.prepare(`INSERT OR IGNORE INTO custom_field_definitions (id, organization_id, client_id, entity_type, field_key, label, field_type, options_json, is_required, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(field[0], ORGANIZATION_ID, CRM_CLIENT_ID, ...field.slice(1))
-      .run();
-  }
-  await db.prepare(`INSERT OR IGNORE INTO custom_field_values (id, organization_id, client_id, definition_id, entity_type, entity_id, value_json, updated_by_email) VALUES ('custom_field_value_ava_property', ?, ?, 'custom_field_property_type', 'CONTACT', 'contact_ava', ?, ?)`)
-    .bind(ORGANIZATION_ID, CRM_CLIENT_ID, JSON.stringify("Single-family home"), MAIN_ADMIN_EMAIL)
-    .run();
-
-  const customValuesSeed = [
-    ["custom_value_business_name", "business.name", "Business name", "Segovia Pest Management"],
-    ["custom_value_business_phone", "business.phone", "Business phone", "(512) 555-0140"],
-    ["custom_value_booking_link", "custom.booking_link", "Booking link", "https://segoviapest.example/book"],
-    ["custom_value_review_link", "custom.review_link", "Review link", "https://segoviapest.example/review"],
-    ["custom_value_offer", "custom.offer", "Current offer", "$25 off a first recurring service"],
-  ];
-  for (const value of customValuesSeed) {
-    await db.prepare(`INSERT OR IGNORE INTO custom_values (id, organization_id, client_id, value_key, label, value) VALUES (?, ?, ?, ?, ?, ?)`)
-      .bind(value[0], ORGANIZATION_ID, CRM_CLIENT_ID, ...value.slice(1))
-      .run();
-  }
-
-  const demoLeads = [
-    ["lead_ava", "contact_ava", "stage_won", "General pest control", "Ants throughout kitchen and patio.", "Google Ads", "Austin Pest Control - Search", "WON", 94, 22000, 185000, "2026-07-15 08:22:00"],
-    ["lead_marcus", "contact_marcus", "stage_appointment", "German roach treatment", "Need an inspection this week.", "Meta Ads", "Roach Control - Summer", "APPOINTMENT_BOOKED", 88, 39500, 0, "2026-07-15 09:40:00"],
-    ["lead_nina", "contact_nina", "stage_contacted", "Mosquito treatment", "Interested in recurring backyard service.", "Organic Search", null, "CONTACTED", 72, 8900, 0, "2026-07-14 16:15:00"],
-    ["lead_jordan", "contact_jordan", "stage_new", "Flea and tick treatment", "Pets are scratching and treatment is urgent.", "Website Form", "Summer Service Pages", "NEW", 91, 24900, 0, "2026-07-15 13:05:00"],
-    ["lead_elena", "contact_elena", "stage_qualified", "Termite inspection", "Preparing to sell the home.", "Google Ads", "Termite Inspection - Search", "QUALIFIED", 84, 17500, 0, "2026-07-13 11:30:00"],
-    ["lead_noah", "contact_noah", "stage_estimate", "Pantry pest treatment", "Small commercial bakery needs service.", "Referral", null, "ESTIMATE_SENT", 76, 85000, 0, "2026-07-12 10:10:00"],
-    ["lead_sophia", "contact_sophia", "stage_attempting", "General pest control", "Recurring spiders around windows.", "Meta Ads", "Home Protection Plan", "NEW", 63, 12900, 0, "2026-07-11 15:45:00"],
-    ["lead_liam", "contact_liam", "stage_lost", "Mosquito treatment", "Requested service outside current area.", "Website Form", null, "LOST", 38, 9900, 0, "2026-07-10 12:20:00"],
-  ];
-  for (const lead of demoLeads) {
-    await db.prepare(`INSERT OR IGNORE INTO crm_leads (id, organization_id, client_id, contact_id, pipeline_id, stage_id, service_requested, message, source, campaign, status, assigned_user, estimated_value_cents, final_revenue_cents, lead_score, tags_json, consent_status, lost_reason, next_follow_up_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Luciano Brizuela', ?, ?, ?, '[]', 'granted', ?, '2026-07-16 15:00:00', ?, ?)`)
-      .bind(lead[0], ORGANIZATION_ID, CRM_CLIENT_ID, lead[1], PIPELINE_ID, lead[2], lead[3], lead[4], lead[5], lead[6], lead[7], lead[9], lead[10], lead[8], lead[2] === "stage_lost" ? "Outside service area" : null, lead[11], lead[11])
-      .run();
-  }
-
-  const tasksSeed = [
-    ["task_marcus", "lead_marcus", "contact_marcus", "Confirm treatment preparation", "Send the preparation checklist before the appointment.", "2026-07-15 17:00:00", "HIGH", "TO_DO"],
-    ["task_jordan", "lead_jordan", "contact_jordan", "Call new flea treatment lead", "Customer marked the request as urgent.", "2026-07-15 15:30:00", "URGENT", "IN_PROGRESS"],
-    ["task_noah", "lead_noah", "contact_noah", "Follow up on estimate", "Ask if the bakery has questions about after-hours service.", "2026-07-16 10:00:00", "MEDIUM", "TO_DO"],
-    ["task_review", "lead_ava", "contact_ava", "Request a Google review", "Send after the completed service follow-up.", "2026-07-18 09:00:00", "LOW", "TO_DO"],
-  ];
-  for (const task of tasksSeed) {
-    await db.prepare(`INSERT OR IGNORE INTO tasks (id, organization_id, client_id, lead_id, contact_id, title, description, assignee, due_at, priority, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'Luciano Brizuela', ?, ?, ?)`)
-      .bind(task[0], ORGANIZATION_ID, CRM_CLIENT_ID, ...task.slice(1))
-      .run();
-  }
-
-  const appointmentsSeed = [
-    ["appointment_marcus", "lead_marcus", "contact_marcus", "German roach inspection", "2026-07-16 09:00:00", "2026-07-16 10:00:00", "28 Lakeview Dr, Pflugerville, TX", "CONFIRMED"],
-    ["appointment_elena", "lead_elena", "contact_elena", "Termite inspection", "2026-07-17 13:30:00", "2026-07-17 15:00:00", "77 Maple Run, Hutto, TX", "SCHEDULED"],
-    ["appointment_ava", "lead_ava", "contact_ava", "General pest service", "2026-07-14 10:00:00", "2026-07-14 11:00:00", "410 Cedar Walk, Round Rock, TX", "COMPLETED"],
-  ];
-  for (const appointment of appointmentsSeed) {
-    await db.prepare(`INSERT OR IGNORE INTO appointments (id, organization_id, client_id, lead_id, contact_id, assigned_employee, service_type, starts_at, ends_at, address, status) VALUES (?, ?, ?, ?, ?, 'Demo Technician', ?, ?, ?, ?, ?)`)
-      .bind(appointment[0], ORGANIZATION_ID, CRM_CLIENT_ID, ...appointment.slice(1))
-      .run();
-  }
-
-  for (const lead of demoLeads) {
-    await db.prepare(`INSERT OR IGNORE INTO activities (id, organization_id, client_id, lead_id, contact_id, type, title, detail, occurred_at) VALUES (?, ?, ?, ?, ?, 'lead_created', 'Lead created', ?, ?)`)
-      .bind(`activity_${lead[0]}`, ORGANIZATION_ID, CRM_CLIENT_ID, lead[0], lead[1], `${lead[5]} attribution captured`, lead[11])
-      .run();
-  }
-  await db.prepare(`INSERT OR IGNORE INTO crm_notes (id, organization_id, client_id, lead_id, contact_id, body, author_email, created_at) VALUES ('note_marcus', ?, ?, 'lead_marcus', 'contact_marcus', 'Customer prefers a morning appointment and has two small children in the home.', ?, '2026-07-15 10:05:00')`)
-    .bind(ORGANIZATION_ID, CRM_CLIENT_ID, MAIN_ADMIN_EMAIL)
-    .run();
-
-  const account = await db.prepare("SELECT id FROM accounts WHERE lower(email) = ? LIMIT 1").bind(MAIN_ADMIN_EMAIL).first<{ id: string }>();
-  if (account?.id) {
+  const baselineAccount = await db.prepare("SELECT id FROM accounts WHERE lower(email) = ? LIMIT 1").bind(MAIN_ADMIN_EMAIL).first<{ id: string }>();
+  if (baselineAccount?.id) {
     await db.prepare(`INSERT OR IGNORE INTO organization_members (id, organization_id, account_id, role, status) VALUES ('org_member_owner', ?, ?, 'AGENCY_OWNER', 'active')`)
-      .bind(ORGANIZATION_ID, account.id)
+      .bind(ORGANIZATION_ID, baselineAccount.id)
       .run();
   }
+
 }
 
 async function getTenantContext(user: ChatGPTUser): Promise<TenantContext> {
@@ -622,7 +511,7 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
     notes: noteRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), leadId: nullable(row.lead_id), contactId: nullable(row.contact_id), body: String(row.body), authorEmail: String(row.author_email), createdAt: String(row.created_at) })),
     team: teamRows.results.map((row) => ({ id: String(row.id), email: String(row.email), displayName: String(row.display_name), role: String(row.role) as CrmRole, status: String(row.status), lastLoginAt: nullable(row.last_login_at) })),
     auditLogs: auditRows.results.map((row) => ({ id: String(row.id), actorEmail: String(row.actor_email), action: String(row.action), recordType: String(row.record_type), recordId: nullable(row.record_id), metadata: (() => { try { return JSON.parse(String(row.metadata_json ?? "{}")) as Record<string, unknown>; } catch { return {}; } })(), createdAt: String(row.created_at) })),
-    demoData: true,
+    demoData: false,
     generatedAt: new Date().toISOString(),
   };
 }

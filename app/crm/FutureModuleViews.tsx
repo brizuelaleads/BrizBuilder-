@@ -72,14 +72,14 @@ const modules: Record<FutureModule, ModuleDefinition> = {
 };
 
 const previewStats: Record<FutureModule, Array<[string, string, string]>> = {
-  conversations: [["Open conversations", "24", "Sample"], ["Median response", "4m 12s", "Sample"], ["Unread", "7", "Sample"]],
-  automations: [["Published workflows", "8", "Sample"], ["Active enrollments", "342", "Sample"], ["Completion rate", "91%", "Sample"]],
-  forms: [["Form views", "1,284", "Sample"], ["Submissions", "146", "Sample"], ["Conversion rate", "11.4%", "Sample"]],
-  payments: [["Collected", "$18,420", "Sample"], ["Outstanding", "$4,850", "Sample"], ["Paid invoices", "32", "Sample"]],
-  ai: [["Drafts created", "126", "Sample"], ["Time saved", "9.4h", "Sample"], ["Approval rate", "88%", "Sample"]],
-  websites: [["Managed sites", "12", "Sample"], ["Published", "9", "Sample"], ["Average performance", "94", "Sample"]],
-  funnels: [["Visitors", "3,842", "Sample"], ["Conversions", "318", "Sample"], ["Conversion rate", "8.3%", "Sample"]],
-  reviews: [["Average rating", "4.8", "Sample"], ["New this month", "27", "Sample"], ["Response rate", "96%", "Sample"]],
+  conversations: [["Open conversations", "0", "Live"], ["Median response", "—", "Live"], ["Unread", "0", "Live"]],
+  automations: [["Published workflows", "0", "Live"], ["Active enrollments", "0", "Live"], ["Completion rate", "—", "Live"]],
+  forms: [["Form views", "0", "Live"], ["Submissions", "0", "Live"], ["Conversion rate", "—", "Live"]],
+  payments: [["Collected", "$0", "Live"], ["Outstanding", "$0", "Live"], ["Paid invoices", "0", "Live"]],
+  ai: [["Drafts created", "0", "Live"], ["Time saved", "—", "Live"], ["Approval rate", "—", "Live"]],
+  websites: [["Managed sites", "0", "Live"], ["Published", "0", "Live"], ["Average performance", "—", "Live"]],
+  funnels: [["Visitors", "0", "Live"], ["Conversions", "0", "Live"], ["Conversion rate", "—", "Live"]],
+  reviews: [["Average rating", "—", "Live"], ["New this month", "0", "Live"], ["Response rate", "—", "Live"]],
 };
 
 function PreviewNotice() {
@@ -91,13 +91,13 @@ function PreviewNotice() {
 
 function ConversationsPreview() {
   const threads = [
-    ["Maria Chen", "Can you send the estimate again?", "2m", "SMS"],
-    ["Derek Wilson", "Thursday afternoon works for me.", "18m", "Email"],
-    ["Tamika Brooks", "Missed call follow-up", "1h", "Call"],
+    ["Contact 1", "No live message connected yet.", "—", "SMS"],
+    ["Contact 2", "No live email connected yet.", "—", "Email"],
+    ["Contact 3", "No live call connected yet.", "—", "Call"],
   ];
   return <div className="crm-preview-inbox">
     <aside><header><strong>Inbox preview</strong><Badge tone="purple">7 unread</Badge></header><label><span>Search</span><input disabled placeholder="Search conversations" /></label>{threads.map(([name, message, time, channel], index) => <article className={index === 0 ? "active" : ""} key={name}><span className="crm-preview-avatar">{name.split(" ").map((part) => part[0]).join("")}</span><div><strong>{name}</strong><p>{message}</p><small>{channel}</small></div><time>{time}</time></article>)}</aside>
-    <section><header><div><strong>Maria Chen</strong><small>Segovia Pest Management · SMS preview</small></div><button disabled>Assign</button></header><div className="crm-preview-messages"><p className="incoming">Hi, can you send the estimate again?<small>10:42 AM</small></p><p className="outgoing">Absolutely — I have attached it here for you.<small>Draft preview</small></p></div><footer><textarea disabled placeholder="Messaging will be available after a provider is connected." /><button disabled>Send</button></footer></section>
+    <section><header><div><strong>Contact thread</strong><small>Client workspace · SMS preview</small></div><button disabled>Assign</button></header><div className="crm-preview-messages"><p className="incoming">No live messages yet.<small>—</small></p><p className="outgoing">Connect a provider before sending replies.<small>Draft preview</small></p></div><footer><textarea disabled placeholder="Messaging will be available after a provider is connected." /><button disabled>Send</button></footer></section>
   </div>;
 }
 
@@ -118,26 +118,26 @@ function FormsPreview() {
 }
 
 function PaymentsPreview() {
-  const rows = [["INV-1048", "Anderson Family", "$1,250", "Paid"], ["INV-1049", "Oakridge Properties", "$2,400", "Due Jul 22"], ["INV-1050", "M. Ramirez", "$875", "Draft"]];
-  return <section className="crm-preview-table-card"><header><div><strong>Recent invoices</strong><small>Example revenue workspace</small></div><button disabled>+ New invoice</button></header><div className="crm-preview-table-scroll"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Amount</th><th>Status</th></tr></thead><tbody>{rows.map((row) => <tr key={row[0]}>{row.map((cell, index) => <td key={cell}>{index === 3 ? <Badge tone={cell === "Paid" ? "green" : cell === "Draft" ? "neutral" : "orange"}>{cell}</Badge> : cell}</td>)}</tr>)}</tbody></table></div><footer><p>Stripe connection, payment collection, refunds, and reconciliation are not active in this preview.</p></footer></section>;
+  const rows = [["No invoices", "Connect payments", "$0", "Draft"]];
+  return <section className="crm-preview-table-card"><header><div><strong>Recent invoices</strong><small>Payment workspace</small></div><button disabled>+ New invoice</button></header><div className="crm-preview-table-scroll"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Amount</th><th>Status</th></tr></thead><tbody>{rows.map((row) => <tr key={row[0]}>{row.map((cell, index) => <td key={cell}>{index === 3 ? <Badge tone={cell === "Paid" ? "green" : cell === "Draft" ? "neutral" : "orange"}>{cell}</Badge> : cell}</td>)}</tr>)}</tbody></table></div><footer><p>Stripe connection, payment collection, refunds, and reconciliation are not active in this preview.</p></footer></section>;
 }
 
 function AiPreview() {
-  return <div className="crm-ai-preview"><section><Badge tone="purple">AI PLAYGROUND PREVIEW</Badge><h3>What would you like help with?</h3><p>Use CRM context to prepare work while keeping a person in control of every external action.</p><textarea disabled placeholder="Example: Summarize this week's new leads and suggest the next follow-up..." /><div>{["Summarize leads", "Draft a reply", "Write campaign copy", "Find follow-up risks"].map((item) => <button disabled key={item}>{item}</button>)}</div></section><aside><strong>Safety controls</strong><ul><li><span>1</span>Human approval before sending</li><li><span>2</span>Tenant-scoped CRM context</li><li><span>3</span>Usage limits and audit history</li><li><span>4</span>Tool and provider allowlists</li></ul></aside></div>;
+  return <div className="crm-ai-preview"><section><Badge tone="purple">AI PLAYGROUND PREVIEW</Badge><h3>What would you like help with?</h3><p>Use CRM context to prepare work while keeping a person in control of every external action.</p><textarea disabled placeholder="Summarize this week's new leads and suggest the next follow-up..." /><div>{["Summarize leads", "Draft a reply", "Write campaign copy", "Find follow-up risks"].map((item) => <button disabled key={item}>{item}</button>)}</div></section><aside><strong>Safety controls</strong><ul><li><span>1</span>Human approval before sending</li><li><span>2</span>Tenant-scoped CRM context</li><li><span>3</span>Usage limits and audit history</li><li><span>4</span>Tool and provider allowlists</li></ul></aside></div>;
 }
 
 function WebsitesPreview() {
-  const sites = [["Segovia Pest Management", "segoviapest.example", "Published", "94"], ["Hill Country Demo Bakery", "Preview domain", "Draft", "—"], ["Lone Star Demo Property", "Domain needed", "Setup", "—"]];
+  const sites = [["No client websites yet", "Connect a domain", "Draft", "—"]];
   return <section className="crm-preview-table-card"><header><div><strong>Client websites</strong><small>Publishing workspace preview</small></div><button disabled>+ New website</button></header><div className="crm-preview-table-scroll"><table><thead><tr><th>Website</th><th>Domain</th><th>Status</th><th>Performance</th></tr></thead><tbody>{sites.map((row) => <tr key={row[0]}><td><strong>{row[0]}</strong></td><td>{row[1]}</td><td><Badge tone={row[2] === "Published" ? "green" : row[2] === "Draft" ? "orange" : "neutral"}>{row[2]}</Badge></td><td>{row[3]}</td></tr>)}</tbody></table></div><footer><p>The page editor and Cloudflare publishing workflow will return when the complete website module is functional.</p></footer></section>;
 }
 
 function FunnelsPreview() {
-  const steps = [["1", "Service landing page", "3,842", "100%"], ["2", "Estimate form", "1,106", "28.8%"], ["3", "Booking calendar", "514", "13.4%"], ["4", "Thank-you page", "318", "8.3%"]];
-  return <div className="crm-funnel-preview"><header><div><strong>Free estimate funnel</strong><small>Example conversion journey</small></div><Badge tone="orange">Draft preview</Badge></header><section>{steps.map(([number, name, visitors, rate], index) => <article key={number}><span>{number}</span><div><strong>{name}</strong><small>{visitors} sample visitors</small></div><b>{rate}</b>{index < steps.length - 1 ? <i>→</i> : null}</article>)}</section></div>;
+  const steps = [["1", "Service landing page", "0", "—"], ["2", "Estimate form", "0", "—"], ["3", "Booking calendar", "0", "—"], ["4", "Thank-you page", "0", "—"]];
+  return <div className="crm-funnel-preview"><header><div><strong>Free estimate funnel</strong><small>Draft conversion journey</small></div><Badge tone="orange">Draft preview</Badge></header><section>{steps.map(([number, name, visitors, rate], index) => <article key={number}><span>{number}</span><div><strong>{name}</strong><small>{visitors} visitors</small></div><b>{rate}</b>{index < steps.length - 1 ? <i>→</i> : null}</article>)}</section></div>;
 }
 
 function ReviewsPreview() {
-  const reviews = [["MC", "Maria Chen", "5.0", "Fast, professional, and very easy to schedule."], ["DW", "Derek Wilson", "4.0", "The team communicated clearly and arrived on time."], ["TB", "Tamika Brooks", "5.0", "Excellent service from the first call through completion."]];
+  const reviews = [["—", "No reviews yet", "—", "Connect a review provider to collect live feedback."]];
   return <div className="crm-reviews-preview"><section><header><div><strong>Recent review examples</strong><small>Google Business Profile preview</small></div><button disabled>Request review</button></header>{reviews.map(([initial, name, rating, copy]) => <article key={name}><span className="crm-preview-avatar">{initial}</span><div><strong>{name}<b>{rating} ★</b></strong><p>{copy}</p><small>Response workflow not connected</small></div></article>)}</section><aside><strong>Rating trend</strong><div className="crm-rating-score">4.8<small>out of 5</small></div>{[["5 stars", "82%"], ["4 stars", "14%"], ["3 stars", "3%"], ["1–2 stars", "1%"]].map(([label, width]) => <p key={label}><span>{label}</span><i><b style={{ width }} /></i><small>{width}</small></p>)}</aside></div>;
 }
 
@@ -162,4 +162,3 @@ export function FutureModuleView({ module }: { module: FutureModule }) {
     <section className="crm-future-scope"><div><p>PLANNED CAPABILITIES</p><h3>What this module will include</h3></div>{definition.features.map((feature, index) => <article key={feature}><span>{String(index + 1).padStart(2, "0")}</span><strong>{feature}</strong><Badge tone="neutral">Planned</Badge></article>)}</section>
   </div>;
 }
-

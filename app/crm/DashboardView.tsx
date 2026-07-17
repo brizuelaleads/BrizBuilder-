@@ -41,7 +41,7 @@ export function DashboardView({ leads, clients, appointments, tasks, generatedAt
     ["New leads", String(newLeads.length), "Need first response"],
     ["Appointments", String(booked), "Booked or later"],
     ["Jobs won", String(won.length), `${closeRate}% close rate`],
-    ["Revenue", money(revenue, true), "Collected demo revenue"],
+    ["Revenue", money(revenue, true), "Collected revenue"],
     ["Ad spend", money(spend, true), "Monthly client budget"],
     ["Cost per lead", money(leads.length ? Math.round(spend / leads.length) : 0), "Budget ÷ leads"],
     ["ROAS", `${roas.toFixed(1)}x`, "Revenue ÷ ad spend"],
@@ -49,8 +49,8 @@ export function DashboardView({ leads, clients, appointments, tasks, generatedAt
 
   return <div className="crm-view crm-dashboard-view">
     <section className="crm-welcome-row">
-      <div><p>AGENCY COMMAND CENTER</p><h2>Every lead, next step, and dollar in one view.</h2><span>Demo records are clearly labeled until live forms and ad accounts are connected.</span></div>
-      <Badge tone="purple">Demo data</Badge>
+      <div><p>AGENCY COMMAND CENTER</p><h2>Every lead, next step, and dollar in one view.</h2><span>Your workspace is empty until you add real clients, leads, forms, and appointments.</span></div>
+      <Badge tone="green">Live workspace</Badge>
     </section>
 
     <section className="crm-metric-grid" aria-label="Key performance indicators">
@@ -68,7 +68,7 @@ export function DashboardView({ leads, clients, appointments, tasks, generatedAt
       <article className="crm-panel crm-source-panel">
         <header><div><p>ATTRIBUTION</p><h3>Leads by source</h3></div><button onClick={() => onNavigate("reports")}>Full report</button></header>
         <div className="crm-bar-list">
-          {sources.map(([source, count]) => <div key={source}><div><span>{source}</span><strong>{count}</strong></div><i><span style={{ width: `${(count / maxSource) * 100}%` }} /></i></div>)}
+          {sources.length ? sources.map(([source, count]) => <div key={source}><div><span>{source}</span><strong>{count}</strong></div><i><span style={{ width: `${(count / maxSource) * 100}%` }} /></i></div>) : <p className="crm-empty-inline">No lead sources yet.</p>}
         </div>
       </article>
     </section>

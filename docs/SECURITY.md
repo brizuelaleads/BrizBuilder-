@@ -75,7 +75,7 @@ Payment card data must remain on provider-hosted collection surfaces; BrizBuilde
 
 Before a public production release:
 
-1. Replace demo membership provisioning with an approved invitation/onboarding flow.
+1. Replace main-admin bootstrap provisioning with an approved invitation/onboarding flow.
 2. Verify hosted authentication and logout behavior on the final domain.
 3. Run migration backup/restore and tenant-isolation smoke tests.
 4. Add rate limiting and structured security telemetry.
@@ -85,4 +85,3 @@ Before a public production release:
 8. Define incident response, retention, export, deletion, and recovery procedures.
 9. Require signed, idempotent webhooks before any provider integration is enabled.
 10. Review every enabled feature flag against its security and compliance gate.
-
