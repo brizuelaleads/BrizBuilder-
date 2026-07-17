@@ -1,14 +1,11 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
 import { MAIN_ADMIN_EMAIL } from "../auth-config";
-import { isLocalDevelopmentHost } from "../chatgpt-auth";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Local sign in · Brizuela Leads",
-  description: "Local Brizuela Leads CRM preview sign in.",
+  title: "Sign in | BrizBuilder",
+  description: "Sign in to the protected BrizBuilder dashboard.",
 };
 
 export default async function LocalLogin({
@@ -16,39 +13,36 @@ export default async function LocalLogin({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const requestHeaders = await headers();
-  if (!isLocalDevelopmentHost(requestHeaders)) redirect("/");
-
   const { error } = await searchParams;
 
   return (
     <main className="auth-page">
       <section className="auth-story">
         <div className="auth-brand">
-          <span>✦</span>
-          <strong>Brizuela Leads</strong>
+          <span>BB</span>
+          <strong>BrizBuilder</strong>
         </div>
         <div className="auth-story-copy">
-          <p>LOCAL TEST ENVIRONMENT</p>
-          <h1>Test the protected workspace safely.</h1>
+          <p>SECURE DASHBOARD</p>
+          <h1>Sign in to manage BrizBuilder.</h1>
           <span>
-            This local-only login lets you verify the administrator experience.
-            It is disabled automatically on the published website.
+            Use the administrator credentials configured in Cloudflare. Client
+            users can be added later from the dashboard.
           </span>
         </div>
         <div className="auth-trust-row">
-          <span>✓ Local preview only</span>
-          <span>✓ Administrator access</span>
-          <span>✓ Production auth unchanged</span>
+          <span>Private dashboard</span>
+          <span>Administrator access</span>
+          <span>Server checked</span>
         </div>
       </section>
       <section className="auth-panel">
         <div className="auth-card">
-          <span className="auth-card-icon">✦</span>
-          <p>BRIZUELA LEADS PREVIEW</p>
+          <span className="auth-card-icon">BB</span>
+          <p>BRIZBUILDER</p>
           <h2>Admin sign in</h2>
           <span className="auth-card-copy">
-            Enter the local testing credentials to open the agency dashboard.
+            Enter your admin credentials to open the agency dashboard.
           </span>
           <form className="local-login-form" action="/api/local-auth/login" method="post">
             <label>
@@ -59,16 +53,29 @@ export default async function LocalLogin({
               <span>Password</span>
               <input name="password" type="password" autoComplete="current-password" required autoFocus />
             </label>
-            {error === "config" ? <div className="local-login-error" role="alert">Local credentials are not configured. Add the required values to .env.local and restart the server.</div> : error ? <div className="local-login-error" role="alert">The email or password is incorrect.</div> : null}
+            {error === "config" ? (
+              <div className="local-login-error" role="alert">
+                Login is not configured yet. Add MAIN_ADMIN_EMAIL,
+                LOCAL_DEV_ADMIN_PASSWORD, and LOCAL_DEV_SESSION_TOKEN in
+                Cloudflare environment variables.
+              </div>
+            ) : error ? (
+              <div className="local-login-error" role="alert">
+                The email or password is incorrect.
+              </div>
+            ) : null}
             <button className="auth-signin" type="submit">
-              Open admin dashboard <span>→</span>
+              Open admin dashboard <span>-&gt;</span>
             </button>
           </form>
           <div className="auth-role-note">
-            <span>◎</span>
+            <span>O</span>
             <p>
-              <strong>Testing mode</strong>
-              <small>The published app uses secure ChatGPT authentication.</small>
+              <strong>Protected access</strong>
+              <small>
+                Your password is read from Cloudflare environment variables, not
+                stored in GitHub.
+              </small>
             </p>
           </div>
         </div>

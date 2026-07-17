@@ -26,8 +26,6 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
   const requestHeaders = await headers();
   const email = requestHeaders.get(USER_EMAIL_HEADER);
   if (!email) {
-    if (!isLocalDevelopmentHost(requestHeaders)) return null;
-
     const cookieStore = await cookies();
     if (cookieStore.get(LOCAL_AUTH_COOKIE)?.value !== LOCAL_AUTH_TOKEN) {
       return null;
@@ -71,22 +69,15 @@ export function chatGPTSignInPath(returnTo: string): string {
 export async function signInPathForCurrentRequest(
   returnTo: string,
 ): Promise<string> {
-  const requestHeaders = await headers();
-  if (isLocalDevelopmentHost(requestHeaders)) {
-    const safeReturnTo = safeRelativeReturnPath(returnTo);
-    return `/local-login?return_to=${encodeURIComponent(safeReturnTo)}`;
-  }
-  return chatGPTSignInPath(returnTo);
+  const safeReturnTo = safeRelativeReturnPath(returnTo);
+  return `/local-login?return_to=${encodeURIComponent(safeReturnTo)}`;
 }
 
 export async function signOutPathForCurrentRequest(
   returnTo = "/",
 ): Promise<string> {
-  const requestHeaders = await headers();
-  if (isLocalDevelopmentHost(requestHeaders)) {
-    return "/api/local-auth/logout";
-  }
-  return chatGPTSignOutPath(returnTo);
+  void returnTo;
+  return "/api/local-auth/logout";
 }
 
 export function isLocalDevelopmentHost(requestHeaders: Headers): boolean {

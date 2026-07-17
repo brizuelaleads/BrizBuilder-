@@ -5,13 +5,8 @@ import {
   LOCAL_AUTH_TOKEN,
   MAIN_ADMIN_EMAIL,
 } from "../../../auth-config";
-import { isLocalDevelopmentHost } from "../../../chatgpt-auth";
 
 export async function POST(request: Request) {
-  if (!isLocalDevelopmentHost(request.headers)) {
-    return new Response("Not found", { status: 404 });
-  }
-
   if (!LOCAL_ADMIN_PASSWORD || !LOCAL_AUTH_TOKEN) {
     return Response.redirect(new URL("/local-login?error=config", request.url), 303);
   }
@@ -28,7 +23,7 @@ export async function POST(request: Request) {
   cookieStore.set(LOCAL_AUTH_COOKIE, LOCAL_AUTH_TOKEN, {
     httpOnly: true,
     sameSite: "lax",
-    secure: false,
+    secure: new URL(request.url).protocol === "https:",
     path: "/",
     maxAge: 60 * 60 * 8,
   });

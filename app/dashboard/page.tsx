@@ -82,6 +82,33 @@ function AccessPending({ name, signOutPath }: { name: string; signOutPath: strin
   );
 }
 
+function DatabaseSetupRequired({ signOutPath }: { signOutPath: string }) {
+  return (
+    <main className="auth-page auth-pending-page">
+      <section className="access-pending-card">
+        <span>DB</span>
+        <p>DASHBOARD LOGIN WORKS</p>
+        <h1>Connect Cloudflare D1 to finish the dashboard.</h1>
+        <div>
+          You are signed in, but the protected CRM needs a real Cloudflare D1
+          database before it can load client data, leads, tasks, and accounts.
+          The public website can stay live while this is connected.
+        </div>
+        <a href={signOutPath}>Sign out</a>
+      </section>
+    </main>
+  );
+}
+
+function isMissingDatabase(error: unknown) {
+  return (
+    error instanceof Error &&
+    (error.message.includes("database is unavailable") ||
+      error.message.includes("D1") ||
+      error.message.includes("DB"))
+  );
+}
+
 export default async function DashboardPage() {
   const user = await getChatGPTUser();
   if (!user) {
@@ -97,6 +124,9 @@ export default async function DashboardPage() {
   try {
     crmData = await getCrmBootstrap(user);
   } catch (error) {
+    if (isMissingDatabase(error)) {
+      return <DatabaseSetupRequired signOutPath={signOutPath} />;
+    }
     if (access.role !== "client" || !access.client) throw error;
   }
   if (crmData) return <CrmApp initialData={crmData} signOutPath={signOutPath} />;

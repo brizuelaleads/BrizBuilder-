@@ -78,6 +78,10 @@ function database(): D1Database {
   return env.DB;
 }
 
+export function hasAccessDatabase(): boolean {
+  return Boolean(env.DB);
+}
+
 export async function ensureAccessSchema(): Promise<void> {
   const db = database();
   await db.batch(schemaStatements.map((statement) => db.prepare(statement)));
@@ -132,9 +136,20 @@ export async function ensureAccessSchema(): Promise<void> {
 export async function getAccountAccess(
   user: ChatGPTUser,
 ): Promise<AccountAccess | null> {
+  const email = user.email.trim().toLowerCase();
+
+  if (!hasAccessDatabase()) {
+    if (email !== MAIN_ADMIN_EMAIL) return null;
+    return {
+      email,
+      displayName: user.displayName,
+      role: "admin",
+      client: null,
+    };
+  }
+
   await ensureAccessSchema();
   const db = database();
-  const email = user.email.trim().toLowerCase();
 
   if (email === MAIN_ADMIN_EMAIL) {
     await db
