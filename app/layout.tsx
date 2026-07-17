@@ -11,22 +11,24 @@ const display = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://brizbuilder-agency.rhkfgqqn2r.chatgpt.site"),
+  metadataBase: new URL("https://brizbuilder.com"),
   title: {
-    default: "Brizuela Leads — Agency CRM",
-    template: "%s · Brizuela Leads",
+    default: "BrizBuilder | Websites for service businesses",
+    template: "%s | BrizBuilder",
   },
   description:
-    "A secure CRM for lead-generation agencies and local service businesses.",
+    "A website launch and client-management platform for agencies serving local service businesses.",
   openGraph: {
-    title: "Brizuela Leads CRM",
-    description: "Every lead, follow-up, and result in one protected workspace.",
+    title: "BrizBuilder",
+    description:
+      "Launch service-business websites and manage client leads from one workspace.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Brizuela Leads CRM",
-    description: "Every lead, follow-up, and result in one protected workspace.",
+    title: "BrizBuilder",
+    description:
+      "Launch service-business websites and manage client leads from one workspace.",
   },
 };
 

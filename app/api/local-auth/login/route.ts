@@ -33,5 +33,5 @@ export async function POST(request: Request) {
     maxAge: 60 * 60 * 8,
   });
 
-  return Response.redirect(new URL("/", request.url), 303);
+  return Response.redirect(new URL("/dashboard", request.url), 303);
 }

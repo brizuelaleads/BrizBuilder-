@@ -1,122 +1,157 @@
 import type { Metadata } from "next";
-import {
-  getChatGPTUser,
-  signInPathForCurrentRequest,
-  signOutPathForCurrentRequest,
-} from "./chatgpt-auth";
-import { CrmApp } from "./CrmApp";
-import { ClientPortal } from "./ClientPortal";
-import { getAccountAccess, getClientPortalData } from "../db/access";
-import { getCrmBootstrap } from "../db/crm";
-
-export const dynamic = "force-dynamic";
+import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Brizuela Leads — Agency CRM",
+  title: "BrizBuilder | Websites for service businesses",
   description:
-    "A secure, multi-tenant CRM for lead-generation agencies and service-business clients.",
+    "Launch service-business websites, landing pages, forms, and client portals from one agency workspace.",
 };
 
-function SignInScreen({ signInPath }: { signInPath: string }) {
+const stats = [
+  ["10 min", "site draft from intake"],
+  ["24/7", "lead capture and routing"],
+  ["1 place", "clients, forms, tasks, reports"],
+];
+
+const features = [
+  {
+    title: "Website launch system",
+    copy: "Turn a business profile into a polished service website with pages, metadata, service areas, offers, and conversion sections.",
+  },
+  {
+    title: "Agency CRM",
+    copy: "Track clients, leads, appointments, tasks, reports, and future marketing modules without exposing one client to another.",
+  },
+  {
+    title: "Client-ready portals",
+    copy: "Give each client a clean dashboard for their own leads and performance while your team keeps the full agency view.",
+  },
+];
+
+const websiteParts = [
+  "Homepage",
+  "Service pages",
+  "Contact forms",
+  "FAQ",
+  "SEO metadata",
+  "Schema markup",
+  "Privacy and terms",
+  "Mobile layout",
+];
+
+export default function MarketingHome() {
   return (
-    <main className="auth-page">
-      <section className="auth-story">
-        <div className="auth-brand">
-          <span>✦</span>
-          <strong>Brizuela Leads</strong>
-        </div>
-        <div className="auth-story-copy">
-          <p>SECURE AGENCY CRM</p>
-          <h1>Every lead. Every follow-up. Every result.</h1>
+    <main className="site-home">
+      <header className="site-nav">
+        <Link className="site-wordmark" href="/">
+          <span>BB</span>
+          <strong>BrizBuilder</strong>
+        </Link>
+        <nav aria-label="Public website navigation">
+          <a href="#features">Features</a>
+          <a href="#workflow">Workflow</a>
+          <a href="#contact">Contact</a>
+        </nav>
+        <Link className="site-login" href="/dashboard">
+          Login
+        </Link>
+      </header>
+
+      <section className="site-hero-public">
+        <div className="site-hero-copy">
+          <p>FOR MARKETING AGENCIES AND SERVICE BUSINESSES</p>
+          <h1>Launch client websites and manage leads from one workspace.</h1>
           <span>
-            Admins manage the agency. Clients see only their own leads,
-            contacts, appointments, tasks, and performance.
+            BrizBuilder helps an agency collect business details, generate a
+            service-business website, publish it, and manage the client after
+            the site goes live.
           </span>
+          <div className="site-hero-actions">
+            <Link href="/dashboard">Open dashboard</Link>
+            <a href="#workflow">See workflow</a>
+          </div>
         </div>
-        <div className="auth-trust-row">
-          <span>✓ Identity verified</span>
-          <span>✓ Role protected</span>
-          <span>✓ Client data isolated</span>
-        </div>
-      </section>
-      <section className="auth-panel">
-        <div className="auth-card">
-          <span className="auth-card-icon">✦</span>
-          <p>WELCOME TO BRIZUELA LEADS</p>
-          <h2>Sign in to continue</h2>
-          <span className="auth-card-copy">
-            Use your authorized ChatGPT account. Brizuela Leads never receives or
-            stores your password.
-          </span>
-          <a className="auth-signin" href={signInPath}>
-            Continue with ChatGPT <span>→</span>
-          </a>
-          <div className="auth-role-note">
-            <span>◎</span>
-            <p>
-              <strong>Private by default</strong>
-              <small>
-                Access and permissions are checked on the server every time.
-              </small>
-            </p>
+        <div className="site-product-shot" aria-label="BrizBuilder website and dashboard preview">
+          <div className="site-browser-bar">
+            <span />
+            <span />
+            <span />
+            <small>brizbuilder.com</small>
+          </div>
+          <div className="site-preview-grid">
+            <aside>
+              <b>BrizBuilder</b>
+              <span>Dashboard</span>
+              <span>Clients</span>
+              <span>Websites</span>
+              <span>Leads</span>
+            </aside>
+            <section>
+              <div>
+                <p>Client website</p>
+                <strong>Segovia Pest Management</strong>
+              </div>
+              <div className="site-preview-page">
+                <small>Hero section</small>
+                <b>Local pest control built to convert</b>
+                <i />
+              </div>
+              <div className="site-preview-cards">
+                <span>SEO</span>
+                <span>Forms</span>
+                <span>Analytics</span>
+              </div>
+            </section>
           </div>
         </div>
       </section>
-    </main>
-  );
-}
 
-function AccessPending({ name, signOutPath }: { name: string; signOutPath: string }) {
-  return (
-    <main className="auth-page auth-pending-page">
-      <section className="access-pending-card">
-        <span>◎</span>
-        <p>ACCOUNT VERIFIED</p>
-        <h1>Access is awaiting assignment.</h1>
-        <div>
-          Hi {name}. Your identity is verified, but the main administrator has
-          not assigned you to a client workspace yet. No client data is visible.
+      <section className="site-stats" aria-label="BrizBuilder highlights">
+        {stats.map(([value, label]) => (
+          <div key={label}>
+            <strong>{value}</strong>
+            <span>{label}</span>
+          </div>
+        ))}
+      </section>
+
+      <section className="site-section" id="features">
+        <div className="site-section-head">
+          <p>WHAT IT DOES</p>
+          <h2>Built like a website platform, managed like an agency CRM.</h2>
         </div>
-        <a href={signOutPath}>Sign out</a>
+        <div className="site-feature-grid">
+          {features.map((feature) => (
+            <article key={feature.title}>
+              <h3>{feature.title}</h3>
+              <p>{feature.copy}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="site-split" id="workflow">
+        <div>
+          <p>CLIENT WEBSITE OUTPUT</p>
+          <h2>Everything a home-service website needs before launch.</h2>
+          <span>
+            Enter the business name, industry, city, services, offers, colors,
+            photos, contact details, and service areas. BrizBuilder turns that
+            into the first publish-ready draft.
+          </span>
+        </div>
+        <ul>
+          {websiteParts.map((part) => (
+            <li key={part}>{part}</li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="site-cta" id="contact">
+        <p>READY TO BUILD</p>
+        <h2>Use the public site for visitors. Keep the dashboard private.</h2>
+        <Link href="/dashboard">Go to login</Link>
       </section>
     </main>
   );
-}
-
-export default async function Home() {
-  const user = await getChatGPTUser();
-  if (!user) {
-    const signInPath = await signInPathForCurrentRequest("/");
-    return <SignInScreen signInPath={signInPath} />;
-  }
-
-  const access = await getAccountAccess(user);
-  const signOutPath = await signOutPathForCurrentRequest("/");
-  if (!access) return <AccessPending name={user.displayName} signOutPath={signOutPath} />;
-
-  let crmData = null;
-  try {
-    crmData = await getCrmBootstrap(user);
-  } catch (error) {
-    if (access.role !== "client" || !access.client) throw error;
-  }
-  if (crmData) return <CrmApp initialData={crmData} signOutPath={signOutPath} />;
-
-  if (access.role === "client" && access.client) {
-    const portalData = await getClientPortalData(access.client.id);
-    return (
-      <ClientPortal
-        session={{
-          name: access.displayName,
-          email: access.email,
-          role: access.role,
-        }}
-        signOutPath={signOutPath}
-        client={access.client}
-        data={portalData}
-      />
-    );
-  }
-
-  return <AccessPending name={access.displayName} signOutPath={signOutPath} />;
 }
