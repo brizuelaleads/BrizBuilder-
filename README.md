@@ -39,6 +39,31 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+## Supabase backend setup
+
+Supabase support has been added as the production backend foundation. The app now has:
+
+- Supabase SDK installed
+- server-side Supabase helpers
+- `/api/supabase/status` connection check
+- full SQL schema at `supabase/schema.sql`
+- row-level security policies so client accounts cannot see other clients' data
+- storage buckets for assets, website photos, and imports
+
+To connect your Supabase project:
+
+1. Open Supabase > SQL Editor.
+2. Paste and run `supabase/schema.sql`.
+3. Add these environment variables in Cloudflare/Vercel:
+
+```txt
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+```
+
+Do not put the real `SUPABASE_SERVICE_ROLE_KEY` in GitHub. After deploying, open `/api/supabase/status` to confirm the backend is connected.
+
 Local credentials are required and are accepted only by the development server. Production builds reject the local login routes and use Sign in with ChatGPT.
 
 Copy `.env.example` to `.env.local`, then set `MAIN_ADMIN_EMAIL`, `MAIN_ADMIN_NAME`, `LOCAL_DEV_ADMIN_PASSWORD`, and a long random `LOCAL_DEV_SESSION_TOKEN`. Restart the development server after changing them. The `.env.local` file is intentionally excluded from Git.
