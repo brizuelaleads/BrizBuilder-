@@ -357,7 +357,33 @@ async function initializeCrm() {
   await ensureAccessSchema();
   const db = database();
   await db.batch(schemaStatements.map((statement) => db.prepare(statement)));
+  await removeOldDemoRecords(db);
   await ensureAgencyBaseline(db);
+}
+
+async function removeOldDemoRecords(db: D1Database) {
+  const cleanupStatements = [
+    "DELETE FROM custom_field_values WHERE id IN ('custom_field_value_ava_property')",
+    "DELETE FROM contact_company_links WHERE id IN ('company_link_noah')",
+    "DELETE FROM crm_notes WHERE id IN ('note_marcus') OR lead_id IN ('lead_ava','lead_marcus','lead_nina','lead_jordan','lead_elena','lead_noah','lead_sophia','lead_liam')",
+    "DELETE FROM activities WHERE id IN ('activity_lead_ava','activity_lead_marcus','activity_lead_nina','activity_lead_jordan','activity_lead_elena','activity_lead_noah','activity_lead_sophia','activity_lead_liam') OR lead_id IN ('lead_ava','lead_marcus','lead_nina','lead_jordan','lead_elena','lead_noah','lead_sophia','lead_liam')",
+    "DELETE FROM tasks WHERE id IN ('task_marcus','task_jordan','task_noah','task_review')",
+    "DELETE FROM appointments WHERE id IN ('appointment_marcus','appointment_elena','appointment_ava')",
+    "DELETE FROM audit_logs WHERE record_id IN ('crm_client_segovia','lead_ava','lead_marcus','lead_nina','lead_jordan','lead_elena','lead_noah','lead_sophia','lead_liam','contact_ava','contact_marcus','contact_nina','contact_jordan','contact_elena','contact_noah','contact_sophia','contact_liam','company_hill_country_bakery','company_lone_star_property')",
+    "DELETE FROM audit_events WHERE target_id IN ('client_segovia','client_summit','client_coolbreeze','client_oakstone','client_greenline')",
+    "DELETE FROM lead_stage_history WHERE lead_id IN ('lead_ava','lead_marcus','lead_nina','lead_jordan','lead_elena','lead_noah','lead_sophia','lead_liam')",
+    "DELETE FROM crm_leads WHERE id IN ('lead_ava','lead_marcus','lead_nina','lead_jordan','lead_elena','lead_noah','lead_sophia','lead_liam')",
+    "DELETE FROM custom_values WHERE id IN ('custom_value_business_name','custom_value_business_phone','custom_value_booking_link','custom_value_review_link','custom_value_offer')",
+    "DELETE FROM custom_field_definitions WHERE id IN ('custom_field_property_type','custom_field_preferred_contact','custom_field_service_frequency')",
+    "DELETE FROM feature_flags WHERE client_id = 'crm_client_segovia'",
+    "DELETE FROM companies WHERE id IN ('company_hill_country_bakery','company_lone_star_property')",
+    "DELETE FROM contacts WHERE id IN ('contact_ava','contact_marcus','contact_nina','contact_jordan','contact_elena','contact_noah','contact_sophia','contact_liam')",
+    "DELETE FROM client_members WHERE client_id = 'crm_client_segovia'",
+    "DELETE FROM crm_clients WHERE id = 'crm_client_segovia'",
+    "DELETE FROM leads WHERE id IN ('lead_summit_1','lead_summit_2','lead_coolbreeze_1','lead_oakstone_1','lead_greenline_1')",
+    "DELETE FROM clients WHERE id IN ('client_segovia','client_summit','client_coolbreeze','client_oakstone','client_greenline')",
+  ];
+  await db.batch(cleanupStatements.map((statement) => db.prepare(statement)));
 }
 
 async function ensureAgencyBaseline(db: D1Database) {
