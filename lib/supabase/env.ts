@@ -4,6 +4,7 @@ export type SupabaseRuntimeEnv = {
   url: string;
   anonKey: string;
   serviceRoleKey: string;
+  jwksUrl: string;
 };
 
 export function readRuntimeValue(name: string) {
@@ -13,7 +14,9 @@ export function readRuntimeValue(name: string) {
 
 export function getSupabaseRuntimeEnv(): SupabaseRuntimeEnv {
   return {
-    url: readRuntimeValue("NEXT_PUBLIC_SUPABASE_URL"),
+    url:
+      readRuntimeValue("NEXT_PUBLIC_SUPABASE_URL") ||
+      readRuntimeValue("SUPABASE_URL"),
     anonKey:
       readRuntimeValue("NEXT_PUBLIC_SUPABASE_ANON_KEY") ||
       readRuntimeValue("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") ||
@@ -21,6 +24,7 @@ export function getSupabaseRuntimeEnv(): SupabaseRuntimeEnv {
     serviceRoleKey:
       readRuntimeValue("SUPABASE_SERVICE_ROLE_KEY") ||
       readRuntimeValue("SUPABASE_SECRET_KEY"),
+    jwksUrl: readRuntimeValue("SUPABASE_JWKS_URL"),
   };
 }
 
@@ -30,6 +34,7 @@ export function getSupabaseConfigStatus() {
     hasUrl: Boolean(runtime.url),
     hasAnonKey: Boolean(runtime.anonKey),
     hasServiceRoleKey: Boolean(runtime.serviceRoleKey),
+    hasJwksUrl: Boolean(runtime.jwksUrl),
     publicClientReady: Boolean(runtime.url && runtime.anonKey),
     adminClientReady: Boolean(runtime.url && runtime.serviceRoleKey),
   };

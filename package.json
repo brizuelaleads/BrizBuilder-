@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@jridgewell/sourcemap-codec": "1.5.5",
+    "@supabase/server": "^1.4.0",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.7",
     "drizzle-orm": "0.45.2",
