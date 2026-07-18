@@ -31,7 +31,16 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-public-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-secret-key
 ```
 
-Important: `SUPABASE_SERVICE_ROLE_KEY` is private. Never paste it into GitHub.
+Newer Supabase projects may label these as a **publishable key** and a
+**secret key**. The app also supports:
+
+```txt
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+SUPABASE_SECRET_KEY=your-secret-key
+```
+
+Important: `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_SECRET_KEY` are private.
+Never paste real secret values into GitHub.
 
 ## Step 3: Test the connection
 

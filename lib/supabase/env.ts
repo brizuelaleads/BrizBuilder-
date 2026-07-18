@@ -14,8 +14,13 @@ export function readRuntimeValue(name: string) {
 export function getSupabaseRuntimeEnv(): SupabaseRuntimeEnv {
   return {
     url: readRuntimeValue("NEXT_PUBLIC_SUPABASE_URL"),
-    anonKey: readRuntimeValue("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-    serviceRoleKey: readRuntimeValue("SUPABASE_SERVICE_ROLE_KEY"),
+    anonKey:
+      readRuntimeValue("NEXT_PUBLIC_SUPABASE_ANON_KEY") ||
+      readRuntimeValue("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") ||
+      readRuntimeValue("SUPABASE_PUBLISHABLE_KEY"),
+    serviceRoleKey:
+      readRuntimeValue("SUPABASE_SERVICE_ROLE_KEY") ||
+      readRuntimeValue("SUPABASE_SECRET_KEY"),
   };
 }
 
