@@ -6,8 +6,8 @@ import {
 } from "../chatgpt-auth";
 import { CrmApp } from "../CrmApp";
 import { ClientPortal } from "../ClientPortal";
-import { getAccountAccess, getClientPortalData } from "../../db/access";
-import { getCrmBootstrap } from "../../db/crm";
+import { getAccountAccess, getClientPortalData } from "../../db/runtime-access";
+import { getCrmBootstrap } from "../../db/runtime-crm";
 
 export const dynamic = "force-dynamic";
 

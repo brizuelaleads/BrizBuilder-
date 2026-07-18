@@ -1,5 +1,5 @@
 import { getChatGPTUser } from "../../../chatgpt-auth";
-import { listAccounts, upsertClientAccount } from "../../../../db/access";
+import { listAccounts, upsertClientAccount } from "../../../../db/runtime-access";
 
 export async function GET() {
   const user = await getChatGPTUser();

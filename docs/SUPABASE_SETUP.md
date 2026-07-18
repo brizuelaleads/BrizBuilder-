@@ -6,6 +6,7 @@ This is the backend foundation for making BrizBuilder operational with a real da
 
 - Supabase JavaScript SDK.
 - Server-side Supabase helpers.
+- A backend switch so BrizBuilder can use Supabase for the CRM dashboard.
 - A health endpoint at `/api/supabase/status`.
 - A production-style Postgres schema in `supabase/schema.sql`.
 - Row-level security rules so clients cannot see other clients' data.
@@ -38,6 +39,7 @@ Newer Supabase projects may label these as a **publishable key** and a
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 SUPABASE_SECRET_KEY=your-secret-key
 SUPABASE_DATABASE_URL=postgresql://postgres.your-project-ref:your-database-password@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+BRIZBUILDER_BACKEND=supabase
 ```
 
 Important: `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_SECRET_KEY` are private.
@@ -97,4 +99,26 @@ The first agency organization should be **Brizuela Leads**, and your profile sho
 
 ## Current note
 
-The app is now ready to connect to Supabase, but the existing dashboard still uses the current database layer until we migrate the CRM screens over. This was done on purpose so the live site does not break while Supabase gets connected.
+The dashboard now has a Supabase backend lane. Set `BRIZBUILDER_BACKEND=supabase`
+in Cloudflare to make Supabase the preferred CRM backend. D1 remains as a
+fallback during the migration so the live dashboard does not go down if a
+Supabase setting is wrong.
+
+Connected now:
+
+- Admin dashboard bootstrap.
+- Clients.
+- Contacts.
+- Leads and pipeline movement.
+- Tasks.
+- Appointments.
+- Notes.
+- Companies.
+- Audit events.
+
+Still intentionally staged for the next phase:
+
+- Supabase Auth-based client invitations.
+- CSV imports.
+- Custom fields/custom values.
+- Contact-to-company relationship links.

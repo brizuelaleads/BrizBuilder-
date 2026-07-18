@@ -1,5 +1,5 @@
 import { getChatGPTUser } from "../../chatgpt-auth";
-import { executeCrmAction, getCrmBootstrap, type CrmAction } from "../../../db/crm";
+import { executeCrmAction, getCrmBootstrap, type CrmAction } from "../../../db/runtime-crm";
 
 export const dynamic = "force-dynamic";
 

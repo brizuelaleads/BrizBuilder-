@@ -60,6 +60,7 @@ To connect your Supabase project:
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
+BRIZBUILDER_BACKEND=supabase
 ```
 
 Do not put the real `SUPABASE_SERVICE_ROLE_KEY` in GitHub. After deploying, open `/api/supabase/status` to confirm the backend is connected.
