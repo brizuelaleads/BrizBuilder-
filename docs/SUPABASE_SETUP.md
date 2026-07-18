@@ -37,10 +37,15 @@ Newer Supabase projects may label these as a **publishable key** and a
 ```txt
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 SUPABASE_SECRET_KEY=your-secret-key
+SUPABASE_DATABASE_URL=postgresql://postgres.your-project-ref:your-database-password@aws-0-us-east-1.pooler.supabase.com:6543/postgres
 ```
 
 Important: `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_SECRET_KEY` are private.
 Never paste real secret values into GitHub.
+
+For Cloudflare Workers, use Supabase's **Transaction pooler** connection
+string for `SUPABASE_DATABASE_URL`. If the database password has special
+characters, percent-encode the password before saving it.
 
 ## Step 3: Test the connection
 
