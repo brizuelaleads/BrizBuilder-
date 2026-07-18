@@ -1,0 +1,144 @@
+"use client";
+
+import { useMemo, useState, type FormEvent } from "react";
+import type { CrmClient, CrmLead, CrmWebsite } from "../../db/crm";
+import { Badge, EmptyState, Field, getFormValue, Modal, shortDate } from "./ui";
+
+type Mutate = (input: Record<string, unknown>, success: string) => Promise<void>;
+
+const platformNames: Record<string, string> = {
+  brizbuilder: "BrizBuilder",
+  wordpress: "WordPress",
+  wix: "Wix",
+  squarespace: "Squarespace",
+  webflow: "Webflow",
+  shopify: "Shopify",
+  custom: "Custom website",
+  other: "Other",
+};
+
+function endpointFor(websiteId: string) {
+  if (typeof window === "undefined") return `/api/website-leads/${websiteId}`;
+  const configuredBase = process.env.NEXT_PUBLIC_LEAD_CAPTURE_BASE_URL?.replace(/\/$/, "");
+  const productionBase = window.location.hostname.endsWith("workers.dev")
+    ? "https://brizbuilder-leads.brizuelaleads.workers.dev"
+    : window.location.origin;
+  return `${configuredBase || productionBase}/api/website-leads/${websiteId}`;
+}
+
+function captureSnippet(websiteId: string) {
+  return `fetch("${endpointFor(websiteId)}", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    firstName: "Jane",
+    lastName: "Customer",
+    phone: "555-555-5555",
+    email: "jane@example.com",
+    service: "Free estimate",
+    message: "I would like more information",
+    consent: true
+  })
+});`;
+}
+
+async function copyText(value: string, onCopied: () => void) {
+  await navigator.clipboard.writeText(value);
+  onCopied();
+}
+
+function WebsiteModal({ clients, website, mutate, onClose }: { clients: CrmClient[]; website: CrmWebsite | null; mutate: Mutate; onClose: () => void }) {
+  const [busy, setBusy] = useState(false);
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setBusy(true);
+    try {
+      await mutate({
+        action: "save_website",
+        websiteId: website?.id ?? "",
+        clientId: getFormValue(form, "clientId"),
+        name: getFormValue(form, "name"),
+        domain: getFormValue(form, "domain"),
+        platform: getFormValue(form, "platform"),
+      }, website ? "Website connection updated" : "Website connected to the CRM");
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <Modal title={website ? "Edit website connection" : "Connect a website"} eyebrow="CRM LEAD CAPTURE" onClose={onClose} wide>
+    <form className="crm-form" onSubmit={save}>
+      <Field label="Client" span><select name="clientId" defaultValue={website?.clientId} required disabled={Boolean(website)}>{clients.map((client) => <option key={client.id} value={client.id}>{client.businessName}</option>)}</select></Field>
+      <Field label="Website name"><input name="name" defaultValue={website?.name ?? ""} placeholder="Main website" required autoFocus /></Field>
+      <Field label="Platform"><select name="platform" defaultValue={website?.platform ?? "wordpress"}>{Object.entries(platformNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
+      <Field label="Domain" span><input name="domain" defaultValue={website?.domain ?? ""} placeholder="example.com" inputMode="url" required /></Field>
+      <div className="crm-form-note crm-field-span">After saving, BrizBuilder creates a lead-capture URL for this website. Your website form sends customer details to that URL, and the lead appears in this client&apos;s CRM automatically.</div>
+      <footer><button className="crm-button-secondary" type="button" onClick={onClose}>Cancel</button><button className="crm-button-primary" type="submit" disabled={busy}>{busy ? "Saving..." : website ? "Save Changes" : "Connect Website"}</button></footer>
+    </form>
+  </Modal>;
+}
+
+export function WebsitesView({ websites, clients, leads, mutate, canManage }: { websites: CrmWebsite[]; clients: CrmClient[]; leads: CrmLead[]; mutate: Mutate; canManage: boolean }) {
+  const [editing, setEditing] = useState<CrmWebsite | null | undefined>(undefined);
+  const [selectedId, setSelectedId] = useState<string | null>(websites[0]?.id ?? null);
+  const [copied, setCopied] = useState("");
+  const selected = websites.find((website) => website.id === selectedId) ?? websites[0] ?? null;
+  const connected = websites.filter((website) => website.status === "connected").length;
+  const websiteLeads = useMemo(() => leads.filter((lead) => lead.source.toLowerCase().startsWith("website")), [leads]);
+
+  function markCopied(label: string) {
+    setCopied(label);
+    window.setTimeout(() => setCopied(""), 2200);
+  }
+
+  async function disconnect(website: CrmWebsite) {
+    if (!window.confirm(`Disconnect ${website.name}? Its website form will stop creating CRM leads.`)) return;
+    await mutate({ action: "disconnect_website", websiteId: website.id }, "Website disconnected");
+  }
+
+  return <div className="crm-view crm-websites-view">
+    <section className="crm-page-heading"><div><p>WEBSITE CONNECTIONS</p><h2>Connected websites</h2><span>Route every website inquiry into the correct client workspace, contact list, and lead pipeline.</span></div>{canManage ? <button className="crm-button-primary" onClick={() => setEditing(null)}>+ Connect Website</button> : null}</section>
+
+    <section className="crm-website-metrics">
+      <article><span>Connected websites</span><strong>{connected}</strong><small>{websites.length - connected} disconnected</small></article>
+      <article><span>Website leads</span><strong>{websiteLeads.length}</strong><small>Captured into this CRM view</small></article>
+      <article><span>Lead capture</span><strong>{connected ? "Active" : "Not set"}</strong><small>{connected ? "Accepting connected form submissions" : "Connect a website to begin"}</small></article>
+    </section>
+
+    {!websites.length ? <EmptyState title="No websites connected" description="Connect a client website to create its lead-capture URL and send form submissions directly into the CRM." action={canManage && clients.length ? <button className="crm-button-primary" onClick={() => setEditing(null)}>Connect your first website</button> : null} /> : <div className="crm-website-layout">
+      <section className="crm-website-list" aria-label="Website connections">
+        <header><div><strong>Websites</strong><small>{websites.length} total connection{websites.length === 1 ? "" : "s"}</small></div></header>
+        {websites.map((website) => {
+          const client = clients.find((item) => item.id === website.clientId);
+          const leadCount = websiteLeads.filter((lead) => lead.clientId === website.clientId).length;
+          return <button key={website.id} className={selected?.id === website.id ? "active" : ""} onClick={() => setSelectedId(website.id)}>
+            <span className="crm-website-icon">{website.name.slice(0, 1).toUpperCase()}</span>
+            <span><strong>{website.name}</strong><small>{client?.businessName ?? "Client"} · {leadCount} website lead{leadCount === 1 ? "" : "s"}</small></span>
+            <Badge tone={website.status === "connected" ? "green" : "neutral"}>{website.status}</Badge>
+          </button>;
+        })}
+      </section>
+
+      {selected ? <section className="crm-website-detail">
+        <header><div><p>CONNECTION DETAILS</p><h3>{selected.name}</h3><span>{clients.find((client) => client.id === selected.clientId)?.businessName}</span></div><div className="crm-website-actions">{selected.domain ? <a className="crm-button-secondary" href={`https://${selected.domain}`} target="_blank" rel="noreferrer">Open Site</a> : null}{canManage ? <button className="crm-button-secondary" onClick={() => setEditing(selected)}>Edit</button> : null}</div></header>
+        <div className="crm-website-status-grid">
+          <div><span>Domain</span><strong>{selected.domain ?? "Not set"}</strong></div>
+          <div><span>Platform</span><strong>{platformNames[selected.platform] ?? selected.platform}</strong></div>
+          <div><span>Lead capture</span><Badge tone={selected.leadCaptureEnabled ? "green" : "neutral"}>{selected.leadCaptureEnabled ? "Enabled" : "Disabled"}</Badge></div>
+          <div><span>Last website lead</span><strong>{selected.lastLeadAt ? shortDate(selected.lastLeadAt) : "None yet"}</strong></div>
+        </div>
+        <section className="crm-capture-setup">
+          <div><p>LEAD CAPTURE URL</p><h4>Connect the website form</h4><span>Paste this URL into your form tool&apos;s webhook or automation settings.</span></div>
+          <div className="crm-copy-row"><code>{endpointFor(selected.id)}</code><button onClick={() => void copyText(endpointFor(selected.id), () => markCopied("url"))}>{copied === "url" ? "Copied" : "Copy URL"}</button></div>
+          <details><summary>Developer setup and supported fields</summary><p>Send a JSON POST request. Use at least a phone number or email. Supported fields: firstName, lastName, name, phone, email, service, message, address, city, state, zip, campaign, and consent.</p><pre>{captureSnippet(selected.id)}</pre><button className="crm-button-secondary" onClick={() => void copyText(captureSnippet(selected.id), () => markCopied("code"))}>{copied === "code" ? "Code copied" : "Copy example code"}</button></details>
+        </section>
+        <footer><span>Connected {shortDate(selected.createdAt)}</span>{canManage && selected.status === "connected" ? <button onClick={() => void disconnect(selected)}>Disconnect website</button> : null}</footer>
+      </section> : null}
+    </div>}
+
+    {editing !== undefined ? <WebsiteModal clients={clients} website={editing} mutate={mutate} onClose={() => setEditing(undefined)} /> : null}
+  </div>;
+}

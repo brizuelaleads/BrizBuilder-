@@ -16,6 +16,7 @@ import type {
   CrmRole,
   CrmStage,
   CrmTask,
+  CrmWebsite,
 } from "./crm";
 
 type TenantContext = {
@@ -27,6 +28,8 @@ type TenantContext = {
   clientId: string | null;
 };
 
+// Supabase relation payloads are dynamic until generated database types are added.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyRecord = Record<string, any>;
 
 const ORGANIZATION_ID = "00000000-0000-4000-8000-000000000001";
@@ -108,12 +111,12 @@ const STAGES = [
 ];
 
 const rolePermissions: Record<CrmRole, CrmPermission[]> = {
-  SUPER_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_MEMBER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write"],
-  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "custom_data.manage"],
-  CLIENT_MANAGER: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "custom_data.manage"],
+  SUPER_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_MEMBER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage"],
+  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "custom_data.manage"],
+  CLIENT_MANAGER: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "custom_data.manage"],
   CLIENT_EMPLOYEE: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write"],
 };
 
@@ -133,6 +136,17 @@ function requireText(value: unknown, label: string, max = 200): string {
 function optionalText(value: unknown, max = 500): string | null {
   if (typeof value !== "string" || !value.trim()) return null;
   return value.trim().slice(0, max);
+}
+
+function normalizeDomain(value: unknown): string {
+  const raw = requireText(value, "Website domain", 240);
+  try {
+    const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    if (!url.hostname.includes(".")) throw new Error("invalid");
+    return url.hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    throw new Error("Enter a valid website domain, such as example.com.");
+  }
 }
 
 function cents(value: unknown): number {
@@ -409,10 +423,28 @@ function mapLead(row: AnyRecord): CrmLead {
   };
 }
 
+function mapWebsite(row: AnyRecord): CrmWebsite {
+  const analytics = row.analytics && typeof row.analytics === "object" ? row.analytics as Record<string, unknown> : {};
+  return {
+    id: String(row.id),
+    clientId: String(row.client_id),
+    name: String(row.name),
+    domain: nullable(row.domain),
+    status: String(row.status ?? "connected"),
+    platform: String(analytics.platform ?? "other"),
+    leadCaptureEnabled: analytics.leadCaptureEnabled !== false,
+    lastLeadAt: nullable(analytics.lastLeadAt),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
+}
+
 export async function getSupabaseCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> {
   const context = await getTenantContext(user);
   const clientFilter = context.clientId ? { column: "client_id", value: context.clientId } : null;
 
+  // The generic documents the expected row shape until generated Supabase types are available.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const query = <T>(table: string, select = "*") => {
     let builder = supabase().from(table).select(select).eq("organization_id", context.organizationId);
     if (clientFilter) builder = builder.eq(clientFilter.column, clientFilter.value);
@@ -423,6 +455,7 @@ export async function getSupabaseCrmBootstrap(user: ChatGPTUser): Promise<CrmBoo
     clients,
     contacts,
     companies,
+    websites,
     leads,
     stages,
     tasks,
@@ -437,6 +470,7 @@ export async function getSupabaseCrmBootstrap(user: ChatGPTUser): Promise<CrmBoo
     })(),
     assertOk(query<AnyRecord>("contacts").is("archived_at", null).order("created_at", { ascending: false })),
     assertOk(query<AnyRecord>("companies").is("archived_at", null).order("name")),
+    assertOk(query<AnyRecord>("websites").order("updated_at", { ascending: false })),
     assertOk(
       query<AnyRecord>(
         "leads",
@@ -462,6 +496,7 @@ export async function getSupabaseCrmBootstrap(user: ChatGPTUser): Promise<CrmBoo
   const clientRows = (clients ?? []) as AnyRecord[];
   const contactRows = (contacts ?? []) as AnyRecord[];
   const companyRows = (companies ?? []) as AnyRecord[];
+  const websiteRows = (websites ?? []) as AnyRecord[];
   const leadRows = (leads ?? []) as AnyRecord[];
   const stageRows = (stages ?? []) as AnyRecord[];
   const taskRows = (tasks ?? []) as AnyRecord[];
@@ -483,6 +518,7 @@ export async function getSupabaseCrmBootstrap(user: ChatGPTUser): Promise<CrmBoo
     leads: leadRows.map(mapLead),
     contacts: contactRows.map(mapContact),
     companies: companyRows.map(mapCompany),
+    websites: websiteRows.map(mapWebsite),
     customFields: [],
     customFieldValues: [],
     customValues: [],
@@ -609,6 +645,41 @@ export async function executeSupabaseCrmAction(user: ChatGPTUser, input: CrmActi
     const createdClient = requireRow(client, "Client was not created.");
     await audit(context, "client.created", "client", createdClient.id);
     return { id: createdClient.id };
+  }
+
+  if (action === "save_website") {
+    requirePermission(context, "websites.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const websiteId = optionalText(input.websiteId, 100);
+    const name = requireText(input.name, "Website name", 160);
+    const domain = normalizeDomain(input.domain);
+    const platform = optionalText(input.platform, 40)?.toLowerCase() ?? "other";
+    const analytics = { platform, leadCaptureEnabled: true };
+    if (websiteId) {
+      const existing = await assertOk(supabase().from("websites").select("id,analytics").eq("id", websiteId).eq("organization_id", context.organizationId).eq("client_id", clientId).maybeSingle());
+      if (!existing) throw new Error("Website connection not found.");
+      const currentAnalytics = existing.analytics && typeof existing.analytics === "object" ? existing.analytics as Record<string, unknown> : {};
+      await assertOk(supabase().from("websites").update({ name, domain, status: "connected", analytics: { ...currentAnalytics, ...analytics }, updated_at: new Date().toISOString() }).eq("id", websiteId).eq("organization_id", context.organizationId));
+      await audit(context, "website.updated", "website", websiteId, { domain, platform }, clientId);
+      return { id: websiteId };
+    }
+    const website = await assertOk(supabase().from("websites").insert({ organization_id: context.organizationId, client_id: clientId, name, domain, status: "connected", analytics }).select("id").single());
+    const createdWebsite = requireRow(website, "Website connection was not created.");
+    await audit(context, "website.connected", "website", createdWebsite.id, { domain, platform }, clientId);
+    return { id: createdWebsite.id };
+  }
+
+  if (action === "disconnect_website") {
+    requirePermission(context, "websites.manage");
+    const websiteId = requireText(input.websiteId, "Website", 100);
+    const website = await assertOk(supabase().from("websites").select("client_id,analytics").eq("id", websiteId).eq("organization_id", context.organizationId).maybeSingle());
+    if (!website) throw new Error("Website connection not found.");
+    await requireClient(context, String(website.client_id));
+    const currentAnalytics = website.analytics && typeof website.analytics === "object" ? website.analytics as Record<string, unknown> : {};
+    await assertOk(supabase().from("websites").update({ status: "disconnected", analytics: { ...currentAnalytics, leadCaptureEnabled: false }, updated_at: new Date().toISOString() }).eq("id", websiteId).eq("organization_id", context.organizationId));
+    await audit(context, "website.disconnected", "website", websiteId, {}, String(website.client_id));
+    return { id: websiteId };
   }
 
   if (action === "archive_client") {

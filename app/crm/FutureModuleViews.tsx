@@ -2,7 +2,7 @@
 
 import { Badge } from "./ui";
 
-export type FutureModule = "conversations" | "automations" | "forms" | "payments" | "ai" | "websites" | "funnels" | "reviews";
+export type FutureModule = "conversations" | "automations" | "forms" | "payments" | "ai" | "funnels" | "reviews";
 
 type ModuleDefinition = {
   name: string;
@@ -48,13 +48,6 @@ const modules: Record<FutureModule, ModuleDefinition> = {
     description: "Help teams write, summarize, organize, and respond faster with approval-based AI tools connected to CRM context.",
     features: ["Conversation and lead summaries", "Draft replies and campaign content", "Knowledge bases and guarded agents"],
   },
-  websites: {
-    name: "Websites",
-    eyebrow: "SITE MANAGEMENT",
-    phase: "Planned for Phase 5",
-    description: "Manage client websites, brand systems, domains, SEO, analytics, performance, and publishing from BrizBuilder.",
-    features: ["Responsive page and section editor", "Domains, SSL, preview, and rollback", "SEO, schema, analytics, and image optimization"],
-  },
   funnels: {
     name: "Funnels",
     eyebrow: "CONVERSION JOURNEYS",
@@ -77,7 +70,6 @@ const previewStats: Record<FutureModule, Array<[string, string, string]>> = {
   forms: [["Form views", "0", "Live"], ["Submissions", "0", "Live"], ["Conversion rate", "—", "Live"]],
   payments: [["Collected", "$0", "Live"], ["Outstanding", "$0", "Live"], ["Paid invoices", "0", "Live"]],
   ai: [["Drafts created", "0", "Live"], ["Time saved", "—", "Live"], ["Approval rate", "—", "Live"]],
-  websites: [["Managed sites", "0", "Live"], ["Published", "0", "Live"], ["Average performance", "—", "Live"]],
   funnels: [["Visitors", "0", "Live"], ["Conversions", "0", "Live"], ["Conversion rate", "—", "Live"]],
   reviews: [["Average rating", "—", "Live"], ["New this month", "0", "Live"], ["Response rate", "—", "Live"]],
 };
@@ -126,11 +118,6 @@ function AiPreview() {
   return <div className="crm-ai-preview"><section><Badge tone="purple">AI PLAYGROUND PREVIEW</Badge><h3>What would you like help with?</h3><p>Use CRM context to prepare work while keeping a person in control of every external action.</p><textarea disabled placeholder="Summarize this week's new leads and suggest the next follow-up..." /><div>{["Summarize leads", "Draft a reply", "Write campaign copy", "Find follow-up risks"].map((item) => <button disabled key={item}>{item}</button>)}</div></section><aside><strong>Safety controls</strong><ul><li><span>1</span>Human approval before sending</li><li><span>2</span>Tenant-scoped CRM context</li><li><span>3</span>Usage limits and audit history</li><li><span>4</span>Tool and provider allowlists</li></ul></aside></div>;
 }
 
-function WebsitesPreview() {
-  const sites = [["No client websites yet", "Connect a domain", "Draft", "—"]];
-  return <section className="crm-preview-table-card"><header><div><strong>Client websites</strong><small>Publishing workspace preview</small></div><button disabled>+ New website</button></header><div className="crm-preview-table-scroll"><table><thead><tr><th>Website</th><th>Domain</th><th>Status</th><th>Performance</th></tr></thead><tbody>{sites.map((row) => <tr key={row[0]}><td><strong>{row[0]}</strong></td><td>{row[1]}</td><td><Badge tone={row[2] === "Published" ? "green" : row[2] === "Draft" ? "orange" : "neutral"}>{row[2]}</Badge></td><td>{row[3]}</td></tr>)}</tbody></table></div><footer><p>The page editor and Cloudflare publishing workflow will return when the complete website module is functional.</p></footer></section>;
-}
-
 function FunnelsPreview() {
   const steps = [["1", "Service landing page", "0", "—"], ["2", "Estimate form", "0", "—"], ["3", "Booking calendar", "0", "—"], ["4", "Thank-you page", "0", "—"]];
   return <div className="crm-funnel-preview"><header><div><strong>Free estimate funnel</strong><small>Draft conversion journey</small></div><Badge tone="orange">Draft preview</Badge></header><section>{steps.map(([number, name, visitors, rate], index) => <article key={number}><span>{number}</span><div><strong>{name}</strong><small>{visitors} visitors</small></div><b>{rate}</b>{index < steps.length - 1 ? <i>→</i> : null}</article>)}</section></div>;
@@ -147,7 +134,6 @@ function ModuleBody({ module }: { module: FutureModule }) {
   if (module === "forms") return <FormsPreview />;
   if (module === "payments") return <PaymentsPreview />;
   if (module === "ai") return <AiPreview />;
-  if (module === "websites") return <WebsitesPreview />;
   if (module === "funnels") return <FunnelsPreview />;
   return <ReviewsPreview />;
 }

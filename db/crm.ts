@@ -20,18 +20,19 @@ export type CrmPermission =
   | "opportunities.write"
   | "tasks.write"
   | "appointments.write"
+  | "websites.manage"
   | "custom_data.manage"
   | "team.manage"
   | "audit.read"
   | "feature_flags.manage";
 
 const rolePermissions: Record<CrmRole, CrmPermission[]> = {
-  SUPER_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_MEMBER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write"],
-  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "custom_data.manage"],
-  CLIENT_MANAGER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "custom_data.manage"],
+  SUPER_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_MEMBER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage"],
+  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "custom_data.manage"],
+  CLIENT_MANAGER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "custom_data.manage"],
   CLIENT_EMPLOYEE: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write"],
 };
 
@@ -246,6 +247,19 @@ export type CrmTeamMember = {
   lastLoginAt: string | null;
 };
 
+export type CrmWebsite = {
+  id: string;
+  clientId: string;
+  name: string;
+  domain: string | null;
+  status: string;
+  platform: string;
+  leadCaptureEnabled: boolean;
+  lastLeadAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type CrmBootstrap = {
   viewer: {
     name: string;
@@ -260,6 +274,7 @@ export type CrmBootstrap = {
   leads: CrmLead[];
   contacts: CrmContact[];
   companies: CrmCompany[];
+  websites: CrmWebsite[];
   customFields: CrmCustomFieldDefinition[];
   customFieldValues: CrmCustomFieldValue[];
   customValues: CrmCustomValue[];
@@ -308,6 +323,7 @@ const schemaStatements = [
   `CREATE TABLE IF NOT EXISTS activities (id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, client_id TEXT NOT NULL REFERENCES crm_clients(id) ON DELETE CASCADE, lead_id TEXT REFERENCES crm_leads(id) ON DELETE CASCADE, contact_id TEXT REFERENCES contacts(id) ON DELETE CASCADE, type TEXT NOT NULL, title TEXT NOT NULL, detail TEXT, occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
   `CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, client_id TEXT NOT NULL REFERENCES crm_clients(id) ON DELETE CASCADE, lead_id TEXT REFERENCES crm_leads(id) ON DELETE CASCADE, contact_id TEXT REFERENCES contacts(id) ON DELETE CASCADE, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', assignee TEXT, due_at TEXT, priority TEXT NOT NULL DEFAULT 'MEDIUM', status TEXT NOT NULL DEFAULT 'TO_DO', reminder_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, completed_at TEXT)`,
   `CREATE TABLE IF NOT EXISTS appointments (id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, client_id TEXT NOT NULL REFERENCES crm_clients(id) ON DELETE CASCADE, lead_id TEXT REFERENCES crm_leads(id) ON DELETE SET NULL, contact_id TEXT NOT NULL REFERENCES contacts(id) ON DELETE RESTRICT, assigned_employee TEXT, service_type TEXT NOT NULL, starts_at TEXT NOT NULL, ends_at TEXT NOT NULL, address TEXT, notes TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'SCHEDULED', reminder_minutes INTEGER NOT NULL DEFAULT 60, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+  `CREATE TABLE IF NOT EXISTS websites (id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, client_id TEXT NOT NULL REFERENCES crm_clients(id) ON DELETE CASCADE, name TEXT NOT NULL, domain TEXT, status TEXT NOT NULL DEFAULT 'connected', platform TEXT NOT NULL DEFAULT 'other', lead_capture_enabled INTEGER NOT NULL DEFAULT 1, last_lead_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
   `CREATE TABLE IF NOT EXISTS audit_logs (id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, actor_email TEXT NOT NULL, action TEXT NOT NULL, record_type TEXT NOT NULL, record_id TEXT, metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
   `CREATE TABLE IF NOT EXISTS domain_events (id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, client_id TEXT REFERENCES crm_clients(id) ON DELETE CASCADE, event_type TEXT NOT NULL, aggregate_type TEXT NOT NULL, aggregate_id TEXT, payload_json TEXT NOT NULL DEFAULT '{}', processing_status TEXT NOT NULL DEFAULT 'pending', occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, processed_at TEXT)`,
   "CREATE INDEX IF NOT EXISTS organization_members_account_idx ON organization_members(account_id)",
@@ -331,6 +347,7 @@ const schemaStatements = [
   "CREATE INDEX IF NOT EXISTS activities_lead_time_idx ON activities(lead_id, occurred_at)",
   "CREATE INDEX IF NOT EXISTS tasks_org_status_due_idx ON tasks(organization_id, status, due_at)",
   "CREATE INDEX IF NOT EXISTS appointments_org_start_idx ON appointments(organization_id, starts_at)",
+  "CREATE INDEX IF NOT EXISTS websites_org_client_idx ON websites(organization_id, client_id)",
   "CREATE INDEX IF NOT EXISTS audit_logs_org_time_idx ON audit_logs(organization_id, created_at)",
   "CREATE INDEX IF NOT EXISTS domain_events_pending_idx ON domain_events(processing_status, occurred_at)",
   "CREATE INDEX IF NOT EXISTS domain_events_org_type_idx ON domain_events(organization_id, event_type, occurred_at)",
@@ -499,11 +516,12 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
   const scope = clientClause(context, "x");
   const clientListScope = context.clientId ? { sql: " AND x.id = ?", values: [context.clientId] } : { sql: "", values: [] as string[] };
 
-  const [clientRows, leadRows, contactRows, companyRows, customFieldRows, customFieldValueRows, customValueRows, featureFlagRows, stageRows, taskRows, appointmentRows, activityRows, noteRows, teamRows, auditRows] = await Promise.all([
+  const [clientRows, leadRows, contactRows, companyRows, websiteRows, customFieldRows, customFieldValueRows, customValueRows, featureFlagRows, stageRows, taskRows, appointmentRows, activityRows, noteRows, teamRows, auditRows] = await Promise.all([
     db.prepare(`SELECT * FROM crm_clients x WHERE x.organization_id = ? AND x.status != 'archived'${clientListScope.sql} ORDER BY x.business_name`).bind(context.organizationId, ...clientListScope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.*, c.first_name, c.last_name, c.phone, c.email, c.address, c.city, c.state, c.zip, cc.business_name AS client_name, ps.name AS stage_name, ps.color AS stage_color FROM crm_leads x JOIN contacts c ON c.id = x.contact_id JOIN crm_clients cc ON cc.id = x.client_id JOIN pipeline_stages ps ON ps.id = x.stage_id WHERE x.organization_id = ? AND x.archived_at IS NULL${scope.sql} ORDER BY x.created_at DESC`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.* FROM contacts x WHERE x.organization_id = ? AND x.archived_at IS NULL${scope.sql} ORDER BY x.last_interaction_at DESC, x.created_at DESC`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.*, COUNT(ccl.id) AS contact_count FROM companies x LEFT JOIN contact_company_links ccl ON ccl.company_id = x.id WHERE x.organization_id = ? AND x.archived_at IS NULL${scope.sql} GROUP BY x.id ORDER BY x.name`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
+    db.prepare(`SELECT x.* FROM websites x WHERE x.organization_id = ?${scope.sql} ORDER BY x.updated_at DESC`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.* FROM custom_field_definitions x WHERE x.organization_id = ? AND x.is_active = 1${scope.sql} ORDER BY x.entity_type, x.position, x.label`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.* FROM custom_field_values x WHERE x.organization_id = ?${scope.sql} ORDER BY x.updated_at DESC`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.* FROM custom_values x WHERE x.organization_id = ?${scope.sql} ORDER BY x.label`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
@@ -526,6 +544,7 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
     leads: leadRows.results.map(mapLead),
     contacts: contactRows.results.map(mapContact),
     companies: companyRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), name: String(row.name), industry: nullable(row.industry), website: nullable(row.website), phone: nullable(row.phone), email: nullable(row.email), address: nullable(row.address), city: nullable(row.city), state: nullable(row.state), zip: nullable(row.zip), tags: parseStringArray(row.tags_json), notes: String(row.notes ?? ""), contactCount: Number(row.contact_count ?? 0), createdAt: String(row.created_at) })),
+    websites: websiteRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), name: String(row.name), domain: nullable(row.domain), status: String(row.status), platform: String(row.platform ?? "other"), leadCaptureEnabled: Boolean(row.lead_capture_enabled), lastLeadAt: nullable(row.last_lead_at), createdAt: String(row.created_at), updatedAt: String(row.updated_at) })),
     customFields: customFieldRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), entityType: String(row.entity_type) as CrmCustomFieldDefinition["entityType"], fieldKey: String(row.field_key), label: String(row.label), fieldType: String(row.field_type), options: parseStringArray(row.options_json), isRequired: Boolean(row.is_required), position: Number(row.position ?? 0) })),
     customFieldValues: customFieldValueRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), definitionId: String(row.definition_id), entityType: String(row.entity_type) as CrmCustomFieldValue["entityType"], entityId: String(row.entity_id), value: parseJsonValue(row.value_json), updatedAt: String(row.updated_at) })),
     customValues: customValueRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), valueKey: String(row.value_key), label: String(row.label), value: String(row.value), updatedAt: String(row.updated_at) })),
@@ -579,6 +598,17 @@ function requireText(value: unknown, label: string, max = 200): string {
 function optionalText(value: unknown, max = 500): string | null {
   if (typeof value !== "string" || !value.trim()) return null;
   return value.trim().slice(0, max);
+}
+
+function normalizeDomain(value: unknown): string {
+  const raw = requireText(value, "Website domain", 240);
+  try {
+    const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    if (!url.hostname.includes(".")) throw new Error("invalid");
+    return url.hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    throw new Error("Enter a valid website domain, such as example.com.");
+  }
 }
 
 function cents(value: unknown): number {
@@ -1012,6 +1042,38 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
     ]);
     await audit(context, "client.created", "client", clientId);
     return { id: clientId };
+  }
+
+  if (action === "save_website") {
+    requirePermission(context, "websites.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const websiteId = optionalText(input.websiteId, 100);
+    const name = requireText(input.name, "Website name", 160);
+    const domain = normalizeDomain(input.domain);
+    const platform = optionalText(input.platform, 40)?.toLowerCase() ?? "other";
+    if (websiteId) {
+      const existing = await db.prepare("SELECT id FROM websites WHERE id = ? AND organization_id = ? AND client_id = ? LIMIT 1").bind(websiteId, context.organizationId, clientId).first();
+      if (!existing) throw new Error("Website connection not found.");
+      await db.prepare("UPDATE websites SET name = ?, domain = ?, platform = ?, status = 'connected', lead_capture_enabled = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?").bind(name, domain, platform, websiteId, context.organizationId).run();
+      await audit(context, "website.updated", "website", websiteId, { domain, platform }, clientId);
+      return { id: websiteId };
+    }
+    const id = `website_${crypto.randomUUID()}`;
+    await db.prepare("INSERT INTO websites (id, organization_id, client_id, name, domain, status, platform, lead_capture_enabled) VALUES (?, ?, ?, ?, ?, 'connected', ?, 1)").bind(id, context.organizationId, clientId, name, domain, platform).run();
+    await audit(context, "website.connected", "website", id, { domain, platform }, clientId);
+    return { id };
+  }
+
+  if (action === "disconnect_website") {
+    requirePermission(context, "websites.manage");
+    const websiteId = requireText(input.websiteId, "Website", 100);
+    const website = await db.prepare("SELECT client_id FROM websites WHERE id = ? AND organization_id = ? LIMIT 1").bind(websiteId, context.organizationId).first<{ client_id: string }>();
+    if (!website) throw new Error("Website connection not found.");
+    await requireClient(context, website.client_id);
+    await db.prepare("UPDATE websites SET status = 'disconnected', lead_capture_enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?").bind(websiteId, context.organizationId).run();
+    await audit(context, "website.disconnected", "website", websiteId, {}, website.client_id);
+    return { id: websiteId };
   }
 
   if (action === "archive_client") {

@@ -167,6 +167,7 @@ export async function upsertSupabaseClientAccount(
   actor: ChatGPTUser,
   _input: { email: string; displayName: string; clientId: string },
 ) {
+  void _input;
   const access = await getSupabaseAccountAccess(actor);
   if (access?.role !== "admin") throw new Error("Forbidden");
   throw new Error(

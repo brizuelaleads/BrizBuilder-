@@ -137,7 +137,10 @@ npm run build
 - Mobile, tablet, keyboard, empty, loading, error, and disabled-feature states
 - Audit records for important mutations
 - Agency audit-log viewer, persisted feature flags, and domain-event outbox
-- Navigable UI previews for conversations, automations, forms, websites, funnels, payments, reviews, and AI
+- Connected website management for WordPress, Wix, Squarespace, Webflow, Shopify, and custom sites
+- Public website lead-capture gateway that creates tenant-scoped contacts and pipeline leads
+- Copy-ready webhook URL and JavaScript integration instructions for every connected site
+- Navigable UI previews for conversations, automations, forms, funnels, payments, reviews, and AI
 
 ## Not implemented yet
 
@@ -146,7 +149,7 @@ The following have clearly labeled UI previews, but their live providers and act
 - live SMS, email, chat, and call providers
 - missed-call text-back
 - Meta Ads, Google Ads, GA4, Search Console, and call-tracking sync
-- public form webhook and tracking-health monitor
+- general-purpose form builder publishing and tracking-health monitor
 - automations and review requests
 - estimates, invoices, payments, and Stripe
 - AI summaries, scoring automation, and reply suggestions
