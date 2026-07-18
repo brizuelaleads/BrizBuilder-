@@ -293,6 +293,113 @@ export const websites = pgTable("websites", {
   updatedAt,
 });
 
+export const phoneSystemConfigs = pgTable("phone_system_configs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull().default("twilio"),
+  providerAccountSid: text("provider_account_sid"),
+  phoneNumberSid: text("phone_number_sid"),
+  messagingServiceSid: text("messaging_service_sid"),
+  phoneNumber: text("phone_number"),
+  forwardingNumber: text("forwarding_number"),
+  ringTimeoutSeconds: integer("ring_timeout_seconds").notNull().default(20),
+  voicemailEnabled: boolean("voicemail_enabled").notNull().default(true),
+  missedCallTextEnabled: boolean("missed_call_text_enabled").notNull().default(false),
+  missedCallMessage: text("missed_call_message").notNull(),
+  cooldownMinutes: integer("cooldown_minutes").notNull().default(20),
+  businessHours: jsonb("business_hours").notNull().default({}),
+  providerStatus: text("provider_status").notNull().default("not_configured"),
+  a2pStatus: text("a2p_status").notNull().default("not_started"),
+  lastTestedAt: timestamp("last_tested_at", { withTimezone: true }),
+  createdAt,
+  updatedAt,
+}, (table) => [uniqueIndex("phone_configs_org_client_uidx").on(table.organizationId, table.clientId), index("phone_configs_number_idx").on(table.phoneNumber)]);
+
+export const conversations = pgTable("conversations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  contactId: uuid("contact_id").notNull().references(() => contacts.id, { onDelete: "cascade" }),
+  channel: text("channel").notNull().default("sms"),
+  status: text("status").notNull().default("open"),
+  assignedTo: text("assigned_to"),
+  unreadCount: integer("unread_count").notNull().default(0),
+  lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
+  createdAt,
+  updatedAt,
+}, (table) => [uniqueIndex("conversations_client_contact_channel_uidx").on(table.clientId, table.contactId, table.channel), index("conversations_scope_time_idx").on(table.organizationId, table.clientId, table.lastMessageAt)]);
+
+export const phoneCalls = pgTable("phone_calls", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  contactId: uuid("contact_id").references(() => contacts.id, { onDelete: "set null" }),
+  leadId: uuid("lead_id").references(() => leads.id, { onDelete: "set null" }),
+  providerCallSid: text("provider_call_sid").notNull().unique(),
+  direction: text("direction").notNull().default("inbound"),
+  fromNumber: text("from_number").notNull(),
+  toNumber: text("to_number").notNull(),
+  forwardedTo: text("forwarded_to"),
+  status: text("status").notNull().default("initiated"),
+  answeredBy: text("answered_by"),
+  durationSeconds: integer("duration_seconds"),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+  missedCallTextSentAt: timestamp("missed_call_text_sent_at", { withTimezone: true }),
+  rawEvent: jsonb("raw_event").notNull().default({}),
+  createdAt,
+  updatedAt,
+}, (table) => [index("phone_calls_scope_time_idx").on(table.organizationId, table.clientId, table.startedAt)]);
+
+export const messages = pgTable("messages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  conversationId: uuid("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  contactId: uuid("contact_id").notNull().references(() => contacts.id, { onDelete: "cascade" }),
+  providerMessageSid: text("provider_message_sid").unique(),
+  direction: text("direction").notNull(),
+  channel: text("channel").notNull().default("sms"),
+  fromNumber: text("from_number").notNull(),
+  toNumber: text("to_number").notNull(),
+  body: text("body").notNull(),
+  status: text("status").notNull().default("queued"),
+  automationKey: text("automation_key"),
+  errorCode: text("error_code"),
+  errorMessage: text("error_message"),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+  createdAt,
+  updatedAt,
+}, (table) => [index("messages_conversation_time_idx").on(table.conversationId, table.createdAt)]);
+
+export const automationRules = pgTable("automation_rules", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  triggerKey: text("trigger_key").notNull(),
+  enabled: boolean("enabled").notNull().default(false),
+  config: jsonb("config").notNull().default({}),
+  createdAt,
+  updatedAt,
+}, (table) => [uniqueIndex("automation_rules_client_trigger_uidx").on(table.clientId, table.triggerKey)]);
+
+export const automationRuns = pgTable("automation_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  ruleId: uuid("rule_id").references(() => automationRules.id, { onDelete: "set null" }),
+  triggerEventId: text("trigger_event_id").notNull(),
+  status: text("status").notNull().default("started"),
+  input: jsonb("input").notNull().default({}),
+  output: jsonb("output").notNull().default({}),
+  error: text("error"),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+}, (table) => [uniqueIndex("automation_runs_client_event_uidx").on(table.clientId, table.triggerEventId)]);
+
 export const auditEvents = pgTable(
   "audit_events",
   {

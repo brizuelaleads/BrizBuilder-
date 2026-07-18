@@ -1,6 +1,7 @@
 import type { ChatGPTUser } from "../app/chatgpt-auth";
 import { MAIN_ADMIN_EMAIL } from "../app/auth-config";
 import { getSupabaseAdminClient } from "../lib/supabase/server";
+import { getTwilioRuntimeStatus, sendTwilioMessage } from "../lib/twilio";
 import type {
   CrmAction,
   CrmAppointment,
@@ -17,6 +18,12 @@ import type {
   CrmStage,
   CrmTask,
   CrmWebsite,
+  CrmPhoneConfig,
+  CrmPhoneCall,
+  CrmConversation,
+  CrmMessage,
+  CrmAutomationRule,
+  CrmAutomationRun,
 } from "./crm";
 
 type TenantContext = {
@@ -111,13 +118,13 @@ const STAGES = [
 ];
 
 const rolePermissions: Record<CrmRole, CrmPermission[]> = {
-  SUPER_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_MEMBER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage"],
-  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "custom_data.manage"],
-  CLIENT_MANAGER: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "custom_data.manage"],
-  CLIENT_EMPLOYEE: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write"],
+  SUPER_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "phone_system.manage", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "phone_system.manage", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "phone_system.manage", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_MEMBER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "messages.write"],
+  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "messages.write", "custom_data.manage"],
+  CLIENT_MANAGER: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "messages.write", "custom_data.manage"],
+  CLIENT_EMPLOYEE: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "messages.write"],
 };
 
 function supabase() {
@@ -171,6 +178,17 @@ function tags(value: unknown): string[] {
   return [];
 }
 
+function phoneNumber(value: unknown, label: string, required = false): string | null {
+  const text = optionalText(value, 30);
+  if (!text) {
+    if (required) throw new Error(`${label} is required.`);
+    return null;
+  }
+  const normalized = text.replace(/[\s().-]/g, "");
+  if (!/^\+[1-9]\d{7,14}$/.test(normalized)) throw new Error(`${label} must include the country code, for example +13125550123.`);
+  return normalized;
+}
+
 function nestedOne<T extends AnyRecord>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? value[0] ?? null : value ?? null;
 }
@@ -181,9 +199,9 @@ async function assertOk<T>(promise: PromiseLike<{ data: T; error: { message: str
   return data;
 }
 
-function requireRow<T>(row: T | null | undefined, message: string): T {
+function requireRow<T>(row: T, message: string): NonNullable<T> {
   if (!row) throw new Error(message);
-  return row;
+  return row as NonNullable<T>;
 }
 
 async function ensureSupabaseBaseline() {
@@ -439,6 +457,38 @@ function mapWebsite(row: AnyRecord): CrmWebsite {
   };
 }
 
+function mapPhoneConfig(row: AnyRecord): CrmPhoneConfig {
+  return {
+    id: String(row.id), clientId: String(row.client_id), provider: String(row.provider ?? "twilio"),
+    phoneNumber: nullable(row.phone_number), forwardingNumber: nullable(row.forwarding_number),
+    ringTimeoutSeconds: Number(row.ring_timeout_seconds ?? 20), voicemailEnabled: Boolean(row.voicemail_enabled),
+    missedCallTextEnabled: Boolean(row.missed_call_text_enabled), missedCallMessage: String(row.missed_call_message ?? ""),
+    cooldownMinutes: Number(row.cooldown_minutes ?? 20), providerStatus: String(row.provider_status ?? "not_configured"),
+    a2pStatus: String(row.a2p_status ?? "not_started"), lastTestedAt: nullable(row.last_tested_at),
+  };
+}
+
+function mapPhoneCall(row: AnyRecord): CrmPhoneCall {
+  return { id: String(row.id), clientId: String(row.client_id), contactId: nullable(row.contact_id), fromNumber: String(row.from_number), toNumber: String(row.to_number), status: String(row.status), direction: String(row.direction), durationSeconds: row.duration_seconds == null ? null : Number(row.duration_seconds), startedAt: String(row.started_at), missedCallTextSentAt: nullable(row.missed_call_text_sent_at) };
+}
+
+function mapConversation(row: AnyRecord): CrmConversation {
+  const contact = nestedOne(row.contacts) ?? {};
+  return { id: String(row.id), clientId: String(row.client_id), contactId: String(row.contact_id), contactName: `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() || String(contact.phone ?? "Unknown contact"), contactPhone: nullable(contact.phone), status: String(row.status ?? "open"), unreadCount: Number(row.unread_count ?? 0), lastMessageAt: nullable(row.last_message_at) };
+}
+
+function mapMessage(row: AnyRecord): CrmMessage {
+  return { id: String(row.id), clientId: String(row.client_id), conversationId: String(row.conversation_id), contactId: String(row.contact_id), direction: String(row.direction), body: String(row.body), status: String(row.status), automationKey: nullable(row.automation_key), createdAt: String(row.created_at) };
+}
+
+function mapAutomationRule(row: AnyRecord): CrmAutomationRule {
+  return { id: String(row.id), clientId: String(row.client_id), name: String(row.name), triggerKey: String(row.trigger_key), enabled: Boolean(row.enabled), config: row.config && typeof row.config === "object" ? row.config : {}, updatedAt: String(row.updated_at) };
+}
+
+function mapAutomationRun(row: AnyRecord): CrmAutomationRun {
+  return { id: String(row.id), clientId: String(row.client_id), ruleId: nullable(row.rule_id), triggerEventId: String(row.trigger_event_id), status: String(row.status), error: nullable(row.error), startedAt: String(row.started_at), completedAt: nullable(row.completed_at) };
+}
+
 export async function getSupabaseCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> {
   const context = await getTenantContext(user);
   const clientFilter = context.clientId ? { column: "client_id", value: context.clientId } : null;
@@ -462,6 +512,12 @@ export async function getSupabaseCrmBootstrap(user: ChatGPTUser): Promise<CrmBoo
     appointments,
     notes,
     auditEvents,
+    phoneConfigs,
+    phoneCalls,
+    conversations,
+    messages,
+    automationRules,
+    automationRuns,
   ] = await Promise.all([
     (() => {
       let builder = query<AnyRecord>("clients").neq("status", "archived").order("business_name");
@@ -491,6 +547,12 @@ export async function getSupabaseCrmBootstrap(user: ChatGPTUser): Promise<CrmBoo
     rolePermissions[context.role].includes("audit.read")
       ? assertOk(supabase().from("audit_events").select("*").eq("organization_id", context.organizationId).order("created_at", { ascending: false }).limit(150))
       : Promise.resolve([]),
+    assertOk(query<AnyRecord>("phone_system_configs").order("updated_at", { ascending: false })),
+    assertOk(query<AnyRecord>("phone_calls").order("started_at", { ascending: false }).limit(200)),
+    assertOk(query<AnyRecord>("conversations", "*,contacts(first_name,last_name,phone)").order("last_message_at", { ascending: false, nullsFirst: false }).limit(200)),
+    assertOk(query<AnyRecord>("messages").order("created_at", { ascending: true }).limit(500)),
+    assertOk(query<AnyRecord>("automation_rules").order("updated_at", { ascending: false })),
+    assertOk(query<AnyRecord>("automation_runs").order("started_at", { ascending: false }).limit(200)),
   ]);
 
   const clientRows = (clients ?? []) as AnyRecord[];
@@ -519,6 +581,12 @@ export async function getSupabaseCrmBootstrap(user: ChatGPTUser): Promise<CrmBoo
     contacts: contactRows.map(mapContact),
     companies: companyRows.map(mapCompany),
     websites: websiteRows.map(mapWebsite),
+    phoneConfigs: ((phoneConfigs ?? []) as AnyRecord[]).map(mapPhoneConfig),
+    phoneCalls: ((phoneCalls ?? []) as AnyRecord[]).map(mapPhoneCall),
+    conversations: ((conversations ?? []) as AnyRecord[]).map(mapConversation),
+    messages: ((messages ?? []) as AnyRecord[]).map(mapMessage),
+    automationRules: ((automationRules ?? []) as AnyRecord[]).map(mapAutomationRule),
+    automationRuns: ((automationRuns ?? []) as AnyRecord[]).map(mapAutomationRun),
     customFields: [],
     customFieldValues: [],
     customValues: [],
@@ -613,6 +681,60 @@ function defaultFeatureFlags(clients: AnyRecord[]): CrmFeatureFlag[] {
 export async function executeSupabaseCrmAction(user: ChatGPTUser, input: CrmAction) {
   const context = await getTenantContext(user);
   const action = requireText(input.action, "Action", 50);
+
+  if (action === "save_phone_settings") {
+    requirePermission(context, "phone_system.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const client = requireRow(await assertOk(supabase().from("clients").select("business_name").eq("id", clientId).eq("organization_id", context.organizationId).single()), "Client not found.");
+    const twilio = getTwilioRuntimeStatus();
+    const assignedNumber = phoneNumber(input.phoneNumber, "Twilio phone number");
+    const forwardingNumber = phoneNumber(input.forwardingNumber, "Forwarding phone number");
+    const a2pStatus = ["not_started", "in_progress", "approved", "rejected"].includes(String(input.a2pStatus)) ? String(input.a2pStatus) : "not_started";
+    const wantsMissedCallText = Boolean(input.missedCallTextEnabled);
+    if (wantsMissedCallText && (!twilio.configured || !assignedNumber)) throw new Error("Connect Twilio and assign a phone number before turning on missed-call text back.");
+    if (wantsMissedCallText && a2pStatus !== "approved") throw new Error("A2P registration must be approved before missed-call texting can be turned on.");
+    const message = requireText(input.missedCallMessage, "Missed-call message", 1000);
+    const ringTimeout = Math.max(10, Math.min(60, Number(input.ringTimeoutSeconds ?? 20)));
+    const cooldown = Math.max(1, Math.min(1440, Number(input.cooldownMinutes ?? 20)));
+    const providerStatus = twilio.configured && assignedNumber ? "connected" : "not_configured";
+    const config = requireRow(await assertOk(supabase().from("phone_system_configs").upsert({
+      organization_id: context.organizationId, client_id: clientId, provider: "twilio",
+      provider_account_sid: optionalText(input.providerAccountSid, 80), phone_number_sid: optionalText(input.phoneNumberSid, 80),
+      messaging_service_sid: optionalText(input.messagingServiceSid, 80), phone_number: assignedNumber, forwarding_number: forwardingNumber,
+      ring_timeout_seconds: ringTimeout, voicemail_enabled: input.voicemailEnabled !== false,
+      missed_call_text_enabled: wantsMissedCallText, missed_call_message: message, cooldown_minutes: cooldown,
+      provider_status: providerStatus, a2p_status: a2pStatus, updated_at: new Date().toISOString(),
+    }, { onConflict: "organization_id,client_id" }).select("id").single()), "Phone settings were not saved.");
+    await assertOk(supabase().from("automation_rules").upsert({
+      organization_id: context.organizationId, client_id: clientId, name: "Missed call text back", trigger_key: "call.missed",
+      enabled: wantsMissedCallText, config: { message, cooldownMinutes: cooldown, businessName: String(client.business_name) }, updated_at: new Date().toISOString(),
+    }, { onConflict: "client_id,trigger_key" }));
+    await audit(context, "phone.settings_updated", "phone_system_config", config.id, { providerStatus, a2pStatus, missedCallTextEnabled: wantsMissedCallText }, clientId);
+    return { id: config.id, providerStatus };
+  }
+
+  if (action === "send_sms") {
+    requirePermission(context, "messages.write");
+    const clientId = requireText(input.clientId, "Client", 100);
+    const contactId = requireText(input.contactId, "Contact", 100);
+    await requireClient(context, clientId);
+    const [contactResult, config] = await Promise.all([
+      assertOk(supabase().from("contacts").select("id,phone,marketing_consent").eq("id", contactId).eq("client_id", clientId).eq("organization_id", context.organizationId).single()),
+      assertOk(supabase().from("phone_system_configs").select("*").eq("client_id", clientId).eq("organization_id", context.organizationId).maybeSingle()),
+    ]);
+    const contact = requireRow(contactResult, "Contact not found.");
+    if (!contact.phone) throw new Error("This contact does not have a phone number.");
+    if (String(contact.marketing_consent).toLowerCase() === "opt_out") throw new Error("This contact opted out of text messages.");
+    if (!config || config.provider_status !== "connected") throw new Error("Connect this client's Twilio phone system before sending messages.");
+    if (config.a2p_status !== "approved") throw new Error("A2P registration must be approved before sending messages.");
+    const body = requireText(input.body, "Message", 1600);
+    const conversation = requireRow(await assertOk(supabase().from("conversations").upsert({ organization_id: context.organizationId, client_id: clientId, contact_id: contactId, channel: "sms", status: "open", last_message_at: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: "client_id,contact_id,channel" }).select("id").single()), "Conversation was not created.");
+    const sent = await sendTwilioMessage({ accountSid: nullable(config.provider_account_sid), fromNumber: nullable(config.phone_number), messagingServiceSid: nullable(config.messaging_service_sid), to: String(contact.phone), body });
+    const message = requireRow(await assertOk(supabase().from("messages").insert({ organization_id: context.organizationId, client_id: clientId, conversation_id: conversation.id, contact_id: contactId, provider_message_sid: sent.sid, direction: "outbound", channel: "sms", from_number: String(config.phone_number ?? ""), to_number: String(contact.phone), body, status: sent.status, sent_at: new Date().toISOString() }).select("id").single()), "Message was not saved.");
+    await audit(context, "message.sent", "message", message.id, { providerMessageSid: sent.sid }, clientId);
+    return { id: message.id, status: sent.status };
+  }
 
   if (action === "create_client") {
     requirePermission(context, "clients.manage");

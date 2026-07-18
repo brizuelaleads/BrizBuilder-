@@ -10,12 +10,13 @@ import { AddCompanyModal, AddCustomFieldModal, AddCustomValueModal, ContactImpor
 import { AuditLogView, CompaniesView, CustomDataView, FoundationContactsView } from "./crm/FoundationViews";
 import { FutureModuleView, type FutureModule } from "./crm/FutureModuleViews";
 import { WebsitesView } from "./crm/WebsitesView";
+import { AutomationsView, ConversationsView, PhoneSystemView } from "./crm/PhoneViews";
 import { Badge, initials, Modal } from "./crm/ui";
 
-type View = "dashboard" | "leads" | "pipeline" | "contacts" | "companies" | "calendar" | "tasks" | "clients" | "reports" | "websites" | "custom-data" | "audit" | "team" | "settings" | FutureModule;
+type View = "dashboard" | "leads" | "pipeline" | "contacts" | "companies" | "calendar" | "tasks" | "clients" | "reports" | "websites" | "phone-system" | "custom-data" | "audit" | "team" | "settings" | FutureModule;
 type ModalName = "lead" | "contact" | "contact-import" | "company" | "custom-field" | "custom-value" | "task" | "appointment" | "client" | "invite" | "search" | null;
 
-const futureModules: FutureModule[] = ["conversations", "automations", "forms", "payments", "ai", "funnels", "reviews"];
+const futureModules: FutureModule[] = ["forms", "payments", "ai", "funnels", "reviews"];
 
 const nav: Array<{ id: View; label: string; icon: string; agencyOnly?: boolean; permission?: CrmPermission; section?: string; preview?: boolean }> = [
   { id: "dashboard", label: "Dashboard", icon: "D", section: "Workspace" },
@@ -27,9 +28,10 @@ const nav: Array<{ id: View; label: string; icon: string; agencyOnly?: boolean; 
   { id: "tasks", label: "Tasks", icon: "T" },
   { id: "clients", label: "Clients", icon: "B", agencyOnly: true },
   { id: "reports", label: "Reports", icon: "R", section: "Insights" },
-  { id: "conversations", label: "Conversations", icon: "Q", section: "Future previews", preview: true },
-  { id: "automations", label: "Automations", icon: "W", preview: true },
-  { id: "forms", label: "Forms", icon: "F", preview: true },
+  { id: "phone-system", label: "Phone System", icon: "☎", section: "Communication", permission: "messages.write" },
+  { id: "conversations", label: "Conversations", icon: "Q", permission: "messages.write" },
+  { id: "automations", label: "Automations", icon: "W", permission: "messages.write" },
+  { id: "forms", label: "Forms", icon: "F", section: "Future previews", preview: true },
   { id: "websites", label: "Websites", icon: "W" },
   { id: "funnels", label: "Funnels", icon: "N", preview: true },
   { id: "payments", label: "Payments", icon: "$", preview: true },
@@ -179,6 +181,9 @@ export function CrmApp({ initialData, signOutPath }: { initialData: CrmBootstrap
       {view === "clients" && data.viewer.isAgency && <ClientsView clients={data.clients} leads={data.leads} onAddClient={() => setModal("client")} mutate={mutate} />}
       {view === "reports" && <ReportsView leads={filteredLeads} clients={filteredClients} />}
       {view === "websites" && <WebsitesView websites={filteredWebsites} clients={data.clients} leads={filteredLeads} mutate={mutate} canManage={data.viewer.permissions.includes("websites.manage")} />}
+      {view === "phone-system" && <PhoneSystemView clients={data.clients} configs={data.phoneConfigs} selectedClientId={selectedClientId} mutate={mutate} canManage={data.viewer.permissions.includes("phone_system.manage")} />}
+      {view === "conversations" && <ConversationsView clients={data.clients} conversations={data.conversations} messages={data.messages} calls={data.phoneCalls} selectedClientId={selectedClientId} mutate={mutate} />}
+      {view === "automations" && <AutomationsView clients={data.clients} rules={data.automationRules} runs={data.automationRuns} configs={data.phoneConfigs} selectedClientId={selectedClientId} />}
       {futureModules.includes(view as FutureModule) && <FutureModuleView module={view as FutureModule} />}
       {view === "custom-data" && data.viewer.permissions.includes("custom_data.manage") && <CustomDataView clients={data.clients} contacts={filteredContacts} companies={filteredCompanies} leads={filteredLeads} fields={filteredCustomFields} fieldValues={filteredCustomFieldValues} customValues={filteredCustomValues} featureFlags={filteredFeatureFlags} mutate={mutate} onAddField={() => setModal("custom-field")} onAddValue={() => setModal("custom-value")} />}
       {view === "audit" && data.viewer.permissions.includes("audit.read") && <AuditLogView logs={data.auditLogs} />}

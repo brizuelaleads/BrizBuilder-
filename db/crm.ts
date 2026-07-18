@@ -21,19 +21,22 @@ export type CrmPermission =
   | "tasks.write"
   | "appointments.write"
   | "websites.manage"
+  | "phone_system.manage"
+  | "messages.write"
+  | "automations.manage"
   | "custom_data.manage"
   | "team.manage"
   | "audit.read"
   | "feature_flags.manage";
 
 const rolePermissions: Record<CrmRole, CrmPermission[]> = {
-  SUPER_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_MEMBER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage"],
-  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "custom_data.manage"],
-  CLIENT_MANAGER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "custom_data.manage"],
-  CLIENT_EMPLOYEE: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write"],
+  SUPER_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "phone_system.manage", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "phone_system.manage", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "phone_system.manage", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_MEMBER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "messages.write"],
+  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "messages.write", "custom_data.manage"],
+  CLIENT_MANAGER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "messages.write", "custom_data.manage"],
+  CLIENT_EMPLOYEE: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "messages.write"],
 };
 
 export type CrmClient = {
@@ -260,6 +263,79 @@ export type CrmWebsite = {
   updatedAt: string;
 };
 
+export type CrmPhoneConfig = {
+  id: string;
+  clientId: string;
+  provider: string;
+  phoneNumber: string | null;
+  forwardingNumber: string | null;
+  ringTimeoutSeconds: number;
+  voicemailEnabled: boolean;
+  missedCallTextEnabled: boolean;
+  missedCallMessage: string;
+  cooldownMinutes: number;
+  providerStatus: string;
+  a2pStatus: string;
+  lastTestedAt: string | null;
+};
+
+export type CrmPhoneCall = {
+  id: string;
+  clientId: string;
+  contactId: string | null;
+  fromNumber: string;
+  toNumber: string;
+  status: string;
+  direction: string;
+  durationSeconds: number | null;
+  startedAt: string;
+  missedCallTextSentAt: string | null;
+};
+
+export type CrmConversation = {
+  id: string;
+  clientId: string;
+  contactId: string;
+  contactName: string;
+  contactPhone: string | null;
+  status: string;
+  unreadCount: number;
+  lastMessageAt: string | null;
+};
+
+export type CrmMessage = {
+  id: string;
+  clientId: string;
+  conversationId: string;
+  contactId: string;
+  direction: string;
+  body: string;
+  status: string;
+  automationKey: string | null;
+  createdAt: string;
+};
+
+export type CrmAutomationRule = {
+  id: string;
+  clientId: string;
+  name: string;
+  triggerKey: string;
+  enabled: boolean;
+  config: Record<string, unknown>;
+  updatedAt: string;
+};
+
+export type CrmAutomationRun = {
+  id: string;
+  clientId: string;
+  ruleId: string | null;
+  triggerEventId: string;
+  status: string;
+  error: string | null;
+  startedAt: string;
+  completedAt: string | null;
+};
+
 export type CrmBootstrap = {
   viewer: {
     name: string;
@@ -275,6 +351,12 @@ export type CrmBootstrap = {
   contacts: CrmContact[];
   companies: CrmCompany[];
   websites: CrmWebsite[];
+  phoneConfigs: CrmPhoneConfig[];
+  phoneCalls: CrmPhoneCall[];
+  conversations: CrmConversation[];
+  messages: CrmMessage[];
+  automationRules: CrmAutomationRule[];
+  automationRuns: CrmAutomationRun[];
   customFields: CrmCustomFieldDefinition[];
   customFieldValues: CrmCustomFieldValue[];
   customValues: CrmCustomValue[];
@@ -545,6 +627,12 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
     contacts: contactRows.results.map(mapContact),
     companies: companyRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), name: String(row.name), industry: nullable(row.industry), website: nullable(row.website), phone: nullable(row.phone), email: nullable(row.email), address: nullable(row.address), city: nullable(row.city), state: nullable(row.state), zip: nullable(row.zip), tags: parseStringArray(row.tags_json), notes: String(row.notes ?? ""), contactCount: Number(row.contact_count ?? 0), createdAt: String(row.created_at) })),
     websites: websiteRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), name: String(row.name), domain: nullable(row.domain), status: String(row.status), platform: String(row.platform ?? "other"), leadCaptureEnabled: Boolean(row.lead_capture_enabled), lastLeadAt: nullable(row.last_lead_at), createdAt: String(row.created_at), updatedAt: String(row.updated_at) })),
+    phoneConfigs: [],
+    phoneCalls: [],
+    conversations: [],
+    messages: [],
+    automationRules: [],
+    automationRuns: [],
     customFields: customFieldRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), entityType: String(row.entity_type) as CrmCustomFieldDefinition["entityType"], fieldKey: String(row.field_key), label: String(row.label), fieldType: String(row.field_type), options: parseStringArray(row.options_json), isRequired: Boolean(row.is_required), position: Number(row.position ?? 0) })),
     customFieldValues: customFieldValueRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), definitionId: String(row.definition_id), entityType: String(row.entity_type) as CrmCustomFieldValue["entityType"], entityId: String(row.entity_id), value: parseJsonValue(row.value_json), updatedAt: String(row.updated_at) })),
     customValues: customValueRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), valueKey: String(row.value_key), label: String(row.label), value: String(row.value), updatedAt: String(row.updated_at) })),

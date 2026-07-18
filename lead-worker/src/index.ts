@@ -16,10 +16,12 @@ const worker = {
     if (url.pathname === "/health" && request.method === "GET") {
       return Response.json({ ok: true, service: "brizbuilder-leads" }, { headers: { "Cache-Control": "no-store" } });
     }
-    if (!url.pathname.startsWith("/api/website-leads/")) {
+    const isLeadCapture = url.pathname.startsWith("/api/website-leads/");
+    const isTwilioWebhook = url.pathname.startsWith("/api/twilio/");
+    if (!isLeadCapture && !isTwilioWebhook) {
       return Response.json({ error: "Not found." }, { status: 404, headers: { "Cache-Control": "no-store" } });
     }
-    if (!["GET", "POST", "OPTIONS"].includes(request.method)) {
+    if (!["GET", "POST", "OPTIONS"].includes(request.method) || (isTwilioWebhook && request.method !== "POST")) {
       return Response.json({ error: "Method not allowed." }, { status: 405, headers: { "Allow": "GET, POST, OPTIONS", "Cache-Control": "no-store" } });
     }
     return securityHeaders(await env.BRIZBUILDER.fetch(request));
