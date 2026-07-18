@@ -47,6 +47,28 @@ For Cloudflare Workers, use Supabase's **Transaction pooler** connection
 string for `SUPABASE_DATABASE_URL`. If the database password has special
 characters, percent-encode the password before saving it.
 
+## Drizzle ORM for Supabase Postgres
+
+BrizBuilder now has a separate Drizzle/Postgres lane for Supabase. The current
+live dashboard still uses Cloudflare D1 while Supabase migration work continues.
+
+Use these commands for Supabase/Postgres ORM work:
+
+```bash
+npm run db:pg:generate
+npm run db:pg:push
+npm run db:pg:studio
+```
+
+This uses:
+
+- `drizzle.supabase.config.ts`
+- `drizzle/supabase/schema.ts`
+- `lib/supabase/drizzle.ts`
+
+Because the Supabase connection uses the transaction pooler, the Postgres
+client is configured with `prepare: false`.
+
 ## Step 3: Test the connection
 
 After deploying, open:

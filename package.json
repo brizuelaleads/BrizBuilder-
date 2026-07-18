@@ -12,7 +12,10 @@
     "test": "npm run build && node --test tests/crm.integration.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "tsc --noEmit",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "db:pg:generate": "drizzle-kit generate --config drizzle.supabase.config.ts",
+    "db:pg:push": "drizzle-kit push --config drizzle.supabase.config.ts",
+    "db:pg:studio": "drizzle-kit studio --config drizzle.supabase.config.ts"
   },
   "dependencies": {
     "@jridgewell/sourcemap-codec": "1.5.5",
@@ -21,6 +24,7 @@
     "@supabase/supabase-js": "^2.110.7",
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
+    "postgres": "^3.4.9",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },
