@@ -11,7 +11,52 @@ function runtime() {
     authToken: readRuntimeValue("TWILIO_AUTH_TOKEN"),
     fromNumber: readRuntimeValue("TWILIO_FROM_NUMBER"),
     webhookBaseUrl: (readRuntimeValue("TWILIO_WEBHOOK_BASE_URL") || "https://brizbuilder-leads.brizuelaleads.workers.dev").replace(/\/$/, ""),
+    connectAuthorizeUrl: readRuntimeValue("TWILIO_CONNECT_AUTHORIZE_URL"),
   };
+}
+
+export function getTwilioConnectStatus() {
+  const config = runtime();
+  return { ready: Boolean(config.accountSid && config.authToken && config.connectAuthorizeUrl), authorizeUrl: config.connectAuthorizeUrl };
+}
+
+export function buildTwilioConnectUrl(state: string) {
+  const config = runtime();
+  if (!config.connectAuthorizeUrl) throw new Error("Twilio customer connection is not configured yet.");
+  const url = new URL(config.connectAuthorizeUrl);
+  url.searchParams.set("state", state);
+  return url.toString();
+}
+
+async function twilioApi<T>(accountSid: string, path: string, init?: { method?: "GET" | "POST"; body?: Record<string, string> }) {
+  const config = runtime();
+  if (!config.authToken) throw new Error("The BrizBuilder Twilio connection is not configured.");
+  const response = await fetch(`https://api.twilio.com${path}`, {
+    method: init?.method ?? "GET",
+    headers: { Authorization: `Basic ${btoa(`${accountSid}:${config.authToken}`)}`, ...(init?.body ? { "Content-Type": "application/x-www-form-urlencoded" } : {}) },
+    body: init?.body ? encodeForm(init.body) : undefined,
+  });
+  const payload = await response.json() as T & { message?: string };
+  if (!response.ok) throw new Error(payload.message || "Twilio request failed.");
+  return payload;
+}
+
+export async function checkTwilioConnectedAccount(accountSid: string) {
+  const account = await twilioApi<{ sid: string; friendly_name?: string; status?: string }>(accountSid, `/2010-04-01/Accounts/${encodeURIComponent(accountSid)}.json`);
+  return { sid: account.sid, name: account.friendly_name || "Customer Twilio account", status: account.status || "active" };
+}
+
+export async function searchTwilioNumbers(accountSid: string, areaCode: string) {
+  const query = new URLSearchParams({ VoiceEnabled: "true", SmsEnabled: "true", PageSize: "12" });
+  if (/^\d{3}$/.test(areaCode)) query.set("AreaCode", areaCode);
+  const result = await twilioApi<{ available_phone_numbers?: Array<{ phone_number: string; friendly_name?: string; locality?: string; region?: string; capabilities?: Record<string, boolean> }> }>(accountSid, `/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/AvailablePhoneNumbers/US/Local.json?${query}`);
+  return (result.available_phone_numbers ?? []).map((item) => ({ phoneNumber: item.phone_number, label: item.friendly_name || item.phone_number, locality: item.locality || "", region: item.region || "" }));
+}
+
+export async function purchaseTwilioNumber(accountSid: string, phoneNumber: string) {
+  const config = runtime();
+  const result = await twilioApi<{ sid: string; phone_number: string }>(accountSid, `/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/IncomingPhoneNumbers.json`, { method: "POST", body: { PhoneNumber: phoneNumber, VoiceUrl: `${config.webhookBaseUrl}/api/twilio/voice`, VoiceMethod: "POST", SmsUrl: `${config.webhookBaseUrl}/api/twilio/messages/incoming`, SmsMethod: "POST" } });
+  return { sid: result.sid, phoneNumber: result.phone_number };
 }
 
 export function getTwilioRuntimeStatus(): TwilioRuntimeStatus {

@@ -34,8 +34,8 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
   AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "phone_system.manage", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
   AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "phone_system.manage", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
   AGENCY_MEMBER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "messages.write"],
-  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "messages.write", "custom_data.manage"],
-  CLIENT_MANAGER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "messages.write", "custom_data.manage"],
+  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "phone_system.manage", "messages.write", "automations.manage", "custom_data.manage"],
+  CLIENT_MANAGER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "phone_system.manage", "messages.write", "automations.manage", "custom_data.manage"],
   CLIENT_EMPLOYEE: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "messages.write"],
 };
 
@@ -336,6 +336,56 @@ export type CrmAutomationRun = {
   completedAt: string | null;
 };
 
+export type CrmProviderConnection = {
+  id: string;
+  clientId: string;
+  provider: string;
+  status: string;
+  billingOwner: string;
+  accountLabel: string | null;
+  scopes: string[];
+  connectedAt: string | null;
+  lastHealthCheckAt: string | null;
+  lastError: string | null;
+};
+
+export type CrmWorkflowNode = {
+  id: string;
+  type: "trigger" | "send_sms" | "create_task" | "add_tag" | "update_stage" | "condition";
+  label: string;
+  x: number;
+  y: number;
+  config: Record<string, string | number | boolean>;
+};
+
+export type CrmWorkflowEdge = { id: string; source: string; target: string; branch?: "always" | "yes" | "no" };
+
+export type CrmWorkflow = {
+  id: string;
+  clientId: string;
+  name: string;
+  description: string;
+  status: string;
+  triggerKey: string;
+  currentVersion: number;
+  publishedVersion: number | null;
+  graph: { nodes: CrmWorkflowNode[]; edges: CrmWorkflowEdge[] };
+  updatedAt: string;
+};
+
+export type CrmWorkflowRun = {
+  id: string;
+  clientId: string;
+  workflowId: string;
+  version: number;
+  triggerKey: string;
+  status: string;
+  isTest: boolean;
+  error: string | null;
+  startedAt: string;
+  completedAt: string | null;
+};
+
 export type CrmBootstrap = {
   viewer: {
     name: string;
@@ -357,6 +407,9 @@ export type CrmBootstrap = {
   messages: CrmMessage[];
   automationRules: CrmAutomationRule[];
   automationRuns: CrmAutomationRun[];
+  providerConnections: CrmProviderConnection[];
+  workflows: CrmWorkflow[];
+  workflowRuns: CrmWorkflowRun[];
   customFields: CrmCustomFieldDefinition[];
   customFieldValues: CrmCustomFieldValue[];
   customValues: CrmCustomValue[];
@@ -633,6 +686,9 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
     messages: [],
     automationRules: [],
     automationRuns: [],
+    providerConnections: [],
+    workflows: [],
+    workflowRuns: [],
     customFields: customFieldRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), entityType: String(row.entity_type) as CrmCustomFieldDefinition["entityType"], fieldKey: String(row.field_key), label: String(row.label), fieldType: String(row.field_type), options: parseStringArray(row.options_json), isRequired: Boolean(row.is_required), position: Number(row.position ?? 0) })),
     customFieldValues: customFieldValueRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), definitionId: String(row.definition_id), entityType: String(row.entity_type) as CrmCustomFieldValue["entityType"], entityId: String(row.entity_id), value: parseJsonValue(row.value_json), updatedAt: String(row.updated_at) })),
     customValues: customValueRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), valueKey: String(row.value_key), label: String(row.label), value: String(row.value), updatedAt: String(row.updated_at) })),

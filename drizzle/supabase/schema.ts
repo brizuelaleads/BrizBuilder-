@@ -400,6 +400,97 @@ export const automationRuns = pgTable("automation_runs", {
   completedAt: timestamp("completed_at", { withTimezone: true }),
 }, (table) => [uniqueIndex("automation_runs_client_event_uidx").on(table.clientId, table.triggerEventId)]);
 
+export const providerConnections = pgTable("provider_connections", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  status: text("status").notNull().default("not_connected"),
+  billingOwner: text("billing_owner").notNull().default("customer"),
+  externalAccountId: text("external_account_id"),
+  externalAccountName: text("external_account_name"),
+  scopes: jsonb("scopes").notNull().default([]),
+  publicConfig: jsonb("public_config").notNull().default({}),
+  connectedByEmail: text("connected_by_email"),
+  connectedAt: timestamp("connected_at", { withTimezone: true }),
+  disconnectedAt: timestamp("disconnected_at", { withTimezone: true }),
+  lastHealthCheckAt: timestamp("last_health_check_at", { withTimezone: true }),
+  lastError: text("last_error"),
+  createdAt,
+  updatedAt,
+}, (table) => [uniqueIndex("provider_connections_org_client_provider_uidx").on(table.organizationId, table.clientId, table.provider), index("provider_connections_scope_idx").on(table.organizationId, table.clientId, table.provider)]);
+
+export const providerAuthorizationStates = pgTable("provider_authorization_states", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  stateHash: text("state_hash").notNull().unique(),
+  requestedByEmail: text("requested_by_email").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt,
+}, (table) => [index("provider_auth_expiry_idx").on(table.provider, table.expiresAt)]);
+
+export const workflows = pgTable("workflows", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  status: text("status").notNull().default("draft"),
+  triggerKey: text("trigger_key").notNull().default("lead.created"),
+  currentVersion: integer("current_version").notNull().default(1),
+  publishedVersion: integer("published_version"),
+  createdByEmail: text("created_by_email").notNull(),
+  createdAt,
+  updatedAt,
+}, (table) => [index("workflows_scope_status_idx").on(table.organizationId, table.clientId, table.status, table.updatedAt)]);
+
+export const workflowVersions = pgTable("workflow_versions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  workflowId: uuid("workflow_id").notNull().references(() => workflows.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+  graph: jsonb("graph").notNull().default({ nodes: [], edges: [] }),
+  validationErrors: jsonb("validation_errors").notNull().default([]),
+  createdByEmail: text("created_by_email").notNull(),
+  createdAt,
+}, (table) => [uniqueIndex("workflow_versions_workflow_version_uidx").on(table.workflowId, table.version)]);
+
+export const workflowRuns = pgTable("workflow_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  workflowId: uuid("workflow_id").notNull().references(() => workflows.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+  triggerKey: text("trigger_key").notNull(),
+  triggerEventId: text("trigger_event_id").notNull(),
+  status: text("status").notNull().default("running"),
+  isTest: boolean("is_test").notNull().default(false),
+  input: jsonb("input").notNull().default({}),
+  output: jsonb("output").notNull().default({}),
+  error: text("error"),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+}, (table) => [uniqueIndex("workflow_runs_workflow_event_uidx").on(table.workflowId, table.triggerEventId), index("workflow_runs_scope_time_idx").on(table.organizationId, table.clientId, table.startedAt)]);
+
+export const workflowRunSteps = pgTable("workflow_run_steps", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  runId: uuid("run_id").notNull().references(() => workflowRuns.id, { onDelete: "cascade" }),
+  nodeId: text("node_id").notNull(),
+  nodeType: text("node_type").notNull(),
+  status: text("status").notNull(),
+  input: jsonb("input").notNull().default({}),
+  output: jsonb("output").notNull().default({}),
+  error: text("error"),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+}, (table) => [index("workflow_run_steps_run_idx").on(table.runId, table.startedAt)]);
+
 export const auditEvents = pgTable(
   "audit_events",
   {

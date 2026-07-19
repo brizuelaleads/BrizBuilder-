@@ -4,7 +4,7 @@ import { useState, type ChangeEvent, type FormEvent } from "react";
 import type { CrmClient } from "../../db/crm";
 import { Field, getFormValue, Modal } from "./ui";
 
-type Mutate = (input: Record<string, unknown>, success: string) => Promise<void>;
+type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
 
 function SubmitButton({ busy, children }: { busy: boolean; children: string }) {
   return <button className="crm-button-primary" type="submit" disabled={busy}>{busy ? "Saving..." : children}</button>;

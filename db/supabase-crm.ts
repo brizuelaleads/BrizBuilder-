@@ -1,7 +1,21 @@
 import type { ChatGPTUser } from "../app/chatgpt-auth";
 import { MAIN_ADMIN_EMAIL } from "../app/auth-config";
 import { getSupabaseAdminClient } from "../lib/supabase/server";
-import { getTwilioRuntimeStatus, sendTwilioMessage } from "../lib/twilio";
+import {
+  buildTwilioConnectUrl,
+  checkTwilioConnectedAccount,
+  getTwilioConnectStatus,
+  getTwilioRuntimeStatus,
+  purchaseTwilioNumber,
+  searchTwilioNumbers,
+  sendTwilioMessage,
+} from "../lib/twilio";
+import {
+  executeWorkflow,
+  runPublishedWorkflowsForEvent,
+  validateWorkflowGraph,
+  type WorkflowGraph,
+} from "../lib/workflow-engine";
 import type {
   CrmAction,
   CrmAppointment,
@@ -24,6 +38,9 @@ import type {
   CrmMessage,
   CrmAutomationRule,
   CrmAutomationRun,
+  CrmProviderConnection,
+  CrmWorkflow,
+  CrmWorkflowRun,
 } from "./crm";
 
 type TenantContext = {
@@ -118,13 +135,100 @@ const STAGES = [
 ];
 
 const rolePermissions: Record<CrmRole, CrmPermission[]> = {
-  SUPER_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "phone_system.manage", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "phone_system.manage", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "phone_system.manage", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_MEMBER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "messages.write"],
-  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "messages.write", "custom_data.manage"],
-  CLIENT_MANAGER: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "messages.write", "custom_data.manage"],
-  CLIENT_EMPLOYEE: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "messages.write"],
+  SUPER_ADMIN: [
+    "clients.manage",
+    "contacts.write",
+    "contacts.import",
+    "companies.write",
+    "opportunities.write",
+    "tasks.write",
+    "appointments.write",
+    "websites.manage",
+    "phone_system.manage",
+    "messages.write",
+    "automations.manage",
+    "custom_data.manage",
+    "team.manage",
+    "audit.read",
+    "feature_flags.manage",
+  ],
+  AGENCY_OWNER: [
+    "clients.manage",
+    "contacts.write",
+    "contacts.import",
+    "companies.write",
+    "opportunities.write",
+    "tasks.write",
+    "appointments.write",
+    "websites.manage",
+    "phone_system.manage",
+    "messages.write",
+    "automations.manage",
+    "custom_data.manage",
+    "team.manage",
+    "audit.read",
+    "feature_flags.manage",
+  ],
+  AGENCY_ADMIN: [
+    "clients.manage",
+    "contacts.write",
+    "contacts.import",
+    "companies.write",
+    "opportunities.write",
+    "tasks.write",
+    "appointments.write",
+    "websites.manage",
+    "phone_system.manage",
+    "messages.write",
+    "automations.manage",
+    "custom_data.manage",
+    "team.manage",
+    "audit.read",
+    "feature_flags.manage",
+  ],
+  AGENCY_MEMBER: [
+    "contacts.write",
+    "contacts.import",
+    "companies.write",
+    "opportunities.write",
+    "tasks.write",
+    "appointments.write",
+    "websites.manage",
+    "messages.write",
+  ],
+  CLIENT_OWNER: [
+    "contacts.write",
+    "contacts.import",
+    "companies.write",
+    "opportunities.write",
+    "tasks.write",
+    "appointments.write",
+    "websites.manage",
+    "phone_system.manage",
+    "messages.write",
+    "automations.manage",
+    "custom_data.manage",
+  ],
+  CLIENT_MANAGER: [
+    "contacts.write",
+    "companies.write",
+    "opportunities.write",
+    "tasks.write",
+    "appointments.write",
+    "websites.manage",
+    "phone_system.manage",
+    "messages.write",
+    "automations.manage",
+    "custom_data.manage",
+  ],
+  CLIENT_EMPLOYEE: [
+    "contacts.write",
+    "companies.write",
+    "opportunities.write",
+    "tasks.write",
+    "appointments.write",
+    "messages.write",
+  ],
 };
 
 function supabase() {
@@ -132,11 +236,14 @@ function supabase() {
 }
 
 function nullable(value: unknown): string | null {
-  return value === null || value === undefined || value === "" ? null : String(value);
+  return value === null || value === undefined || value === ""
+    ? null
+    : String(value);
 }
 
 function requireText(value: unknown, label: string, max = 200): string {
-  if (typeof value !== "string" || !value.trim()) throw new Error(`${label} is required.`);
+  if (typeof value !== "string" || !value.trim())
+    throw new Error(`${label} is required.`);
   return value.trim().slice(0, max);
 }
 
@@ -158,42 +265,67 @@ function normalizeDomain(value: unknown): string {
 
 function cents(value: unknown): number {
   const amount = Number(value ?? 0);
-  if (!Number.isFinite(amount) || amount < 0 || amount > 100000000) throw new Error("Enter a valid amount.");
+  if (!Number.isFinite(amount) || amount < 0 || amount > 100000000)
+    throw new Error("Enter a valid amount.");
   return Math.round(amount);
 }
 
 function requirePermission(context: TenantContext, permission: CrmPermission) {
-  if (!rolePermissions[context.role].includes(permission)) throw new Error("Forbidden");
+  if (!rolePermissions[context.role].includes(permission))
+    throw new Error("Forbidden");
 }
 
 function serviceAreas(value: unknown): string[] {
-  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
-  if (typeof value === "string") return value.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 30);
+  if (Array.isArray(value))
+    return value.filter((item): item is string => typeof item === "string");
+  if (typeof value === "string")
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 30);
   return [];
 }
 
 function tags(value: unknown): string[] {
-  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
-  if (typeof value === "string") return value.split(/[;,]/).map((item) => item.trim()).filter(Boolean).slice(0, 20);
+  if (Array.isArray(value))
+    return value.filter((item): item is string => typeof item === "string");
+  if (typeof value === "string")
+    return value
+      .split(/[;,]/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 20);
   return [];
 }
 
-function phoneNumber(value: unknown, label: string, required = false): string | null {
+function phoneNumber(
+  value: unknown,
+  label: string,
+  required = false,
+): string | null {
   const text = optionalText(value, 30);
   if (!text) {
     if (required) throw new Error(`${label} is required.`);
     return null;
   }
   const normalized = text.replace(/[\s().-]/g, "");
-  if (!/^\+[1-9]\d{7,14}$/.test(normalized)) throw new Error(`${label} must include the country code, for example +13125550123.`);
+  if (!/^\+[1-9]\d{7,14}$/.test(normalized))
+    throw new Error(
+      `${label} must include the country code, for example +13125550123.`,
+    );
   return normalized;
 }
 
-function nestedOne<T extends AnyRecord>(value: T | T[] | null | undefined): T | null {
-  return Array.isArray(value) ? value[0] ?? null : value ?? null;
+function nestedOne<T extends AnyRecord>(
+  value: T | T[] | null | undefined,
+): T | null {
+  return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
 }
 
-async function assertOk<T>(promise: PromiseLike<{ data: T; error: { message: string } | null }>): Promise<T> {
+async function assertOk<T>(
+  promise: PromiseLike<{ data: T; error: { message: string } | null }>,
+): Promise<T> {
   const { data, error } = await promise;
   if (error) throw new Error(error.message);
   return data;
@@ -231,14 +363,16 @@ async function ensureSupabaseBaseline() {
   );
 
   await assertOk(
-    supabase().from("pipeline_stages").upsert(
-      STAGES.map((stage) => ({
-        ...stage,
-        organization_id: ORGANIZATION_ID,
-        pipeline_id: PIPELINE_ID,
-      })),
-      { onConflict: "id" },
-    ),
+    supabase()
+      .from("pipeline_stages")
+      .upsert(
+        STAGES.map((stage) => ({
+          ...stage,
+          organization_id: ORGANIZATION_ID,
+          pipeline_id: PIPELINE_ID,
+        })),
+        { onConflict: "id" },
+      ),
   );
 }
 
@@ -291,7 +425,9 @@ async function getTenantContext(user: ChatGPTUser): Promise<TenantContext> {
   const clientMembership = await assertOk(
     supabase()
       .from("client_members")
-      .select("role,client_id,clients(id,business_name,organization_id,organizations(id,name))")
+      .select(
+        "role,client_id,clients(id,business_name,organization_id,organizations(id,name))",
+      )
       .eq("profile_id", profile.id)
       .eq("status", "active")
       .limit(1)
@@ -302,7 +438,9 @@ async function getTenantContext(user: ChatGPTUser): Promise<TenantContext> {
   const organization = nestedOne(client.organizations);
 
   return {
-    organizationId: String(organization?.id ?? client.organization_id ?? ORGANIZATION_ID),
+    organizationId: String(
+      organization?.id ?? client.organization_id ?? ORGANIZATION_ID,
+    ),
     organizationName: String(organization?.name ?? "Brizuela Leads"),
     email,
     name: String(profile.display_name ?? user.displayName),
@@ -312,7 +450,8 @@ async function getTenantContext(user: ChatGPTUser): Promise<TenantContext> {
 }
 
 async function requireClient(context: TenantContext, clientId: string) {
-  if (context.clientId && context.clientId !== clientId) throw new Error("Forbidden");
+  if (context.clientId && context.clientId !== clientId)
+    throw new Error("Forbidden");
   const client = await assertOk(
     supabase()
       .from("clients")
@@ -325,7 +464,163 @@ async function requireClient(context: TenantContext, clientId: string) {
   if (!client) throw new Error("Client not found.");
 }
 
-async function audit(context: TenantContext, action: string, recordType: string, recordId: string | null, metadata: Record<string, unknown> = {}, clientId: string | null = context.clientId) {
+async function stateHash(value: string) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+export async function beginSupabaseTwilioConnect(
+  user: ChatGPTUser,
+  clientId: string,
+) {
+  const context = await getTenantContext(user);
+  requirePermission(context, "phone_system.manage");
+  await requireClient(context, clientId);
+  if (!getTwilioConnectStatus().ready)
+    throw new Error(
+      "BrizBuilder's Twilio Connect app needs to be configured first.",
+    );
+  const state = `${crypto.randomUUID()}${crypto.randomUUID()}`.replaceAll(
+    "-",
+    "",
+  );
+  await assertOk(
+    supabase()
+      .from("provider_authorization_states")
+      .insert({
+        organization_id: context.organizationId,
+        client_id: clientId,
+        provider: "twilio",
+        state_hash: await stateHash(state),
+        requested_by_email: context.email,
+        expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
+      }),
+  );
+  return buildTwilioConnectUrl(state);
+}
+
+export async function finishSupabaseTwilioConnect(
+  state: string,
+  accountSid: string,
+) {
+  if (!/^AC[0-9a-f]{32}$/i.test(accountSid))
+    throw new Error("Twilio did not return a valid customer account.");
+  const now = new Date().toISOString();
+  const authorization = await assertOk(
+    supabase()
+      .from("provider_authorization_states")
+      .select("*")
+      .eq("provider", "twilio")
+      .eq("state_hash", await stateHash(state))
+      .is("used_at", null)
+      .gt("expires_at", now)
+      .maybeSingle(),
+  );
+  if (!authorization)
+    throw new Error(
+      "This connection request expired. Start again from BrizBuilder.",
+    );
+  const account = await checkTwilioConnectedAccount(accountSid);
+  await assertOk(
+    supabase()
+      .from("provider_connections")
+      .upsert(
+        {
+          organization_id: authorization.organization_id,
+          client_id: authorization.client_id,
+          provider: "twilio",
+          status: "connected",
+          billing_owner: "customer",
+          external_account_id: account.sid,
+          external_account_name: account.name,
+          scopes: ["get-all", "post-all"],
+          public_config: { accountStatus: account.status },
+          connected_by_email: authorization.requested_by_email,
+          connected_at: now,
+          disconnected_at: null,
+          last_health_check_at: now,
+          last_error: null,
+          updated_at: now,
+        },
+        { onConflict: "organization_id,client_id,provider" },
+      ),
+  );
+  await Promise.all([
+    assertOk(
+      supabase()
+        .from("provider_authorization_states")
+        .update({ used_at: now })
+        .eq("id", authorization.id),
+    ),
+    assertOk(
+      supabase()
+        .from("phone_system_configs")
+        .upsert(
+          {
+            organization_id: authorization.organization_id,
+            client_id: authorization.client_id,
+            provider: "twilio",
+            provider_account_sid: account.sid,
+            provider_status: "connected",
+            updated_at: now,
+          },
+          { onConflict: "organization_id,client_id" },
+        ),
+    ),
+  ]);
+  return String(authorization.client_id);
+}
+
+export async function revokeSupabaseTwilioConnection(accountSid: string) {
+  if (!accountSid) return;
+  const now = new Date().toISOString();
+  const found = await assertOk(
+    supabase()
+      .from("provider_connections")
+      .select("client_id")
+      .eq("provider", "twilio")
+      .eq("external_account_id", accountSid)
+      .maybeSingle(),
+  );
+  if (!found) return;
+  await Promise.all([
+    assertOk(
+      supabase()
+        .from("provider_connections")
+        .update({
+          status: "revoked",
+          disconnected_at: now,
+          last_error: "Authorization was revoked in Twilio.",
+          updated_at: now,
+        })
+        .eq("external_account_id", accountSid),
+    ),
+    assertOk(
+      supabase()
+        .from("phone_system_configs")
+        .update({
+          provider_status: "revoked",
+          missed_call_text_enabled: false,
+          updated_at: now,
+        })
+        .eq("client_id", found.client_id),
+    ),
+  ]);
+}
+
+async function audit(
+  context: TenantContext,
+  action: string,
+  recordType: string,
+  recordId: string | null,
+  metadata: Record<string, unknown> = {},
+  clientId: string | null = context.clientId,
+) {
   await assertOk(
     supabase().from("audit_events").insert({
       organization_id: context.organizationId,
@@ -442,7 +737,10 @@ function mapLead(row: AnyRecord): CrmLead {
 }
 
 function mapWebsite(row: AnyRecord): CrmWebsite {
-  const analytics = row.analytics && typeof row.analytics === "object" ? row.analytics as Record<string, unknown> : {};
+  const analytics =
+    row.analytics && typeof row.analytics === "object"
+      ? (row.analytics as Record<string, unknown>)
+      : {};
   return {
     id: String(row.id),
     clientId: String(row.client_id),
@@ -459,45 +757,162 @@ function mapWebsite(row: AnyRecord): CrmWebsite {
 
 function mapPhoneConfig(row: AnyRecord): CrmPhoneConfig {
   return {
-    id: String(row.id), clientId: String(row.client_id), provider: String(row.provider ?? "twilio"),
-    phoneNumber: nullable(row.phone_number), forwardingNumber: nullable(row.forwarding_number),
-    ringTimeoutSeconds: Number(row.ring_timeout_seconds ?? 20), voicemailEnabled: Boolean(row.voicemail_enabled),
-    missedCallTextEnabled: Boolean(row.missed_call_text_enabled), missedCallMessage: String(row.missed_call_message ?? ""),
-    cooldownMinutes: Number(row.cooldown_minutes ?? 20), providerStatus: String(row.provider_status ?? "not_configured"),
-    a2pStatus: String(row.a2p_status ?? "not_started"), lastTestedAt: nullable(row.last_tested_at),
+    id: String(row.id),
+    clientId: String(row.client_id),
+    provider: String(row.provider ?? "twilio"),
+    phoneNumber: nullable(row.phone_number),
+    forwardingNumber: nullable(row.forwarding_number),
+    ringTimeoutSeconds: Number(row.ring_timeout_seconds ?? 20),
+    voicemailEnabled: Boolean(row.voicemail_enabled),
+    missedCallTextEnabled: Boolean(row.missed_call_text_enabled),
+    missedCallMessage: String(row.missed_call_message ?? ""),
+    cooldownMinutes: Number(row.cooldown_minutes ?? 20),
+    providerStatus: String(row.provider_status ?? "not_configured"),
+    a2pStatus: String(row.a2p_status ?? "not_started"),
+    lastTestedAt: nullable(row.last_tested_at),
   };
 }
 
 function mapPhoneCall(row: AnyRecord): CrmPhoneCall {
-  return { id: String(row.id), clientId: String(row.client_id), contactId: nullable(row.contact_id), fromNumber: String(row.from_number), toNumber: String(row.to_number), status: String(row.status), direction: String(row.direction), durationSeconds: row.duration_seconds == null ? null : Number(row.duration_seconds), startedAt: String(row.started_at), missedCallTextSentAt: nullable(row.missed_call_text_sent_at) };
+  return {
+    id: String(row.id),
+    clientId: String(row.client_id),
+    contactId: nullable(row.contact_id),
+    fromNumber: String(row.from_number),
+    toNumber: String(row.to_number),
+    status: String(row.status),
+    direction: String(row.direction),
+    durationSeconds:
+      row.duration_seconds == null ? null : Number(row.duration_seconds),
+    startedAt: String(row.started_at),
+    missedCallTextSentAt: nullable(row.missed_call_text_sent_at),
+  };
 }
 
 function mapConversation(row: AnyRecord): CrmConversation {
   const contact = nestedOne(row.contacts) ?? {};
-  return { id: String(row.id), clientId: String(row.client_id), contactId: String(row.contact_id), contactName: `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() || String(contact.phone ?? "Unknown contact"), contactPhone: nullable(contact.phone), status: String(row.status ?? "open"), unreadCount: Number(row.unread_count ?? 0), lastMessageAt: nullable(row.last_message_at) };
+  return {
+    id: String(row.id),
+    clientId: String(row.client_id),
+    contactId: String(row.contact_id),
+    contactName:
+      `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() ||
+      String(contact.phone ?? "Unknown contact"),
+    contactPhone: nullable(contact.phone),
+    status: String(row.status ?? "open"),
+    unreadCount: Number(row.unread_count ?? 0),
+    lastMessageAt: nullable(row.last_message_at),
+  };
 }
 
 function mapMessage(row: AnyRecord): CrmMessage {
-  return { id: String(row.id), clientId: String(row.client_id), conversationId: String(row.conversation_id), contactId: String(row.contact_id), direction: String(row.direction), body: String(row.body), status: String(row.status), automationKey: nullable(row.automation_key), createdAt: String(row.created_at) };
+  return {
+    id: String(row.id),
+    clientId: String(row.client_id),
+    conversationId: String(row.conversation_id),
+    contactId: String(row.contact_id),
+    direction: String(row.direction),
+    body: String(row.body),
+    status: String(row.status),
+    automationKey: nullable(row.automation_key),
+    createdAt: String(row.created_at),
+  };
 }
 
 function mapAutomationRule(row: AnyRecord): CrmAutomationRule {
-  return { id: String(row.id), clientId: String(row.client_id), name: String(row.name), triggerKey: String(row.trigger_key), enabled: Boolean(row.enabled), config: row.config && typeof row.config === "object" ? row.config : {}, updatedAt: String(row.updated_at) };
+  return {
+    id: String(row.id),
+    clientId: String(row.client_id),
+    name: String(row.name),
+    triggerKey: String(row.trigger_key),
+    enabled: Boolean(row.enabled),
+    config: row.config && typeof row.config === "object" ? row.config : {},
+    updatedAt: String(row.updated_at),
+  };
 }
 
 function mapAutomationRun(row: AnyRecord): CrmAutomationRun {
-  return { id: String(row.id), clientId: String(row.client_id), ruleId: nullable(row.rule_id), triggerEventId: String(row.trigger_event_id), status: String(row.status), error: nullable(row.error), startedAt: String(row.started_at), completedAt: nullable(row.completed_at) };
+  return {
+    id: String(row.id),
+    clientId: String(row.client_id),
+    ruleId: nullable(row.rule_id),
+    triggerEventId: String(row.trigger_event_id),
+    status: String(row.status),
+    error: nullable(row.error),
+    startedAt: String(row.started_at),
+    completedAt: nullable(row.completed_at),
+  };
 }
 
-export async function getSupabaseCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> {
+function mapProviderConnection(row: AnyRecord): CrmProviderConnection {
+  return {
+    id: String(row.id),
+    clientId: String(row.client_id),
+    provider: String(row.provider),
+    status: String(row.status),
+    billingOwner: String(row.billing_owner ?? "customer"),
+    accountLabel: nullable(row.external_account_name),
+    scopes: Array.isArray(row.scopes) ? row.scopes.map(String) : [],
+    connectedAt: nullable(row.connected_at),
+    lastHealthCheckAt: nullable(row.last_health_check_at),
+    lastError: nullable(row.last_error),
+  };
+}
+
+function mapWorkflow(row: AnyRecord, versions: AnyRecord[]): CrmWorkflow {
+  const version = versions.find(
+    (item) =>
+      String(item.workflow_id) === String(row.id) &&
+      Number(item.version) === Number(row.current_version),
+  );
+  const graph = validateWorkflowGraph(version?.graph).graph;
+  return {
+    id: String(row.id),
+    clientId: String(row.client_id),
+    name: String(row.name),
+    description: String(row.description ?? ""),
+    status: String(row.status),
+    triggerKey: String(row.trigger_key),
+    currentVersion: Number(row.current_version ?? 1),
+    publishedVersion:
+      row.published_version == null ? null : Number(row.published_version),
+    graph,
+    updatedAt: String(row.updated_at),
+  };
+}
+
+function mapWorkflowRun(row: AnyRecord): CrmWorkflowRun {
+  return {
+    id: String(row.id),
+    clientId: String(row.client_id),
+    workflowId: String(row.workflow_id),
+    version: Number(row.version),
+    triggerKey: String(row.trigger_key),
+    status: String(row.status),
+    isTest: Boolean(row.is_test),
+    error: nullable(row.error),
+    startedAt: String(row.started_at),
+    completedAt: nullable(row.completed_at),
+  };
+}
+
+export async function getSupabaseCrmBootstrap(
+  user: ChatGPTUser,
+): Promise<CrmBootstrap> {
   const context = await getTenantContext(user);
-  const clientFilter = context.clientId ? { column: "client_id", value: context.clientId } : null;
+  const clientFilter = context.clientId
+    ? { column: "client_id", value: context.clientId }
+    : null;
 
   // The generic documents the expected row shape until generated Supabase types are available.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const query = <T>(table: string, select = "*") => {
-    let builder = supabase().from(table).select(select).eq("organization_id", context.organizationId);
-    if (clientFilter) builder = builder.eq(clientFilter.column, clientFilter.value);
+    let builder = supabase()
+      .from(table)
+      .select(select)
+      .eq("organization_id", context.organizationId);
+    if (clientFilter)
+      builder = builder.eq(clientFilter.column, clientFilter.value);
     return builder;
   };
 
@@ -518,15 +933,29 @@ export async function getSupabaseCrmBootstrap(user: ChatGPTUser): Promise<CrmBoo
     messages,
     automationRules,
     automationRuns,
+    providerConnections,
+    workflows,
+    workflowVersions,
+    workflowRuns,
   ] = await Promise.all([
     (() => {
-      let builder = query<AnyRecord>("clients").neq("status", "archived").order("business_name");
+      let builder = query<AnyRecord>("clients")
+        .neq("status", "archived")
+        .order("business_name");
       if (context.clientId) builder = builder.eq("id", context.clientId);
       return assertOk(builder);
     })(),
-    assertOk(query<AnyRecord>("contacts").is("archived_at", null).order("created_at", { ascending: false })),
-    assertOk(query<AnyRecord>("companies").is("archived_at", null).order("name")),
-    assertOk(query<AnyRecord>("websites").order("updated_at", { ascending: false })),
+    assertOk(
+      query<AnyRecord>("contacts")
+        .is("archived_at", null)
+        .order("created_at", { ascending: false }),
+    ),
+    assertOk(
+      query<AnyRecord>("companies").is("archived_at", null).order("name"),
+    ),
+    assertOk(
+      query<AnyRecord>("websites").order("updated_at", { ascending: false }),
+    ),
     assertOk(
       query<AnyRecord>(
         "leads",
@@ -535,24 +964,91 @@ export async function getSupabaseCrmBootstrap(user: ChatGPTUser): Promise<CrmBoo
         .is("archived_at", null)
         .order("created_at", { ascending: false }),
     ),
-    assertOk(supabase().from("pipeline_stages").select("*").eq("organization_id", context.organizationId).order("position")),
-    assertOk(query<AnyRecord>("tasks").order("due_at", { ascending: true, nullsFirst: false })),
+    assertOk(
+      supabase()
+        .from("pipeline_stages")
+        .select("*")
+        .eq("organization_id", context.organizationId)
+        .order("position"),
+    ),
+    assertOk(
+      query<AnyRecord>("tasks").order("due_at", {
+        ascending: true,
+        nullsFirst: false,
+      }),
+    ),
     assertOk(
       query<AnyRecord>(
         "appointments",
         "*,clients(business_name),contacts(first_name,last_name)",
       ).order("starts_at", { ascending: true }),
     ),
-    assertOk(query<AnyRecord>("notes").order("created_at", { ascending: false }).limit(200)),
+    assertOk(
+      query<AnyRecord>("notes")
+        .order("created_at", { ascending: false })
+        .limit(200),
+    ),
     rolePermissions[context.role].includes("audit.read")
-      ? assertOk(supabase().from("audit_events").select("*").eq("organization_id", context.organizationId).order("created_at", { ascending: false }).limit(150))
+      ? assertOk(
+          supabase()
+            .from("audit_events")
+            .select("*")
+            .eq("organization_id", context.organizationId)
+            .order("created_at", { ascending: false })
+            .limit(150),
+        )
       : Promise.resolve([]),
-    assertOk(query<AnyRecord>("phone_system_configs").order("updated_at", { ascending: false })),
-    assertOk(query<AnyRecord>("phone_calls").order("started_at", { ascending: false }).limit(200)),
-    assertOk(query<AnyRecord>("conversations", "*,contacts(first_name,last_name,phone)").order("last_message_at", { ascending: false, nullsFirst: false }).limit(200)),
-    assertOk(query<AnyRecord>("messages").order("created_at", { ascending: true }).limit(500)),
-    assertOk(query<AnyRecord>("automation_rules").order("updated_at", { ascending: false })),
-    assertOk(query<AnyRecord>("automation_runs").order("started_at", { ascending: false }).limit(200)),
+    assertOk(
+      query<AnyRecord>("phone_system_configs").order("updated_at", {
+        ascending: false,
+      }),
+    ),
+    assertOk(
+      query<AnyRecord>("phone_calls")
+        .order("started_at", { ascending: false })
+        .limit(200),
+    ),
+    assertOk(
+      query<AnyRecord>(
+        "conversations",
+        "*,contacts(first_name,last_name,phone)",
+      )
+        .order("last_message_at", { ascending: false, nullsFirst: false })
+        .limit(200),
+    ),
+    assertOk(
+      query<AnyRecord>("messages")
+        .order("created_at", { ascending: true })
+        .limit(500),
+    ),
+    assertOk(
+      query<AnyRecord>("automation_rules").order("updated_at", {
+        ascending: false,
+      }),
+    ),
+    assertOk(
+      query<AnyRecord>("automation_runs")
+        .order("started_at", { ascending: false })
+        .limit(200),
+    ),
+    assertOk(
+      query<AnyRecord>("provider_connections").order("updated_at", {
+        ascending: false,
+      }),
+    ),
+    assertOk(
+      query<AnyRecord>("workflows").order("updated_at", { ascending: false }),
+    ),
+    assertOk(
+      query<AnyRecord>("workflow_versions").order("version", {
+        ascending: false,
+      }),
+    ),
+    assertOk(
+      query<AnyRecord>("workflow_runs")
+        .order("started_at", { ascending: false })
+        .limit(200),
+    ),
   ]);
 
   const clientRows = (clients ?? []) as AnyRecord[];
@@ -575,7 +1071,10 @@ export async function getSupabaseCrmBootstrap(user: ChatGPTUser): Promise<CrmBoo
       isAgency: !context.clientId,
       permissions: rolePermissions[context.role],
     },
-    organization: { id: context.organizationId, name: context.organizationName },
+    organization: {
+      id: context.organizationId,
+      name: context.organizationName,
+    },
     clients: clientRows.map(mapClient),
     leads: leadRows.map(mapLead),
     contacts: contactRows.map(mapContact),
@@ -585,8 +1084,19 @@ export async function getSupabaseCrmBootstrap(user: ChatGPTUser): Promise<CrmBoo
     phoneCalls: ((phoneCalls ?? []) as AnyRecord[]).map(mapPhoneCall),
     conversations: ((conversations ?? []) as AnyRecord[]).map(mapConversation),
     messages: ((messages ?? []) as AnyRecord[]).map(mapMessage),
-    automationRules: ((automationRules ?? []) as AnyRecord[]).map(mapAutomationRule),
-    automationRuns: ((automationRuns ?? []) as AnyRecord[]).map(mapAutomationRun),
+    automationRules: ((automationRules ?? []) as AnyRecord[]).map(
+      mapAutomationRule,
+    ),
+    automationRuns: ((automationRuns ?? []) as AnyRecord[]).map(
+      mapAutomationRun,
+    ),
+    providerConnections: ((providerConnections ?? []) as AnyRecord[]).map(
+      mapProviderConnection,
+    ),
+    workflows: ((workflows ?? []) as AnyRecord[]).map((row) =>
+      mapWorkflow(row, (workflowVersions ?? []) as AnyRecord[]),
+    ),
+    workflowRuns: ((workflowRuns ?? []) as AnyRecord[]).map(mapWorkflowRun),
     customFields: [],
     customFieldValues: [],
     customValues: [],
@@ -597,7 +1107,8 @@ export async function getSupabaseCrmBootstrap(user: ChatGPTUser): Promise<CrmBoo
       action: String(row.action),
       recordType: String(row.record_type),
       recordId: nullable(row.record_id),
-      metadata: row.metadata && typeof row.metadata === "object" ? row.metadata : {},
+      metadata:
+        row.metadata && typeof row.metadata === "object" ? row.metadata : {},
       createdAt: String(row.created_at),
     })),
     stages: stageRows.map((row: AnyRecord): CrmStage => ({
@@ -631,7 +1142,9 @@ export async function getSupabaseCrmBootstrap(user: ChatGPTUser): Promise<CrmBoo
         clientName: String(client.business_name ?? "Client"),
         leadId: nullable(row.lead_id),
         contactId: String(row.contact_id ?? ""),
-        contactName: `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() || "Unknown contact",
+        contactName:
+          `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() ||
+          "Unknown contact",
         assignedEmployee: nullable(row.assigned_employee),
         serviceType: String(row.service_type),
         startsAt: String(row.starts_at),
@@ -667,50 +1180,616 @@ export async function getSupabaseCrmBootstrap(user: ChatGPTUser): Promise<CrmBoo
 }
 
 function defaultFeatureFlags(clients: AnyRecord[]): CrmFeatureFlag[] {
-  const modules = ["crm", "calendar", "tasks", "contacts", "companies", "websites", "forms", "payments", "automations", "reviews"];
+  const modules = [
+    "crm",
+    "calendar",
+    "tasks",
+    "contacts",
+    "companies",
+    "websites",
+    "forms",
+    "payments",
+    "automations",
+    "reviews",
+  ];
   return modules.map((moduleKey) => ({
     id: `supabase-flag-${moduleKey}`,
     clientId: null,
     moduleKey,
-    enabled: ["crm", "calendar", "tasks", "contacts", "companies", "websites", "forms", "payments", "automations", "reviews"].includes(moduleKey),
+    enabled: [
+      "crm",
+      "calendar",
+      "tasks",
+      "contacts",
+      "companies",
+      "websites",
+      "forms",
+      "payments",
+      "automations",
+      "reviews",
+    ].includes(moduleKey),
     rolloutStatus: "enabled",
     source: clients.length ? "supabase" : "platform",
   }));
 }
 
-export async function executeSupabaseCrmAction(user: ChatGPTUser, input: CrmAction) {
+export async function executeSupabaseCrmAction(
+  user: ChatGPTUser,
+  input: CrmAction,
+) {
   const context = await getTenantContext(user);
   const action = requireText(input.action, "Action", 50);
+
+  if (action === "disconnect_provider") {
+    requirePermission(context, "phone_system.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const now = new Date().toISOString();
+    await Promise.all([
+      assertOk(
+        supabase()
+          .from("provider_connections")
+          .update({
+            status: "disconnected",
+            disconnected_at: now,
+            external_account_id: null,
+            last_error: null,
+            updated_at: now,
+          })
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId)
+          .eq("provider", "twilio"),
+      ),
+      assertOk(
+        supabase()
+          .from("phone_system_configs")
+          .update({
+            provider_status: "disconnected",
+            missed_call_text_enabled: false,
+            updated_at: now,
+          })
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId),
+      ),
+    ]);
+    await audit(
+      context,
+      "provider.disconnected",
+      "provider_connection",
+      null,
+      { provider: "twilio" },
+      clientId,
+    );
+    return { disconnected: true };
+  }
+
+  if (action === "check_provider_connection") {
+    requirePermission(context, "phone_system.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const connection = await assertOk(
+      supabase()
+        .from("provider_connections")
+        .select("id,external_account_id")
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", "twilio")
+        .maybeSingle(),
+    );
+    if (!connection?.external_account_id)
+      throw new Error("Connect the customer's Twilio account first.");
+    try {
+      const account = await checkTwilioConnectedAccount(
+        String(connection.external_account_id),
+      );
+      await assertOk(
+        supabase()
+          .from("provider_connections")
+          .update({
+            status: "connected",
+            external_account_name: account.name,
+            last_health_check_at: new Date().toISOString(),
+            last_error: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", connection.id),
+      );
+      return account;
+    } catch (error) {
+      await assertOk(
+        supabase()
+          .from("provider_connections")
+          .update({
+            status: "error",
+            last_health_check_at: new Date().toISOString(),
+            last_error:
+              error instanceof Error
+                ? error.message.slice(0, 500)
+                : "Connection failed",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", connection.id),
+      );
+      throw error;
+    }
+  }
+
+  if (action === "search_twilio_numbers") {
+    requirePermission(context, "phone_system.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const connection = await assertOk(
+      supabase()
+        .from("provider_connections")
+        .select("external_account_id,status")
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", "twilio")
+        .maybeSingle(),
+    );
+    if (connection?.status !== "connected" || !connection.external_account_id)
+      throw new Error("Connect the customer's Twilio account first.");
+    return {
+      numbers: await searchTwilioNumbers(
+        String(connection.external_account_id),
+        optionalText(input.areaCode, 3) ?? "",
+      ),
+    };
+  }
+
+  if (action === "buy_twilio_number") {
+    requirePermission(context, "phone_system.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    if (input.confirmCharge !== true)
+      throw new Error(
+        "Confirm that Twilio will charge the customer before purchasing the number.",
+      );
+    const requestedNumber = phoneNumber(
+      input.phoneNumber,
+      "Phone number",
+      true,
+    )!;
+    const connection = await assertOk(
+      supabase()
+        .from("provider_connections")
+        .select("external_account_id,status")
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", "twilio")
+        .maybeSingle(),
+    );
+    if (connection?.status !== "connected" || !connection.external_account_id)
+      throw new Error("Connect the customer's Twilio account first.");
+    const purchased = await purchaseTwilioNumber(
+      String(connection.external_account_id),
+      requestedNumber,
+    );
+    await assertOk(
+      supabase()
+        .from("phone_system_configs")
+        .upsert(
+          {
+            organization_id: context.organizationId,
+            client_id: clientId,
+            provider: "twilio",
+            provider_account_sid: connection.external_account_id,
+            phone_number_sid: purchased.sid,
+            phone_number: purchased.phoneNumber,
+            provider_status: "connected",
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "organization_id,client_id" },
+        ),
+    );
+    await audit(
+      context,
+      "phone.number_purchased",
+      "phone_number",
+      purchased.sid,
+      { phoneNumber: purchased.phoneNumber, billingOwner: "customer" },
+      clientId,
+    );
+    return purchased;
+  }
+
+  if (action === "create_workflow") {
+    requirePermission(context, "automations.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const triggerKey = ["lead.created", "sms.received", "call.missed"].includes(
+      String(input.triggerKey),
+    )
+      ? String(input.triggerKey)
+      : "lead.created";
+    const workflow = requireRow(
+      await assertOk(
+        supabase()
+          .from("workflows")
+          .insert({
+            organization_id: context.organizationId,
+            client_id: clientId,
+            name: requireText(input.name, "Workflow name", 160),
+            description: optionalText(input.description, 500) ?? "",
+            status: "draft",
+            trigger_key: triggerKey,
+            current_version: 1,
+            created_by_email: context.email,
+          })
+          .select("id")
+          .single(),
+      ),
+      "Workflow was not created.",
+    );
+    const graph: WorkflowGraph = {
+      nodes: [
+        {
+          id: "trigger-1",
+          type: "trigger",
+          label: "Workflow trigger",
+          x: 100,
+          y: 180,
+          config: { eventKey: triggerKey },
+        },
+        {
+          id: "task-1",
+          type: "create_task",
+          label: "Create follow-up task",
+          x: 390,
+          y: 180,
+          config: {
+            title: "Follow up with {{contact_first_name}}",
+            priority: "MEDIUM",
+          },
+        },
+      ],
+      edges: [
+        {
+          id: "edge-1",
+          source: "trigger-1",
+          target: "task-1",
+          branch: "always",
+        },
+      ],
+    };
+    await assertOk(
+      supabase()
+        .from("workflow_versions")
+        .insert({
+          organization_id: context.organizationId,
+          client_id: clientId,
+          workflow_id: workflow.id,
+          version: 1,
+          graph,
+          validation_errors: [],
+          created_by_email: context.email,
+        }),
+    );
+    await audit(
+      context,
+      "workflow.created",
+      "workflow",
+      workflow.id,
+      { triggerKey },
+      clientId,
+    );
+    return { id: workflow.id };
+  }
+
+  if (action === "save_workflow") {
+    requirePermission(context, "automations.manage");
+    const workflowId = requireText(input.workflowId, "Workflow", 100);
+    const workflow = await assertOk(
+      supabase()
+        .from("workflows")
+        .select("*")
+        .eq("id", workflowId)
+        .eq("organization_id", context.organizationId)
+        .maybeSingle(),
+    );
+    if (!workflow) throw new Error("Workflow not found.");
+    await requireClient(context, String(workflow.client_id));
+    const validation = validateWorkflowGraph(input.graph);
+    if (validation.errors.length) throw new Error(validation.errors.join(" "));
+    const nextVersion = Number(workflow.current_version) + 1;
+    const trigger = validation.graph.nodes.find(
+      (node) => node.type === "trigger",
+    );
+    const triggerKey = String(trigger?.config.eventKey ?? workflow.trigger_key);
+    await assertOk(
+      supabase()
+        .from("workflow_versions")
+        .insert({
+          organization_id: context.organizationId,
+          client_id: workflow.client_id,
+          workflow_id: workflowId,
+          version: nextVersion,
+          graph: validation.graph,
+          validation_errors: [],
+          created_by_email: context.email,
+        }),
+    );
+    await assertOk(
+      supabase()
+        .from("workflows")
+        .update({
+          name: requireText(input.name ?? workflow.name, "Workflow name", 160),
+          description: optionalText(input.description, 500) ?? "",
+          trigger_key: triggerKey,
+          current_version: nextVersion,
+          status:
+            workflow.status === "active" ? "draft_changes" : workflow.status,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", workflowId),
+    );
+    await audit(
+      context,
+      "workflow.saved",
+      "workflow",
+      workflowId,
+      { version: nextVersion },
+      String(workflow.client_id),
+    );
+    return { id: workflowId, version: nextVersion };
+  }
+
+  if (action === "publish_workflow") {
+    requirePermission(context, "automations.manage");
+    const workflowId = requireText(input.workflowId, "Workflow", 100);
+    const workflow = await assertOk(
+      supabase()
+        .from("workflows")
+        .select("*")
+        .eq("id", workflowId)
+        .eq("organization_id", context.organizationId)
+        .maybeSingle(),
+    );
+    if (!workflow) throw new Error("Workflow not found.");
+    await requireClient(context, String(workflow.client_id));
+    const version = await assertOk(
+      supabase()
+        .from("workflow_versions")
+        .select("graph")
+        .eq("organization_id", context.organizationId)
+        .eq("workflow_id", workflowId)
+        .eq("version", workflow.current_version)
+        .single(),
+    );
+    const validation = validateWorkflowGraph(version?.graph);
+    if (validation.errors.length) throw new Error(validation.errors.join(" "));
+    if (validation.graph.nodes.some((node) => node.type === "send_sms")) {
+      const connection = await assertOk(
+        supabase()
+          .from("provider_connections")
+          .select("status")
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", workflow.client_id)
+          .eq("provider", "twilio")
+          .maybeSingle(),
+      );
+      if (connection?.status !== "connected")
+        throw new Error(
+          "Connect the customer's Twilio account before publishing a workflow that sends texts.",
+        );
+    }
+    await assertOk(
+      supabase()
+        .from("workflows")
+        .update({
+          status: "active",
+          published_version: workflow.current_version,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", workflowId),
+    );
+    await audit(
+      context,
+      "workflow.published",
+      "workflow",
+      workflowId,
+      { version: workflow.current_version },
+      String(workflow.client_id),
+    );
+    return { id: workflowId, status: "active" };
+  }
+
+  if (action === "pause_workflow") {
+    requirePermission(context, "automations.manage");
+    const workflowId = requireText(input.workflowId, "Workflow", 100);
+    const workflow = await assertOk(
+      supabase()
+        .from("workflows")
+        .select("client_id")
+        .eq("id", workflowId)
+        .eq("organization_id", context.organizationId)
+        .maybeSingle(),
+    );
+    if (!workflow) throw new Error("Workflow not found.");
+    await requireClient(context, String(workflow.client_id));
+    await assertOk(
+      supabase()
+        .from("workflows")
+        .update({ status: "paused", updated_at: new Date().toISOString() })
+        .eq("id", workflowId),
+    );
+    return { id: workflowId, status: "paused" };
+  }
+
+  if (action === "test_workflow") {
+    requirePermission(context, "automations.manage");
+    const workflowId = requireText(input.workflowId, "Workflow", 100);
+    const workflow = await assertOk(
+      supabase()
+        .from("workflows")
+        .select("*")
+        .eq("id", workflowId)
+        .eq("organization_id", context.organizationId)
+        .maybeSingle(),
+    );
+    if (!workflow) throw new Error("Workflow not found.");
+    await requireClient(context, String(workflow.client_id));
+    const version = await assertOk(
+      supabase()
+        .from("workflow_versions")
+        .select("graph")
+        .eq("organization_id", context.organizationId)
+        .eq("workflow_id", workflowId)
+        .eq("version", workflow.current_version)
+        .single(),
+    );
+    return executeWorkflow({
+      workflowId,
+      graph: validateWorkflowGraph(version?.graph).graph,
+      version: Number(workflow.current_version),
+      triggerKey: String(workflow.trigger_key),
+      payload: {
+        organizationId: context.organizationId,
+        clientId: String(workflow.client_id),
+        eventId: `test:${crypto.randomUUID()}`,
+        businessName: context.organizationName,
+        serviceRequested: "Test workflow",
+      },
+      isTest: true,
+    });
+  }
 
   if (action === "save_phone_settings") {
     requirePermission(context, "phone_system.manage");
     const clientId = requireText(input.clientId, "Client", 100);
     await requireClient(context, clientId);
-    const client = requireRow(await assertOk(supabase().from("clients").select("business_name").eq("id", clientId).eq("organization_id", context.organizationId).single()), "Client not found.");
-    const twilio = getTwilioRuntimeStatus();
-    const assignedNumber = phoneNumber(input.phoneNumber, "Twilio phone number");
-    const forwardingNumber = phoneNumber(input.forwardingNumber, "Forwarding phone number");
-    const a2pStatus = ["not_started", "in_progress", "approved", "rejected"].includes(String(input.a2pStatus)) ? String(input.a2pStatus) : "not_started";
+    const client = requireRow(
+      await assertOk(
+        supabase()
+          .from("clients")
+          .select("business_name")
+          .eq("id", clientId)
+          .eq("organization_id", context.organizationId)
+          .single(),
+      ),
+      "Client not found.",
+    );
+    const [twilio, connection] = await Promise.all([
+      Promise.resolve(getTwilioRuntimeStatus()),
+      assertOk(
+        supabase()
+          .from("provider_connections")
+          .select("external_account_id,status")
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId)
+          .eq("provider", "twilio")
+          .maybeSingle(),
+      ),
+    ]);
+    const assignedNumber = phoneNumber(
+      input.phoneNumber,
+      "Twilio phone number",
+    );
+    const forwardingNumber = phoneNumber(
+      input.forwardingNumber,
+      "Forwarding phone number",
+    );
+    const a2pStatus = [
+      "not_started",
+      "in_progress",
+      "approved",
+      "rejected",
+    ].includes(String(input.a2pStatus))
+      ? String(input.a2pStatus)
+      : "not_started";
     const wantsMissedCallText = Boolean(input.missedCallTextEnabled);
-    if (wantsMissedCallText && (!twilio.configured || !assignedNumber)) throw new Error("Connect Twilio and assign a phone number before turning on missed-call text back.");
-    if (wantsMissedCallText && a2pStatus !== "approved") throw new Error("A2P registration must be approved before missed-call texting can be turned on.");
-    const message = requireText(input.missedCallMessage, "Missed-call message", 1000);
-    const ringTimeout = Math.max(10, Math.min(60, Number(input.ringTimeoutSeconds ?? 20)));
-    const cooldown = Math.max(1, Math.min(1440, Number(input.cooldownMinutes ?? 20)));
-    const providerStatus = twilio.configured && assignedNumber ? "connected" : "not_configured";
-    const config = requireRow(await assertOk(supabase().from("phone_system_configs").upsert({
-      organization_id: context.organizationId, client_id: clientId, provider: "twilio",
-      provider_account_sid: optionalText(input.providerAccountSid, 80), phone_number_sid: optionalText(input.phoneNumberSid, 80),
-      messaging_service_sid: optionalText(input.messagingServiceSid, 80), phone_number: assignedNumber, forwarding_number: forwardingNumber,
-      ring_timeout_seconds: ringTimeout, voicemail_enabled: input.voicemailEnabled !== false,
-      missed_call_text_enabled: wantsMissedCallText, missed_call_message: message, cooldown_minutes: cooldown,
-      provider_status: providerStatus, a2p_status: a2pStatus, updated_at: new Date().toISOString(),
-    }, { onConflict: "organization_id,client_id" }).select("id").single()), "Phone settings were not saved.");
-    await assertOk(supabase().from("automation_rules").upsert({
-      organization_id: context.organizationId, client_id: clientId, name: "Missed call text back", trigger_key: "call.missed",
-      enabled: wantsMissedCallText, config: { message, cooldownMinutes: cooldown, businessName: String(client.business_name) }, updated_at: new Date().toISOString(),
-    }, { onConflict: "client_id,trigger_key" }));
-    await audit(context, "phone.settings_updated", "phone_system_config", config.id, { providerStatus, a2pStatus, missedCallTextEnabled: wantsMissedCallText }, clientId);
+    if (
+      wantsMissedCallText &&
+      (!twilio.configured ||
+        connection?.status !== "connected" ||
+        !connection.external_account_id ||
+        !assignedNumber)
+    )
+      throw new Error(
+        "Connect the customer's Twilio account and choose a phone number before turning on missed-call text back.",
+      );
+    if (wantsMissedCallText && a2pStatus !== "approved")
+      throw new Error(
+        "A2P registration must be approved before missed-call texting can be turned on.",
+      );
+    const message = requireText(
+      input.missedCallMessage,
+      "Missed-call message",
+      1000,
+    );
+    const ringTimeout = Math.max(
+      10,
+      Math.min(60, Number(input.ringTimeoutSeconds ?? 20)),
+    );
+    const cooldown = Math.max(
+      1,
+      Math.min(1440, Number(input.cooldownMinutes ?? 20)),
+    );
+    const providerStatus =
+      connection?.status === "connected" && assignedNumber
+        ? "connected"
+        : String(connection?.status ?? "not_configured");
+    const config = requireRow(
+      await assertOk(
+        supabase()
+          .from("phone_system_configs")
+          .upsert(
+            {
+              organization_id: context.organizationId,
+              client_id: clientId,
+              provider: "twilio",
+              provider_account_sid: connection?.external_account_id ?? null,
+              phone_number_sid: optionalText(input.phoneNumberSid, 80),
+              messaging_service_sid: optionalText(
+                input.messagingServiceSid,
+                80,
+              ),
+              phone_number: assignedNumber,
+              forwarding_number: forwardingNumber,
+              ring_timeout_seconds: ringTimeout,
+              voicemail_enabled: input.voicemailEnabled !== false,
+              missed_call_text_enabled: wantsMissedCallText,
+              missed_call_message: message,
+              cooldown_minutes: cooldown,
+              provider_status: providerStatus,
+              a2p_status: a2pStatus,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "organization_id,client_id" },
+          )
+          .select("id")
+          .single(),
+      ),
+      "Phone settings were not saved.",
+    );
+    await assertOk(
+      supabase()
+        .from("automation_rules")
+        .upsert(
+          {
+            organization_id: context.organizationId,
+            client_id: clientId,
+            name: "Missed call text back",
+            trigger_key: "call.missed",
+            enabled: wantsMissedCallText,
+            config: {
+              message,
+              cooldownMinutes: cooldown,
+              businessName: String(client.business_name),
+            },
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "client_id,trigger_key" },
+        ),
+    );
+    await audit(
+      context,
+      "phone.settings_updated",
+      "phone_system_config",
+      config.id,
+      { providerStatus, a2pStatus, missedCallTextEnabled: wantsMissedCallText },
+      clientId,
+    );
     return { id: config.id, providerStatus };
   }
 
@@ -720,26 +1799,109 @@ export async function executeSupabaseCrmAction(user: ChatGPTUser, input: CrmActi
     const contactId = requireText(input.contactId, "Contact", 100);
     await requireClient(context, clientId);
     const [contactResult, config] = await Promise.all([
-      assertOk(supabase().from("contacts").select("id,phone,marketing_consent").eq("id", contactId).eq("client_id", clientId).eq("organization_id", context.organizationId).single()),
-      assertOk(supabase().from("phone_system_configs").select("*").eq("client_id", clientId).eq("organization_id", context.organizationId).maybeSingle()),
+      assertOk(
+        supabase()
+          .from("contacts")
+          .select("id,phone,marketing_consent")
+          .eq("id", contactId)
+          .eq("client_id", clientId)
+          .eq("organization_id", context.organizationId)
+          .single(),
+      ),
+      assertOk(
+        supabase()
+          .from("phone_system_configs")
+          .select("*")
+          .eq("client_id", clientId)
+          .eq("organization_id", context.organizationId)
+          .maybeSingle(),
+      ),
     ]);
     const contact = requireRow(contactResult, "Contact not found.");
-    if (!contact.phone) throw new Error("This contact does not have a phone number.");
-    if (String(contact.marketing_consent).toLowerCase() === "opt_out") throw new Error("This contact opted out of text messages.");
-    if (!config || config.provider_status !== "connected") throw new Error("Connect this client's Twilio phone system before sending messages.");
-    if (config.a2p_status !== "approved") throw new Error("A2P registration must be approved before sending messages.");
+    if (!contact.phone)
+      throw new Error("This contact does not have a phone number.");
+    if (String(contact.marketing_consent).toLowerCase() === "opt_out")
+      throw new Error("This contact opted out of text messages.");
+    if (!config || config.provider_status !== "connected")
+      throw new Error(
+        "Connect this client's Twilio phone system before sending messages.",
+      );
+    if (config.a2p_status !== "approved")
+      throw new Error(
+        "A2P registration must be approved before sending messages.",
+      );
     const body = requireText(input.body, "Message", 1600);
-    const conversation = requireRow(await assertOk(supabase().from("conversations").upsert({ organization_id: context.organizationId, client_id: clientId, contact_id: contactId, channel: "sms", status: "open", last_message_at: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: "client_id,contact_id,channel" }).select("id").single()), "Conversation was not created.");
-    const sent = await sendTwilioMessage({ accountSid: nullable(config.provider_account_sid), fromNumber: nullable(config.phone_number), messagingServiceSid: nullable(config.messaging_service_sid), to: String(contact.phone), body });
-    const message = requireRow(await assertOk(supabase().from("messages").insert({ organization_id: context.organizationId, client_id: clientId, conversation_id: conversation.id, contact_id: contactId, provider_message_sid: sent.sid, direction: "outbound", channel: "sms", from_number: String(config.phone_number ?? ""), to_number: String(contact.phone), body, status: sent.status, sent_at: new Date().toISOString() }).select("id").single()), "Message was not saved.");
-    await audit(context, "message.sent", "message", message.id, { providerMessageSid: sent.sid }, clientId);
+    const conversation = requireRow(
+      await assertOk(
+        supabase()
+          .from("conversations")
+          .upsert(
+            {
+              organization_id: context.organizationId,
+              client_id: clientId,
+              contact_id: contactId,
+              channel: "sms",
+              status: "open",
+              last_message_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "client_id,contact_id,channel" },
+          )
+          .select("id")
+          .single(),
+      ),
+      "Conversation was not created.",
+    );
+    const sent = await sendTwilioMessage({
+      accountSid: nullable(config.provider_account_sid),
+      fromNumber: nullable(config.phone_number),
+      messagingServiceSid: nullable(config.messaging_service_sid),
+      to: String(contact.phone),
+      body,
+    });
+    const message = requireRow(
+      await assertOk(
+        supabase()
+          .from("messages")
+          .insert({
+            organization_id: context.organizationId,
+            client_id: clientId,
+            conversation_id: conversation.id,
+            contact_id: contactId,
+            provider_message_sid: sent.sid,
+            direction: "outbound",
+            channel: "sms",
+            from_number: String(config.phone_number ?? ""),
+            to_number: String(contact.phone),
+            body,
+            status: sent.status,
+            sent_at: new Date().toISOString(),
+          })
+          .select("id")
+          .single(),
+      ),
+      "Message was not saved.",
+    );
+    await audit(
+      context,
+      "message.sent",
+      "message",
+      message.id,
+      { providerMessageSid: sent.sid },
+      clientId,
+    );
     return { id: message.id, status: sent.status };
   }
 
   if (action === "create_client") {
     requirePermission(context, "clients.manage");
     const businessName = requireText(input.businessName, "Business name", 160);
-    const slugBase = businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70) || crypto.randomUUID();
+    const slugBase =
+      businessName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 70) || crypto.randomUUID();
     const client = await assertOk(
       supabase()
         .from("clients")
@@ -757,7 +1919,8 @@ export async function executeSupabaseCrmAction(user: ChatGPTUser, input: CrmActi
           zip: optionalText(input.zip, 20) ?? "",
           time_zone: optionalText(input.timeZone, 80) ?? "America/Chicago",
           monthly_ad_budget_cents: cents(input.monthlyAdBudgetCents),
-          assigned_account_manager: optionalText(input.assignedAccountManager, 120) ?? context.name,
+          assigned_account_manager:
+            optionalText(input.assignedAccountManager, 120) ?? context.name,
           service_areas: serviceAreas(input.serviceAreas),
           notes: optionalText(input.notes, 1500) ?? "",
         })
@@ -779,28 +1942,108 @@ export async function executeSupabaseCrmAction(user: ChatGPTUser, input: CrmActi
     const platform = optionalText(input.platform, 40)?.toLowerCase() ?? "other";
     const analytics = { platform, leadCaptureEnabled: true };
     if (websiteId) {
-      const existing = await assertOk(supabase().from("websites").select("id,analytics").eq("id", websiteId).eq("organization_id", context.organizationId).eq("client_id", clientId).maybeSingle());
+      const existing = await assertOk(
+        supabase()
+          .from("websites")
+          .select("id,analytics")
+          .eq("id", websiteId)
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId)
+          .maybeSingle(),
+      );
       if (!existing) throw new Error("Website connection not found.");
-      const currentAnalytics = existing.analytics && typeof existing.analytics === "object" ? existing.analytics as Record<string, unknown> : {};
-      await assertOk(supabase().from("websites").update({ name, domain, status: "connected", analytics: { ...currentAnalytics, ...analytics }, updated_at: new Date().toISOString() }).eq("id", websiteId).eq("organization_id", context.organizationId));
-      await audit(context, "website.updated", "website", websiteId, { domain, platform }, clientId);
+      const currentAnalytics =
+        existing.analytics && typeof existing.analytics === "object"
+          ? (existing.analytics as Record<string, unknown>)
+          : {};
+      await assertOk(
+        supabase()
+          .from("websites")
+          .update({
+            name,
+            domain,
+            status: "connected",
+            analytics: { ...currentAnalytics, ...analytics },
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", websiteId)
+          .eq("organization_id", context.organizationId),
+      );
+      await audit(
+        context,
+        "website.updated",
+        "website",
+        websiteId,
+        { domain, platform },
+        clientId,
+      );
       return { id: websiteId };
     }
-    const website = await assertOk(supabase().from("websites").insert({ organization_id: context.organizationId, client_id: clientId, name, domain, status: "connected", analytics }).select("id").single());
-    const createdWebsite = requireRow(website, "Website connection was not created.");
-    await audit(context, "website.connected", "website", createdWebsite.id, { domain, platform }, clientId);
+    const website = await assertOk(
+      supabase()
+        .from("websites")
+        .insert({
+          organization_id: context.organizationId,
+          client_id: clientId,
+          name,
+          domain,
+          status: "connected",
+          analytics,
+        })
+        .select("id")
+        .single(),
+    );
+    const createdWebsite = requireRow(
+      website,
+      "Website connection was not created.",
+    );
+    await audit(
+      context,
+      "website.connected",
+      "website",
+      createdWebsite.id,
+      { domain, platform },
+      clientId,
+    );
     return { id: createdWebsite.id };
   }
 
   if (action === "disconnect_website") {
     requirePermission(context, "websites.manage");
     const websiteId = requireText(input.websiteId, "Website", 100);
-    const website = await assertOk(supabase().from("websites").select("client_id,analytics").eq("id", websiteId).eq("organization_id", context.organizationId).maybeSingle());
+    const website = await assertOk(
+      supabase()
+        .from("websites")
+        .select("client_id,analytics")
+        .eq("id", websiteId)
+        .eq("organization_id", context.organizationId)
+        .maybeSingle(),
+    );
     if (!website) throw new Error("Website connection not found.");
     await requireClient(context, String(website.client_id));
-    const currentAnalytics = website.analytics && typeof website.analytics === "object" ? website.analytics as Record<string, unknown> : {};
-    await assertOk(supabase().from("websites").update({ status: "disconnected", analytics: { ...currentAnalytics, leadCaptureEnabled: false }, updated_at: new Date().toISOString() }).eq("id", websiteId).eq("organization_id", context.organizationId));
-    await audit(context, "website.disconnected", "website", websiteId, {}, String(website.client_id));
+    const currentAnalytics =
+      website.analytics && typeof website.analytics === "object"
+        ? (website.analytics as Record<string, unknown>)
+        : {};
+    await assertOk(
+      supabase()
+        .from("websites")
+        .update({
+          status: "disconnected",
+          analytics: { ...currentAnalytics, leadCaptureEnabled: false },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", websiteId)
+        .eq("organization_id", context.organizationId),
+    );
+    await audit(
+      context,
+      "website.disconnected",
+      "website",
+      websiteId,
+      {},
+      String(website.client_id),
+    );
     return { id: websiteId };
   }
 
@@ -808,7 +2051,13 @@ export async function executeSupabaseCrmAction(user: ChatGPTUser, input: CrmActi
     requirePermission(context, "clients.manage");
     const clientId = requireText(input.clientId, "Client", 100);
     await requireClient(context, clientId);
-    await assertOk(supabase().from("clients").update({ status: "archived", archived_at: new Date().toISOString() }).eq("id", clientId).eq("organization_id", context.organizationId));
+    await assertOk(
+      supabase()
+        .from("clients")
+        .update({ status: "archived", archived_at: new Date().toISOString() })
+        .eq("id", clientId)
+        .eq("organization_id", context.organizationId),
+    );
     await audit(context, "client.archived", "client", clientId);
     return { id: clientId };
   }
@@ -831,14 +2080,22 @@ export async function executeSupabaseCrmAction(user: ChatGPTUser, input: CrmActi
           city: optionalText(input.city, 80),
           state: optionalText(input.state, 30),
           zip: optionalText(input.zip, 20),
-          marketing_consent: input.marketingConsent === "granted" ? "granted" : "unknown",
+          marketing_consent:
+            input.marketingConsent === "granted" ? "granted" : "unknown",
           last_interaction_at: new Date().toISOString(),
         })
         .select("id")
         .single(),
     );
     const createdContact = requireRow(contact, "Contact was not created.");
-    await audit(context, "contact.created", "contact", createdContact.id, {}, clientId);
+    await audit(
+      context,
+      "contact.created",
+      "contact",
+      createdContact.id,
+      {},
+      clientId,
+    );
     return { id: createdContact.id };
   }
 
@@ -850,14 +2107,35 @@ export async function executeSupabaseCrmAction(user: ChatGPTUser, input: CrmActi
     const lastName = requireText(input.lastName, "Last name", 80);
     const phone = optionalText(input.phone, 40);
     const email = optionalText(input.email, 160)?.toLowerCase() ?? null;
-    if (!phone && !email) throw new Error("A phone number or email is required.");
+    if (!phone && !email)
+      throw new Error("A phone number or email is required.");
 
     let existingContact: AnyRecord | null = null;
     if (email) {
-      existingContact = await assertOk(supabase().from("contacts").select("id").eq("organization_id", context.organizationId).eq("client_id", clientId).eq("email", email).is("archived_at", null).limit(1).maybeSingle());
+      existingContact = await assertOk(
+        supabase()
+          .from("contacts")
+          .select("id")
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId)
+          .eq("email", email)
+          .is("archived_at", null)
+          .limit(1)
+          .maybeSingle(),
+      );
     }
     if (!existingContact && phone) {
-      existingContact = await assertOk(supabase().from("contacts").select("id").eq("organization_id", context.organizationId).eq("client_id", clientId).eq("phone", phone).is("archived_at", null).limit(1).maybeSingle());
+      existingContact = await assertOk(
+        supabase()
+          .from("contacts")
+          .select("id")
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId)
+          .eq("phone", phone)
+          .is("archived_at", null)
+          .limit(1)
+          .maybeSingle(),
+      );
     }
     if (!existingContact) {
       existingContact = await assertOk(
@@ -874,7 +2152,8 @@ export async function executeSupabaseCrmAction(user: ChatGPTUser, input: CrmActi
             city: optionalText(input.city, 80),
             state: optionalText(input.state, 30),
             zip: optionalText(input.zip, 20),
-            marketing_consent: input.consentStatus === "granted" ? "granted" : "unknown",
+            marketing_consent:
+              input.consentStatus === "granted" ? "granted" : "unknown",
             last_interaction_at: new Date().toISOString(),
           })
           .select("id")
@@ -882,16 +2161,23 @@ export async function executeSupabaseCrmAction(user: ChatGPTUser, input: CrmActi
       );
     }
 
+    const contactId = String(
+      requireRow(existingContact, "Contact was not created.").id,
+    );
     const lead = await assertOk(
       supabase()
         .from("leads")
         .insert({
           organization_id: context.organizationId,
           client_id: clientId,
-          contact_id: requireRow(existingContact, "Contact was not created.").id,
+          contact_id: contactId,
           pipeline_id: PIPELINE_ID,
           stage_id: STAGES[0].id,
-          service_requested: requireText(input.serviceRequested, "Service", 160),
+          service_requested: requireText(
+            input.serviceRequested,
+            "Service",
+            160,
+          ),
           message: optionalText(input.message, 1200) ?? "",
           source: optionalText(input.source, 100) ?? "Manual",
           campaign: optionalText(input.campaign, 160),
@@ -900,41 +2186,96 @@ export async function executeSupabaseCrmAction(user: ChatGPTUser, input: CrmActi
           estimated_value_cents: cents(input.estimatedValueCents),
           lead_score: Math.max(0, Math.min(100, Number(input.leadScore ?? 50))),
           tags: tags(input.tags),
-          consent_status: input.consentStatus === "granted" ? "granted" : "unknown",
+          consent_status:
+            input.consentStatus === "granted" ? "granted" : "unknown",
         })
         .select("id")
         .single(),
     );
     const createdLead = requireRow(lead, "Lead was not created.");
     await audit(context, "lead.created", "lead", createdLead.id, {}, clientId);
+    await runPublishedWorkflowsForEvent("lead.created", {
+      organizationId: context.organizationId,
+      clientId,
+      eventId: `lead:${createdLead.id}:created`,
+      leadId: createdLead.id,
+      contactId,
+      businessName: context.organizationName,
+      serviceRequested: requireText(input.serviceRequested, "Service", 160),
+    });
     return { id: createdLead.id };
   }
 
   if (action === "update_lead") {
     requirePermission(context, "opportunities.write");
     const leadId = requireText(input.leadId, "Lead", 100);
-    const lead = await assertOk(supabase().from("leads").select("*").eq("id", leadId).eq("organization_id", context.organizationId).is("archived_at", null).maybeSingle());
+    const lead = await assertOk(
+      supabase()
+        .from("leads")
+        .select("*")
+        .eq("id", leadId)
+        .eq("organization_id", context.organizationId)
+        .is("archived_at", null)
+        .maybeSingle(),
+    );
     if (!lead) throw new Error("Lead not found.");
     await requireClient(context, lead.client_id);
-    const allowedStatuses = new Set(["NEW", "CONTACTED", "QUALIFIED", "APPOINTMENT_BOOKED", "ESTIMATE_SENT", "WON", "LOST", "SPAM", "UNRESPONSIVE"]);
-    const status = typeof input.status === "string" && allowedStatuses.has(input.status) ? input.status : String(lead.status);
+    const allowedStatuses = new Set([
+      "NEW",
+      "CONTACTED",
+      "QUALIFIED",
+      "APPOINTMENT_BOOKED",
+      "ESTIMATE_SENT",
+      "WON",
+      "LOST",
+      "SPAM",
+      "UNRESPONSIVE",
+    ]);
+    const status =
+      typeof input.status === "string" && allowedStatuses.has(input.status)
+        ? input.status
+        : String(lead.status);
     await assertOk(
       supabase()
         .from("leads")
         .update({
           status,
-          assigned_user: optionalText(input.assignedUser, 120) ?? lead.assigned_user,
-          estimated_value_cents: input.estimatedValueCents === undefined ? lead.estimated_value_cents : cents(input.estimatedValueCents),
-          final_revenue_cents: input.finalRevenueCents === undefined ? lead.final_revenue_cents : cents(input.finalRevenueCents),
+          assigned_user:
+            optionalText(input.assignedUser, 120) ?? lead.assigned_user,
+          estimated_value_cents:
+            input.estimatedValueCents === undefined
+              ? lead.estimated_value_cents
+              : cents(input.estimatedValueCents),
+          final_revenue_cents:
+            input.finalRevenueCents === undefined
+              ? lead.final_revenue_cents
+              : cents(input.finalRevenueCents),
           lost_reason: optionalText(input.lostReason, 240) ?? lead.lost_reason,
-          next_follow_up_at: optionalText(input.nextFollowUpAt, 40) ?? lead.next_follow_up_at,
-          last_contacted_at: ["CONTACTED", "QUALIFIED", "APPOINTMENT_BOOKED", "ESTIMATE_SENT", "WON", "LOST"].includes(status) ? new Date().toISOString() : lead.last_contacted_at,
+          next_follow_up_at:
+            optionalText(input.nextFollowUpAt, 40) ?? lead.next_follow_up_at,
+          last_contacted_at: [
+            "CONTACTED",
+            "QUALIFIED",
+            "APPOINTMENT_BOOKED",
+            "ESTIMATE_SENT",
+            "WON",
+            "LOST",
+          ].includes(status)
+            ? new Date().toISOString()
+            : lead.last_contacted_at,
           updated_at: new Date().toISOString(),
         })
         .eq("id", leadId)
         .eq("organization_id", context.organizationId),
     );
-    await audit(context, "lead.updated", "lead", leadId, { status }, lead.client_id);
+    await audit(
+      context,
+      "lead.updated",
+      "lead",
+      leadId,
+      { status },
+      lead.client_id,
+    );
     return { id: leadId };
   }
 
@@ -942,24 +2283,82 @@ export async function executeSupabaseCrmAction(user: ChatGPTUser, input: CrmActi
     requirePermission(context, "opportunities.write");
     const leadId = requireText(input.leadId, "Lead", 100);
     const stageId = requireText(input.stageId, "Stage", 100);
-    const lead = await assertOk(supabase().from("leads").select("client_id").eq("id", leadId).eq("organization_id", context.organizationId).is("archived_at", null).maybeSingle());
+    const lead = await assertOk(
+      supabase()
+        .from("leads")
+        .select("client_id")
+        .eq("id", leadId)
+        .eq("organization_id", context.organizationId)
+        .is("archived_at", null)
+        .maybeSingle(),
+    );
     if (!lead) throw new Error("Lead not found.");
     await requireClient(context, lead.client_id);
-    const stage = await assertOk(supabase().from("pipeline_stages").select("id,name,slug").eq("id", stageId).eq("organization_id", context.organizationId).maybeSingle());
+    const stage = await assertOk(
+      supabase()
+        .from("pipeline_stages")
+        .select("id,name,slug")
+        .eq("id", stageId)
+        .eq("organization_id", context.organizationId)
+        .maybeSingle(),
+    );
     if (!stage) throw new Error("Pipeline stage not found.");
-    const statusByStage: Record<string, string> = { new: "NEW", "attempting-contact": "NEW", contacted: "CONTACTED", qualified: "QUALIFIED", "appointment-booked": "APPOINTMENT_BOOKED", "estimate-sent": "ESTIMATE_SENT", won: "WON", lost: "LOST" };
-    await assertOk(supabase().from("leads").update({ stage_id: stageId, status: statusByStage[stage.slug] ?? "NEW", updated_at: new Date().toISOString() }).eq("id", leadId).eq("organization_id", context.organizationId));
-    await audit(context, "lead.stage_changed", "lead", leadId, { stageId }, lead.client_id);
+    const statusByStage: Record<string, string> = {
+      new: "NEW",
+      "attempting-contact": "NEW",
+      contacted: "CONTACTED",
+      qualified: "QUALIFIED",
+      "appointment-booked": "APPOINTMENT_BOOKED",
+      "estimate-sent": "ESTIMATE_SENT",
+      won: "WON",
+      lost: "LOST",
+    };
+    await assertOk(
+      supabase()
+        .from("leads")
+        .update({
+          stage_id: stageId,
+          status: statusByStage[stage.slug] ?? "NEW",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", leadId)
+        .eq("organization_id", context.organizationId),
+    );
+    await audit(
+      context,
+      "lead.stage_changed",
+      "lead",
+      leadId,
+      { stageId },
+      lead.client_id,
+    );
     return { id: leadId };
   }
 
   if (action === "archive_lead") {
     requirePermission(context, "opportunities.write");
     const leadId = requireText(input.leadId, "Lead", 100);
-    const lead = await assertOk(supabase().from("leads").select("client_id").eq("id", leadId).eq("organization_id", context.organizationId).is("archived_at", null).maybeSingle());
+    const lead = await assertOk(
+      supabase()
+        .from("leads")
+        .select("client_id")
+        .eq("id", leadId)
+        .eq("organization_id", context.organizationId)
+        .is("archived_at", null)
+        .maybeSingle(),
+    );
     if (!lead) throw new Error("Lead not found.");
     await requireClient(context, lead.client_id);
-    await assertOk(supabase().from("leads").update({ archived_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", leadId).eq("organization_id", context.organizationId));
+    await assertOk(
+      supabase()
+        .from("leads")
+        .update({
+          archived_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", leadId)
+        .eq("organization_id", context.organizationId),
+    );
     await audit(context, "lead.archived", "lead", leadId, {}, lead.client_id);
     return { id: leadId };
   }
@@ -967,10 +2366,30 @@ export async function executeSupabaseCrmAction(user: ChatGPTUser, input: CrmActi
   if (action === "add_note") {
     requirePermission(context, "opportunities.write");
     const leadId = requireText(input.leadId, "Lead", 100);
-    const lead = await assertOk(supabase().from("leads").select("client_id,contact_id").eq("id", leadId).eq("organization_id", context.organizationId).is("archived_at", null).maybeSingle());
+    const lead = await assertOk(
+      supabase()
+        .from("leads")
+        .select("client_id,contact_id")
+        .eq("id", leadId)
+        .eq("organization_id", context.organizationId)
+        .is("archived_at", null)
+        .maybeSingle(),
+    );
     if (!lead) throw new Error("Lead not found.");
     await requireClient(context, lead.client_id);
-    const note = await assertOk(supabase().from("notes").insert({ organization_id: context.organizationId, client_id: lead.client_id, lead_id: leadId, contact_id: lead.contact_id, body: requireText(input.body, "Note", 2000) }).select("id").single());
+    const note = await assertOk(
+      supabase()
+        .from("notes")
+        .insert({
+          organization_id: context.organizationId,
+          client_id: lead.client_id,
+          lead_id: leadId,
+          contact_id: lead.contact_id,
+          body: requireText(input.body, "Note", 2000),
+        })
+        .select("id")
+        .single(),
+    );
     const createdNote = requireRow(note, "Note was not created.");
     await audit(context, "note.created", "lead", leadId, {}, lead.client_id);
     return { id: createdNote.id };
@@ -980,8 +2399,29 @@ export async function executeSupabaseCrmAction(user: ChatGPTUser, input: CrmActi
     requirePermission(context, "tasks.write");
     const clientId = requireText(input.clientId, "Client", 80);
     await requireClient(context, clientId);
-    const priority = ["LOW", "MEDIUM", "HIGH", "URGENT"].includes(String(input.priority)) ? String(input.priority) : "MEDIUM";
-    const task = await assertOk(supabase().from("tasks").insert({ organization_id: context.organizationId, client_id: clientId, lead_id: optionalText(input.leadId, 100), contact_id: optionalText(input.contactId, 100), title: requireText(input.title, "Task title", 180), description: optionalText(input.description, 1000) ?? "", assignee: optionalText(input.assignee, 120) ?? context.name, due_at: optionalText(input.dueAt, 40), priority, status: "TO_DO" }).select("id").single());
+    const priority = ["LOW", "MEDIUM", "HIGH", "URGENT"].includes(
+      String(input.priority),
+    )
+      ? String(input.priority)
+      : "MEDIUM";
+    const task = await assertOk(
+      supabase()
+        .from("tasks")
+        .insert({
+          organization_id: context.organizationId,
+          client_id: clientId,
+          lead_id: optionalText(input.leadId, 100),
+          contact_id: optionalText(input.contactId, 100),
+          title: requireText(input.title, "Task title", 180),
+          description: optionalText(input.description, 1000) ?? "",
+          assignee: optionalText(input.assignee, 120) ?? context.name,
+          due_at: optionalText(input.dueAt, 40),
+          priority,
+          status: "TO_DO",
+        })
+        .select("id")
+        .single(),
+    );
     const createdTask = requireRow(task, "Task was not created.");
     await audit(context, "task.created", "task", createdTask.id, {}, clientId);
     return { id: createdTask.id };
@@ -990,12 +2430,36 @@ export async function executeSupabaseCrmAction(user: ChatGPTUser, input: CrmActi
   if (action === "toggle_task") {
     requirePermission(context, "tasks.write");
     const taskId = requireText(input.taskId, "Task", 100);
-    const task = await assertOk(supabase().from("tasks").select("client_id,status").eq("id", taskId).eq("organization_id", context.organizationId).maybeSingle());
+    const task = await assertOk(
+      supabase()
+        .from("tasks")
+        .select("client_id,status")
+        .eq("id", taskId)
+        .eq("organization_id", context.organizationId)
+        .maybeSingle(),
+    );
     if (!task) throw new Error("Task not found.");
     await requireClient(context, task.client_id);
     const nextStatus = task.status === "COMPLETED" ? "TO_DO" : "COMPLETED";
-    await assertOk(supabase().from("tasks").update({ status: nextStatus, completed_at: nextStatus === "COMPLETED" ? new Date().toISOString() : null }).eq("id", taskId).eq("organization_id", context.organizationId));
-    await audit(context, "task.status_changed", "task", taskId, { status: nextStatus }, task.client_id);
+    await assertOk(
+      supabase()
+        .from("tasks")
+        .update({
+          status: nextStatus,
+          completed_at:
+            nextStatus === "COMPLETED" ? new Date().toISOString() : null,
+        })
+        .eq("id", taskId)
+        .eq("organization_id", context.organizationId),
+    );
+    await audit(
+      context,
+      "task.status_changed",
+      "task",
+      taskId,
+      { status: nextStatus },
+      task.client_id,
+    );
     return { id: taskId, status: nextStatus };
   }
 
@@ -1004,14 +2468,50 @@ export async function executeSupabaseCrmAction(user: ChatGPTUser, input: CrmActi
     const clientId = requireText(input.clientId, "Client", 80);
     await requireClient(context, clientId);
     const contactId = requireText(input.contactId, "Contact", 100);
-    const contact = await assertOk(supabase().from("contacts").select("id").eq("id", contactId).eq("client_id", clientId).eq("organization_id", context.organizationId).maybeSingle());
+    const contact = await assertOk(
+      supabase()
+        .from("contacts")
+        .select("id")
+        .eq("id", contactId)
+        .eq("client_id", clientId)
+        .eq("organization_id", context.organizationId)
+        .maybeSingle(),
+    );
     if (!contact) throw new Error("Contact not found.");
     const startsAt = requireText(input.startsAt, "Start time", 40);
     const endsAt = requireText(input.endsAt, "End time", 40);
-    if (Date.parse(endsAt) <= Date.parse(startsAt)) throw new Error("End time must be after the start time.");
-    const appointment = await assertOk(supabase().from("appointments").insert({ organization_id: context.organizationId, client_id: clientId, lead_id: optionalText(input.leadId, 100), contact_id: contactId, assigned_employee: optionalText(input.assignedEmployee, 120), service_type: requireText(input.serviceType, "Service", 160), starts_at: startsAt, ends_at: endsAt, notes: optionalText(input.notes, 1000) ?? "", status: "SCHEDULED" }).select("id").single());
-    const createdAppointment = requireRow(appointment, "Appointment was not created.");
-    await audit(context, "appointment.created", "appointment", createdAppointment.id, {}, clientId);
+    if (Date.parse(endsAt) <= Date.parse(startsAt))
+      throw new Error("End time must be after the start time.");
+    const appointment = await assertOk(
+      supabase()
+        .from("appointments")
+        .insert({
+          organization_id: context.organizationId,
+          client_id: clientId,
+          lead_id: optionalText(input.leadId, 100),
+          contact_id: contactId,
+          assigned_employee: optionalText(input.assignedEmployee, 120),
+          service_type: requireText(input.serviceType, "Service", 160),
+          starts_at: startsAt,
+          ends_at: endsAt,
+          notes: optionalText(input.notes, 1000) ?? "",
+          status: "SCHEDULED",
+        })
+        .select("id")
+        .single(),
+    );
+    const createdAppointment = requireRow(
+      appointment,
+      "Appointment was not created.",
+    );
+    await audit(
+      context,
+      "appointment.created",
+      "appointment",
+      createdAppointment.id,
+      {},
+      clientId,
+    );
     return { id: createdAppointment.id };
   }
 
@@ -1019,12 +2519,37 @@ export async function executeSupabaseCrmAction(user: ChatGPTUser, input: CrmActi
     requirePermission(context, "appointments.write");
     const appointmentId = requireText(input.appointmentId, "Appointment", 100);
     const status = requireText(input.status, "Status", 30);
-    if (!["SCHEDULED", "CONFIRMED", "COMPLETED", "CANCELED", "NO_SHOW"].includes(status)) throw new Error("Invalid appointment status.");
-    const appointment = await assertOk(supabase().from("appointments").select("client_id").eq("id", appointmentId).eq("organization_id", context.organizationId).maybeSingle());
+    if (
+      !["SCHEDULED", "CONFIRMED", "COMPLETED", "CANCELED", "NO_SHOW"].includes(
+        status,
+      )
+    )
+      throw new Error("Invalid appointment status.");
+    const appointment = await assertOk(
+      supabase()
+        .from("appointments")
+        .select("client_id")
+        .eq("id", appointmentId)
+        .eq("organization_id", context.organizationId)
+        .maybeSingle(),
+    );
     if (!appointment) throw new Error("Appointment not found.");
     await requireClient(context, appointment.client_id);
-    await assertOk(supabase().from("appointments").update({ status }).eq("id", appointmentId).eq("organization_id", context.organizationId));
-    await audit(context, "appointment.status_changed", "appointment", appointmentId, { status }, appointment.client_id);
+    await assertOk(
+      supabase()
+        .from("appointments")
+        .update({ status })
+        .eq("id", appointmentId)
+        .eq("organization_id", context.organizationId),
+    );
+    await audit(
+      context,
+      "appointment.status_changed",
+      "appointment",
+      appointmentId,
+      { status },
+      appointment.client_id,
+    );
     return { id: appointmentId, status };
   }
 
@@ -1032,28 +2557,82 @@ export async function executeSupabaseCrmAction(user: ChatGPTUser, input: CrmActi
     requirePermission(context, "companies.write");
     const clientId = requireText(input.clientId, "Client", 80);
     await requireClient(context, clientId);
-    const company = await assertOk(supabase().from("companies").insert({ organization_id: context.organizationId, client_id: clientId, name: requireText(input.name, "Company name", 160), industry: optionalText(input.industry, 100), website: optionalText(input.website, 240), phone: optionalText(input.phone, 40), email: optionalText(input.email, 160)?.toLowerCase() ?? null, address: optionalText(input.address, 240), city: optionalText(input.city, 80), state: optionalText(input.state, 30), zip: optionalText(input.zip, 20), tags: tags(input.tags), notes: optionalText(input.notes, 1500) ?? "" }).select("id").single());
+    const company = await assertOk(
+      supabase()
+        .from("companies")
+        .insert({
+          organization_id: context.organizationId,
+          client_id: clientId,
+          name: requireText(input.name, "Company name", 160),
+          industry: optionalText(input.industry, 100),
+          website: optionalText(input.website, 240),
+          phone: optionalText(input.phone, 40),
+          email: optionalText(input.email, 160)?.toLowerCase() ?? null,
+          address: optionalText(input.address, 240),
+          city: optionalText(input.city, 80),
+          state: optionalText(input.state, 30),
+          zip: optionalText(input.zip, 20),
+          tags: tags(input.tags),
+          notes: optionalText(input.notes, 1500) ?? "",
+        })
+        .select("id")
+        .single(),
+    );
     const createdCompany = requireRow(company, "Company was not created.");
-    await audit(context, "company.created", "company", createdCompany.id, {}, clientId);
+    await audit(
+      context,
+      "company.created",
+      "company",
+      createdCompany.id,
+      {},
+      clientId,
+    );
     return { id: createdCompany.id };
   }
 
   if (action === "archive_company") {
     requirePermission(context, "companies.write");
     const companyId = requireText(input.companyId, "Company", 100);
-    const company = await assertOk(supabase().from("companies").select("client_id").eq("id", companyId).eq("organization_id", context.organizationId).is("archived_at", null).maybeSingle());
+    const company = await assertOk(
+      supabase()
+        .from("companies")
+        .select("client_id")
+        .eq("id", companyId)
+        .eq("organization_id", context.organizationId)
+        .is("archived_at", null)
+        .maybeSingle(),
+    );
     if (!company) throw new Error("Company not found.");
     await requireClient(context, company.client_id);
-    await assertOk(supabase().from("companies").update({ archived_at: new Date().toISOString() }).eq("id", companyId).eq("organization_id", context.organizationId));
-    await audit(context, "company.archived", "company", companyId, {}, company.client_id);
+    await assertOk(
+      supabase()
+        .from("companies")
+        .update({ archived_at: new Date().toISOString() })
+        .eq("id", companyId)
+        .eq("organization_id", context.organizationId),
+    );
+    await audit(
+      context,
+      "company.archived",
+      "company",
+      companyId,
+      {},
+      company.client_id,
+    );
     return { id: companyId };
   }
 
   if (action === "import_contacts") {
-    throw new Error("CSV contact import is not connected to Supabase yet. Use single contact creation for now.");
+    throw new Error(
+      "CSV contact import is not connected to Supabase yet. Use single contact creation for now.",
+    );
   }
 
-  if (action.includes("custom_") || action === "link_contact_company" || action === "invite_member") {
+  if (
+    action.includes("custom_") ||
+    action === "link_contact_company" ||
+    action === "invite_member"
+  ) {
     throw new Error("This advanced Supabase feature is not connected yet.");
   }
 

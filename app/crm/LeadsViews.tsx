@@ -4,7 +4,7 @@ import { useMemo, useState, type DragEvent, type FormEvent } from "react";
 import type { CrmActivity, CrmLead, CrmNote, CrmStage, CrmTask, CrmAppointment } from "../../db/crm";
 import { Badge, dateTime, EmptyState, money, shortDate } from "./ui";
 
-type Mutate = (input: Record<string, unknown>, success: string) => Promise<void>;
+type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
 
 function statusTone(status: string): "neutral" | "purple" | "green" | "orange" | "red" | "blue" {
   if (status === "WON") return "green";

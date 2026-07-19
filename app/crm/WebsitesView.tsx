@@ -4,7 +4,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import type { CrmClient, CrmLead, CrmWebsite } from "../../db/crm";
 import { Badge, EmptyState, Field, getFormValue, Modal, shortDate } from "./ui";
 
-type Mutate = (input: Record<string, unknown>, success: string) => Promise<void>;
+type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
 
 const platformNames: Record<string, string> = {
   brizbuilder: "BrizBuilder",

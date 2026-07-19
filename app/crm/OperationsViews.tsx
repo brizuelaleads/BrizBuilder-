@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { CrmAppointment, CrmClient, CrmContact, CrmLead, CrmTask, CrmTeamMember } from "../../db/crm";
 import { Badge, dateTime, EmptyState, money, shortDate } from "./ui";
 
-type Mutate = (input: Record<string, unknown>, success: string) => Promise<void>;
+type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
 
 export function ContactsView({ contacts, clients, onAddContact }: { contacts: CrmContact[]; clients: CrmClient[]; onAddContact: () => void }) {
   const [query, setQuery] = useState("");

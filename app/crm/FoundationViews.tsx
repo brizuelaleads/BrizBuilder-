@@ -4,7 +4,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import type { CrmAuditLog, CrmClient, CrmCompany, CrmContact, CrmCustomFieldDefinition, CrmCustomFieldValue, CrmCustomValue, CrmFeatureFlag, CrmLead } from "../../db/crm";
 import { Badge, dateTime, EmptyState, money, shortDate } from "./ui";
 
-type Mutate = (input: Record<string, unknown>, success: string) => Promise<void>;
+type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
 
 export function FoundationContactsView({ contacts, clients, onAddContact, onImportContacts, canImport }: { contacts: CrmContact[]; clients: CrmClient[]; onAddContact: () => void; onImportContacts: () => void; canImport: boolean }) {
   const [query, setQuery] = useState("");
