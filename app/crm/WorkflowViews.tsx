@@ -118,7 +118,7 @@ export function ConnectionsView({
           <p>CONNECTED ACCOUNTS</p>
           <h2>Connections</h2>
           <span>
-            Connect any active Twilio account once, then manage calls, texts,
+            Connect any upgraded Twilio account once, then manage calls, texts,
             phone numbers and automations from BrizBuilder.
           </span>
         </div>
@@ -249,15 +249,15 @@ export function ConnectionsView({
                     </ul>
                   </article>
                   <article className="live">
-                    <span>Use for BrizBuilder</span>
-                    <h4>Pay As You Go</h4>
+                    <span>Required to connect</span>
+                    <h4>Upgraded Twilio account</h4>
                     <p>
-                      No required monthly Twilio subscription. Add a payment
-                      method and Twilio charges only for the number and usage.
+                      Any upgraded account can connect. It only needs to be off
+                      the free trial and have a valid payment method.
                     </p>
                     <ul>
                       <li>Connects securely to BrizBuilder</li>
-                      <li>Supports real calls, texts and automations</li>
+                      <li>Twilio bills the business directly</li>
                     </ul>
                   </article>
                 </div>
@@ -267,7 +267,7 @@ export function ConnectionsView({
                     Twilio account
                   </li>
                   <li>
-                    <span>2</span>Activate Pay As You Go and add the
+                    <span>2</span>Upgrade the account and add the
                     business&apos;s payment method
                   </li>
                   <li>
