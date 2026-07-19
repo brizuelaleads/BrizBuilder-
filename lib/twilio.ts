@@ -53,6 +53,53 @@ export async function searchTwilioNumbers(accountSid: string, areaCode: string) 
   return (result.available_phone_numbers ?? []).map((item) => ({ phoneNumber: item.phone_number, label: item.friendly_name || item.phone_number, locality: item.locality || "", region: item.region || "" }));
 }
 
+export async function listTwilioNumbers(accountSid: string) {
+  const result = await twilioApi<{
+    incoming_phone_numbers?: Array<{
+      sid: string;
+      phone_number: string;
+      friendly_name?: string;
+    }>;
+  }>(
+    accountSid,
+    `/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/IncomingPhoneNumbers.json?PageSize=50`,
+  );
+  return (result.incoming_phone_numbers ?? []).map((item) => ({
+    sid: item.sid,
+    phoneNumber: item.phone_number,
+    label: item.friendly_name || item.phone_number,
+  }));
+}
+
+export async function configureTwilioNumber(
+  accountSid: string,
+  phoneNumberSid: string,
+) {
+  const config = runtime();
+  const result = await twilioApi<{
+    sid: string;
+    phone_number: string;
+    friendly_name?: string;
+  }>(
+    accountSid,
+    `/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/IncomingPhoneNumbers/${encodeURIComponent(phoneNumberSid)}.json`,
+    {
+      method: "POST",
+      body: {
+        VoiceUrl: `${config.webhookBaseUrl}/api/twilio/voice`,
+        VoiceMethod: "POST",
+        SmsUrl: `${config.webhookBaseUrl}/api/twilio/messages/incoming`,
+        SmsMethod: "POST",
+      },
+    },
+  );
+  return {
+    sid: result.sid,
+    phoneNumber: result.phone_number,
+    label: result.friendly_name || result.phone_number,
+  };
+}
+
 export async function purchaseTwilioNumber(accountSid: string, phoneNumber: string) {
   const config = runtime();
   const result = await twilioApi<{ sid: string; phone_number: string }>(accountSid, `/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/IncomingPhoneNumbers.json`, { method: "POST", body: { PhoneNumber: phoneNumber, VoiceUrl: `${config.webhookBaseUrl}/api/twilio/voice`, VoiceMethod: "POST", SmsUrl: `${config.webhookBaseUrl}/api/twilio/messages/incoming`, SmsMethod: "POST" } });

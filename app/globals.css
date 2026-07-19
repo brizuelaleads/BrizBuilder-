@@ -1526,6 +1526,15 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .crm-connect-steps small { display: block; margin-top: 9px; color: var(--crm-muted); }
 .crm-number-market { grid-column: 1 / -1; padding: 20px; }
 .crm-number-market header p { margin: 0 0 4px; color: #6d5dfb; font-size: 10px; font-weight: 850; letter-spacing: .1em; }
+.crm-owned-numbers { margin-top: 18px; padding: 15px; border: 1px solid #dcd8fb; border-radius: 12px; background: #faf9ff; }
+.crm-owned-numbers > div:first-child { display: flex; gap: 14px; align-items: center; justify-content: space-between; }
+.crm-owned-numbers strong { display: block; font-size: 12px; }
+.crm-owned-numbers p { margin: 4px 0 0; color: var(--crm-muted); font-size: 10px; }
+.crm-owned-numbers > div:first-child > button { flex: none; border: 1px solid #9f94f5; border-radius: 9px; background: #fff; color: #5f4eea; padding: 9px 11px; font-size: 10px; font-weight: 800; }
+.crm-owned-numbers .crm-number-results { grid-template-columns: repeat(2, 1fr); }
+.crm-number-divider { display: flex; align-items: center; gap: 11px; margin: 17px 0 0; color: #999aa4; font-size: 9px; font-weight: 750; text-transform: uppercase; }
+.crm-number-divider::before,
+.crm-number-divider::after { flex: 1; height: 1px; background: var(--crm-border); content: ""; }
 .crm-number-search { display: flex; gap: 10px; align-items: end; margin-top: 18px; }
 .crm-number-search label { display: grid; gap: 6px; flex: 1; }
 .crm-number-search label span { font-size: 11px; font-weight: 750; }
@@ -1654,6 +1663,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .crm-number-market { grid-column: auto; }
   .crm-owner-billing-note { align-items: flex-start; }
   .crm-owner-billing-note p { line-height: 1.5; }
+  .crm-owned-numbers > div:first-child { align-items: flex-start; flex-direction: column; }
+  .crm-owned-numbers .crm-number-results { grid-template-columns: 1fr; }
   .crm-builder-header { grid-template-columns: 1fr; }
   .crm-builder-header > div:last-child { justify-content: flex-start; flex-wrap: wrap; }
   .crm-builder-body { grid-template-columns: 165px minmax(560px, 1fr) 220px; }

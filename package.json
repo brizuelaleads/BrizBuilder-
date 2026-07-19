@@ -10,7 +10,7 @@
     "build": "vinext build",
     "start": "vinext start",
     "test": "npm run build && node --test tests/crm.integration.test.mjs",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern work",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:pg:generate": "drizzle-kit generate --config drizzle.supabase.config.ts",

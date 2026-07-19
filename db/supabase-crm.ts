@@ -4,8 +4,10 @@ import { getSupabaseAdminClient } from "../lib/supabase/server";
 import {
   buildTwilioConnectUrl,
   checkTwilioConnectedAccount,
+  configureTwilioNumber,
   getTwilioConnectStatus,
   getTwilioRuntimeStatus,
+  listTwilioNumbers,
   purchaseTwilioNumber,
   searchTwilioNumbers,
   sendTwilioMessage,
@@ -1335,6 +1337,74 @@ export async function executeSupabaseCrmAction(
         optionalText(input.areaCode, 3) ?? "",
       ),
     };
+  }
+
+  if (action === "list_twilio_numbers") {
+    requirePermission(context, "phone_system.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const connection = await assertOk(
+      supabase()
+        .from("provider_connections")
+        .select("external_account_id,status")
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", "twilio")
+        .maybeSingle(),
+    );
+    if (connection?.status !== "connected" || !connection.external_account_id)
+      throw new Error("Connect the customer's Twilio account first.");
+    return {
+      numbers: await listTwilioNumbers(String(connection.external_account_id)),
+    };
+  }
+
+  if (action === "connect_twilio_number") {
+    requirePermission(context, "phone_system.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const phoneNumberSid = requireText(input.phoneNumberSid, "Twilio number", 80);
+    if (!/^PN[0-9a-f]{32}$/i.test(phoneNumberSid))
+      throw new Error("Choose a valid number from the connected Twilio account.");
+    const connection = await assertOk(
+      supabase()
+        .from("provider_connections")
+        .select("external_account_id,status")
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", "twilio")
+        .maybeSingle(),
+    );
+    if (connection?.status !== "connected" || !connection.external_account_id)
+      throw new Error("Connect the customer's Twilio account first.");
+    const configured = await configureTwilioNumber(
+      String(connection.external_account_id),
+      phoneNumberSid,
+    );
+    await assertOk(
+      supabase().from("phone_system_configs").upsert(
+        {
+          organization_id: context.organizationId,
+          client_id: clientId,
+          provider: "twilio",
+          provider_account_sid: connection.external_account_id,
+          phone_number_sid: configured.sid,
+          phone_number: configured.phoneNumber,
+          provider_status: "connected",
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "organization_id,client_id" },
+      ),
+    );
+    await audit(
+      context,
+      "phone.existing_number_connected",
+      "phone_number",
+      configured.sid,
+      { phoneNumber: configured.phoneNumber, billingOwner: "customer" },
+      clientId,
+    );
+    return configured;
   }
 
   if (action === "buy_twilio_number") {

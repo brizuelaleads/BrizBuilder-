@@ -23,6 +23,7 @@ type NumberOption = {
   locality: string;
   region: string;
 };
+type OwnedNumber = { sid: string; phoneNumber: string; label: string };
 
 function clientChoice(
   clients: CrmClient[],
@@ -50,6 +51,7 @@ export function ConnectionsView({
   const [localClient, setLocalClient] = useState(clients[0]?.id ?? "");
   const [areaCode, setAreaCode] = useState("");
   const [numbers, setNumbers] = useState<NumberOption[]>([]);
+  const [ownedNumbers, setOwnedNumbers] = useState<OwnedNumber[]>([]);
   const [searching, setSearching] = useState(false);
   const clientId = clientChoice(clients, selectedClientId, localClient);
   const client = clients.find((item) => item.id === clientId);
@@ -86,6 +88,28 @@ export function ConnectionsView({
       "Phone number purchased and connected.",
     );
     setNumbers([]);
+  }
+  async function loadOwnedNumbers() {
+    setSearching(true);
+    try {
+      const result = (await mutate(
+        { action: "list_twilio_numbers", clientId },
+        "Existing Twilio numbers loaded.",
+      )) as { numbers?: OwnedNumber[] };
+      setOwnedNumbers(result?.numbers ?? []);
+    } finally {
+      setSearching(false);
+    }
+  }
+  async function connectOwnedNumber(option: OwnedNumber) {
+    await mutate(
+      {
+        action: "connect_twilio_number",
+        clientId,
+        phoneNumberSid: option.sid,
+      },
+      `${option.phoneNumber} is now connected to BrizBuilder.`,
+    );
   }
   return (
     <div className="crm-view crm-connections-view">
@@ -274,6 +298,44 @@ export function ConnectionsView({
                   <Badge tone="green">{phone.phoneNumber}</Badge>
                 ) : null}
               </header>
+              <section className="crm-owned-numbers">
+                <div>
+                  <div>
+                    <strong>Already have a Twilio number?</strong>
+                    <p>
+                      Load the numbers the business already owns and choose one
+                      without buying another.
+                    </p>
+                  </div>
+                  <button onClick={loadOwnedNumbers} disabled={searching}>
+                    Show my Twilio numbers
+                  </button>
+                </div>
+                {ownedNumbers.length ? (
+                  <div className="crm-number-results">
+                    {ownedNumbers.map((option) => (
+                      <button
+                        key={option.sid}
+                        disabled={option.phoneNumber === phone?.phoneNumber}
+                        onClick={() => connectOwnedNumber(option)}
+                      >
+                        <span>
+                          <strong>{option.label}</strong>
+                          <small>{option.phoneNumber}</small>
+                        </span>
+                        <b>
+                          {option.phoneNumber === phone?.phoneNumber
+                            ? "Connected"
+                            : "Use number"}
+                        </b>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+              <div className="crm-number-divider">
+                <span>or buy a new number</span>
+              </div>
               <div className="crm-number-search">
                 <label>
                   <span>Preferred area code</span>
