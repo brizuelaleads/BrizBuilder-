@@ -118,8 +118,8 @@ export function ConnectionsView({
           <p>CONNECTED ACCOUNTS</p>
           <h2>Connections</h2>
           <span>
-            Customers pay providers directly and manage the connected services
-            from BrizBuilder.
+            Connect any active Twilio account once, then manage calls, texts,
+            phone numbers and automations from BrizBuilder.
           </span>
         </div>
         {selectedClientId === "all" ? (
@@ -141,11 +141,10 @@ export function ConnectionsView({
       <section className="crm-owner-billing-note">
         <span>$</span>
         <div>
-          <strong>No shared phone bill</strong>
+          <strong>Your Twilio account, your phone bill</strong>
           <p>
-            Each customer owns their Twilio account. Twilio charges them
-            directly; BrizBuilder only receives permission to manage the
-            service.
+            Twilio charges each business directly. BrizBuilder never sees the
+            customer&apos;s password and never pays or marks up their usage.
           </p>
         </div>
       </section>
@@ -233,13 +232,43 @@ export function ConnectionsView({
               </>
             ) : (
               <div className="crm-connect-steps">
+                <div
+                  className="crm-twilio-plan-guide"
+                  aria-label="Twilio account requirements"
+                >
+                  <article className="trial">
+                    <span>Testing only</span>
+                    <h4>Twilio free trial</h4>
+                    <p>
+                      Useful for learning inside Twilio, but Twilio does not
+                      allow trial accounts to connect to BrizBuilder.
+                    </p>
+                    <ul>
+                      <li>Works only with verified test numbers</li>
+                      <li>Not available for live customer automations</li>
+                    </ul>
+                  </article>
+                  <article className="live">
+                    <span>Use for BrizBuilder</span>
+                    <h4>Pay As You Go</h4>
+                    <p>
+                      No required monthly Twilio subscription. Add a payment
+                      method and Twilio charges only for the number and usage.
+                    </p>
+                    <ul>
+                      <li>Connects securely to BrizBuilder</li>
+                      <li>Supports real calls, texts and automations</li>
+                    </ul>
+                  </article>
+                </div>
                 <ol>
                   <li>
                     <span>1</span>Create or sign in to the business&apos;s
                     Twilio account
                   </li>
                   <li>
-                    <span>2</span>Add the business&apos;s payment method
+                    <span>2</span>Activate Pay As You Go and add the
+                    business&apos;s payment method
                   </li>
                   <li>
                     <span>3</span>Approve BrizBuilder access once
@@ -249,9 +278,12 @@ export function ConnectionsView({
                   className="crm-button-primary"
                   href={`/api/integrations/twilio/connect?clientId=${encodeURIComponent(clientId)}`}
                 >
-                  Connect Twilio
+                  Activate phone &amp; texting
                 </a>
-                <small>You will return to BrizBuilder automatically.</small>
+                <small>
+                  Twilio opens securely. After approval, you will return to
+                  BrizBuilder automatically.
+                </small>
               </div>
             )}
           </article>
@@ -301,14 +333,14 @@ export function ConnectionsView({
               <section className="crm-owned-numbers">
                 <div>
                   <div>
-                    <strong>Already have a Twilio number?</strong>
+                    <strong>Use a number already connected here</strong>
                     <p>
-                      Load the numbers the business already owns and choose one
-                      without buying another.
+                      Load numbers purchased through this business&apos;s
+                      BrizBuilder Twilio connection.
                     </p>
                   </div>
                   <button onClick={loadOwnedNumbers} disabled={searching}>
-                    Show my Twilio numbers
+                    Show connected numbers
                   </button>
                 </div>
                 {ownedNumbers.length ? (
@@ -333,6 +365,11 @@ export function ConnectionsView({
                   </div>
                 ) : null}
               </section>
+              <p className="crm-porting-note">
+                <strong>Keeping a different existing number?</strong> It may
+                need to be transferred or ported into this connection before
+                BrizBuilder can manage it.
+              </p>
               <div className="crm-number-divider">
                 <span>or buy a new number</span>
               </div>
