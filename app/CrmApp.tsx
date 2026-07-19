@@ -113,7 +113,7 @@ const nav: Array<{
     label: "Phone System",
     icon: "☎",
     section: "Communication",
-    permission: "messages.write",
+    permission: "phone_system.manage",
   },
   {
     id: "conversations",
@@ -125,7 +125,7 @@ const nav: Array<{
     id: "automations",
     label: "Automations",
     icon: "W",
-    permission: "messages.write",
+    permission: "automations.manage",
   },
   {
     id: "forms",
@@ -361,6 +361,16 @@ export function CrmApp({
   function navigate(next: View) {
     const url = new URL(window.location.href);
     url.searchParams.set("view", next);
+    window.history.replaceState({}, "", url);
+    window.dispatchEvent(new Event(viewChangeEvent));
+    setMobileNav(false);
+  }
+
+  function openConnections(clientId: string) {
+    setSelectedClientId(clientId);
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", "connections");
+    url.searchParams.set("client", clientId);
     window.history.replaceState({}, "", url);
     window.dispatchEvent(new Event(viewChangeEvent));
     setMobileNav(false);
@@ -686,7 +696,6 @@ export function CrmApp({
           <ConnectionsView
             clients={data.clients}
             connections={data.providerConnections}
-            configs={data.phoneConfigs}
             selectedClientId={selectedClientId}
             mutate={mutate}
           />
@@ -695,9 +704,11 @@ export function CrmApp({
           <PhoneSystemView
             clients={data.clients}
             configs={data.phoneConfigs}
+            connections={data.providerConnections}
             selectedClientId={selectedClientId}
             mutate={mutate}
             canManage={data.viewer.permissions.includes("phone_system.manage")}
+            onOpenConnections={openConnections}
           />
         )}
         {view === "conversations" && (
@@ -713,11 +724,13 @@ export function CrmApp({
         {view === "automations" && (
           <VisualAutomationsView
             clients={data.clients}
+            connections={data.providerConnections}
             workflows={data.workflows}
             runs={data.workflowRuns}
             stages={data.stages}
             selectedClientId={selectedClientId}
             mutate={mutate}
+            onOpenConnections={openConnections}
           />
         )}
         {futureModules.includes(view as FutureModule) && (

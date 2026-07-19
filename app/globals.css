@@ -1440,31 +1440,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .site-cta { margin-inline: 16px; padding: 32px 22px; }
 }
 
-/* Customer-owned connections and native visual workflow builder */
-.crm-owner-billing-note {
-  display: flex;
-  gap: 13px;
-  align-items: center;
-  margin: 18px 0;
-  padding: 16px 18px;
-  border: 1px solid #c7e8d7;
-  border-radius: 14px;
-  background: #effaf4;
-}
-.crm-owner-billing-note > span {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  background: #17875d;
-  color: #fff;
-  font-size: 18px;
-  font-weight: 900;
-}
-.crm-owner-billing-note strong { display: block; font-size: 13px; }
-.crm-owner-billing-note p { margin: 3px 0 0; color: #537163; font-size: 12px; }
-.crm-connection-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+/* CRM connections, gated communications, and visual workflows */
+.crm-connection-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .crm-connection-card,
 .crm-number-market,
 .crm-workflow-list,
@@ -1475,7 +1452,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   background: var(--crm-surface);
   box-shadow: 0 9px 30px rgb(19 24 43 / 4%);
 }
-.crm-connection-card { padding: 20px; }
+.crm-connection-card { padding: 22px; }
 .crm-connection-card.featured { border-top: 3px solid #ef3f7a; }
 .crm-connection-card > header,
 .crm-number-market > header {
@@ -1498,14 +1475,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   font-weight: 900;
 }
 .crm-provider-logo.twilio { background: #f22f67; }
-.crm-provider-logo.native { background: linear-gradient(145deg, #8879ff, #5b4af0); }
 .crm-connection-details { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
 .crm-connection-details > div { padding: 12px; border-radius: 11px; background: #f8f8fb; }
 .crm-connection-details span,
 .crm-connection-details strong { display: block; }
 .crm-connection-details span { margin-bottom: 4px; color: var(--crm-muted); font-size: 10px; }
 .crm-connection-details strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; }
-.crm-connection-actions { display: flex; gap: 9px; margin-top: 16px; }
+.crm-connection-card .crm-inline-error { margin: 16px 0 0; }
+.crm-connection-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
 .crm-connection-actions button,
 .crm-number-search button,
 .crm-builder-header button {
@@ -1518,23 +1495,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   font-weight: 750;
 }
 .crm-connection-actions .danger { color: #c32c42; }
-.crm-connect-steps { margin-top: 19px; }
-.crm-twilio-plan-guide { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
-.crm-twilio-plan-guide article { padding: 14px; border: 1px solid var(--crm-border); border-radius: 12px; }
-.crm-twilio-plan-guide article.trial { border-color: #f0d6a4; background: #fffaf0; }
-.crm-twilio-plan-guide article.live { border-color: #b9e5cf; background: #f1fbf6; }
-.crm-twilio-plan-guide article > span { display: inline-flex; margin-bottom: 8px; padding: 4px 7px; border-radius: 999px; font-size: 8px; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; }
-.crm-twilio-plan-guide article.trial > span { background: #f8e5bf; color: #8a5a05; }
-.crm-twilio-plan-guide article.live > span { background: #d9f2e5; color: #126d4a; }
-.crm-twilio-plan-guide h4 { margin: 0; font-size: 13px; }
-.crm-twilio-plan-guide p { margin: 5px 0 9px; color: #626575; font-size: 10px; line-height: 1.5; }
-.crm-twilio-plan-guide ul { display: grid; gap: 5px; margin: 0; padding-left: 15px; color: #4d5060; font-size: 9px; }
-.crm-connect-steps ol { display: grid; gap: 10px; margin: 0 0 18px; padding: 0; list-style: none; }
-.crm-connect-steps li { display: flex; gap: 10px; align-items: center; color: #535665; font-size: 12px; }
-.crm-connect-steps li span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: #f1efff; color: #6756ef; font-size: 10px; font-weight: 900; }
-.crm-connect-steps .crm-button-primary { display: inline-flex; justify-content: center; text-decoration: none; }
-.crm-connect-steps small { display: block; margin-top: 9px; color: var(--crm-muted); }
 .crm-number-market { grid-column: 1 / -1; padding: 20px; }
+.crm-phone-number-manager { margin-bottom: 18px; }
 .crm-number-market header p { margin: 0 0 4px; color: #6d5dfb; font-size: 10px; font-weight: 850; letter-spacing: .1em; }
 .crm-owned-numbers { margin-top: 18px; padding: 15px; border: 1px solid #dcd8fb; border-radius: 12px; background: #faf9ff; }
 .crm-owned-numbers > div:first-child { display: flex; gap: 14px; align-items: center; justify-content: space-between; }
@@ -1566,6 +1528,18 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .crm-number-results small { margin-top: 3px; color: var(--crm-muted); font-size: 10px; }
 .crm-number-results b { color: #6d5dfb; font-size: 11px; }
 .crm-number-empty { margin: 13px 0 0; color: var(--crm-muted); font-size: 11px; }
+
+.crm-communication-gate {
+  display: grid;
+  min-height: 340px;
+  place-content: center;
+  justify-items: center;
+  padding: 48px 24px;
+}
+.crm-communication-gate .crm-provider-logo { width: 52px; height: 52px; margin-bottom: 5px; border-radius: 15px; }
+.crm-communication-gate h3 { margin: 9px 0 0; font-size: 19px; }
+.crm-communication-gate p { max-width: 560px; margin: 9px auto 0; line-height: 1.65; }
+.crm-communication-gate .crm-button-primary { margin-top: 20px; }
 
 .crm-workflow-home-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, .65fr); gap: 16px; }
 .crm-workflow-list { overflow: hidden; }
@@ -1673,11 +1647,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .crm-connection-details,
   .crm-number-results { grid-template-columns: 1fr; }
   .crm-number-market { grid-column: auto; }
-  .crm-owner-billing-note { align-items: flex-start; }
-  .crm-owner-billing-note p { line-height: 1.5; }
   .crm-owned-numbers > div:first-child { align-items: flex-start; flex-direction: column; }
   .crm-owned-numbers .crm-number-results { grid-template-columns: 1fr; }
-  .crm-twilio-plan-guide { grid-template-columns: 1fr; }
+  .crm-communication-gate { min-height: 300px; padding: 38px 18px; }
   .crm-builder-header { grid-template-columns: 1fr; }
   .crm-builder-header > div:last-child { justify-content: flex-start; flex-wrap: wrap; }
   .crm-builder-body { grid-template-columns: 165px minmax(560px, 1fr) 220px; }

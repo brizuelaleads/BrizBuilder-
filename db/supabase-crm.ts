@@ -466,6 +466,61 @@ async function requireClient(context: TenantContext, clientId: string) {
   if (!client) throw new Error("Client not found.");
 }
 
+const UNLINKED_PROVIDER_STATUSES = new Set([
+  "disconnected",
+  "not_connected",
+  "revoked",
+]);
+
+function providerAccountStatus(row: AnyRecord | null | undefined) {
+  const config =
+    row?.public_config && typeof row.public_config === "object"
+      ? row.public_config
+      : {};
+  return nullable(config.accountStatus)?.toLowerCase() ?? null;
+}
+
+function providerIsLinked(row: AnyRecord | null | undefined) {
+  if (!row?.external_account_id || row.disconnected_at) return false;
+  return !UNLINKED_PROVIDER_STATUSES.has(
+    String(row.status ?? "not_connected").toLowerCase(),
+  );
+}
+
+function providerIsActive(row: AnyRecord | null | undefined) {
+  return (
+    providerIsLinked(row) &&
+    String(row?.status ?? "").toLowerCase() === "connected" &&
+    providerAccountStatus(row) === "active"
+  );
+}
+
+async function requireActiveTwilioConnection(
+  context: TenantContext,
+  clientId: string,
+) {
+  const connection = await assertOk(
+    supabase()
+      .from("provider_connections")
+      .select(
+        "id,status,external_account_id,disconnected_at,public_config",
+      )
+      .eq("organization_id", context.organizationId)
+      .eq("client_id", clientId)
+      .eq("provider", "twilio")
+      .maybeSingle(),
+  );
+  if (!connection || !providerIsLinked(connection))
+    throw new Error(
+      "Connect the customer's Twilio account before using Communications.",
+    );
+  if (!providerIsActive(connection))
+    throw new Error(
+      "The connected Twilio account is not active. Refresh its status or fix the account in Twilio before using Communications.",
+    );
+  return connection;
+}
+
 async function stateHash(value: string) {
   const digest = await crypto.subtle.digest(
     "SHA-256",
@@ -528,6 +583,20 @@ export async function finishSupabaseTwilioConnect(
       "This connection request expired. Start again from BrizBuilder.",
     );
   const account = await checkTwilioConnectedAccount(accountSid);
+  const accountStatus = String(account.status ?? "unknown").toLowerCase();
+  const isAccountActive = accountStatus === "active";
+  const existingPhoneConfig = await assertOk(
+    supabase()
+      .from("phone_system_configs")
+      .select("provider_account_sid")
+      .eq("organization_id", authorization.organization_id)
+      .eq("client_id", authorization.client_id)
+      .maybeSingle(),
+  );
+  const accountChanged = Boolean(
+    existingPhoneConfig &&
+      String(existingPhoneConfig.provider_account_sid ?? "") !== account.sid,
+  );
   await assertOk(
     supabase()
       .from("provider_connections")
@@ -536,17 +605,19 @@ export async function finishSupabaseTwilioConnect(
           organization_id: authorization.organization_id,
           client_id: authorization.client_id,
           provider: "twilio",
-          status: "connected",
+          status: isAccountActive ? "connected" : "inactive",
           billing_owner: "customer",
           external_account_id: account.sid,
           external_account_name: account.name,
           scopes: ["get-all", "post-all"],
-          public_config: { accountStatus: account.status },
+          public_config: { accountStatus },
           connected_by_email: authorization.requested_by_email,
           connected_at: now,
           disconnected_at: null,
           last_health_check_at: now,
-          last_error: null,
+          last_error: isAccountActive
+            ? null
+            : `Twilio account is ${accountStatus}.`,
           updated_at: now,
         },
         { onConflict: "organization_id,client_id,provider" },
@@ -568,7 +639,15 @@ export async function finishSupabaseTwilioConnect(
             client_id: authorization.client_id,
             provider: "twilio",
             provider_account_sid: account.sid,
-            provider_status: "connected",
+            provider_status: isAccountActive ? "connected" : "inactive",
+            ...((accountChanged || !isAccountActive) && {
+              missed_call_text_enabled: false,
+            }),
+            ...(accountChanged && {
+              phone_number_sid: null,
+              phone_number: null,
+              messaging_service_sid: null,
+            }),
             updated_at: now,
           },
           { onConflict: "organization_id,client_id" },
@@ -852,10 +931,14 @@ function mapProviderConnection(row: AnyRecord): CrmProviderConnection {
     clientId: String(row.client_id),
     provider: String(row.provider),
     status: String(row.status),
+    isLinked: providerIsLinked(row),
+    isActive: providerIsActive(row),
     billingOwner: String(row.billing_owner ?? "customer"),
     accountLabel: nullable(row.external_account_name),
+    accountStatus: providerAccountStatus(row),
     scopes: Array.isArray(row.scopes) ? row.scopes.map(String) : [],
     connectedAt: nullable(row.connected_at),
+    disconnectedAt: nullable(row.disconnected_at),
     lastHealthCheckAt: nullable(row.last_health_check_at),
     lastError: nullable(row.last_error),
   };
@@ -1247,6 +1330,10 @@ export async function executeSupabaseCrmAction(
           .from("phone_system_configs")
           .update({
             provider_status: "disconnected",
+            provider_account_sid: null,
+            phone_number_sid: null,
+            messaging_service_sid: null,
+            phone_number: null,
             missed_call_text_enabled: false,
             updated_at: now,
           })
@@ -1272,47 +1359,96 @@ export async function executeSupabaseCrmAction(
     const connection = await assertOk(
       supabase()
         .from("provider_connections")
-        .select("id,external_account_id")
+        .select(
+          "id,status,external_account_id,disconnected_at,public_config",
+        )
         .eq("organization_id", context.organizationId)
         .eq("client_id", clientId)
         .eq("provider", "twilio")
         .maybeSingle(),
     );
-    if (!connection?.external_account_id)
+    if (!connection || !providerIsLinked(connection))
       throw new Error("Connect the customer's Twilio account first.");
     try {
       const account = await checkTwilioConnectedAccount(
         String(connection.external_account_id),
       );
-      await assertOk(
-        supabase()
-          .from("provider_connections")
-          .update({
-            status: "connected",
-            external_account_name: account.name,
-            last_health_check_at: new Date().toISOString(),
-            last_error: null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", connection.id),
-      );
-      return account;
+      const accountStatus = String(account.status ?? "unknown").toLowerCase();
+      const isActive = accountStatus === "active";
+      const status = isActive ? "connected" : "inactive";
+      const lastError = isActive ? null : `Twilio account is ${accountStatus}.`;
+      const now = new Date().toISOString();
+      await Promise.all([
+        assertOk(
+          supabase()
+            .from("provider_connections")
+            .update({
+              status,
+              external_account_name: account.name,
+              public_config: { accountStatus },
+              last_health_check_at: now,
+              last_error: lastError,
+              updated_at: now,
+            })
+            .eq("id", connection.id),
+        ),
+        assertOk(
+          supabase()
+            .from("phone_system_configs")
+            .update({
+              provider_status: status,
+              ...(!isActive && { missed_call_text_enabled: false }),
+              updated_at: now,
+            })
+            .eq("organization_id", context.organizationId)
+            .eq("client_id", clientId),
+        ),
+      ]);
+      return {
+        ...account,
+        status,
+        isLinked: true,
+        isActive,
+        healthy: isActive,
+        error: lastError,
+      };
     } catch (error) {
-      await assertOk(
-        supabase()
-          .from("provider_connections")
-          .update({
-            status: "error",
-            last_health_check_at: new Date().toISOString(),
-            last_error:
-              error instanceof Error
-                ? error.message.slice(0, 500)
-                : "Connection failed",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", connection.id),
-      );
-      throw error;
+      const message =
+        error instanceof Error
+          ? error.message.slice(0, 500)
+          : "Connection failed";
+      const now = new Date().toISOString();
+      await Promise.all([
+        assertOk(
+          supabase()
+            .from("provider_connections")
+            .update({
+              status: "error",
+              last_health_check_at: now,
+              last_error: message,
+              updated_at: now,
+            })
+            .eq("id", connection.id),
+        ),
+        assertOk(
+          supabase()
+            .from("phone_system_configs")
+            .update({
+              provider_status: "error",
+              missed_call_text_enabled: false,
+              updated_at: now,
+            })
+            .eq("organization_id", context.organizationId)
+            .eq("client_id", clientId),
+        ),
+      ]);
+      return {
+        status: "error",
+        isLinked: true,
+        isActive: false,
+        healthy: false,
+        error: message,
+      };
     }
   }
 
@@ -1320,17 +1456,7 @@ export async function executeSupabaseCrmAction(
     requirePermission(context, "phone_system.manage");
     const clientId = requireText(input.clientId, "Client", 100);
     await requireClient(context, clientId);
-    const connection = await assertOk(
-      supabase()
-        .from("provider_connections")
-        .select("external_account_id,status")
-        .eq("organization_id", context.organizationId)
-        .eq("client_id", clientId)
-        .eq("provider", "twilio")
-        .maybeSingle(),
-    );
-    if (connection?.status !== "connected" || !connection.external_account_id)
-      throw new Error("Connect the customer's Twilio account first.");
+    const connection = await requireActiveTwilioConnection(context, clientId);
     return {
       numbers: await searchTwilioNumbers(
         String(connection.external_account_id),
@@ -1343,17 +1469,7 @@ export async function executeSupabaseCrmAction(
     requirePermission(context, "phone_system.manage");
     const clientId = requireText(input.clientId, "Client", 100);
     await requireClient(context, clientId);
-    const connection = await assertOk(
-      supabase()
-        .from("provider_connections")
-        .select("external_account_id,status")
-        .eq("organization_id", context.organizationId)
-        .eq("client_id", clientId)
-        .eq("provider", "twilio")
-        .maybeSingle(),
-    );
-    if (connection?.status !== "connected" || !connection.external_account_id)
-      throw new Error("Connect the customer's Twilio account first.");
+    const connection = await requireActiveTwilioConnection(context, clientId);
     return {
       numbers: await listTwilioNumbers(String(connection.external_account_id)),
     };
@@ -1366,17 +1482,7 @@ export async function executeSupabaseCrmAction(
     const phoneNumberSid = requireText(input.phoneNumberSid, "Twilio number", 80);
     if (!/^PN[0-9a-f]{32}$/i.test(phoneNumberSid))
       throw new Error("Choose a valid number from the connected Twilio account.");
-    const connection = await assertOk(
-      supabase()
-        .from("provider_connections")
-        .select("external_account_id,status")
-        .eq("organization_id", context.organizationId)
-        .eq("client_id", clientId)
-        .eq("provider", "twilio")
-        .maybeSingle(),
-    );
-    if (connection?.status !== "connected" || !connection.external_account_id)
-      throw new Error("Connect the customer's Twilio account first.");
+    const connection = await requireActiveTwilioConnection(context, clientId);
     const configured = await configureTwilioNumber(
       String(connection.external_account_id),
       phoneNumberSid,
@@ -1420,17 +1526,7 @@ export async function executeSupabaseCrmAction(
       "Phone number",
       true,
     )!;
-    const connection = await assertOk(
-      supabase()
-        .from("provider_connections")
-        .select("external_account_id,status")
-        .eq("organization_id", context.organizationId)
-        .eq("client_id", clientId)
-        .eq("provider", "twilio")
-        .maybeSingle(),
-    );
-    if (connection?.status !== "connected" || !connection.external_account_id)
-      throw new Error("Connect the customer's Twilio account first.");
+    const connection = await requireActiveTwilioConnection(context, clientId);
     const purchased = await purchaseTwilioNumber(
       String(connection.external_account_id),
       requestedNumber,
@@ -1467,6 +1563,7 @@ export async function executeSupabaseCrmAction(
     requirePermission(context, "automations.manage");
     const clientId = requireText(input.clientId, "Client", 100);
     await requireClient(context, clientId);
+    await requireActiveTwilioConnection(context, clientId);
     const triggerKey = ["lead.created", "sms.received", "call.missed"].includes(
       String(input.triggerKey),
     )
@@ -1559,6 +1656,7 @@ export async function executeSupabaseCrmAction(
     );
     if (!workflow) throw new Error("Workflow not found.");
     await requireClient(context, String(workflow.client_id));
+    await requireActiveTwilioConnection(context, String(workflow.client_id));
     const validation = validateWorkflowGraph(input.graph);
     if (validation.errors.length) throw new Error(validation.errors.join(" "));
     const nextVersion = Number(workflow.current_version) + 1;
@@ -1617,6 +1715,7 @@ export async function executeSupabaseCrmAction(
     );
     if (!workflow) throw new Error("Workflow not found.");
     await requireClient(context, String(workflow.client_id));
+    await requireActiveTwilioConnection(context, String(workflow.client_id));
     const version = await assertOk(
       supabase()
         .from("workflow_versions")
@@ -1628,21 +1727,6 @@ export async function executeSupabaseCrmAction(
     );
     const validation = validateWorkflowGraph(version?.graph);
     if (validation.errors.length) throw new Error(validation.errors.join(" "));
-    if (validation.graph.nodes.some((node) => node.type === "send_sms")) {
-      const connection = await assertOk(
-        supabase()
-          .from("provider_connections")
-          .select("status")
-          .eq("organization_id", context.organizationId)
-          .eq("client_id", workflow.client_id)
-          .eq("provider", "twilio")
-          .maybeSingle(),
-      );
-      if (connection?.status !== "connected")
-        throw new Error(
-          "Connect the customer's Twilio account before publishing a workflow that sends texts.",
-        );
-    }
     await assertOk(
       supabase()
         .from("workflows")
@@ -1699,6 +1783,7 @@ export async function executeSupabaseCrmAction(
     );
     if (!workflow) throw new Error("Workflow not found.");
     await requireClient(context, String(workflow.client_id));
+    await requireActiveTwilioConnection(context, String(workflow.client_id));
     const version = await assertOk(
       supabase()
         .from("workflow_versions")
@@ -1739,22 +1824,32 @@ export async function executeSupabaseCrmAction(
       ),
       "Client not found.",
     );
-    const [twilio, connection] = await Promise.all([
+    const [twilio, connection, existingConfig] = await Promise.all([
       Promise.resolve(getTwilioRuntimeStatus()),
+      requireActiveTwilioConnection(context, clientId),
       assertOk(
         supabase()
-          .from("provider_connections")
-          .select("external_account_id,status")
+          .from("phone_system_configs")
+          .select(
+            "provider_account_sid,phone_number_sid,messaging_service_sid,phone_number",
+          )
           .eq("organization_id", context.organizationId)
           .eq("client_id", clientId)
-          .eq("provider", "twilio")
           .maybeSingle(),
       ),
     ]);
-    const assignedNumber = phoneNumber(
-      input.phoneNumber,
-      "Twilio phone number",
-    );
+    const isSameProviderAccount =
+      String(existingConfig?.provider_account_sid ?? "") ===
+      String(connection.external_account_id);
+    const assignedNumberSid = isSameProviderAccount
+      ? nullable(existingConfig?.phone_number_sid)
+      : null;
+    const assignedNumber = assignedNumberSid
+      ? nullable(existingConfig?.phone_number)
+      : null;
+    const messagingServiceSid = isSameProviderAccount
+      ? nullable(existingConfig?.messaging_service_sid)
+      : null;
     const forwardingNumber = phoneNumber(
       input.forwardingNumber,
       "Forwarding phone number",
@@ -1770,10 +1865,7 @@ export async function executeSupabaseCrmAction(
     const wantsMissedCallText = Boolean(input.missedCallTextEnabled);
     if (
       wantsMissedCallText &&
-      (!twilio.configured ||
-        connection?.status !== "connected" ||
-        !connection.external_account_id ||
-        !assignedNumber)
+      (!twilio.configured || !assignedNumberSid || !assignedNumber)
     )
       throw new Error(
         "Connect the customer's Twilio account and choose a phone number before turning on missed-call text back.",
@@ -1795,10 +1887,7 @@ export async function executeSupabaseCrmAction(
       1,
       Math.min(1440, Number(input.cooldownMinutes ?? 20)),
     );
-    const providerStatus =
-      connection?.status === "connected" && assignedNumber
-        ? "connected"
-        : String(connection?.status ?? "not_configured");
+    const providerStatus = "connected";
     const config = requireRow(
       await assertOk(
         supabase()
@@ -1808,12 +1897,9 @@ export async function executeSupabaseCrmAction(
               organization_id: context.organizationId,
               client_id: clientId,
               provider: "twilio",
-              provider_account_sid: connection?.external_account_id ?? null,
-              phone_number_sid: optionalText(input.phoneNumberSid, 80),
-              messaging_service_sid: optionalText(
-                input.messagingServiceSid,
-                80,
-              ),
+              provider_account_sid: connection.external_account_id,
+              phone_number_sid: assignedNumberSid,
+              messaging_service_sid: messagingServiceSid,
               phone_number: assignedNumber,
               forwarding_number: forwardingNumber,
               ring_timeout_seconds: ringTimeout,

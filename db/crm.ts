@@ -341,10 +341,14 @@ export type CrmProviderConnection = {
   clientId: string;
   provider: string;
   status: string;
+  isLinked: boolean;
+  isActive: boolean;
   billingOwner: string;
   accountLabel: string | null;
+  accountStatus: string | null;
   scopes: string[];
   connectedAt: string | null;
+  disconnectedAt: string | null;
   lastHealthCheckAt: string | null;
   lastError: string | null;
 };

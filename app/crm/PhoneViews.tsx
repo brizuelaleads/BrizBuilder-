@@ -9,6 +9,7 @@ import type {
   CrmMessage,
   CrmPhoneCall,
   CrmPhoneConfig,
+  CrmProviderConnection,
 } from "../../db/crm";
 import { Badge } from "./ui";
 
@@ -18,6 +19,21 @@ type Mutate = (
 ) => Promise<unknown>;
 const DEFAULT_MESSAGE =
   "Hi, this is {{business_name}}. Sorry we missed your call. How can we help? Reply STOP to unsubscribe.";
+type NumberOption = {
+  phoneNumber: string;
+  label: string;
+  locality: string;
+  region: string;
+};
+type OwnedNumber = { sid: string; phoneNumber: string; label: string };
+
+function isActiveTwilioConnection(
+  connection: CrmProviderConnection | undefined,
+) {
+  return Boolean(
+    connection && connection.provider === "twilio" && connection.isActive,
+  );
+}
 
 function ClientPicker({
   clients,
@@ -54,33 +70,136 @@ function statusTone(value: string) {
 export function PhoneSystemView({
   clients,
   configs,
+  connections,
   selectedClientId,
   mutate,
   canManage,
+  onOpenConnections,
 }: {
   clients: CrmClient[];
   configs: CrmPhoneConfig[];
+  connections: CrmProviderConnection[];
   selectedClientId: string;
   mutate: Mutate;
   canManage: boolean;
+  onOpenConnections: (clientId: string) => void;
 }) {
   const [localClientId, setLocalClientId] = useState(clients[0]?.id ?? "");
+  const [areaCode, setAreaCode] = useState("");
+  const [numbers, setNumbers] = useState<NumberOption[]>([]);
+  const [numbersClientId, setNumbersClientId] = useState("");
+  const [ownedNumbers, setOwnedNumbers] = useState<OwnedNumber[]>([]);
+  const [ownedNumbersClientId, setOwnedNumbersClientId] = useState("");
+  const [searching, setSearching] = useState(false);
   const clientId =
     selectedClientId !== "all" ? selectedClientId : localClientId;
   const config = configs.find((item) => item.clientId === clientId);
   const client = clients.find((item) => item.id === clientId);
-  const [error, setError] = useState("");
+  const twilioConnection = connections.find(
+    (item) => item.clientId === clientId && item.provider === "twilio",
+  );
+  const twilioActive = isActiveTwilioConnection(twilioConnection);
+  const visibleNumbers = numbersClientId === clientId ? numbers : [];
+  const visibleOwnedNumbers =
+    ownedNumbersClientId === clientId ? ownedNumbers : [];
+  const [numberError, setNumberError] = useState("");
+  const [saveError, setSaveError] = useState("");
+
+  function messageFromError(caught: unknown, fallback: string) {
+    return caught instanceof Error ? caught.message : fallback;
+  }
+
+  async function search() {
+    setNumberError("");
+    setSearching(true);
+    try {
+      const result = (await mutate(
+        { action: "search_twilio_numbers", clientId, areaCode },
+        "Available numbers loaded.",
+      )) as { numbers?: NumberOption[] };
+      setNumbers(result?.numbers ?? []);
+      setNumbersClientId(clientId);
+    } catch (caught) {
+      setNumberError(
+        messageFromError(caught, "Could not search for phone numbers."),
+      );
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function purchase(option: NumberOption) {
+    if (
+      !window.confirm(
+        `Buy ${option.phoneNumber}? Twilio will bill ${client?.businessName}, not BrizBuilder.`,
+      )
+    )
+      return;
+    setNumberError("");
+    try {
+      await mutate(
+        {
+          action: "buy_twilio_number",
+          clientId,
+          phoneNumber: option.phoneNumber,
+          confirmCharge: true,
+        },
+        "Phone number purchased and connected.",
+      );
+      setNumbers([]);
+    } catch (caught) {
+      setNumberError(
+        messageFromError(caught, "Could not purchase the phone number."),
+      );
+    }
+  }
+
+  async function loadOwnedNumbers() {
+    setNumberError("");
+    setSearching(true);
+    try {
+      const result = (await mutate(
+        { action: "list_twilio_numbers", clientId },
+        "Existing Twilio numbers loaded.",
+      )) as { numbers?: OwnedNumber[] };
+      setOwnedNumbers(result?.numbers ?? []);
+      setOwnedNumbersClientId(clientId);
+    } catch (caught) {
+      setNumberError(
+        messageFromError(caught, "Could not load the Twilio phone numbers."),
+      );
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function connectOwnedNumber(option: OwnedNumber) {
+    setNumberError("");
+    try {
+      await mutate(
+        {
+          action: "connect_twilio_number",
+          clientId,
+          phoneNumberSid: option.sid,
+        },
+        `${option.phoneNumber} is now connected to BrizBuilder.`,
+      );
+    } catch (caught) {
+      setNumberError(
+        messageFromError(caught, "Could not connect that phone number."),
+      );
+    }
+  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError("");
+    setSaveError("");
     const form = new FormData(event.currentTarget);
     try {
       await mutate(
         {
           action: "save_phone_settings",
           clientId,
-          phoneNumber: form.get("phoneNumber"),
           forwardingNumber: form.get("forwardingNumber"),
           ringTimeoutSeconds: Number(form.get("ringTimeoutSeconds")),
           voicemailEnabled: form.get("voicemailEnabled") === "on",
@@ -92,7 +211,7 @@ export function PhoneSystemView({
         "Phone system settings saved.",
       );
     } catch (caught) {
-      setError(
+      setSaveError(
         caught instanceof Error
           ? caught.message
           : "Could not save phone settings.",
@@ -111,39 +230,171 @@ export function PhoneSystemView({
             client-owned number.
           </span>
         </div>
-        <ClientPicker
-          clients={clients}
-          value={clientId}
-          onChange={setLocalClientId}
-        />
+        {selectedClientId === "all" ? (
+          <ClientPicker
+            clients={clients}
+            value={clientId}
+            onChange={setLocalClientId}
+          />
+        ) : null}
       </section>
       {!client ? (
         <section className="crm-empty-state">
           <h3>Choose a business first</h3>
           <p>Select the client whose phone line you want to connect.</p>
         </section>
+      ) : !twilioActive ? (
+        <section className="crm-empty-state crm-communication-gate">
+          <span className="crm-provider-logo twilio">T</span>
+          <h3>
+            {twilioConnection && twilioConnection.status !== "disconnected"
+              ? "Twilio needs attention"
+              : "Connect Twilio to continue"}
+          </h3>
+          <p>
+            {twilioConnection && twilioConnection.status !== "disconnected"
+              ? `The Twilio connection for ${client.businessName} is not active right now. Open Connections to check its status.`
+              : `Connect a Twilio account for ${client.businessName} before choosing a phone number or setting up calls and automatic texts.`}
+          </p>
+          <button
+            type="button"
+            className="crm-button-primary"
+            onClick={() => onOpenConnections(clientId)}
+          >
+            Go to Connections
+          </button>
+        </section>
       ) : (
         <>
+          <article className="crm-number-market crm-phone-number-manager">
+            <header>
+              <div>
+                <p>BUSINESS PHONE NUMBER</p>
+                <h3>
+                  {config?.phoneNumber
+                    ? "Manage the connected number"
+                    : "Choose a phone number"}
+                </h3>
+              </div>
+              {config?.phoneNumber ? (
+                <Badge tone="green">{config.phoneNumber}</Badge>
+              ) : (
+                <Badge tone="orange">Number needed</Badge>
+              )}
+            </header>
+            <section className="crm-owned-numbers">
+              <div>
+                <div>
+                  <strong>Use a number already in this Twilio account</strong>
+                  <p>
+                    Load the business&apos;s Twilio numbers, then choose the one
+                    BrizBuilder should use.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={loadOwnedNumbers}
+                  disabled={searching || !canManage}
+                >
+                  Show Twilio numbers
+                </button>
+              </div>
+              {visibleOwnedNumbers.length ? (
+                <div className="crm-number-results">
+                  {visibleOwnedNumbers.map((option) => (
+                    <button
+                      type="button"
+                      key={option.sid}
+                      disabled={
+                        !canManage || option.phoneNumber === config?.phoneNumber
+                      }
+                      onClick={() => connectOwnedNumber(option)}
+                    >
+                      <span>
+                        <strong>{option.label}</strong>
+                        <small>{option.phoneNumber}</small>
+                      </span>
+                      <b>
+                        {option.phoneNumber === config?.phoneNumber
+                          ? "Connected"
+                          : "Use number"}
+                      </b>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+            <p className="crm-porting-note">
+              <strong>Keeping a number from another phone company?</strong> It
+              may need to be transferred into Twilio before BrizBuilder can
+              manage it.
+            </p>
+            <div className="crm-number-divider">
+              <span>or buy a new number</span>
+            </div>
+            <div className="crm-number-search">
+              <label>
+                <span>Preferred area code</span>
+                <input
+                  value={areaCode}
+                  onChange={(event) =>
+                    setAreaCode(
+                      event.target.value.replace(/\D/g, "").slice(0, 3),
+                    )
+                  }
+                  placeholder="512"
+                  inputMode="numeric"
+                  disabled={!canManage}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={search}
+                disabled={searching || !canManage}
+              >
+                {searching ? "Searching..." : "Find numbers"}
+              </button>
+            </div>
+            {visibleNumbers.length ? (
+              <div className="crm-number-results">
+                {visibleNumbers.map((option) => (
+                  <button
+                    type="button"
+                    key={option.phoneNumber}
+                    onClick={() => purchase(option)}
+                    disabled={!canManage}
+                  >
+                    <span>
+                      <strong>{option.label}</strong>
+                      <small>
+                        {[option.locality, option.region]
+                          .filter(Boolean)
+                          .join(", ") || "US local number"}
+                      </small>
+                    </span>
+                    <b>Buy and use</b>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="crm-number-empty">
+                Search by area code. BrizBuilder always asks for confirmation
+                before creating a real charge in the business&apos;s Twilio
+                account.
+              </p>
+            )}
+            {numberError ? (
+              <p className="crm-inline-error">{numberError}</p>
+            ) : null}
+          </article>
           <section className="crm-phone-status-grid">
             <article>
               <span>1</span>
               <div>
                 <strong>Twilio account</strong>
-                <p>
-                  {config?.providerStatus === "connected"
-                    ? "The customer's own Twilio account is connected."
-                    : "Open Connections and approve Twilio access."}
-                </p>
+                <p>The business&apos;s Twilio connection is ready to use.</p>
               </div>
-              <Badge
-                tone={
-                  config?.providerStatus === "connected" ? "green" : "orange"
-                }
-              >
-                {config?.providerStatus === "connected"
-                  ? "Connected"
-                  : "Setup needed"}
-              </Badge>
+              <Badge tone="green">Active</Badge>
             </article>
             <article>
               <span>2</span>
@@ -200,12 +451,16 @@ export function PhoneSystemView({
                 <label>
                   <span>Twilio phone number</span>
                   <input
-                    name="phoneNumber"
-                    defaultValue={config?.phoneNumber ?? ""}
-                    placeholder="+13125550123"
-                    disabled={!canManage}
+                    value={config?.phoneNumber ?? ""}
+                    placeholder="Choose a number above"
+                    readOnly
+                    aria-readonly="true"
                   />
-                  <small>Include +1 and the full number.</small>
+                  <small>
+                    {config?.phoneNumber
+                      ? "Change this number with the phone number manager above."
+                      : "Choose an existing Twilio number or buy a new one above."}
+                  </small>
                 </label>
                 <label>
                   <span>Forward calls to</span>
@@ -299,7 +554,9 @@ export function PhoneSystemView({
                   <option value="1440">24 hours</option>
                 </select>
               </label>
-              {error ? <p className="crm-inline-error">{error}</p> : null}
+              {saveError ? (
+                <p className="crm-inline-error">{saveError}</p>
+              ) : null}
               <button
                 className="crm-button-primary"
                 disabled={!canManage || !clientId}
@@ -314,10 +571,10 @@ export function PhoneSystemView({
                 <li>
                   <span>1</span>
                   <div>
-                    <strong>Connect Twilio</strong>
+                    <strong>Choose the business number</strong>
                     <p>
-                      Use Connections once. The business keeps ownership and
-                      pays Twilio directly.
+                      Use an existing Twilio number or buy a new one with the
+                      phone number manager above.
                     </p>
                   </div>
                 </li>
@@ -352,7 +609,7 @@ export function PhoneSystemView({
                 <strong>Handled automatically</strong>
                 <p>
                   BrizBuilder configures the Twilio call and message webhooks
-                  when a number is selected in Connections.
+                  when a number is selected above.
                 </p>
               </div>
             </aside>

@@ -43,7 +43,7 @@ async function twilioApi<T>(accountSid: string, path: string, init?: { method?: 
 
 export async function checkTwilioConnectedAccount(accountSid: string) {
   const account = await twilioApi<{ sid: string; friendly_name?: string; status?: string }>(accountSid, `/2010-04-01/Accounts/${encodeURIComponent(accountSid)}.json`);
-  return { sid: account.sid, name: account.friendly_name || "Customer Twilio account", status: account.status || "active" };
+  return { sid: account.sid, name: account.friendly_name || "Customer Twilio account", status: account.status || "unknown" };
 }
 
 export async function searchTwilioNumbers(accountSid: string, areaCode: string) {

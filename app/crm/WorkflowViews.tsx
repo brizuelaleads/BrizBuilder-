@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import type {
   CrmClient,
-  CrmPhoneConfig,
   CrmProviderConnection,
   CrmStage,
   CrmWorkflow,
@@ -17,13 +16,6 @@ type Mutate = (
   input: Record<string, unknown>,
   success: string,
 ) => Promise<unknown>;
-type NumberOption = {
-  phoneNumber: string;
-  label: string;
-  locality: string;
-  region: string;
-};
-type OwnedNumber = { sid: string; phoneNumber: string; label: string };
 
 function clientChoice(
   clients: CrmClient[],
@@ -38,88 +30,31 @@ function clientChoice(
 export function ConnectionsView({
   clients,
   connections,
-  configs,
   selectedClientId,
   mutate,
 }: {
   clients: CrmClient[];
   connections: CrmProviderConnection[];
-  configs: CrmPhoneConfig[];
   selectedClientId: string;
   mutate: Mutate;
 }) {
   const [localClient, setLocalClient] = useState(clients[0]?.id ?? "");
-  const [areaCode, setAreaCode] = useState("");
-  const [numbers, setNumbers] = useState<NumberOption[]>([]);
-  const [ownedNumbers, setOwnedNumbers] = useState<OwnedNumber[]>([]);
-  const [searching, setSearching] = useState(false);
   const clientId = clientChoice(clients, selectedClientId, localClient);
   const client = clients.find((item) => item.id === clientId);
   const connection = connections.find(
     (item) => item.clientId === clientId && item.provider === "twilio",
   );
-  const phone = configs.find((item) => item.clientId === clientId);
-  async function search() {
-    setSearching(true);
-    try {
-      const result = (await mutate(
-        { action: "search_twilio_numbers", clientId, areaCode },
-        "Available numbers loaded.",
-      )) as { numbers?: NumberOption[] };
-      setNumbers(result?.numbers ?? []);
-    } finally {
-      setSearching(false);
-    }
-  }
-  async function purchase(option: NumberOption) {
-    if (
-      !window.confirm(
-        `Buy ${option.phoneNumber}? Twilio will bill ${client?.businessName}, not BrizBuilder.`,
-      )
-    )
-      return;
-    await mutate(
-      {
-        action: "buy_twilio_number",
-        clientId,
-        phoneNumber: option.phoneNumber,
-        confirmCharge: true,
-      },
-      "Phone number purchased and connected.",
-    );
-    setNumbers([]);
-  }
-  async function loadOwnedNumbers() {
-    setSearching(true);
-    try {
-      const result = (await mutate(
-        { action: "list_twilio_numbers", clientId },
-        "Existing Twilio numbers loaded.",
-      )) as { numbers?: OwnedNumber[] };
-      setOwnedNumbers(result?.numbers ?? []);
-    } finally {
-      setSearching(false);
-    }
-  }
-  async function connectOwnedNumber(option: OwnedNumber) {
-    await mutate(
-      {
-        action: "connect_twilio_number",
-        clientId,
-        phoneNumberSid: option.sid,
-      },
-      `${option.phoneNumber} is now connected to BrizBuilder.`,
-    );
-  }
+  const isLinked = Boolean(connection?.isLinked);
+  const isActive = Boolean(connection?.isActive);
   return (
     <div className="crm-view crm-connections-view">
       <section className="crm-page-heading">
         <div>
-          <p>CONNECTED ACCOUNTS</p>
+          <p>EXTERNAL INTEGRATIONS</p>
           <h2>Connections</h2>
           <span>
-            Connect any upgraded Twilio account once, then manage calls, texts,
-            phone numbers and automations from BrizBuilder.
+            Connect and monitor every outside service used by this business in
+            one place.
           </span>
         </div>
         {selectedClientId === "all" ? (
@@ -138,16 +73,6 @@ export function ConnectionsView({
           </label>
         ) : null}
       </section>
-      <section className="crm-owner-billing-note">
-        <span>$</span>
-        <div>
-          <strong>Your Twilio account, your phone bill</strong>
-          <p>
-            Twilio charges each business directly. BrizBuilder never sees the
-            customer&apos;s password and never pays or marks up their usage.
-          </p>
-        </div>
-      </section>
       {!client ? (
         <section className="crm-empty-state">
           <h3>Add a client first</h3>
@@ -163,62 +88,69 @@ export function ConnectionsView({
               <span className="crm-provider-logo twilio">T</span>
               <div>
                 <h3>Twilio</h3>
-                <p>Calls, phone numbers and two-way texting</p>
+                <p>Business phone system, calls and two-way texting</p>
               </div>
-              <Badge
-                tone={connection?.status === "connected" ? "green" : "orange"}
-              >
-                {connection?.status === "connected"
-                  ? "Connected"
-                  : "Not connected"}
+              <Badge tone={isLinked ? "green" : "orange"}>
+                {isLinked ? "Connected" : "Not connected"}
               </Badge>
             </header>
-            {connection?.status === "connected" ? (
-              <>
-                <div className="crm-connection-details">
-                  <div>
-                    <span>Account</span>
-                    <strong>
-                      {connection.accountLabel ?? "Customer Twilio account"}
-                    </strong>
-                  </div>
-                  <div>
-                    <span>Billing</span>
-                    <strong>Paid by {client.businessName}</strong>
-                  </div>
-                  <div>
-                    <span>Phone number</span>
-                    <strong>
-                      {phone?.phoneNumber ?? "Choose a number below"}
-                    </strong>
-                  </div>
-                  <div>
-                    <span>Last checked</span>
-                    <strong>
-                      {connection.lastHealthCheckAt
-                        ? new Date(
-                            connection.lastHealthCheckAt,
-                          ).toLocaleString()
-                        : "Not checked"}
-                    </strong>
-                  </div>
-                </div>
-                <div className="crm-connection-actions">
+            <div className="crm-connection-details">
+              <div>
+                <span>Integration status</span>
+                <strong>
+                  <Badge tone={isActive ? "green" : "red"}>
+                    {isActive ? "Active" : "Not active"}
+                  </Badge>
+                </strong>
+              </div>
+              <div>
+                <span>Account</span>
+                <strong>
+                  {isLinked
+                    ? connection?.accountLabel ?? "Connected Twilio account"
+                    : "Not connected"}
+                </strong>
+              </div>
+              <div>
+                <span>Twilio account status</span>
+                <strong>
+                  {isLinked && connection?.accountStatus
+                    ? connection.accountStatus.replaceAll("_", " ")
+                    : "Not reported"}
+                </strong>
+              </div>
+              <div>
+                <span>Last checked</span>
+                <strong>
+                  {connection?.lastHealthCheckAt
+                    ? new Date(connection.lastHealthCheckAt).toLocaleString()
+                    : "Not checked"}
+                </strong>
+              </div>
+            </div>
+            {connection?.lastError ? (
+              <p className="crm-inline-error">
+                <strong>Needs attention:</strong> {connection.lastError}
+              </p>
+            ) : null}
+            <div className="crm-connection-actions">
+              {isLinked ? (
+                <>
                   <button
                     onClick={() =>
                       mutate(
                         { action: "check_provider_connection", clientId },
-                        "Twilio connection is healthy.",
+                        "Connection status updated.",
                       )
                     }
                   >
-                    Check connection
+                    Refresh status
                   </button>
                   <button
                     className="danger"
                     onClick={() =>
                       window.confirm(
-                        "Disconnect Twilio? Automatic calls and texts will stop.",
+                        "Disconnect Twilio? Phone calls, texts and automations will stop.",
                       ) &&
                       mutate(
                         { action: "disconnect_provider", clientId },
@@ -228,197 +160,17 @@ export function ConnectionsView({
                   >
                     Disconnect
                   </button>
-                </div>
-              </>
-            ) : (
-              <div className="crm-connect-steps">
-                <div
-                  className="crm-twilio-plan-guide"
-                  aria-label="Twilio account requirements"
-                >
-                  <article className="trial">
-                    <span>Testing only</span>
-                    <h4>Twilio free trial</h4>
-                    <p>
-                      Useful for learning inside Twilio, but Twilio does not
-                      allow trial accounts to connect to BrizBuilder.
-                    </p>
-                    <ul>
-                      <li>Works only with verified test numbers</li>
-                      <li>Not available for live customer automations</li>
-                    </ul>
-                  </article>
-                  <article className="live">
-                    <span>Required to connect</span>
-                    <h4>Upgraded Twilio account</h4>
-                    <p>
-                      Any upgraded account can connect. It only needs to be off
-                      the free trial and have a valid payment method.
-                    </p>
-                    <ul>
-                      <li>Connects securely to BrizBuilder</li>
-                      <li>Twilio bills the business directly</li>
-                    </ul>
-                  </article>
-                </div>
-                <ol>
-                  <li>
-                    <span>1</span>Create or sign in to the business&apos;s
-                    Twilio account
-                  </li>
-                  <li>
-                    <span>2</span>Upgrade the account and add the
-                    business&apos;s payment method
-                  </li>
-                  <li>
-                    <span>3</span>Approve BrizBuilder access once
-                  </li>
-                </ol>
+                </>
+              ) : (
                 <a
                   className="crm-button-primary"
                   href={`/api/integrations/twilio/connect?clientId=${encodeURIComponent(clientId)}`}
                 >
-                  Activate phone &amp; texting
+                  Connect
                 </a>
-                <small>
-                  Twilio opens securely. After approval, you will return to
-                  BrizBuilder automatically.
-                </small>
-              </div>
-            )}
-          </article>
-          <article className="crm-connection-card">
-            <header>
-              <span className="crm-provider-logo native">B</span>
-              <div>
-                <h3>BrizBuilder Workflows</h3>
-                <p>Native visual automation engine</p>
-              </div>
-              <Badge tone="green">Included</Badge>
-            </header>
-            <div className="crm-connection-details">
-              <div>
-                <span>Hosting</span>
-                <strong>Runs inside BrizBuilder</strong>
-              </div>
-              <div>
-                <span>Extra account</span>
-                <strong>Not required</strong>
-              </div>
-              <div>
-                <span>Run history</span>
-                <strong>Enabled</strong>
-              </div>
-              <div>
-                <span>Customer isolation</span>
-                <strong>Enabled</strong>
-              </div>
+              )}
             </div>
           </article>
-          {connection?.status === "connected" ? (
-            <article className="crm-number-market">
-              <header>
-                <div>
-                  <p>PHONE NUMBER</p>
-                  <h3>
-                    {phone?.phoneNumber
-                      ? "Manage the connected number"
-                      : "Choose a business number"}
-                  </h3>
-                </div>
-                {phone?.phoneNumber ? (
-                  <Badge tone="green">{phone.phoneNumber}</Badge>
-                ) : null}
-              </header>
-              <section className="crm-owned-numbers">
-                <div>
-                  <div>
-                    <strong>Use a number already connected here</strong>
-                    <p>
-                      Load numbers purchased through this business&apos;s
-                      BrizBuilder Twilio connection.
-                    </p>
-                  </div>
-                  <button onClick={loadOwnedNumbers} disabled={searching}>
-                    Show connected numbers
-                  </button>
-                </div>
-                {ownedNumbers.length ? (
-                  <div className="crm-number-results">
-                    {ownedNumbers.map((option) => (
-                      <button
-                        key={option.sid}
-                        disabled={option.phoneNumber === phone?.phoneNumber}
-                        onClick={() => connectOwnedNumber(option)}
-                      >
-                        <span>
-                          <strong>{option.label}</strong>
-                          <small>{option.phoneNumber}</small>
-                        </span>
-                        <b>
-                          {option.phoneNumber === phone?.phoneNumber
-                            ? "Connected"
-                            : "Use number"}
-                        </b>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </section>
-              <p className="crm-porting-note">
-                <strong>Keeping a different existing number?</strong> It may
-                need to be transferred or ported into this connection before
-                BrizBuilder can manage it.
-              </p>
-              <div className="crm-number-divider">
-                <span>or buy a new number</span>
-              </div>
-              <div className="crm-number-search">
-                <label>
-                  <span>Preferred area code</span>
-                  <input
-                    value={areaCode}
-                    onChange={(event) =>
-                      setAreaCode(
-                        event.target.value.replace(/\D/g, "").slice(0, 3),
-                      )
-                    }
-                    placeholder="512"
-                    inputMode="numeric"
-                  />
-                </label>
-                <button onClick={search} disabled={searching}>
-                  {searching ? "Searching..." : "Find numbers"}
-                </button>
-              </div>
-              {numbers.length ? (
-                <div className="crm-number-results">
-                  {numbers.map((option) => (
-                    <button
-                      key={option.phoneNumber}
-                      onClick={() => purchase(option)}
-                    >
-                      <span>
-                        <strong>{option.label}</strong>
-                        <small>
-                          {[option.locality, option.region]
-                            .filter(Boolean)
-                            .join(", ") || "US local number"}
-                        </small>
-                      </span>
-                      <b>Choose</b>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <p className="crm-number-empty">
-                  Search by area code. Choosing a number will create a real
-                  charge in the customer&apos;s Twilio account and always
-                  requires confirmation.
-                </p>
-              )}
-            </article>
-          ) : null}
         </div>
       )}
     </div>
@@ -1031,21 +783,32 @@ function WorkflowEditor({
 
 export function VisualAutomationsView({
   clients,
+  connections,
   workflows,
   runs,
   stages,
   selectedClientId,
   mutate,
+  onOpenConnections,
 }: {
   clients: CrmClient[];
+  connections: CrmProviderConnection[];
   workflows: CrmWorkflow[];
   runs: CrmWorkflowRun[];
   stages: CrmStage[];
   selectedClientId: string;
   mutate: Mutate;
+  onOpenConnections: (clientId: string) => void;
 }) {
   const [localClient, setLocalClient] = useState(clients[0]?.id ?? "");
   const clientId = clientChoice(clients, selectedClientId, localClient);
+  const client = clients.find((item) => item.id === clientId);
+  const twilioConnection = connections.find(
+    (item) => item.clientId === clientId && item.provider === "twilio",
+  );
+  const hasActiveTwilio = Boolean(
+    twilioConnection?.isLinked && twilioConnection.isActive,
+  );
   const visible = workflows.filter((item) => item.clientId === clientId);
   const [editingId, setEditingId] = useState("");
   const editing = visible.find((item) => item.id === editingId);
@@ -1073,18 +836,6 @@ export function VisualAutomationsView({
     )) as { id?: string };
     if (result?.id) setEditingId(result.id);
   }
-  if (editing)
-    return (
-      <WorkflowEditor
-        key={`${editing.id}-${editing.currentVersion}`}
-        workflow={editing}
-        clients={clients}
-        stages={stages}
-        runs={runs}
-        mutate={mutate}
-        onBack={() => setEditingId("")}
-      />
-    );
   return (
     <div className="crm-view crm-workflows-home">
       <section className="crm-page-heading">
@@ -1112,79 +863,120 @@ export function VisualAutomationsView({
           </label>
         ) : null}
       </section>
-      <section className="crm-conversation-metrics">
-        <article>
-          <span>Active workflows</span>
-          <strong>{stats.active}</strong>
-        </article>
-        <article>
-          <span>Total runs</span>
-          <strong>{stats.runs}</strong>
-        </article>
-        <article>
-          <span>Failed runs</span>
-          <strong>{stats.failed}</strong>
-        </article>
-      </section>
-      <div className="crm-workflow-home-grid">
-        <section className="crm-workflow-list">
-          <header>
-            <div>
-              <h3>Workflows</h3>
-              <p>Draft, test and publish automations for this business.</p>
-            </div>
-          </header>
-          {visible.map((workflow) => (
-            <button key={workflow.id} onClick={() => setEditingId(workflow.id)}>
-              <span className="crm-workflow-list-icon">WF</span>
-              <div>
-                <strong>{workflow.name}</strong>
-                <p>
-                  {workflow.description ||
-                    `${workflow.graph.nodes.length} steps · ${workflow.triggerKey.replaceAll(".", " ")}`}
-                </p>
-                <small>
-                  Version {workflow.currentVersion} · Updated{" "}
-                  {new Date(workflow.updatedAt).toLocaleDateString()}
-                </small>
-              </div>
-              <Badge tone={workflow.status === "active" ? "green" : "orange"}>
-                {workflow.status.replaceAll("_", " ")}
-              </Badge>
-              <b>→</b>
-            </button>
-          ))}
-          {!visible.length ? (
-            <div className="crm-empty-state">
-              <h3>No workflows yet</h3>
-              <p>Create the first visual automation for this client.</p>
-            </div>
-          ) : null}
+      {!client ? (
+        <section className="crm-empty-state">
+          <h3>Add a client first</h3>
+          <p>Automations belong to one business and cannot be shared.</p>
         </section>
-        <form className="crm-new-workflow" onSubmit={create}>
-          <p>NEW WORKFLOW</p>
-          <h3>Start with a trigger</h3>
-          <label>
-            <span>Name</span>
-            <input name="name" required placeholder="New lead follow-up" />
-          </label>
-          <label>
-            <span>Starts when</span>
-            <select name="triggerKey">
-              <option value="lead.created">New lead is created</option>
-              <option value="sms.received">Customer sends a text</option>
-              <option value="call.missed">Call is missed</option>
-            </select>
-          </label>
-          <button className="crm-button-primary" disabled={!clientId}>
-            Create workflow
+      ) : !hasActiveTwilio ? (
+        <section className="crm-empty-state crm-communication-gate">
+          <Badge tone="orange">Twilio required</Badge>
+          <h3>Connect Twilio to use automations</h3>
+          <p>
+            {client.businessName} needs an active Twilio connection before you
+            can create or edit automated follow-up. Manage the connection from
+            the Connections page.
+          </p>
+          <button
+            className="crm-button-primary"
+            type="button"
+            onClick={() => onOpenConnections(clientId)}
+          >
+            Go to Connections
           </button>
-          <small>
-            A safe task step is added automatically. Nothing runs until you
-            publish.
-          </small>
-        </form>
-      </div>
+        </section>
+      ) : editing ? (
+        <WorkflowEditor
+          key={`${editing.id}-${editing.currentVersion}`}
+          workflow={editing}
+          clients={clients}
+          stages={stages}
+          runs={runs}
+          mutate={mutate}
+          onBack={() => setEditingId("")}
+        />
+      ) : (
+        <>
+          <section className="crm-conversation-metrics">
+            <article>
+              <span>Active workflows</span>
+              <strong>{stats.active}</strong>
+            </article>
+            <article>
+              <span>Total runs</span>
+              <strong>{stats.runs}</strong>
+            </article>
+            <article>
+              <span>Failed runs</span>
+              <strong>{stats.failed}</strong>
+            </article>
+          </section>
+          <div className="crm-workflow-home-grid">
+            <section className="crm-workflow-list">
+              <header>
+                <div>
+                  <h3>Workflows</h3>
+                  <p>Draft, test and publish automations for this business.</p>
+                </div>
+              </header>
+              {visible.map((workflow) => (
+                <button
+                  key={workflow.id}
+                  onClick={() => setEditingId(workflow.id)}
+                >
+                  <span className="crm-workflow-list-icon">WF</span>
+                  <div>
+                    <strong>{workflow.name}</strong>
+                    <p>
+                      {workflow.description ||
+                        `${workflow.graph.nodes.length} steps · ${workflow.triggerKey.replaceAll(".", " ")}`}
+                    </p>
+                    <small>
+                      Version {workflow.currentVersion} · Updated{" "}
+                      {new Date(workflow.updatedAt).toLocaleDateString()}
+                    </small>
+                  </div>
+                  <Badge
+                    tone={workflow.status === "active" ? "green" : "orange"}
+                  >
+                    {workflow.status.replaceAll("_", " ")}
+                  </Badge>
+                  <b>→</b>
+                </button>
+              ))}
+              {!visible.length ? (
+                <div className="crm-empty-state">
+                  <h3>No workflows yet</h3>
+                  <p>Create the first visual automation for this client.</p>
+                </div>
+              ) : null}
+            </section>
+            <form className="crm-new-workflow" onSubmit={create}>
+              <p>NEW WORKFLOW</p>
+              <h3>Start with a trigger</h3>
+              <label>
+                <span>Name</span>
+                <input name="name" required placeholder="New lead follow-up" />
+              </label>
+              <label>
+                <span>Starts when</span>
+                <select name="triggerKey">
+                  <option value="lead.created">New lead is created</option>
+                  <option value="sms.received">Customer sends a text</option>
+                  <option value="call.missed">Call is missed</option>
+                </select>
+              </label>
+              <button className="crm-button-primary" disabled={!clientId}>
+                Create workflow
+              </button>
+              <small>
+                A safe task step is added automatically. Nothing runs until you
+                publish.
+              </small>
+            </form>
+          </div>
+        </>
+      )}
     </div>
   );
 }
