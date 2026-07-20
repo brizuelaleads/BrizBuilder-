@@ -1440,6 +1440,166 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .site-cta { margin-inline: 16px; padding: 32px 22px; }
 }
 
+/* Public legal pages */
+.terms-page { padding-bottom: 80px; }
+.terms-nav { border-bottom: 1px solid rgb(222 219 212 / 72%); }
+.terms-hero {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 76px 24px 54px;
+  text-align: center;
+}
+.terms-hero > p:first-child {
+  margin: 0 0 14px;
+  color: #6d5dfb;
+  font-size: 12px;
+  font-weight: 860;
+  letter-spacing: 1.4px;
+}
+.terms-hero h1 {
+  margin: 0;
+  font-size: clamp(48px, 7vw, 78px);
+  line-height: .96;
+  letter-spacing: -3.8px;
+}
+.terms-hero > span {
+  margin-top: 22px;
+  display: inline-flex;
+  padding: 8px 12px;
+  border: 1px solid #dedbd4;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 72%);
+  color: #666977;
+  font-size: 12px;
+  font-weight: 720;
+}
+.terms-hero > p:last-child {
+  max-width: 690px;
+  margin: 22px auto 0;
+  color: #5d6070;
+  font-size: 18px;
+  line-height: 1.65;
+}
+.terms-layout {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.terms-summary {
+  position: sticky;
+  top: 24px;
+  padding: 22px;
+  border: 1px solid #e3dfd7;
+  border-radius: 20px;
+  background: rgb(255 255 255 / 72%);
+  box-shadow: 0 12px 36px rgb(16 19 38 / 4%);
+}
+.terms-summary > strong {
+  display: block;
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+.terms-summary nav { display: grid; gap: 4px; }
+.terms-summary nav a {
+  padding: 7px 8px;
+  border-radius: 8px;
+  color: #636674;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.terms-summary nav a:hover,
+.terms-summary nav a:focus-visible {
+  background: #efecff;
+  color: #5547cb;
+}
+.terms-summary > p {
+  margin: 18px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid #e8e4dc;
+  color: #777a85;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.terms-document {
+  padding: 18px 50px 50px;
+  border: 1px solid #e3dfd7;
+  border-radius: 28px;
+  background: #fff;
+  box-shadow: 0 22px 58px rgb(16 19 38 / 6%);
+}
+.terms-document > section {
+  padding: 36px 0;
+  border-bottom: 1px solid #ece8e1;
+  scroll-margin-top: 24px;
+}
+.terms-document h2 {
+  margin: 0 0 14px;
+  color: #171a2a;
+  font-size: 24px;
+  line-height: 1.2;
+  letter-spacing: -.7px;
+}
+.terms-document p,
+.terms-document li {
+  color: #5d6070;
+  font-size: 15px;
+  line-height: 1.78;
+}
+.terms-document p { margin: 12px 0 0; }
+.terms-document ul { margin: 12px 0 0; padding-left: 22px; }
+.terms-document li + li { margin-top: 7px; }
+.terms-callout {
+  margin-top: 22px;
+  padding: 20px;
+  border: 1px solid #dcd6ff;
+  border-radius: 16px;
+  background: #f5f3ff;
+}
+.terms-callout strong { color: #4f43bb; font-size: 14px; }
+.terms-callout p { margin-top: 7px; color: #625c8a; }
+.terms-footer {
+  margin-top: 40px;
+  padding: 28px;
+  border-radius: 20px;
+  background: #101326;
+  color: #fff;
+}
+.terms-footer strong { font-size: 18px; }
+.terms-footer p { margin: 8px 0 18px; color: #c4c7d5; }
+.terms-footer a {
+  display: inline-flex;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: #c8ff4d;
+  color: #101326;
+  font-size: 12px;
+  font-weight: 820;
+}
+
+@media (max-width: 880px) {
+  .terms-layout { grid-template-columns: 1fr; }
+  .terms-summary { position: static; }
+  .terms-summary nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 620px) {
+  .terms-page { padding-bottom: 32px; }
+  .terms-hero { padding: 48px 18px 36px; }
+  .terms-hero h1 { font-size: 45px; letter-spacing: -2.4px; }
+  .terms-hero > p:last-child { font-size: 16px; }
+  .terms-layout { padding: 0 14px; }
+  .terms-summary nav { grid-template-columns: 1fr; }
+  .terms-document { padding: 8px 22px 28px; border-radius: 22px; }
+  .terms-document > section { padding: 29px 0; }
+  .terms-document h2 { font-size: 21px; }
+  .terms-document p,
+  .terms-document li { font-size: 14px; }
+}
+
 /* CRM connections, gated communications, and visual workflows */
 .crm-connection-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .crm-connection-card,
