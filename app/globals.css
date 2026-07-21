@@ -1641,6 +1641,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .crm-connection-details strong { display: block; }
 .crm-connection-details span { margin-bottom: 4px; color: var(--crm-muted); font-size: 10px; }
 .crm-connection-details strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; }
+.crm-connection-details small { display: block; margin-top: 3px; color: var(--crm-muted); font-size: 9px; }
+.crm-connection-details .crm-twilio-balance { background: linear-gradient(135deg, #fff1f5, #fff8fa); border: 1px solid #ffd0dc; }
+.crm-connection-details .crm-twilio-balance strong { color: #c81f52; font-size: 20px; }
+.crm-balance-warning { margin: 16px 0 0; padding: 12px 14px; border: 1px solid #f2c36b; border-radius: 11px; background: #fff8e8; color: #815d16; font-size: 11px; line-height: 1.5; }
 .crm-connection-card .crm-inline-error { margin: 16px 0 0; }
 .crm-connection-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
 .crm-connection-actions button,

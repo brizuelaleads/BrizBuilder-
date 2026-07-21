@@ -346,6 +346,13 @@ export type CrmProviderConnection = {
   billingOwner: string;
   accountLabel: string | null;
   accountStatus: string | null;
+  accountType: string | null;
+  balance: number | null;
+  currency: string | null;
+  todaySpend: number | null;
+  monthSpend: number | null;
+  monthCalls: number | null;
+  monthMessages: number | null;
   scopes: string[];
   connectedAt: string | null;
   disconnectedAt: string | null;

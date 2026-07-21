@@ -42,8 +42,42 @@ async function twilioApi<T>(accountSid: string, path: string, init?: { method?: 
 }
 
 export async function checkTwilioConnectedAccount(accountSid: string) {
-  const account = await twilioApi<{ sid: string; friendly_name?: string; status?: string }>(accountSid, `/2010-04-01/Accounts/${encodeURIComponent(accountSid)}.json`);
-  return { sid: account.sid, name: account.friendly_name || "Customer Twilio account", status: account.status || "unknown" };
+  const basePath = `/2010-04-01/Accounts/${encodeURIComponent(accountSid)}`;
+  type UsageRecord = {
+    category?: string;
+    count?: string;
+    price?: number | string;
+    price_unit?: string;
+    usage?: string;
+  };
+  const [account, balance, today, month] = await Promise.all([
+    twilioApi<{ sid: string; friendly_name?: string; status?: string; type?: string }>(accountSid, `${basePath}.json`),
+    twilioApi<{ balance?: string; currency?: string }>(accountSid, `${basePath}/Balance.json`),
+    twilioApi<{ usage_records?: UsageRecord[] }>(accountSid, `${basePath}/Usage/Records/Today.json?PageSize=1000&IncludeSubaccounts=false`),
+    twilioApi<{ usage_records?: UsageRecord[] }>(accountSid, `${basePath}/Usage/Records/ThisMonth.json?PageSize=1000&IncludeSubaccounts=false`),
+  ]);
+  const summarize = (records: UsageRecord[] = []) => {
+    const find = (category: string) => records.find((item) => item.category === category);
+    const total = find("totalprice");
+    const calls = find("calls");
+    const messages = find("sms");
+    return {
+      spend: Math.abs(Number(total?.price ?? total?.usage ?? 0)),
+      currency: String(total?.price_unit ?? balance.currency ?? "usd").toUpperCase(),
+      calls: Number(calls?.count ?? 0),
+      messages: Number(messages?.count ?? 0),
+    };
+  };
+  return {
+    sid: account.sid,
+    name: account.friendly_name || "Customer Twilio account",
+    status: account.status || "unknown",
+    accountType: account.type || "Unknown",
+    balance: Number(balance.balance ?? 0),
+    currency: String(balance.currency ?? "usd").toUpperCase(),
+    today: summarize(today.usage_records),
+    month: summarize(month.usage_records),
+  };
 }
 
 export async function searchTwilioNumbers(accountSid: string, areaCode: string) {

@@ -46,6 +46,15 @@ export function ConnectionsView({
   );
   const isLinked = Boolean(connection?.isLinked);
   const isActive = Boolean(connection?.isActive);
+  const money = (value: number | null | undefined) =>
+    value == null
+      ? "Not loaded"
+      : new Intl.NumberFormat(undefined, {
+          style: "currency",
+          currency: connection?.currency || "USD",
+        }).format(value);
+  const lowBalance =
+    connection?.balance != null && connection.balance < 10;
   return (
     <div className="crm-view crm-connections-view">
       <section className="crm-page-heading">
@@ -95,6 +104,31 @@ export function ConnectionsView({
               </Badge>
             </header>
             <div className="crm-connection-details">
+              <div className="crm-twilio-balance">
+                <span>Available balance</span>
+                <strong>{money(connection?.balance)}</strong>
+                <small>{connection?.currency || "Refresh to load balance"}</small>
+              </div>
+              <div>
+                <span>Account plan</span>
+                <strong>{connection?.accountType || "Not reported"}</strong>
+              </div>
+              <div>
+                <span>Spent today</span>
+                <strong>{money(connection?.todaySpend)}</strong>
+              </div>
+              <div>
+                <span>Spent this month</span>
+                <strong>{money(connection?.monthSpend)}</strong>
+              </div>
+              <div>
+                <span>Calls this month</span>
+                <strong>{connection?.monthCalls ?? "Not loaded"}</strong>
+              </div>
+              <div>
+                <span>Texts this month</span>
+                <strong>{connection?.monthMessages ?? "Not loaded"}</strong>
+              </div>
               <div>
                 <span>Integration status</span>
                 <strong>
@@ -128,6 +162,11 @@ export function ConnectionsView({
                 </strong>
               </div>
             </div>
+            {lowBalance ? (
+              <p className="crm-balance-warning">
+                <strong>Low Twilio balance.</strong> Add funds in Twilio soon so calls, texts and automations do not stop.
+              </p>
+            ) : null}
             {connection?.lastError ? (
               <p className="crm-inline-error">
                 <strong>Needs attention:</strong> {connection.lastError}
@@ -140,11 +179,11 @@ export function ConnectionsView({
                     onClick={() =>
                       mutate(
                         { action: "check_provider_connection", clientId },
-                        "Connection status updated.",
+                        "Twilio balance and account activity updated.",
                       )
                     }
                   >
-                    Refresh status
+                    Refresh balance & usage
                   </button>
                   <button
                     className="danger"

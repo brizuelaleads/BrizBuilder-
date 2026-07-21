@@ -610,7 +610,16 @@ export async function finishSupabaseTwilioConnect(
           external_account_id: account.sid,
           external_account_name: account.name,
           scopes: ["get-all", "post-all"],
-          public_config: { accountStatus },
+          public_config: {
+            accountStatus,
+            accountType: account.accountType,
+            balance: account.balance,
+            currency: account.currency,
+            todaySpend: account.today.spend,
+            monthSpend: account.month.spend,
+            monthCalls: account.month.calls,
+            monthMessages: account.month.messages,
+          },
           connected_by_email: authorization.requested_by_email,
           connected_at: now,
           disconnected_at: null,
@@ -926,6 +935,10 @@ function mapAutomationRun(row: AnyRecord): CrmAutomationRun {
 }
 
 function mapProviderConnection(row: AnyRecord): CrmProviderConnection {
+  const publicConfig =
+    row.public_config && typeof row.public_config === "object"
+      ? (row.public_config as Record<string, unknown>)
+      : {};
   return {
     id: String(row.id),
     clientId: String(row.client_id),
@@ -936,6 +949,13 @@ function mapProviderConnection(row: AnyRecord): CrmProviderConnection {
     billingOwner: String(row.billing_owner ?? "customer"),
     accountLabel: nullable(row.external_account_name),
     accountStatus: providerAccountStatus(row),
+    accountType: nullable(publicConfig.accountType),
+    balance: publicConfig.balance == null ? null : Number(publicConfig.balance),
+    currency: nullable(publicConfig.currency),
+    todaySpend: publicConfig.todaySpend == null ? null : Number(publicConfig.todaySpend),
+    monthSpend: publicConfig.monthSpend == null ? null : Number(publicConfig.monthSpend),
+    monthCalls: publicConfig.monthCalls == null ? null : Number(publicConfig.monthCalls),
+    monthMessages: publicConfig.monthMessages == null ? null : Number(publicConfig.monthMessages),
     scopes: Array.isArray(row.scopes) ? row.scopes.map(String) : [],
     connectedAt: nullable(row.connected_at),
     disconnectedAt: nullable(row.disconnected_at),
@@ -1385,7 +1405,16 @@ export async function executeSupabaseCrmAction(
             .update({
               status,
               external_account_name: account.name,
-              public_config: { accountStatus },
+              public_config: {
+                accountStatus,
+                accountType: account.accountType,
+                balance: account.balance,
+                currency: account.currency,
+                todaySpend: account.today.spend,
+                monthSpend: account.month.spend,
+                monthCalls: account.month.calls,
+                monthMessages: account.month.messages,
+              },
               last_health_check_at: now,
               last_error: lastError,
               updated_at: now,
