@@ -161,15 +161,7 @@ export async function checkTwilioConnectedAccount(accountSid: string) {
   const isSubaccount =
     /^AC[0-9a-f]{32}$/i.test(account.owner_account_sid ?? "") &&
     account.owner_account_sid?.toLowerCase() !== account.sid.toLowerCase();
-  const [balance, today, month] = await Promise.all([
-    isSubaccount
-      ? Promise.resolve(null)
-      : optionalTwilioApi(
-          twilioApi<{ balance?: string; currency?: string }>(
-            accountSid,
-            `${basePath}/Balance.json`,
-          ),
-        ),
+  const [today, month] = await Promise.all([
     optionalTwilioApi(
       twilioApi<{ usage_records?: UsageRecord[] }>(
         accountSid,
@@ -203,26 +195,84 @@ export async function checkTwilioConnectedAccount(accountSid: string) {
   };
   const todaySummary = summarize(today?.usage_records);
   const monthSummary = summarize(month?.usage_records);
-  const balanceValue = finiteNumber(balance?.balance);
-  const currency =
-    (balance?.currency ? String(balance.currency).toUpperCase() : null) ??
-    monthSummary.currency ??
-    todaySummary.currency;
+  const currency = monthSummary.currency ?? todaySummary.currency;
   return {
     sid: account.sid,
     name: account.friendly_name || "Customer Twilio account",
     status: account.status || "unknown",
     accountType: account.type || "Unknown",
-    balance: balanceValue,
-    balanceStatus: isSubaccount
-      ? "shared"
-      : balanceValue === null
-        ? "unavailable"
-        : "available",
+    balance: null,
+    balanceStatus: isSubaccount ? "shared" : "available",
     currency,
     today: todaySummary,
     month: monthSummary,
   };
+}
+
+type TwilioVisibleBalance = {
+  balance: number | null;
+  currency: string | null;
+  balanceStatus: "parent" | "available" | "shared" | "unavailable";
+};
+
+const visibleBalanceCache = new Map<
+  string,
+  { expiresAt: number; value: TwilioVisibleBalance }
+>();
+
+export async function getTwilioVisibleBalance(
+  accountSid: string,
+  bypassCache = false,
+): Promise<TwilioVisibleBalance> {
+  if (!/^AC[0-9a-f]{32}$/i.test(accountSid))
+    throw new Error("Twilio did not return a valid customer account.");
+  const cached = visibleBalanceCache.get(accountSid);
+  if (!bypassCache && cached && cached.expiresAt > Date.now())
+    return cached.value;
+  if (cached) visibleBalanceCache.delete(accountSid);
+
+  const account = await twilioApi<{
+    sid: string;
+    owner_account_sid?: string;
+  }>(
+    accountSid,
+    `/2010-04-01/Accounts/${encodeURIComponent(accountSid)}.json`,
+  );
+  const ownerAccountSid = /^AC[0-9a-f]{32}$/i.test(
+    account.owner_account_sid ?? "",
+  )
+    ? String(account.owner_account_sid)
+    : account.sid;
+  const isParentBalance =
+    ownerAccountSid.toLowerCase() !== account.sid.toLowerCase();
+  const response = await optionalTwilioApi(
+    twilioApi<{ balance?: string; currency?: string }>(
+      accountSid,
+      `/2010-04-01/Accounts/${encodeURIComponent(ownerAccountSid)}/Balance.json`,
+    ),
+  );
+  const balance = finiteNumber(response?.balance);
+  const value: TwilioVisibleBalance = {
+    balance,
+    currency: response?.currency
+      ? String(response.currency).toUpperCase()
+      : null,
+    balanceStatus:
+      balance !== null
+        ? isParentBalance
+          ? "parent"
+          : "available"
+        : "unavailable",
+  };
+  visibleBalanceCache.set(accountSid, {
+    expiresAt: Date.now() + (balance === null ? 60_000 : 5 * 60_000),
+    value,
+  });
+  if (visibleBalanceCache.size > 250) {
+    const oldest = visibleBalanceCache.keys().next().value;
+    if (oldest) visibleBalanceCache.delete(oldest);
+  }
+  return value;
 }
 
 export async function searchTwilioNumbers(accountSid: string, areaCode: string) {

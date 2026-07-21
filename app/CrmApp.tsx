@@ -698,6 +698,9 @@ export function CrmApp({
             connections={data.providerConnections}
             selectedClientId={selectedClientId}
             mutate={mutate}
+            canReadSharedBilling={data.viewer.permissions.includes(
+              "billing.read_shared",
+            )}
           />
         )}
         {view === "phone-system" && (

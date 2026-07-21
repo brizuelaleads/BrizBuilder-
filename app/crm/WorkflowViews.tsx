@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   CrmClient,
   CrmProviderConnection,
@@ -17,6 +17,12 @@ type Mutate = (
   success: string,
 ) => Promise<unknown>;
 
+type TwilioVisibleBalance = {
+  balance: number | null;
+  currency: string | null;
+  balanceStatus: "parent" | "available" | "shared" | "unavailable";
+};
+
 function clientChoice(
   clients: CrmClient[],
   selectedClientId: string,
@@ -32,11 +38,13 @@ export function ConnectionsView({
   connections,
   selectedClientId,
   mutate,
+  canReadSharedBilling,
 }: {
   clients: CrmClient[];
   connections: CrmProviderConnection[];
   selectedClientId: string;
   mutate: Mutate;
+  canReadSharedBilling: boolean;
 }) {
   const [localClient, setLocalClient] = useState(clients[0]?.id ?? "");
   const clientId = clientChoice(clients, selectedClientId, localClient);
@@ -46,17 +54,89 @@ export function ConnectionsView({
   );
   const isLinked = Boolean(connection?.isLinked);
   const isActive = Boolean(connection?.isActive);
-  const money = (value: number | null | undefined) =>
+  const [balanceResult, setBalanceResult] = useState<{
+    key: string;
+    data: TwilioVisibleBalance | null;
+    error: string | null;
+  }>({ key: "", data: null, error: null });
+  const [balanceRefreshKey, setBalanceRefreshKey] = useState(0);
+  const balanceRequestKey = `${clientId}:${connection?.connectedAt ?? ""}:${balanceRefreshKey}`;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    if (!canReadSharedBilling || !isLinked || !clientId)
+      return () => controller.abort();
+
+    void fetch(
+      `/api/integrations/twilio/balance?clientId=${encodeURIComponent(clientId)}&refresh=${balanceRefreshKey > 0 ? "true" : "false"}`,
+      { cache: "no-store", signal: controller.signal },
+    )
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => ({}))) as {
+          data?: TwilioVisibleBalance;
+          error?: string;
+        };
+        if (!response.ok || !payload.data)
+          throw new Error(payload.error || "Twilio balance could not be loaded.");
+        return payload.data;
+      })
+      .then((data) => {
+        if (!controller.signal.aborted)
+          setBalanceResult({ key: balanceRequestKey, data, error: null });
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted)
+          setBalanceResult({
+            key: balanceRequestKey,
+            data: null,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Twilio balance could not be loaded.",
+          });
+      });
+
+    return () => controller.abort();
+  }, [
+    balanceRefreshKey,
+    balanceRequestKey,
+    canReadSharedBilling,
+    clientId,
+    isLinked,
+  ]);
+
+  const currentBalanceResult =
+    canReadSharedBilling && isLinked && balanceResult.key === balanceRequestKey
+      ? balanceResult
+      : null;
+  const visibleBalance = currentBalanceResult?.data ?? null;
+  const balanceError = currentBalanceResult?.error ?? null;
+  const balanceLoading = Boolean(
+    canReadSharedBilling &&
+      isLinked &&
+      clientId &&
+      balanceResult.key !== balanceRequestKey,
+  );
+  const displayedBalance = visibleBalance?.balance ?? null;
+  const displayedBalanceStatus =
+    visibleBalance?.balanceStatus ?? connection?.balanceStatus;
+  const displayedCurrency = visibleBalance?.currency ?? connection?.currency;
+  const money = (
+    value: number | null | undefined,
+    currency = connection?.currency,
+  ) =>
     value == null
       ? isLinked
         ? "Not available"
         : "Not loaded"
       : new Intl.NumberFormat(undefined, {
           style: "currency",
-          currency: connection?.currency || "USD",
+          currency: currency || "USD",
         }).format(value);
   const lowBalance =
-    connection?.balance != null && connection.balance < 10;
+    canReadSharedBilling &&
+    displayedBalance != null &&
+    displayedBalance < 10;
   return (
     <div className="crm-view crm-connections-view">
       <section className="crm-page-heading">
@@ -107,17 +187,35 @@ export function ConnectionsView({
             </header>
             <div className="crm-connection-details">
               <div className="crm-twilio-balance">
-                <span>Available balance</span>
+                <span>
+                  {displayedBalanceStatus === "parent"
+                    ? "Main Twilio account balance"
+                    : "Available balance"}
+                </span>
                 <strong>
-                  {connection?.balanceStatus === "shared"
+                  {connection?.balanceStatus === "restricted"
+                    ? "Restricted"
+                    : balanceLoading
+                    ? "Loading..."
+                    : balanceError
+                    ? "Not available"
+                    : displayedBalanceStatus === "shared"
                     ? "Shared balance"
-                    : money(connection?.balance)}
+                    : money(displayedBalance, displayedCurrency)}
                 </strong>
                 <small>
-                  {connection?.balanceStatus === "shared"
+                  {connection?.balanceStatus === "restricted"
+                    ? "Only account owners and agency admins can view this balance"
+                    : balanceLoading
+                    ? "Loading securely from Twilio"
+                    : balanceError
+                    ? balanceError
+                    : displayedBalanceStatus === "parent"
+                    ? `${displayedCurrency || "Twilio"} · Shared across this account's subaccounts`
+                    : displayedBalanceStatus === "shared"
                     ? "Managed by the main Twilio account"
-                    : connection?.balance != null
-                      ? connection.currency || "Twilio balance"
+                    : displayedBalance != null
+                      ? displayedCurrency || "Twilio balance"
                       : isLinked
                         ? "Not available from Twilio"
                         : "Connect Twilio to load account details"}
@@ -196,12 +294,13 @@ export function ConnectionsView({
               {isLinked ? (
                 <>
                   <button
-                    onClick={() =>
-                      mutate(
+                    onClick={async () => {
+                      await mutate(
                         { action: "check_provider_connection", clientId },
                         "Twilio connection status refreshed.",
-                      )
-                    }
+                      );
+                      setBalanceRefreshKey((value) => value + 1);
+                    }}
                   >
                     Refresh connection
                   </button>

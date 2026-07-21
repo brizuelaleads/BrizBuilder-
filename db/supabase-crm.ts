@@ -7,6 +7,7 @@ import {
   configureTwilioNumber,
   getTwilioConnectStatus,
   getTwilioRuntimeStatus,
+  getTwilioVisibleBalance,
   listTwilioNumbers,
   purchaseTwilioNumber,
   searchTwilioNumbers,
@@ -147,6 +148,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "appointments.write",
     "websites.manage",
     "phone_system.manage",
+    "billing.read_shared",
     "messages.write",
     "automations.manage",
     "custom_data.manage",
@@ -164,6 +166,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "appointments.write",
     "websites.manage",
     "phone_system.manage",
+    "billing.read_shared",
     "messages.write",
     "automations.manage",
     "custom_data.manage",
@@ -181,6 +184,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "appointments.write",
     "websites.manage",
     "phone_system.manage",
+    "billing.read_shared",
     "messages.write",
     "automations.manage",
     "custom_data.manage",
@@ -207,6 +211,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "appointments.write",
     "websites.manage",
     "phone_system.manage",
+    "billing.read_shared",
     "messages.write",
     "automations.manage",
     "custom_data.manage",
@@ -614,8 +619,6 @@ export async function finishSupabaseTwilioConnect(
           public_config: {
             accountStatus,
             accountType: account.accountType,
-            balance: account.balance,
-            balanceStatus: account.balanceStatus,
             currency: account.currency,
             todaySpend: account.today.spend,
             monthSpend: account.month.spend,
@@ -666,6 +669,31 @@ export async function finishSupabaseTwilioConnect(
     ),
   ]);
   return String(authorization.client_id);
+}
+
+export async function getSupabaseTwilioVisibleBalance(
+  user: ChatGPTUser,
+  clientId: string,
+  bypassCache = false,
+) {
+  const context = await getTenantContext(user);
+  requirePermission(context, "billing.read_shared");
+  await requireClient(context, clientId);
+  const connection = await assertOk(
+    supabase()
+      .from("provider_connections")
+      .select("external_account_id,status,disconnected_at")
+      .eq("organization_id", context.organizationId)
+      .eq("client_id", clientId)
+      .eq("provider", "twilio")
+      .maybeSingle(),
+  );
+  if (!connection || !providerIsLinked(connection))
+    throw new Error("Connect the customer's Twilio account first.");
+  return getTwilioVisibleBalance(
+    String(connection.external_account_id),
+    bypassCache,
+  );
 }
 
 export async function revokeSupabaseTwilioConnection(accountSid: string) {
@@ -941,19 +969,20 @@ function mapProviderConnection(row: AnyRecord): CrmProviderConnection {
     row.public_config && typeof row.public_config === "object"
       ? (row.public_config as Record<string, unknown>)
       : {};
+  const isLinked = providerIsLinked(row);
   return {
     id: String(row.id),
     clientId: String(row.client_id),
     provider: String(row.provider),
     status: String(row.status),
-    isLinked: providerIsLinked(row),
+    isLinked,
     isActive: providerIsActive(row),
     billingOwner: String(row.billing_owner ?? "customer"),
     accountLabel: nullable(row.external_account_name),
     accountStatus: providerAccountStatus(row),
     accountType: nullable(publicConfig.accountType),
-    balance: publicConfig.balance == null ? null : Number(publicConfig.balance),
-    balanceStatus: nullable(publicConfig.balanceStatus),
+    balance: null,
+    balanceStatus: isLinked ? "shared" : "unavailable",
     currency: nullable(publicConfig.currency),
     todaySpend: publicConfig.todaySpend == null ? null : Number(publicConfig.todaySpend),
     monthSpend: publicConfig.monthSpend == null ? null : Number(publicConfig.monthSpend),
@@ -964,6 +993,18 @@ function mapProviderConnection(row: AnyRecord): CrmProviderConnection {
     disconnectedAt: nullable(row.disconnected_at),
     lastHealthCheckAt: nullable(row.last_health_check_at),
     lastError: nullable(row.last_error),
+  };
+}
+
+function redactSharedBalance(
+  connection: CrmProviderConnection,
+  canReadSharedBilling: boolean,
+) {
+  if (canReadSharedBilling) return connection;
+  return {
+    ...connection,
+    balance: null,
+    balanceStatus: connection.isLinked ? "restricted" : "unavailable",
   };
 }
 
@@ -1169,6 +1210,44 @@ export async function getSupabaseCrmBootstrap(
   const appointmentRows = (appointments ?? []) as AnyRecord[];
   const noteRows = (notes ?? []) as AnyRecord[];
   const auditRows = (auditEvents ?? []) as AnyRecord[];
+  const providerConnectionRows = (providerConnections ?? []) as AnyRecord[];
+  const legacyBalanceRows = providerConnectionRows.filter((row) => {
+    const publicConfig =
+      row.public_config && typeof row.public_config === "object"
+        ? (row.public_config as Record<string, unknown>)
+        : {};
+    return (
+      String(row.provider) === "twilio" &&
+      (Object.prototype.hasOwnProperty.call(publicConfig, "balance") ||
+        Object.prototype.hasOwnProperty.call(publicConfig, "balanceStatus"))
+    );
+  });
+  if (legacyBalanceRows.length) {
+    try {
+      await Promise.all(
+        legacyBalanceRows.map((row) => {
+          const publicConfig = {
+            ...(row.public_config as Record<string, unknown>),
+          };
+          delete publicConfig.balance;
+          delete publicConfig.balanceStatus;
+          row.public_config = publicConfig;
+          return assertOk(
+            supabase()
+              .from("provider_connections")
+              .update({
+                public_config: publicConfig,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", String(row.id))
+              .eq("organization_id", context.organizationId),
+          );
+        }),
+      );
+    } catch (error) {
+      console.error("Could not remove a legacy stored Twilio balance.", error);
+    }
+  }
 
   return {
     viewer: {
@@ -1198,8 +1277,12 @@ export async function getSupabaseCrmBootstrap(
     automationRuns: ((automationRuns ?? []) as AnyRecord[]).map(
       mapAutomationRun,
     ),
-    providerConnections: ((providerConnections ?? []) as AnyRecord[]).map(
-      mapProviderConnection,
+    providerConnections: providerConnectionRows.map(
+      (row) =>
+        redactSharedBalance(
+          mapProviderConnection(row),
+          rolePermissions[context.role].includes("billing.read_shared"),
+        ),
     ),
     workflows: ((workflows ?? []) as AnyRecord[]).map((row) =>
       mapWorkflow(row, (workflowVersions ?? []) as AnyRecord[]),
@@ -1411,8 +1494,6 @@ export async function executeSupabaseCrmAction(
               public_config: {
                 accountStatus,
                 accountType: account.accountType,
-                balance: account.balance,
-                balanceStatus: account.balanceStatus,
                 currency: account.currency,
                 todaySpend: account.today.spend,
                 monthSpend: account.month.spend,
@@ -1437,8 +1518,15 @@ export async function executeSupabaseCrmAction(
             .eq("client_id", clientId),
         ),
       ]);
+      const canReadSharedBilling = rolePermissions[context.role].includes(
+        "billing.read_shared",
+      );
       return {
         ...account,
+        balance: canReadSharedBilling ? account.balance : null,
+        balanceStatus: canReadSharedBilling
+          ? account.balanceStatus
+          : "restricted",
         status,
         isLinked: true,
         isActive,
