@@ -546,6 +546,7 @@ export async function beginSupabaseTwilioConnect(
     "-",
     "",
   );
+  const connectUrl = await buildTwilioConnectUrl(state);
   await assertOk(
     supabase()
       .from("provider_authorization_states")
@@ -558,7 +559,7 @@ export async function beginSupabaseTwilioConnect(
         expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
       }),
   );
-  return buildTwilioConnectUrl(state);
+  return connectUrl;
 }
 
 export async function finishSupabaseTwilioConnect(

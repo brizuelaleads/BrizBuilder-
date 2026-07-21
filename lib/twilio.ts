@@ -12,18 +12,104 @@ function runtime() {
     fromNumber: readRuntimeValue("TWILIO_FROM_NUMBER"),
     webhookBaseUrl: (readRuntimeValue("TWILIO_WEBHOOK_BASE_URL") || "https://brizbuilder-leads.brizuelaleads.workers.dev").replace(/\/$/, ""),
     connectAuthorizeUrl: readRuntimeValue("TWILIO_CONNECT_AUTHORIZE_URL"),
+    connectAppSid: readRuntimeValue("TWILIO_CONNECT_APP_SID"),
   };
 }
 
 export function getTwilioConnectStatus() {
   const config = runtime();
-  return { ready: Boolean(config.accountSid && config.authToken && config.connectAuthorizeUrl), authorizeUrl: config.connectAuthorizeUrl };
+  return {
+    ready: Boolean(config.accountSid && config.authToken),
+    authorizeUrl: config.connectAuthorizeUrl,
+  };
 }
 
-export function buildTwilioConnectUrl(state: string) {
+type TwilioConnectApp = {
+  sid?: string;
+  friendly_name?: string;
+  authorize_redirect_url?: string;
+  permissions?: string[] | string;
+};
+
+const TWILIO_CONNECT_CALLBACK_PATH = "/api/integrations/twilio/callback";
+const TWILIO_CONNECT_SID = /^CN[0-9a-f]{32}$/i;
+let discoveredConnectAuthorizeUrl: string | undefined;
+
+function twilioAuthorizeUrl(value: string) {
+  const url = new URL(value);
+  const sid = url.pathname.match(/^\/authorize\/(CN[0-9a-f]{32})\/?$/i)?.[1];
+  if (url.protocol !== "https:" || url.hostname !== "www.twilio.com" || !sid)
+    throw new Error("BrizBuilder's Twilio Connect authorization URL is invalid.");
+  return `https://www.twilio.com/authorize/${sid}`;
+}
+
+function hasRequiredConnectPermissions(app: TwilioConnectApp) {
+  const permissions = (Array.isArray(app.permissions)
+    ? app.permissions
+    : String(app.permissions ?? "").split(/[\s,]+/)
+  ).map((permission) => permission.toLowerCase());
+  return permissions.includes("get-all") && permissions.includes("post-all");
+}
+
+function hasBrizBuilderCallback(app: TwilioConnectApp) {
+  if (!app.authorize_redirect_url) return false;
+  try {
+    return new URL(app.authorize_redirect_url).pathname === TWILIO_CONNECT_CALLBACK_PATH;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveTwilioConnectAuthorizeUrl() {
   const config = runtime();
-  if (!config.connectAuthorizeUrl) throw new Error("Twilio customer connection is not configured yet.");
-  const url = new URL(config.connectAuthorizeUrl);
+  if (config.connectAuthorizeUrl)
+    return twilioAuthorizeUrl(config.connectAuthorizeUrl);
+  if (TWILIO_CONNECT_SID.test(config.connectAppSid))
+    return twilioAuthorizeUrl(
+      `https://www.twilio.com/authorize/${config.connectAppSid}`,
+    );
+  if (discoveredConnectAuthorizeUrl) return discoveredConnectAuthorizeUrl;
+  if (!config.accountSid || !config.authToken)
+    throw new Error("BrizBuilder's Twilio platform account is not configured yet.");
+
+  const result = await twilioApi<{ connect_apps?: TwilioConnectApp[] }>(
+    config.accountSid,
+    `/2010-04-01/Accounts/${encodeURIComponent(config.accountSid)}/ConnectApps.json?PageSize=1000`,
+  );
+  const apps = (result.connect_apps ?? []).filter(
+    (app) =>
+      TWILIO_CONNECT_SID.test(app.sid ?? "") &&
+      hasRequiredConnectPermissions(app),
+  );
+  const exactNames = apps.filter(
+    (app) => app.friendly_name?.trim().toLowerCase() === "brizbuilder",
+  );
+  const namedCallbacks = apps.filter(
+    (app) =>
+      app.friendly_name?.toLowerCase().includes("brizbuilder") &&
+      hasBrizBuilderCallback(app),
+  );
+  const callbackMatches = apps.filter(hasBrizBuilderCallback);
+  const exactCallbackNames = exactNames.filter(hasBrizBuilderCallback);
+  const unique = (matches: TwilioConnectApp[]) =>
+    matches.length === 1 ? matches[0] : undefined;
+  const app =
+    unique(exactCallbackNames) ??
+    unique(namedCallbacks) ??
+    unique(callbackMatches) ??
+    unique(exactNames);
+  if (!app?.sid)
+    throw new Error(
+      "BrizBuilder could not uniquely identify its Twilio Connect app. Check Twilio Console > Settings > Connect applications.",
+    );
+  discoveredConnectAuthorizeUrl = twilioAuthorizeUrl(
+    `https://www.twilio.com/authorize/${app.sid}`,
+  );
+  return discoveredConnectAuthorizeUrl;
+}
+
+export async function buildTwilioConnectUrl(state: string) {
+  const url = new URL(await resolveTwilioConnectAuthorizeUrl());
   url.searchParams.set("state", state);
   return url.toString();
 }
@@ -35,6 +121,7 @@ async function twilioApi<T>(accountSid: string, path: string, init?: { method?: 
     method: init?.method ?? "GET",
     headers: { Authorization: `Basic ${btoa(`${accountSid}:${config.authToken}`)}`, ...(init?.body ? { "Content-Type": "application/x-www-form-urlencoded" } : {}) },
     body: init?.body ? encodeForm(init.body) : undefined,
+    signal: AbortSignal.timeout(10_000),
   });
   const payload = await response.json() as T & { message?: string };
   if (!response.ok) throw new Error(payload.message || "Twilio request failed.");
