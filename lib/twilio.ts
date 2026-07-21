@@ -128,6 +128,20 @@ async function twilioApi<T>(accountSid: string, path: string, init?: { method?: 
   return payload;
 }
 
+async function optionalTwilioApi<T>(request: Promise<T>) {
+  try {
+    return await request;
+  } catch {
+    return null;
+  }
+}
+
+function finiteNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 export async function checkTwilioConnectedAccount(accountSid: string) {
   const basePath = `/2010-04-01/Accounts/${encodeURIComponent(accountSid)}`;
   type UsageRecord = {
@@ -137,33 +151,77 @@ export async function checkTwilioConnectedAccount(accountSid: string) {
     price_unit?: string;
     usage?: string;
   };
-  const [account, balance, today, month] = await Promise.all([
-    twilioApi<{ sid: string; friendly_name?: string; status?: string; type?: string }>(accountSid, `${basePath}.json`),
-    twilioApi<{ balance?: string; currency?: string }>(accountSid, `${basePath}/Balance.json`),
-    twilioApi<{ usage_records?: UsageRecord[] }>(accountSid, `${basePath}/Usage/Records/Today.json?PageSize=1000&IncludeSubaccounts=false`),
-    twilioApi<{ usage_records?: UsageRecord[] }>(accountSid, `${basePath}/Usage/Records/ThisMonth.json?PageSize=1000&IncludeSubaccounts=false`),
+  const account = await twilioApi<{
+    sid: string;
+    friendly_name?: string;
+    status?: string;
+    type?: string;
+    owner_account_sid?: string;
+  }>(accountSid, `${basePath}.json`);
+  const isSubaccount =
+    /^AC[0-9a-f]{32}$/i.test(account.owner_account_sid ?? "") &&
+    account.owner_account_sid?.toLowerCase() !== account.sid.toLowerCase();
+  const [balance, today, month] = await Promise.all([
+    isSubaccount
+      ? Promise.resolve(null)
+      : optionalTwilioApi(
+          twilioApi<{ balance?: string; currency?: string }>(
+            accountSid,
+            `${basePath}/Balance.json`,
+          ),
+        ),
+    optionalTwilioApi(
+      twilioApi<{ usage_records?: UsageRecord[] }>(
+        accountSid,
+        `${basePath}/Usage/Records/Today.json?PageSize=1000&IncludeSubaccounts=false`,
+      ),
+    ),
+    optionalTwilioApi(
+      twilioApi<{ usage_records?: UsageRecord[] }>(
+        accountSid,
+        `${basePath}/Usage/Records/ThisMonth.json?PageSize=1000&IncludeSubaccounts=false`,
+      ),
+    ),
   ]);
-  const summarize = (records: UsageRecord[] = []) => {
+  const summarize = (records: UsageRecord[] | undefined) => {
+    if (!Array.isArray(records))
+      return { spend: null, currency: null, calls: null, messages: null };
     const find = (category: string) => records.find((item) => item.category === category);
     const total = find("totalprice");
     const calls = find("calls");
     const messages = find("sms");
     return {
-      spend: Math.abs(Number(total?.price ?? total?.usage ?? 0)),
-      currency: String(total?.price_unit ?? balance.currency ?? "usd").toUpperCase(),
-      calls: Number(calls?.count ?? 0),
-      messages: Number(messages?.count ?? 0),
+      spend: total
+        ? finiteNumber(Math.abs(Number(total.price ?? total.usage)))
+        : 0,
+      currency: total?.price_unit
+        ? String(total.price_unit).toUpperCase()
+        : null,
+      calls: calls ? finiteNumber(calls.count) : 0,
+      messages: messages ? finiteNumber(messages.count) : 0,
     };
   };
+  const todaySummary = summarize(today?.usage_records);
+  const monthSummary = summarize(month?.usage_records);
+  const balanceValue = finiteNumber(balance?.balance);
+  const currency =
+    (balance?.currency ? String(balance.currency).toUpperCase() : null) ??
+    monthSummary.currency ??
+    todaySummary.currency;
   return {
     sid: account.sid,
     name: account.friendly_name || "Customer Twilio account",
     status: account.status || "unknown",
     accountType: account.type || "Unknown",
-    balance: Number(balance.balance ?? 0),
-    currency: String(balance.currency ?? "usd").toUpperCase(),
-    today: summarize(today.usage_records),
-    month: summarize(month.usage_records),
+    balance: balanceValue,
+    balanceStatus: isSubaccount
+      ? "shared"
+      : balanceValue === null
+        ? "unavailable"
+        : "available",
+    currency,
+    today: todaySummary,
+    month: monthSummary,
   };
 }
 

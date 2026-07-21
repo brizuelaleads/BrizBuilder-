@@ -48,7 +48,9 @@ export function ConnectionsView({
   const isActive = Boolean(connection?.isActive);
   const money = (value: number | null | undefined) =>
     value == null
-      ? "Not loaded"
+      ? isLinked
+        ? "Not available"
+        : "Not loaded"
       : new Intl.NumberFormat(undefined, {
           style: "currency",
           currency: connection?.currency || "USD",
@@ -106,8 +108,20 @@ export function ConnectionsView({
             <div className="crm-connection-details">
               <div className="crm-twilio-balance">
                 <span>Available balance</span>
-                <strong>{money(connection?.balance)}</strong>
-                <small>{connection?.currency || "Refresh to load balance"}</small>
+                <strong>
+                  {connection?.balanceStatus === "shared"
+                    ? "Shared balance"
+                    : money(connection?.balance)}
+                </strong>
+                <small>
+                  {connection?.balanceStatus === "shared"
+                    ? "Managed by the main Twilio account"
+                    : connection?.balance != null
+                      ? connection.currency || "Twilio balance"
+                      : isLinked
+                        ? "Not available from Twilio"
+                        : "Connect Twilio to load account details"}
+                </small>
               </div>
               <div>
                 <span>Account plan</span>
@@ -123,11 +137,17 @@ export function ConnectionsView({
               </div>
               <div>
                 <span>Calls this month</span>
-                <strong>{connection?.monthCalls ?? "Not loaded"}</strong>
+                <strong>
+                  {connection?.monthCalls ??
+                    (isLinked ? "Not available" : "Not loaded")}
+                </strong>
               </div>
               <div>
                 <span>Texts this month</span>
-                <strong>{connection?.monthMessages ?? "Not loaded"}</strong>
+                <strong>
+                  {connection?.monthMessages ??
+                    (isLinked ? "Not available" : "Not loaded")}
+                </strong>
               </div>
               <div>
                 <span>Integration status</span>
@@ -179,11 +199,11 @@ export function ConnectionsView({
                     onClick={() =>
                       mutate(
                         { action: "check_provider_connection", clientId },
-                        "Twilio balance and account activity updated.",
+                        "Twilio connection status refreshed.",
                       )
                     }
                   >
-                    Refresh balance & usage
+                    Refresh connection
                   </button>
                   <button
                     className="danger"

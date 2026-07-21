@@ -348,6 +348,7 @@ export type CrmProviderConnection = {
   accountStatus: string | null;
   accountType: string | null;
   balance: number | null;
+  balanceStatus: string | null;
   currency: string | null;
   todaySpend: number | null;
   monthSpend: number | null;
