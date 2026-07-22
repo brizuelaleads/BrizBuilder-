@@ -37,8 +37,8 @@ export default function TermsPage() {
           <strong>BrizBuilder</strong>
         </Link>
         <div className="site-actions">
-          <Link className="site-link" href="/">
-            Home
+          <Link className="site-link" href="/privacy">
+            Privacy
           </Link>
           <Link className="site-button" href="/dashboard">
             Log in

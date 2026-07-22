@@ -8,7 +8,8 @@ This is the backend foundation for making BrizBuilder operational with a real da
 - Server-side Supabase helpers.
 - A backend switch so BrizBuilder can use Supabase for the CRM dashboard.
 - A health endpoint at `/api/supabase/status`.
-- A production-style Postgres schema in `supabase/schema.sql`.
+- A baseline Postgres snapshot in `supabase/schema.sql` and authoritative,
+  ordered production changes in `supabase/migrations`.
 - Row-level security rules so clients cannot see other clients' data.
 - Storage buckets for client assets, website assets, and imports.
 
@@ -21,6 +22,25 @@ In Supabase:
 3. Open `supabase/schema.sql` from this repo.
 4. Paste the whole file into Supabase.
 5. Click **Run**.
+6. Open and run each of these files, one at a time, in this exact order:
+
+```txt
+supabase/migrations/20260718170000_phone_system.sql
+supabase/migrations/20260718210000_connections_and_visual_workflows.sql
+supabase/migrations/20260721170000_remove_stored_twilio_balances.sql
+supabase/migrations/20260721190000_google_business_profiles.sql
+supabase/migrations/20260722040000_google_business_oauth_credentials.sql
+```
+
+`supabase/schema.sql` is the baseline copy of
+`20260717150000_brizbuilder_initial_schema.sql`; do not run both on a fresh
+database. The later dated migrations are required. In particular, the final
+two create the Google Business Profile table and the server-only encrypted
+OAuth credential table.
+
+If you use the Supabase CLI instead of the SQL Editor, apply the complete
+`supabase/migrations` directory to an empty database and skip `schema.sql`.
+Whichever method you choose, migrations must run in filename order.
 
 ## Step 2: Add environment variables to your host
 

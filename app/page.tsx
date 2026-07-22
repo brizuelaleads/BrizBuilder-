@@ -152,6 +152,14 @@ export default function MarketingHome() {
         <h2>Use the public site for visitors. Keep the dashboard private.</h2>
         <Link href="/dashboard">Go to login</Link>
       </section>
+
+      <footer className="site-public-footer">
+        <span>© 2026 BrizBuilder</span>
+        <nav aria-label="Legal links">
+          <Link href="/privacy">Privacy Policy</Link>
+          <Link href="/terms">Terms of Service</Link>
+        </nav>
+      </footer>
     </main>
   );
 }

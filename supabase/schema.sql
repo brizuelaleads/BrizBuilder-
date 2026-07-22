@@ -2,6 +2,10 @@
 -- Run this in Supabase Dashboard > SQL Editor after creating the project.
 -- It creates the real backend tables plus row-level security so clients only
 -- see records assigned to their client workspace.
+-- This is the baseline schema (equivalent to the first dated migration).
+-- After running it, run each later file in supabase/migrations in filename
+-- order, beginning with 20260718170000_phone_system.sql. Those migrations add
+-- the current phone, workflow, Google Business Profile, and OAuth tables.
 
 create extension if not exists pgcrypto;
 
@@ -345,6 +349,7 @@ create table if not exists public.audit_events (
   created_at timestamptz not null default now()
 );
 
+create unique index if not exists clients_organization_id_id_uidx on public.clients (organization_id, id);
 create index if not exists clients_org_status_idx on public.clients (organization_id, status);
 create index if not exists client_members_profile_idx on public.client_members (profile_id);
 create index if not exists contacts_client_idx on public.contacts (organization_id, client_id);

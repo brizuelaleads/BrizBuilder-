@@ -46,7 +46,7 @@ Supabase support has been added as the production backend foundation. The app no
 - Supabase SDK installed
 - server-side Supabase helpers
 - `/api/supabase/status` connection check
-- full SQL schema at `supabase/schema.sql`
+- baseline SQL snapshot at `supabase/schema.sql` plus ordered production migrations in `supabase/migrations`
 - row-level security policies so client accounts cannot see other clients' data
 - storage buckets for assets, website photos, and imports
 
@@ -54,7 +54,23 @@ To connect your Supabase project:
 
 1. Open Supabase > SQL Editor.
 2. Paste and run `supabase/schema.sql`.
-3. Add these environment variables in Cloudflare/Vercel:
+3. Then paste and run these files one at a time, in this exact order:
+
+```txt
+supabase/migrations/20260718170000_phone_system.sql
+supabase/migrations/20260718210000_connections_and_visual_workflows.sql
+supabase/migrations/20260721170000_remove_stored_twilio_balances.sql
+supabase/migrations/20260721190000_google_business_profiles.sql
+supabase/migrations/20260722040000_google_business_oauth_credentials.sql
+```
+
+`supabase/schema.sql` is the same baseline as
+`20260717150000_brizbuilder_initial_schema.sql`, so do not run both on a fresh
+database. The dated migrations are authoritative for every change after that
+baseline. If you use the Supabase CLI instead, apply the complete
+`supabase/migrations` directory to an empty database and skip `schema.sql`.
+
+4. Add these environment variables in Cloudflare/Vercel:
 
 ```txt
 NEXT_PUBLIC_SUPABASE_URL=
@@ -72,6 +88,12 @@ Copy `.env.example` to `.env.local`, then set `MAIN_ADMIN_EMAIL`, `MAIN_ADMIN_NA
 ## Database and migrations
 
 The logical D1 binding is declared as `DB` in `.openai/hosting.json`.
+
+Supabase/Postgres changes live in `supabase/migrations` and must be applied in
+filename order. `supabase/schema.sql` is only the baseline snapshot; a fresh
+manual SQL Editor setup is not current until the later migrations listed above
+have also run. This is what creates the Google Business Profile and protected
+Google OAuth credential tables.
 
 Generate a migration after changing `db/schema.ts`:
 

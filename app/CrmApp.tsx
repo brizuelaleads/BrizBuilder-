@@ -709,6 +709,7 @@ export function CrmApp({
             mutate={mutate}
             runtime={data.googleProfileRuntime}
             canManage={data.viewer.permissions.includes("profiles.manage")}
+            canConnect={data.viewer.permissions.includes("profiles.connect")}
           />
         )}
         {view === "connections" && (

@@ -22,6 +22,7 @@ export type CrmPermission =
   | "appointments.write"
   | "websites.manage"
   | "profiles.manage"
+  | "profiles.connect"
   | "phone_system.manage"
   | "billing.read_shared"
   | "messages.write"
@@ -32,11 +33,11 @@ export type CrmPermission =
   | "feature_flags.manage";
 
 const rolePermissions: Record<CrmRole, CrmPermission[]> = {
-  SUPER_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  SUPER_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
   AGENCY_MEMBER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "messages.write"],
-  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage"],
+  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage"],
   CLIENT_MANAGER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "phone_system.manage", "messages.write", "automations.manage", "custom_data.manage"],
   CLIENT_EMPLOYEE: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "messages.write"],
 };
@@ -379,6 +380,7 @@ export type CrmGoogleProfile = {
   lastSyncedAt: string | null;
   connectedAt: string | null;
   lastError: string | null;
+  revocationRetryAvailable: boolean;
 };
 
 export type CrmWorkflowNode = {
@@ -716,7 +718,7 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
     contacts: contactRows.results.map(mapContact),
     companies: companyRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), name: String(row.name), industry: nullable(row.industry), website: nullable(row.website), phone: nullable(row.phone), email: nullable(row.email), address: nullable(row.address), city: nullable(row.city), state: nullable(row.state), zip: nullable(row.zip), tags: parseStringArray(row.tags_json), notes: String(row.notes ?? ""), contactCount: Number(row.contact_count ?? 0), createdAt: String(row.created_at) })),
     websites: websiteRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), name: String(row.name), domain: nullable(row.domain), status: String(row.status), platform: String(row.platform ?? "other"), leadCaptureEnabled: Boolean(row.lead_capture_enabled), lastLeadAt: nullable(row.last_lead_at), createdAt: String(row.created_at), updatedAt: String(row.updated_at) })),
-    googleProfiles: googleProfileRows.results.map((row): CrmGoogleProfile => ({ id: String(row.id), clientId: String(row.client_id), status: String(row.status ?? "not_connected") as CrmGoogleProfile["status"], accountName: nullable(row.account_name), locationName: nullable(row.location_name), locationId: nullable(row.location_id), businessName: nullable(row.business_name), address: nullable(row.address), phone: nullable(row.phone), website: nullable(row.website), primaryCategory: nullable(row.primary_category), googleReviewUrl: nullable(row.google_review_url), lastSyncedAt: nullable(row.last_synced_at), connectedAt: nullable(row.connected_at), lastError: nullable(row.last_error) })),
+    googleProfiles: googleProfileRows.results.map((row): CrmGoogleProfile => ({ id: String(row.id), clientId: String(row.client_id), status: String(row.status ?? "not_connected") as CrmGoogleProfile["status"], accountName: nullable(row.account_name), locationName: nullable(row.location_name), locationId: nullable(row.location_id), businessName: nullable(row.business_name), address: nullable(row.address), phone: nullable(row.phone), website: nullable(row.website), primaryCategory: nullable(row.primary_category), googleReviewUrl: nullable(row.google_review_url), lastSyncedAt: nullable(row.last_synced_at), connectedAt: nullable(row.connected_at), lastError: nullable(row.last_error), revocationRetryAvailable: false })),
     googleProfileRuntime: { configured: false },
     phoneConfigs: [],
     phoneCalls: [],
@@ -798,7 +800,44 @@ function normalizeGoogleReviewUrl(value: unknown): string | null {
   if (!raw) return null;
   try {
     const url = new URL(raw);
-    if (url.protocol !== "https:" || !/(^|\.)google\.[a-z.]+$/i.test(url.hostname)) throw new Error("invalid");
+    const hostname = url.hostname.toLowerCase();
+    const pathname = url.pathname.replace(/\/+$/, "") || "/";
+    const googleMapsHosts = new Set([
+      "google.com",
+      "www.google.com",
+      "maps.google.com",
+    ]);
+    const isGoogleReviewForm =
+      (hostname === "search.google.com" ||
+        hostname === "google.com" ||
+        hostname === "www.google.com") &&
+      pathname === "/local/writereview" &&
+      Boolean(url.searchParams.get("placeid"));
+    const isGoogleMapsUrl =
+      googleMapsHosts.has(hostname) &&
+      (pathname === "/maps" || pathname.startsWith("/maps/"));
+    const isLegacyGoogleMapsShortUrl =
+      hostname === "goo.gl" && /^\/maps\/[A-Za-z0-9_-]+$/.test(pathname);
+    const isGoogleMapsShortUrl =
+      hostname === "maps.app.goo.gl" &&
+      /^\/[A-Za-z0-9_-]+$/.test(pathname);
+    const isGoogleBusinessShortUrl =
+      hostname === "g.page" &&
+      /^\/(?:r\/)?[A-Za-z0-9_-]+(?:\/review)?$/i.test(pathname);
+
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.port ||
+      (!isGoogleReviewForm &&
+        !isGoogleMapsUrl &&
+        !isLegacyGoogleMapsShortUrl &&
+        !isGoogleMapsShortUrl &&
+        !isGoogleBusinessShortUrl)
+    ) {
+      throw new Error("invalid");
+    }
     return url.toString();
   } catch {
     throw new Error("Paste the HTTPS Google review link from the client's Business Profile.");
@@ -847,7 +886,7 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
   }
 
   if (action === "disconnect_google_profile") {
-    requirePermission(context, "profiles.manage");
+    requirePermission(context, "profiles.connect");
     const clientId = requireText(input.clientId, "Client", 80);
     await requireClient(context, clientId);
     await db.prepare("UPDATE google_business_profiles SET status = 'disconnected', last_error = NULL, updated_at = CURRENT_TIMESTAMP WHERE organization_id = ? AND client_id = ?").bind(context.organizationId, clientId).run();

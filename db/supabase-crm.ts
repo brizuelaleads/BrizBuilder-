@@ -1,7 +1,17 @@
 import type { ChatGPTUser } from "../app/chatgpt-auth";
 import { MAIN_ADMIN_EMAIL } from "../app/auth-config";
 import { getSupabaseAdminClient } from "../lib/supabase/server";
-import { readRuntimeValue } from "../lib/supabase/env";
+import {
+  buildGoogleAuthorizationUrl,
+  decryptGoogleSecret,
+  encryptGoogleSecret,
+  exchangeGoogleAuthorizationCode,
+  getGoogleBusinessRuntimeStatus,
+  listGoogleBusinessLocations,
+  refreshGoogleAccessToken,
+  revokeGoogleRefreshToken,
+  type GoogleBusinessLocation,
+} from "../lib/google-business";
 import {
   buildTwilioConnectUrl,
   checkTwilioConnectedAccount,
@@ -150,6 +160,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "appointments.write",
     "websites.manage",
     "profiles.manage",
+    "profiles.connect",
     "phone_system.manage",
     "billing.read_shared",
     "messages.write",
@@ -169,6 +180,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "appointments.write",
     "websites.manage",
     "profiles.manage",
+    "profiles.connect",
     "phone_system.manage",
     "billing.read_shared",
     "messages.write",
@@ -188,6 +200,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "appointments.write",
     "websites.manage",
     "profiles.manage",
+    "profiles.connect",
     "phone_system.manage",
     "billing.read_shared",
     "messages.write",
@@ -217,6 +230,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "appointments.write",
     "websites.manage",
     "profiles.manage",
+    "profiles.connect",
     "phone_system.manage",
     "billing.read_shared",
     "messages.write",
@@ -252,11 +266,7 @@ function supabase() {
 
 function googleProfileRuntime() {
   return {
-    configured: Boolean(
-      readRuntimeValue("GOOGLE_CLIENT_ID") &&
-        readRuntimeValue("GOOGLE_CLIENT_SECRET") &&
-        readRuntimeValue("GOOGLE_REDIRECT_URI"),
-    ),
+    configured: getGoogleBusinessRuntimeStatus().ready,
   };
 }
 
@@ -293,9 +303,51 @@ function normalizeGoogleReviewUrl(value: unknown): string | null {
   if (!raw) return null;
   try {
     const url = new URL(raw);
-    if (url.protocol !== "https:") throw new Error("invalid");
-    if (!/(^|\.)google\.[a-z.]+$/i.test(url.hostname))
+    if (
+      url.protocol !== "https:" ||
+      url.port ||
+      url.username ||
+      url.password
+    ) {
       throw new Error("invalid");
+    }
+    const hostname = url.hostname.toLowerCase();
+    const path = url.pathname;
+    const isGoogleReviewPage =
+      hostname === "g.page" &&
+      /^\/(?:r\/[A-Za-z0-9_-]+|[A-Za-z0-9][A-Za-z0-9_-]{0,127})\/review\/?$/.test(
+        path,
+      );
+    const isGoogleMapsShortLink =
+      hostname === "maps.app.goo.gl" &&
+      /^\/[A-Za-z0-9_-]{4,256}\/?$/.test(path);
+    const placeId = url.searchParams.get("placeid") ?? "";
+    const isGoogleWriteReviewLink =
+      hostname === "search.google.com" &&
+      path === "/local/writereview" &&
+      /^[A-Za-z0-9:_-]{8,256}$/.test(placeId);
+    const googleMapsHosts = [
+      "google.com",
+      "www.google.com",
+      "maps.google.com",
+    ];
+    const cid = url.searchParams.get("cid") ?? "";
+    const isGoogleMapsCidLink =
+      googleMapsHosts.includes(hostname) &&
+      path === "/maps" &&
+      /^\d{1,30}$/.test(cid);
+    const isGoogleMapsPlaceLink =
+      ["google.com", "www.google.com"].includes(hostname) &&
+      /^\/maps\/place\/[^/]+(?:\/.*)?$/.test(path);
+    if (
+      !isGoogleReviewPage &&
+      !isGoogleMapsShortLink &&
+      !isGoogleWriteReviewLink &&
+      !isGoogleMapsCidLink &&
+      !isGoogleMapsPlaceLink
+    ) {
+      throw new Error("invalid");
+    }
     return url.toString();
   } catch {
     throw new Error("Paste the HTTPS Google review link from the client's Business Profile.");
@@ -419,7 +471,7 @@ async function getTenantContext(user: ChatGPTUser): Promise<TenantContext> {
   await ensureSupabaseBaseline();
   const email = user.email.trim().toLowerCase();
 
-  if (email === MAIN_ADMIN_EMAIL) {
+  if (email === MAIN_ADMIN_EMAIL.trim().toLowerCase()) {
     return {
       organizationId: ORGANIZATION_ID,
       organizationName: "Brizuela Leads",
@@ -701,6 +753,645 @@ export async function finishSupabaseTwilioConnect(
     ),
   ]);
   return String(authorization.client_id);
+}
+
+const GOOGLE_BUSINESS_PROVIDER = "google_business_profile";
+
+class GoogleConnectionDisconnectedError extends Error {
+  constructor() {
+    super("Connect this business's Google account first.");
+    this.name = "GoogleConnectionDisconnectedError";
+  }
+}
+
+function safeIntegrationError(error: unknown) {
+  return error instanceof Error
+    ? error.message.slice(0, 500)
+    : "Google Business Profile request failed.";
+}
+
+async function googleCredential(
+  organizationId: string,
+  clientId: string,
+) {
+  return assertOk(
+    supabase()
+      .from("google_business_credentials")
+      .select(
+        "id,refresh_token_ciphertext,refresh_token_iv,scopes,connected_by_email",
+      )
+      .eq("organization_id", organizationId)
+      .eq("client_id", clientId)
+      .maybeSingle(),
+  );
+}
+
+async function authorizedGoogleLocations(
+  organizationId: string,
+  clientId: string,
+) {
+  const [credential, profile] = await Promise.all([
+    googleCredential(organizationId, clientId),
+    assertOk(
+      supabase()
+        .from("google_business_profiles")
+        .select("status")
+        .eq("organization_id", organizationId)
+        .eq("client_id", clientId)
+        .maybeSingle(),
+    ),
+  ]);
+  if (!credential) {
+    throw new Error("Connect this business's Google account first.");
+  }
+  if (String(profile?.status ?? "").toLowerCase() === "disconnected") {
+    throw new GoogleConnectionDisconnectedError();
+  }
+  const refreshToken = await decryptGoogleSecret({
+    ciphertext: String(credential.refresh_token_ciphertext),
+    iv: String(credential.refresh_token_iv),
+  }, organizationId, clientId);
+  const tokens = await refreshGoogleAccessToken(refreshToken);
+  return listGoogleBusinessLocations(tokens.accessToken);
+}
+
+async function saveGoogleLocation(
+  organizationId: string,
+  clientId: string,
+  location: GoogleBusinessLocation,
+  connectedAt?: string,
+) {
+  const existing = await assertOk(
+    supabase()
+      .from("google_business_profiles")
+      .select("account_id,location_id,google_review_url,connected_at")
+      .eq("organization_id", organizationId)
+      .eq("client_id", clientId)
+      .maybeSingle(),
+  );
+  const now = new Date().toISOString();
+  const sameLocation = Boolean(
+    existing?.account_id === location.accountResourceName &&
+      existing?.location_id === location.locationResourceName,
+  );
+  await assertOk(
+    supabase()
+      .from("google_business_profiles")
+      .upsert(
+        {
+          organization_id: organizationId,
+          client_id: clientId,
+          status: "connected",
+          account_id: location.accountResourceName,
+          account_name: location.accountName,
+          location_name: location.businessName,
+          location_id: location.locationResourceName,
+          business_name: location.businessName,
+          address: location.address,
+          phone: location.phone,
+          website: location.website,
+          primary_category: location.primaryCategory,
+          google_review_url: sameLocation
+            ? (existing?.google_review_url ?? location.reviewUrl ?? null)
+            : (location.reviewUrl ?? null),
+          last_synced_at: now,
+          connected_at: sameLocation
+            ? (existing?.connected_at ?? connectedAt ?? now)
+            : (connectedAt ?? now),
+          last_error: null,
+          updated_at: now,
+        },
+        { onConflict: "organization_id,client_id" },
+      ),
+  );
+}
+
+async function markGoogleProfileAttention(
+  organizationId: string,
+  clientId: string,
+  message: string,
+  connectedAt?: string,
+) {
+  const now = new Date().toISOString();
+  await assertOk(
+    supabase()
+      .from("google_business_profiles")
+      .upsert(
+        {
+          organization_id: organizationId,
+          client_id: clientId,
+          status: "attention",
+          connected_at: connectedAt ?? now,
+          last_error: message.slice(0, 500),
+          updated_at: now,
+        },
+        { onConflict: "organization_id,client_id" },
+      ),
+  );
+}
+
+function knownCrmRole(value: unknown): CrmRole | null {
+  if (
+    typeof value !== "string" ||
+    !Object.prototype.hasOwnProperty.call(rolePermissions, value)
+  ) {
+    return null;
+  }
+  return value as CrmRole;
+}
+
+async function revalidateGoogleCallbackAuthorization(
+  authorization: AnyRecord,
+): Promise<TenantContext> {
+  const organizationId = String(authorization.organization_id ?? "");
+  const clientId = String(authorization.client_id ?? "");
+  const email = String(authorization.requested_by_email ?? "")
+    .trim()
+    .toLowerCase();
+  if (!organizationId || !clientId || !email) {
+    throw new Error(
+      "This Google connection request is invalid. Start again from BrizBuilder.",
+    );
+  }
+
+  const [organization, client] = await Promise.all([
+    assertOk(
+      supabase()
+        .from("organizations")
+        .select("id,name")
+        .eq("id", organizationId)
+        .eq("status", "active")
+        .maybeSingle(),
+    ),
+    assertOk(
+      supabase()
+        .from("clients")
+        .select("id,business_name")
+        .eq("id", clientId)
+        .eq("organization_id", organizationId)
+        .eq("status", "active")
+        .is("archived_at", null)
+        .maybeSingle(),
+    ),
+  ]);
+  if (!organization || !client) {
+    throw new Error(
+      "This business is no longer active. Start again from BrizBuilder.",
+    );
+  }
+
+  if (email === MAIN_ADMIN_EMAIL) {
+    if (organizationId !== ORGANIZATION_ID) throw new Error("Forbidden");
+    const context: TenantContext = {
+      organizationId,
+      organizationName: String(organization.name ?? "Brizuela Leads"),
+      email,
+      name: email,
+      role: "AGENCY_OWNER",
+      clientId: null,
+    };
+    requirePermission(context, "profiles.connect");
+    return context;
+  }
+
+  const profile = await assertOk(
+    supabase()
+      .from("profiles")
+      .select("id,display_name")
+      .eq("email", email)
+      .eq("status", "active")
+      .maybeSingle(),
+  );
+  if (!profile?.id) throw new Error("Forbidden");
+
+  const [organizationMembership, clientMembership] = await Promise.all([
+    assertOk(
+      supabase()
+        .from("organization_members")
+        .select("role")
+        .eq("organization_id", organizationId)
+        .eq("profile_id", profile.id)
+        .eq("status", "active")
+        .maybeSingle(),
+    ),
+    assertOk(
+      supabase()
+        .from("client_members")
+        .select("role")
+        .eq("organization_id", organizationId)
+        .eq("client_id", clientId)
+        .eq("profile_id", profile.id)
+        .eq("status", "active")
+        .maybeSingle(),
+    ),
+  ]);
+
+  const agencyRole = knownCrmRole(organizationMembership?.role);
+  if (
+    agencyRole &&
+    ["SUPER_ADMIN", "AGENCY_OWNER", "AGENCY_ADMIN", "AGENCY_MEMBER"].includes(
+      agencyRole,
+    )
+  ) {
+    const context: TenantContext = {
+      organizationId,
+      organizationName: String(organization.name ?? "BrizBuilder agency"),
+      email,
+      name: String(profile.display_name ?? email),
+      role: agencyRole,
+      clientId: null,
+    };
+    requirePermission(context, "profiles.connect");
+    return context;
+  }
+
+  const clientRole = knownCrmRole(clientMembership?.role);
+  if (
+    clientRole &&
+    ["CLIENT_OWNER", "CLIENT_MANAGER", "CLIENT_EMPLOYEE"].includes(clientRole)
+  ) {
+    const context: TenantContext = {
+      organizationId,
+      organizationName: String(organization.name ?? "BrizBuilder agency"),
+      email,
+      name: String(profile.display_name ?? email),
+      role: clientRole,
+      clientId,
+    };
+    requirePermission(context, "profiles.connect");
+    return context;
+  }
+
+  throw new Error("Forbidden");
+}
+
+export async function beginSupabaseGoogleConnect(
+  user: ChatGPTUser,
+  clientId: string,
+) {
+  const context = await getTenantContext(user);
+  requirePermission(context, "profiles.connect");
+  await requireClient(context, clientId);
+  if (!getGoogleBusinessRuntimeStatus().ready) {
+    throw new Error(
+      "BrizBuilder's Google Business Profile connection needs to be configured first.",
+    );
+  }
+  const state = `${crypto.randomUUID()}${crypto.randomUUID()}`.replaceAll(
+    "-",
+    "",
+  );
+  const now = new Date();
+  await assertOk(
+    supabase()
+      .from("provider_authorization_states")
+      .delete()
+      .eq("provider", GOOGLE_BUSINESS_PROVIDER)
+      .lt("expires_at", now.toISOString()),
+  );
+  await assertOk(
+    supabase()
+      .from("provider_authorization_states")
+      .insert({
+        organization_id: context.organizationId,
+        client_id: clientId,
+        provider: GOOGLE_BUSINESS_PROVIDER,
+        state_hash: await stateHash(state),
+        requested_by_email: context.email,
+        expires_at: new Date(now.getTime() + 15 * 60_000).toISOString(),
+      }),
+  );
+  return buildGoogleAuthorizationUrl(state);
+}
+
+export async function finishSupabaseGoogleConnect(
+  state: string,
+  code: string,
+) {
+  if (!state || state.length < 40 || !code) {
+    throw new Error("Google did not return a valid connection request.");
+  }
+  const now = new Date().toISOString();
+  const authorization = await assertOk(
+    supabase()
+      .from("provider_authorization_states")
+      .select("*")
+      .eq("provider", GOOGLE_BUSINESS_PROVIDER)
+      .eq("state_hash", await stateHash(state))
+      .is("used_at", null)
+      .gt("expires_at", now)
+      .maybeSingle(),
+  );
+  if (!authorization) {
+    throw new Error(
+      "This Google connection request expired. Start again from BrizBuilder.",
+    );
+  }
+  try {
+    const callbackContext = await revalidateGoogleCallbackAuthorization(
+      authorization,
+    );
+    const consumed = await assertOk(
+      supabase()
+        .from("provider_authorization_states")
+        .update({ used_at: now })
+        .eq("id", authorization.id)
+        .is("used_at", null)
+        .select("id")
+        .maybeSingle(),
+    );
+    if (!consumed) {
+      throw new Error(
+        "This Google connection request was already used. Start again from BrizBuilder.",
+      );
+    }
+
+    const tokens = await exchangeGoogleAuthorizationCode(code, state);
+    const refreshToken = tokens.refreshToken;
+    if (!refreshToken) {
+      throw new Error(
+        "Google did not grant fresh offline access. Remove BrizBuilder from your Google Account permissions, then connect again.",
+      );
+    }
+    const organizationId = String(authorization.organization_id);
+    const clientId = String(authorization.client_id);
+    const encrypted = await encryptGoogleSecret(
+      refreshToken,
+      organizationId,
+      clientId,
+    );
+    await assertOk(
+      supabase()
+        .from("google_business_credentials")
+        .upsert(
+          {
+            organization_id: authorization.organization_id,
+            client_id: authorization.client_id,
+            refresh_token_ciphertext: encrypted.ciphertext,
+            refresh_token_iv: encrypted.iv,
+            scopes: tokens.scopes,
+            connected_by_email: callbackContext.email,
+            updated_at: now,
+          },
+          { onConflict: "organization_id,client_id" },
+        ),
+    );
+
+    let locations: GoogleBusinessLocation[];
+    try {
+      locations = await listGoogleBusinessLocations(tokens.accessToken);
+    } catch (error) {
+      const message = safeIntegrationError(error);
+      await markGoogleProfileAttention(organizationId, clientId, message, now);
+      await audit(
+        callbackContext,
+        "google_profile.authorized",
+        "google_business_profile",
+        clientId,
+        { locationCount: 0, status: "attention" },
+        clientId,
+      );
+      return {
+        clientId,
+        status: "attention" as const,
+        message,
+      };
+    }
+
+    if (locations.length === 1) {
+      await saveGoogleLocation(organizationId, clientId, locations[0], now);
+    } else {
+      const message = locations.length
+        ? "Choose the Google Business Profile location to manage."
+        : "Google did not return any Business Profile locations for this account.";
+      await markGoogleProfileAttention(organizationId, clientId, message, now);
+    }
+
+    await audit(
+      callbackContext,
+      "google_profile.authorized",
+      "google_business_profile",
+      clientId,
+      { locationCount: locations.length },
+      clientId,
+    );
+    return {
+      clientId,
+      status:
+        locations.length === 1 ? ("connected" as const) : ("select" as const),
+      message: null,
+    };
+  } finally {
+    await assertOk(
+      supabase()
+        .from("provider_authorization_states")
+        .delete()
+        .eq("id", authorization.id),
+    );
+  }
+}
+
+export async function listSupabaseGoogleLocations(
+  user: ChatGPTUser,
+  clientId: string,
+) {
+  const context = await getTenantContext(user);
+  requirePermission(context, "profiles.connect");
+  await requireClient(context, clientId);
+  try {
+    return await authorizedGoogleLocations(context.organizationId, clientId);
+  } catch (error) {
+    if (!(error instanceof GoogleConnectionDisconnectedError)) {
+      await markGoogleProfileAttention(
+        context.organizationId,
+        clientId,
+        safeIntegrationError(error),
+      );
+    }
+    throw error;
+  }
+}
+
+export async function selectSupabaseGoogleLocation(
+  user: ChatGPTUser,
+  clientId: string,
+  accountResourceName: string,
+  locationResourceName: string,
+) {
+  const context = await getTenantContext(user);
+  requirePermission(context, "profiles.connect");
+  await requireClient(context, clientId);
+  const locations = await authorizedGoogleLocations(
+    context.organizationId,
+    clientId,
+  );
+  const selected = locations.find(
+    (location) =>
+      location.accountResourceName === accountResourceName &&
+      location.locationResourceName === locationResourceName,
+  );
+  if (!selected) {
+    throw new Error(
+      "That Google location is no longer available. Reload the list and try again.",
+    );
+  }
+  await saveGoogleLocation(context.organizationId, clientId, selected);
+  await audit(
+    context,
+    "google_profile.location_selected",
+    "google_business_profile",
+    clientId,
+    {
+      accountResourceName: selected.accountResourceName,
+      locationResourceName: selected.locationResourceName,
+    },
+    clientId,
+  );
+  return { connected: true };
+}
+
+export async function refreshSupabaseGoogleProfile(
+  user: ChatGPTUser,
+  clientId: string,
+) {
+  const context = await getTenantContext(user);
+  requirePermission(context, "profiles.manage");
+  await requireClient(context, clientId);
+  const profile = await assertOk(
+    supabase()
+      .from("google_business_profiles")
+      .select("account_id,location_id")
+      .eq("organization_id", context.organizationId)
+      .eq("client_id", clientId)
+      .maybeSingle(),
+  );
+  if (!profile?.account_id || !profile?.location_id) {
+    throw new Error("Choose a Google Business Profile location first.");
+  }
+  try {
+    const locations = await authorizedGoogleLocations(
+      context.organizationId,
+      clientId,
+    );
+    const selected = locations.find(
+      (location) =>
+        location.accountResourceName === profile.account_id &&
+        location.locationResourceName === profile.location_id,
+    );
+    if (!selected) {
+      throw new Error(
+        "The connected Google location is no longer available to this Google account.",
+      );
+    }
+    await saveGoogleLocation(context.organizationId, clientId, selected);
+    return { refreshed: true };
+  } catch (error) {
+    if (!(error instanceof GoogleConnectionDisconnectedError)) {
+      await markGoogleProfileAttention(
+        context.organizationId,
+        clientId,
+        safeIntegrationError(error),
+      );
+    }
+    throw error;
+  }
+}
+
+export async function disconnectSupabaseGoogleProfile(
+  user: ChatGPTUser,
+  clientId: string,
+) {
+  const context = await getTenantContext(user);
+  requirePermission(context, "profiles.connect");
+  await requireClient(context, clientId);
+  const credential = await googleCredential(context.organizationId, clientId);
+  let refreshToken: string | null = null;
+  let revocationWarning: string | null = null;
+  if (credential) {
+    try {
+      refreshToken = await decryptGoogleSecret({
+        ciphertext: String(credential.refresh_token_ciphertext),
+        iv: String(credential.refresh_token_iv),
+      }, context.organizationId, clientId);
+    } catch {
+      revocationWarning =
+        "BrizBuilder disconnected locally, but could not read the saved authorization to revoke it at Google. Remove BrizBuilder from your Google Account permissions.";
+    }
+  }
+  const now = new Date().toISOString();
+  await assertOk(
+    supabase()
+      .from("google_business_profiles")
+      .upsert(
+        {
+          organization_id: context.organizationId,
+          client_id: clientId,
+          status: "disconnected",
+          account_id: null,
+          account_name: null,
+          location_name: null,
+          location_id: null,
+          business_name: null,
+          address: null,
+          phone: null,
+          website: null,
+          primary_category: null,
+          last_synced_at: null,
+          connected_at: null,
+          last_error: null,
+          updated_at: now,
+        },
+        { onConflict: "organization_id,client_id" },
+      ),
+  );
+
+  let googleRevocationConfirmed = !credential;
+  if (refreshToken) {
+    try {
+      await revokeGoogleRefreshToken(refreshToken);
+      googleRevocationConfirmed = true;
+    } catch (error) {
+      revocationWarning = safeIntegrationError(error);
+    }
+  }
+  const revocationRetryAvailable = Boolean(
+    credential && refreshToken && !googleRevocationConfirmed,
+  );
+  if (!credential || googleRevocationConfirmed || !refreshToken) {
+    await assertOk(
+      supabase()
+        .from("google_business_credentials")
+        .delete()
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId),
+    );
+  }
+  if (revocationWarning) {
+    await assertOk(
+      supabase()
+        .from("google_business_profiles")
+        .update({
+          last_error: revocationWarning.slice(0, 500),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId),
+    );
+  }
+  await audit(
+    context,
+    "google_profile.disconnected",
+    "google_business_profile",
+    clientId,
+    { googleRevocationConfirmed, revocationRetryAvailable },
+    clientId,
+  );
+  return {
+    disconnected: true,
+    revocationWarning,
+    googleRevocationConfirmed,
+    revocationRetryAvailable,
+  };
 }
 
 export async function getSupabaseTwilioVisibleBalance(
@@ -1116,6 +1807,7 @@ export async function getSupabaseCrmBootstrap(
     automationRuns,
     providerConnections,
     googleProfiles,
+    googleCredentialRefs,
     workflows,
     workflowVersions,
     workflowRuns,
@@ -1226,6 +1918,14 @@ export async function getSupabaseCrmBootstrap(
       console.error("Google Business Profile table is not migrated yet.", error);
       return [] as AnyRecord[];
     }),
+    rolePermissions[context.role].includes("profiles.connect")
+      ? assertOk(
+          query<AnyRecord>("google_business_credentials", "client_id"),
+        ).catch((error) => {
+          console.error("Google credential table is not migrated yet.", error);
+          return [] as AnyRecord[];
+        })
+      : Promise.resolve([] as AnyRecord[]),
     assertOk(
       query<AnyRecord>("workflows").order("updated_at", { ascending: false }),
     ),
@@ -1253,6 +1953,11 @@ export async function getSupabaseCrmBootstrap(
   const auditRows = (auditEvents ?? []) as AnyRecord[];
   const providerConnectionRows = (providerConnections ?? []) as AnyRecord[];
   const googleProfileRows = (googleProfiles ?? []) as AnyRecord[];
+  const googleCredentialClientIds = new Set(
+    ((googleCredentialRefs ?? []) as AnyRecord[]).map((row) =>
+      String(row.client_id),
+    ),
+  );
   const legacyBalanceRows = providerConnectionRows.filter((row) => {
     const publicConfig =
       row.public_config && typeof row.public_config === "object"
@@ -1342,6 +2047,9 @@ export async function getSupabaseCrmBootstrap(
       lastSyncedAt: nullable(row.last_synced_at),
       connectedAt: nullable(row.connected_at),
       lastError: nullable(row.last_error),
+      revocationRetryAvailable:
+        String(row.status) === "disconnected" &&
+        googleCredentialClientIds.has(String(row.client_id)),
     })),
     googleProfileRuntime: googleProfileRuntime(),
     workflows: ((workflows ?? []) as AnyRecord[]).map((row) =>
@@ -1511,38 +2219,40 @@ export async function executeSupabaseCrmAction(
   }
 
   if (action === "disconnect_google_profile") {
-    requirePermission(context, "profiles.manage");
     const clientId = requireText(input.clientId, "Client", 100);
-    await requireClient(context, clientId);
-    await assertOk(
-      supabase()
-        .from("google_business_profiles")
-        .update({
-          status: "disconnected",
-          last_error: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("organization_id", context.organizationId)
-        .eq("client_id", clientId),
-    );
-    await audit(
-      context,
-      "google_profile.disconnected",
-      "google_business_profile",
-      clientId,
-      {},
-      clientId,
-    );
-    return { disconnected: true };
+    return disconnectSupabaseGoogleProfile(user, clientId);
   }
 
   if (action === "refresh_google_profile") {
-    requirePermission(context, "profiles.manage");
     const clientId = requireText(input.clientId, "Client", 100);
-    await requireClient(context, clientId);
     if (!googleProfileRuntime().configured)
       throw new Error("Google Business Profile OAuth is not configured yet.");
-    throw new Error("Google Business Profile sync is not enabled yet. Connect the platform Google OAuth app first.");
+    return refreshSupabaseGoogleProfile(user, clientId);
+  }
+
+  if (action === "list_google_profile_locations") {
+    const clientId = requireText(input.clientId, "Client", 100);
+    return listSupabaseGoogleLocations(user, clientId);
+  }
+
+  if (action === "select_google_profile_location") {
+    const clientId = requireText(input.clientId, "Client", 100);
+    const accountResourceName = requireText(
+      input.accountResourceName,
+      "Google account",
+      250,
+    );
+    const locationResourceName = requireText(
+      input.locationResourceName,
+      "Google location",
+      250,
+    );
+    return selectSupabaseGoogleLocation(
+      user,
+      clientId,
+      accountResourceName,
+      locationResourceName,
+    );
   }
 
   if (action === "disconnect_provider") {

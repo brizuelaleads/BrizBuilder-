@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -8,6 +9,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -123,6 +125,10 @@ export const clients = pgTable(
   },
   (table) => [
     uniqueIndex("clients_org_slug_uidx").on(table.organizationId, table.slug),
+    uniqueIndex("clients_organization_id_id_uidx").on(
+      table.organizationId,
+      table.id,
+    ),
     index("clients_org_status_idx").on(table.organizationId, table.status),
   ],
 );
@@ -431,6 +437,56 @@ export const providerAuthorizationStates = pgTable("provider_authorization_state
   usedAt: timestamp("used_at", { withTimezone: true }),
   createdAt,
 }, (table) => [index("provider_auth_expiry_idx").on(table.provider, table.expiresAt)]);
+
+export const googleBusinessProfiles = pgTable("google_business_profiles", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("not_connected"),
+  accountName: text("account_name"),
+  accountId: text("account_id"),
+  locationName: text("location_name"),
+  locationId: text("location_id"),
+  businessName: text("business_name"),
+  address: text("address"),
+  phone: text("phone"),
+  website: text("website"),
+  primaryCategory: text("primary_category"),
+  googleReviewUrl: text("google_review_url"),
+  lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+  connectedAt: timestamp("connected_at", { withTimezone: true }),
+  lastError: text("last_error"),
+  createdAt,
+  updatedAt,
+}, (table) => [
+  unique("google_business_profiles_organization_id_client_id_key").on(table.organizationId, table.clientId),
+  foreignKey({
+    columns: [table.organizationId, table.clientId],
+    foreignColumns: [clients.organizationId, clients.id],
+    name: "google_business_profiles_organization_client_fk",
+  }).onDelete("cascade"),
+  index("google_business_profiles_scope_idx").on(table.organizationId, table.clientId, table.status),
+]);
+
+export const googleBusinessCredentials = pgTable("google_business_credentials", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  refreshTokenCiphertext: text("refresh_token_ciphertext").notNull(),
+  refreshTokenIv: text("refresh_token_iv").notNull(),
+  scopes: text("scopes").array().notNull().default(sql`'{}'::text[]`),
+  connectedByEmail: text("connected_by_email").notNull(),
+  createdAt,
+  updatedAt,
+}, (table) => [
+  unique("google_business_credentials_organization_id_client_id_key").on(table.organizationId, table.clientId),
+  foreignKey({
+    columns: [table.organizationId, table.clientId],
+    foreignColumns: [clients.organizationId, clients.id],
+    name: "google_business_credentials_organization_client_fk",
+  }).onDelete("cascade"),
+  index("google_business_credentials_scope_idx").on(table.organizationId, table.clientId),
+]);
 
 export const workflows = pgTable("workflows", {
   id: uuid("id").primaryKey().defaultRandom(),
