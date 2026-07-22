@@ -1,6 +1,7 @@
 import type { ChatGPTUser } from "../app/chatgpt-auth";
 import { MAIN_ADMIN_EMAIL } from "../app/auth-config";
 import { getSupabaseAdminClient } from "../lib/supabase/server";
+import { readRuntimeValue } from "../lib/supabase/env";
 import {
   buildTwilioConnectUrl,
   checkTwilioConnectedAccount,
@@ -44,6 +45,7 @@ import type {
   CrmProviderConnection,
   CrmWorkflow,
   CrmWorkflowRun,
+  CrmGoogleProfile,
 } from "./crm";
 
 type TenantContext = {
@@ -147,6 +149,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "tasks.write",
     "appointments.write",
     "websites.manage",
+    "profiles.manage",
     "phone_system.manage",
     "billing.read_shared",
     "messages.write",
@@ -165,6 +168,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "tasks.write",
     "appointments.write",
     "websites.manage",
+    "profiles.manage",
     "phone_system.manage",
     "billing.read_shared",
     "messages.write",
@@ -183,6 +187,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "tasks.write",
     "appointments.write",
     "websites.manage",
+    "profiles.manage",
     "phone_system.manage",
     "billing.read_shared",
     "messages.write",
@@ -200,6 +205,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "tasks.write",
     "appointments.write",
     "websites.manage",
+    "profiles.manage",
     "messages.write",
   ],
   CLIENT_OWNER: [
@@ -210,6 +216,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "tasks.write",
     "appointments.write",
     "websites.manage",
+    "profiles.manage",
     "phone_system.manage",
     "billing.read_shared",
     "messages.write",
@@ -223,6 +230,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "tasks.write",
     "appointments.write",
     "websites.manage",
+    "profiles.manage",
     "phone_system.manage",
     "messages.write",
     "automations.manage",
@@ -240,6 +248,16 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
 
 function supabase() {
   return getSupabaseAdminClient();
+}
+
+function googleProfileRuntime() {
+  return {
+    configured: Boolean(
+      readRuntimeValue("GOOGLE_CLIENT_ID") &&
+        readRuntimeValue("GOOGLE_CLIENT_SECRET") &&
+        readRuntimeValue("GOOGLE_REDIRECT_URI"),
+    ),
+  };
 }
 
 function nullable(value: unknown): string | null {
@@ -267,6 +285,20 @@ function normalizeDomain(value: unknown): string {
     return url.hostname.toLowerCase().replace(/^www\./, "");
   } catch {
     throw new Error("Enter a valid website domain, such as example.com.");
+  }
+}
+
+function normalizeGoogleReviewUrl(value: unknown): string | null {
+  const raw = optionalText(value, 500);
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:") throw new Error("invalid");
+    if (!/(^|\.)google\.[a-z.]+$/i.test(url.hostname))
+      throw new Error("invalid");
+    return url.toString();
+  } catch {
+    throw new Error("Paste the HTTPS Google review link from the client's Business Profile.");
   }
 }
 
@@ -1083,6 +1115,7 @@ export async function getSupabaseCrmBootstrap(
     automationRules,
     automationRuns,
     providerConnections,
+    googleProfiles,
     workflows,
     workflowVersions,
     workflowRuns,
@@ -1186,6 +1219,14 @@ export async function getSupabaseCrmBootstrap(
       }),
     ),
     assertOk(
+      query<AnyRecord>("google_business_profiles").order("updated_at", {
+        ascending: false,
+      }),
+    ).catch((error) => {
+      console.error("Google Business Profile table is not migrated yet.", error);
+      return [] as AnyRecord[];
+    }),
+    assertOk(
       query<AnyRecord>("workflows").order("updated_at", { ascending: false }),
     ),
     assertOk(
@@ -1211,6 +1252,7 @@ export async function getSupabaseCrmBootstrap(
   const noteRows = (notes ?? []) as AnyRecord[];
   const auditRows = (auditEvents ?? []) as AnyRecord[];
   const providerConnectionRows = (providerConnections ?? []) as AnyRecord[];
+  const googleProfileRows = (googleProfiles ?? []) as AnyRecord[];
   const legacyBalanceRows = providerConnectionRows.filter((row) => {
     const publicConfig =
       row.public_config && typeof row.public_config === "object"
@@ -1284,6 +1326,24 @@ export async function getSupabaseCrmBootstrap(
           rolePermissions[context.role].includes("billing.read_shared"),
         ),
     ),
+    googleProfiles: googleProfileRows.map((row: AnyRecord): CrmGoogleProfile => ({
+      id: String(row.id),
+      clientId: String(row.client_id),
+      status: String(row.status ?? "not_connected") as CrmGoogleProfile["status"],
+      accountName: nullable(row.account_name),
+      locationName: nullable(row.location_name),
+      locationId: nullable(row.location_id),
+      businessName: nullable(row.business_name),
+      address: nullable(row.address),
+      phone: nullable(row.phone),
+      website: nullable(row.website),
+      primaryCategory: nullable(row.primary_category),
+      googleReviewUrl: nullable(row.google_review_url),
+      lastSyncedAt: nullable(row.last_synced_at),
+      connectedAt: nullable(row.connected_at),
+      lastError: nullable(row.last_error),
+    })),
+    googleProfileRuntime: googleProfileRuntime(),
     workflows: ((workflows ?? []) as AnyRecord[]).map((row) =>
       mapWorkflow(row, (workflowVersions ?? []) as AnyRecord[]),
     ),
@@ -1410,6 +1470,80 @@ export async function executeSupabaseCrmAction(
 ) {
   const context = await getTenantContext(user);
   const action = requireText(input.action, "Action", 50);
+
+  if (action === "save_google_profile_settings") {
+    requirePermission(context, "profiles.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const reviewUrl = normalizeGoogleReviewUrl(input.googleReviewUrl);
+    const existing = await assertOk(
+      supabase()
+        .from("google_business_profiles")
+        .select("id,status")
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .maybeSingle(),
+    );
+    const now = new Date().toISOString();
+    await assertOk(
+      supabase()
+        .from("google_business_profiles")
+        .upsert(
+          {
+            organization_id: context.organizationId,
+            client_id: clientId,
+            status: String(existing?.status ?? "not_connected"),
+            google_review_url: reviewUrl,
+            updated_at: now,
+          },
+          { onConflict: "organization_id,client_id" },
+        ),
+    );
+    await audit(
+      context,
+      "google_profile.settings_saved",
+      "google_business_profile",
+      String(existing?.id ?? clientId),
+      { hasReviewUrl: Boolean(reviewUrl) },
+      clientId,
+    );
+    return { saved: true };
+  }
+
+  if (action === "disconnect_google_profile") {
+    requirePermission(context, "profiles.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    await assertOk(
+      supabase()
+        .from("google_business_profiles")
+        .update({
+          status: "disconnected",
+          last_error: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId),
+    );
+    await audit(
+      context,
+      "google_profile.disconnected",
+      "google_business_profile",
+      clientId,
+      {},
+      clientId,
+    );
+    return { disconnected: true };
+  }
+
+  if (action === "refresh_google_profile") {
+    requirePermission(context, "profiles.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    if (!googleProfileRuntime().configured)
+      throw new Error("Google Business Profile OAuth is not configured yet.");
+    throw new Error("Google Business Profile sync is not enabled yet. Connect the platform Google OAuth app first.");
+  }
 
   if (action === "disconnect_provider") {
     requirePermission(context, "phone_system.manage");

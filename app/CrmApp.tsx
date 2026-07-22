@@ -36,6 +36,7 @@ import { FutureModuleView, type FutureModule } from "./crm/FutureModuleViews";
 import { WebsitesView } from "./crm/WebsitesView";
 import { ConversationsView, PhoneSystemView } from "./crm/PhoneViews";
 import { ConnectionsView, VisualAutomationsView } from "./crm/WorkflowViews";
+import { GoogleProfilesView } from "./crm/GoogleProfilesView";
 import { Badge, initials, Modal } from "./crm/ui";
 
 type View =
@@ -49,6 +50,7 @@ type View =
   | "clients"
   | "reports"
   | "websites"
+  | "profiles"
   | "connections"
   | "phone-system"
   | "custom-data"
@@ -135,6 +137,13 @@ const nav: Array<{
     preview: true,
   },
   { id: "websites", label: "Websites", icon: "W" },
+  {
+    id: "profiles",
+    label: "Google Profiles",
+    icon: "G",
+    section: "Reputation",
+    permission: "profiles.manage",
+  },
   { id: "funnels", label: "Funnels", icon: "N", preview: true },
   { id: "payments", label: "Payments", icon: "$", preview: true },
   { id: "reviews", label: "Reviews", icon: "★", preview: true },
@@ -690,6 +699,16 @@ export function CrmApp({
             leads={filteredLeads}
             mutate={mutate}
             canManage={data.viewer.permissions.includes("websites.manage")}
+          />
+        )}
+        {view === "profiles" && (
+          <GoogleProfilesView
+            clients={data.clients}
+            profiles={data.googleProfiles}
+            selectedClientId={selectedClientId}
+            mutate={mutate}
+            runtime={data.googleProfileRuntime}
+            canManage={data.viewer.permissions.includes("profiles.manage")}
           />
         )}
         {view === "connections" && (

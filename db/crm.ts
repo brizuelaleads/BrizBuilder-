@@ -21,6 +21,7 @@ export type CrmPermission =
   | "tasks.write"
   | "appointments.write"
   | "websites.manage"
+  | "profiles.manage"
   | "phone_system.manage"
   | "billing.read_shared"
   | "messages.write"
@@ -31,12 +32,12 @@ export type CrmPermission =
   | "feature_flags.manage";
 
 const rolePermissions: Record<CrmRole, CrmPermission[]> = {
-  SUPER_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_MEMBER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "messages.write"],
-  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage"],
-  CLIENT_MANAGER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "phone_system.manage", "messages.write", "automations.manage", "custom_data.manage"],
+  SUPER_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_MEMBER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "messages.write"],
+  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage"],
+  CLIENT_MANAGER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "phone_system.manage", "messages.write", "automations.manage", "custom_data.manage"],
   CLIENT_EMPLOYEE: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "messages.write"],
 };
 
@@ -362,6 +363,24 @@ export type CrmProviderConnection = {
   lastError: string | null;
 };
 
+export type CrmGoogleProfile = {
+  id: string;
+  clientId: string;
+  status: "not_connected" | "connected" | "attention" | "disconnected";
+  accountName: string | null;
+  locationName: string | null;
+  locationId: string | null;
+  businessName: string | null;
+  address: string | null;
+  phone: string | null;
+  website: string | null;
+  primaryCategory: string | null;
+  googleReviewUrl: string | null;
+  lastSyncedAt: string | null;
+  connectedAt: string | null;
+  lastError: string | null;
+};
+
 export type CrmWorkflowNode = {
   id: string;
   type: "trigger" | "send_sms" | "create_task" | "add_tag" | "update_stage" | "condition";
@@ -421,6 +440,8 @@ export type CrmBootstrap = {
   automationRules: CrmAutomationRule[];
   automationRuns: CrmAutomationRun[];
   providerConnections: CrmProviderConnection[];
+  googleProfiles: CrmGoogleProfile[];
+  googleProfileRuntime: { configured: boolean };
   workflows: CrmWorkflow[];
   workflowRuns: CrmWorkflowRun[];
   customFields: CrmCustomFieldDefinition[];
@@ -472,6 +493,7 @@ const schemaStatements = [
   `CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, client_id TEXT NOT NULL REFERENCES crm_clients(id) ON DELETE CASCADE, lead_id TEXT REFERENCES crm_leads(id) ON DELETE CASCADE, contact_id TEXT REFERENCES contacts(id) ON DELETE CASCADE, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', assignee TEXT, due_at TEXT, priority TEXT NOT NULL DEFAULT 'MEDIUM', status TEXT NOT NULL DEFAULT 'TO_DO', reminder_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, completed_at TEXT)`,
   `CREATE TABLE IF NOT EXISTS appointments (id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, client_id TEXT NOT NULL REFERENCES crm_clients(id) ON DELETE CASCADE, lead_id TEXT REFERENCES crm_leads(id) ON DELETE SET NULL, contact_id TEXT NOT NULL REFERENCES contacts(id) ON DELETE RESTRICT, assigned_employee TEXT, service_type TEXT NOT NULL, starts_at TEXT NOT NULL, ends_at TEXT NOT NULL, address TEXT, notes TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'SCHEDULED', reminder_minutes INTEGER NOT NULL DEFAULT 60, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
   `CREATE TABLE IF NOT EXISTS websites (id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, client_id TEXT NOT NULL REFERENCES crm_clients(id) ON DELETE CASCADE, name TEXT NOT NULL, domain TEXT, status TEXT NOT NULL DEFAULT 'connected', platform TEXT NOT NULL DEFAULT 'other', lead_capture_enabled INTEGER NOT NULL DEFAULT 1, last_lead_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+  `CREATE TABLE IF NOT EXISTS google_business_profiles (id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, client_id TEXT NOT NULL REFERENCES crm_clients(id) ON DELETE CASCADE UNIQUE, status TEXT NOT NULL DEFAULT 'not_connected', account_name TEXT, location_name TEXT, location_id TEXT, business_name TEXT, address TEXT, phone TEXT, website TEXT, primary_category TEXT, google_review_url TEXT, last_synced_at TEXT, connected_at TEXT, last_error TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
   `CREATE TABLE IF NOT EXISTS audit_logs (id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, actor_email TEXT NOT NULL, action TEXT NOT NULL, record_type TEXT NOT NULL, record_id TEXT, metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
   `CREATE TABLE IF NOT EXISTS domain_events (id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, client_id TEXT REFERENCES crm_clients(id) ON DELETE CASCADE, event_type TEXT NOT NULL, aggregate_type TEXT NOT NULL, aggregate_id TEXT, payload_json TEXT NOT NULL DEFAULT '{}', processing_status TEXT NOT NULL DEFAULT 'pending', occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, processed_at TEXT)`,
   "CREATE INDEX IF NOT EXISTS organization_members_account_idx ON organization_members(account_id)",
@@ -664,12 +686,13 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
   const scope = clientClause(context, "x");
   const clientListScope = context.clientId ? { sql: " AND x.id = ?", values: [context.clientId] } : { sql: "", values: [] as string[] };
 
-  const [clientRows, leadRows, contactRows, companyRows, websiteRows, customFieldRows, customFieldValueRows, customValueRows, featureFlagRows, stageRows, taskRows, appointmentRows, activityRows, noteRows, teamRows, auditRows] = await Promise.all([
+  const [clientRows, leadRows, contactRows, companyRows, websiteRows, googleProfileRows, customFieldRows, customFieldValueRows, customValueRows, featureFlagRows, stageRows, taskRows, appointmentRows, activityRows, noteRows, teamRows, auditRows] = await Promise.all([
     db.prepare(`SELECT * FROM crm_clients x WHERE x.organization_id = ? AND x.status != 'archived'${clientListScope.sql} ORDER BY x.business_name`).bind(context.organizationId, ...clientListScope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.*, c.first_name, c.last_name, c.phone, c.email, c.address, c.city, c.state, c.zip, cc.business_name AS client_name, ps.name AS stage_name, ps.color AS stage_color FROM crm_leads x JOIN contacts c ON c.id = x.contact_id JOIN crm_clients cc ON cc.id = x.client_id JOIN pipeline_stages ps ON ps.id = x.stage_id WHERE x.organization_id = ? AND x.archived_at IS NULL${scope.sql} ORDER BY x.created_at DESC`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.* FROM contacts x WHERE x.organization_id = ? AND x.archived_at IS NULL${scope.sql} ORDER BY x.last_interaction_at DESC, x.created_at DESC`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.*, COUNT(ccl.id) AS contact_count FROM companies x LEFT JOIN contact_company_links ccl ON ccl.company_id = x.id WHERE x.organization_id = ? AND x.archived_at IS NULL${scope.sql} GROUP BY x.id ORDER BY x.name`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.* FROM websites x WHERE x.organization_id = ?${scope.sql} ORDER BY x.updated_at DESC`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
+    db.prepare(`SELECT x.* FROM google_business_profiles x WHERE x.organization_id = ?${scope.sql} ORDER BY x.updated_at DESC`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.* FROM custom_field_definitions x WHERE x.organization_id = ? AND x.is_active = 1${scope.sql} ORDER BY x.entity_type, x.position, x.label`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.* FROM custom_field_values x WHERE x.organization_id = ?${scope.sql} ORDER BY x.updated_at DESC`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.* FROM custom_values x WHERE x.organization_id = ?${scope.sql} ORDER BY x.label`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
@@ -693,6 +716,8 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
     contacts: contactRows.results.map(mapContact),
     companies: companyRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), name: String(row.name), industry: nullable(row.industry), website: nullable(row.website), phone: nullable(row.phone), email: nullable(row.email), address: nullable(row.address), city: nullable(row.city), state: nullable(row.state), zip: nullable(row.zip), tags: parseStringArray(row.tags_json), notes: String(row.notes ?? ""), contactCount: Number(row.contact_count ?? 0), createdAt: String(row.created_at) })),
     websites: websiteRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), name: String(row.name), domain: nullable(row.domain), status: String(row.status), platform: String(row.platform ?? "other"), leadCaptureEnabled: Boolean(row.lead_capture_enabled), lastLeadAt: nullable(row.last_lead_at), createdAt: String(row.created_at), updatedAt: String(row.updated_at) })),
+    googleProfiles: googleProfileRows.results.map((row): CrmGoogleProfile => ({ id: String(row.id), clientId: String(row.client_id), status: String(row.status ?? "not_connected") as CrmGoogleProfile["status"], accountName: nullable(row.account_name), locationName: nullable(row.location_name), locationId: nullable(row.location_id), businessName: nullable(row.business_name), address: nullable(row.address), phone: nullable(row.phone), website: nullable(row.website), primaryCategory: nullable(row.primary_category), googleReviewUrl: nullable(row.google_review_url), lastSyncedAt: nullable(row.last_synced_at), connectedAt: nullable(row.connected_at), lastError: nullable(row.last_error) })),
+    googleProfileRuntime: { configured: false },
     phoneConfigs: [],
     phoneCalls: [],
     conversations: [],
@@ -768,6 +793,18 @@ function normalizeDomain(value: unknown): string {
   }
 }
 
+function normalizeGoogleReviewUrl(value: unknown): string | null {
+  const raw = optionalText(value, 500);
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" || !/(^|\.)google\.[a-z.]+$/i.test(url.hostname)) throw new Error("invalid");
+    return url.toString();
+  } catch {
+    throw new Error("Paste the HTTPS Google review link from the client's Business Profile.");
+  }
+}
+
 function cents(value: unknown): number {
   const amount = Number(value ?? 0);
   if (!Number.isFinite(amount) || amount < 0 || amount > 100000000) throw new Error("Enter a valid amount.");
@@ -797,6 +834,31 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
   const context = await getTenantContext(user);
   const action = requireText(input.action, "Action", 50);
   const db = database();
+
+  if (action === "save_google_profile_settings") {
+    requirePermission(context, "profiles.manage");
+    const clientId = requireText(input.clientId, "Client", 80);
+    await requireClient(context, clientId);
+    const id = `google_profile_${clientId}`;
+    const reviewUrl = normalizeGoogleReviewUrl(input.googleReviewUrl);
+    await db.prepare(`INSERT INTO google_business_profiles (id, organization_id, client_id, status, google_review_url, updated_at) VALUES (?, ?, ?, 'not_connected', ?, CURRENT_TIMESTAMP) ON CONFLICT(client_id) DO UPDATE SET google_review_url = excluded.google_review_url, updated_at = CURRENT_TIMESTAMP`).bind(id, context.organizationId, clientId, reviewUrl).run();
+    await audit(context, "google_profile.settings_saved", "google_business_profile", id, { hasReviewUrl: Boolean(reviewUrl) }, clientId);
+    return { saved: true };
+  }
+
+  if (action === "disconnect_google_profile") {
+    requirePermission(context, "profiles.manage");
+    const clientId = requireText(input.clientId, "Client", 80);
+    await requireClient(context, clientId);
+    await db.prepare("UPDATE google_business_profiles SET status = 'disconnected', last_error = NULL, updated_at = CURRENT_TIMESTAMP WHERE organization_id = ? AND client_id = ?").bind(context.organizationId, clientId).run();
+    await audit(context, "google_profile.disconnected", "google_business_profile", clientId, {}, clientId);
+    return { disconnected: true };
+  }
+
+  if (action === "refresh_google_profile") {
+    requirePermission(context, "profiles.manage");
+    throw new Error("Google Business Profile sync is not enabled in local mode yet.");
+  }
 
   if (action === "create_lead") {
     requirePermission(context, "opportunities.write");
