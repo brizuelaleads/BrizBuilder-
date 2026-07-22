@@ -344,6 +344,15 @@ export function getTwilioWebhookBaseUrl() {
   return runtime().webhookBaseUrl;
 }
 
+export class TwilioMessageDeliveryUnknownError extends Error {
+  constructor() {
+    super(
+      "Twilio did not confirm whether it accepted this message. Do not resend it yet; check the Twilio account first.",
+    );
+    this.name = "TwilioMessageDeliveryUnknownError";
+  }
+}
+
 function encodeForm(values: Record<string, string>) {
   const form = new URLSearchParams();
   for (const [key, value] of Object.entries(values)) form.set(key, value);
@@ -356,11 +365,17 @@ export async function sendTwilioMessage(input: {
   messagingServiceSid?: string | null;
   to: string;
   body: string;
+  allowPlatformFallback?: boolean;
 }) {
   const config = runtime();
-  const accountSid = input.accountSid?.trim() || config.accountSid;
+  const allowPlatformFallback = input.allowPlatformFallback !== false;
+  const accountSid =
+    input.accountSid?.trim() ||
+    (allowPlatformFallback ? config.accountSid : "");
   if (!accountSid || !config.authToken) throw new Error("Twilio is not connected. Add the Twilio Account SID and Auth Token in Cloudflare first.");
-  const fromNumber = input.fromNumber?.trim() || config.fromNumber;
+  const fromNumber =
+    input.fromNumber?.trim() ||
+    (allowPlatformFallback ? config.fromNumber : "");
   if (!fromNumber && !input.messagingServiceSid) throw new Error("A Twilio phone number or Messaging Service is required.");
 
   const statusCallback = `${config.webhookBaseUrl}/api/twilio/messages/status`;
@@ -372,15 +387,31 @@ export async function sendTwilioMessage(input: {
   if (input.messagingServiceSid) body.MessagingServiceSid = input.messagingServiceSid;
   else body.From = fromNumber;
 
-  const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Messages.json`, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${btoa(`${accountSid}:${config.authToken}`)}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: encodeForm(body),
-  });
-  const payload = await response.json() as { sid?: string; status?: string; message?: string; code?: number };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  let response: Response;
+  try {
+    response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Messages.json`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${btoa(`${accountSid}:${config.authToken}`)}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: encodeForm(body),
+      signal: controller.signal,
+    });
+  } catch {
+    throw new TwilioMessageDeliveryUnknownError();
+  } finally {
+    clearTimeout(timeout);
+  }
+  let payload: { sid?: string; status?: string; message?: string; code?: number };
+  try {
+    payload = await response.json() as typeof payload;
+  } catch {
+    if (response.ok) throw new TwilioMessageDeliveryUnknownError();
+    throw new Error(`Twilio could not send the message (${response.status}).`);
+  }
   if (!response.ok || !payload.sid) throw new Error(payload.message || "Twilio could not send the message.");
   return { sid: payload.sid, status: payload.status || "queued" };
 }

@@ -37,6 +37,7 @@ import { WebsitesView } from "./crm/WebsitesView";
 import { ConversationsView, PhoneSystemView } from "./crm/PhoneViews";
 import { ConnectionsView, VisualAutomationsView } from "./crm/WorkflowViews";
 import { GoogleProfilesView } from "./crm/GoogleProfilesView";
+import { ReviewsView } from "./crm/ReviewsView";
 import { Badge, initials, Modal } from "./crm/ui";
 
 type View =
@@ -51,6 +52,7 @@ type View =
   | "reports"
   | "websites"
   | "profiles"
+  | "reviews"
   | "connections"
   | "phone-system"
   | "custom-data"
@@ -77,7 +79,6 @@ const futureModules: FutureModule[] = [
   "payments",
   "ai",
   "funnels",
-  "reviews",
 ];
 
 const nav: Array<{
@@ -144,9 +145,15 @@ const nav: Array<{
     section: "Reputation",
     permission: "profiles.manage",
   },
+  {
+    id: "reviews",
+    label: "Reviews",
+    icon: "★",
+    section: "Reputation",
+    permission: "reviews.read",
+  },
   { id: "funnels", label: "Funnels", icon: "N", preview: true },
   { id: "payments", label: "Payments", icon: "$", preview: true },
-  { id: "reviews", label: "Reviews", icon: "★", preview: true },
   { id: "ai", label: "AI workspace", icon: "AI", preview: true },
   {
     id: "custom-data",
@@ -356,6 +363,12 @@ export function CrmApp({
       window.setTimeout(() => setToast(""), 3200);
       return body.result;
     } catch (caught) {
+      try {
+        await refresh();
+      } catch {
+        // Keep the original mutation error. A failed provider request may still
+        // have created an audit or failed-delivery record worth refreshing.
+      }
       const message =
         caught instanceof Error
           ? caught.message
@@ -384,6 +397,17 @@ export function CrmApp({
     window.dispatchEvent(new Event(viewChangeEvent));
     setMobileNav(false);
   }
+
+  function openGoogleProfiles(clientId: string) {
+    setSelectedClientId(clientId);
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", "profiles");
+    url.searchParams.set("client", clientId);
+    window.history.replaceState({}, "", url);
+    window.dispatchEvent(new Event(viewChangeEvent));
+    setMobileNav(false);
+  }
+
   function openLead(lead: CrmLead) {
     setSelectedLeadId(lead.id);
   }
@@ -483,6 +507,7 @@ export function CrmApp({
               <button
                 className={view === item.id ? "active" : ""}
                 onClick={() => navigate(item.id)}
+                aria-current={view === item.id ? "page" : undefined}
               >
                 <i>{item.icon}</i>
                 <span>{item.label}</span>
@@ -557,16 +582,18 @@ export function CrmApp({
                 ))}
               </select>
             ) : null}
-            <select
-              value={range}
-              onChange={(event) => setRange(event.target.value)}
-              aria-label="Filter by date range"
-            >
-              <option value="7">Last 7 days</option>
-              <option value="30">Last 30 days</option>
-              <option value="90">Last 90 days</option>
-              <option value="all">All time</option>
-            </select>
+            {view !== "reviews" ? (
+              <select
+                value={range}
+                onChange={(event) => setRange(event.target.value)}
+                aria-label="Filter by date range"
+              >
+                <option value="7">Last 7 days</option>
+                <option value="30">Last 30 days</option>
+                <option value="90">Last 90 days</option>
+                <option value="all">All time</option>
+              </select>
+            ) : null}
             <button
               className="crm-command-button"
               onClick={() => setModal("search")}
@@ -597,16 +624,18 @@ export function CrmApp({
               ))}
             </select>
           ) : null}
-          <select
-            value={range}
-            onChange={(event) => setRange(event.target.value)}
-            aria-label="Filter by date range"
-          >
-            <option value="7">7 days</option>
-            <option value="30">30 days</option>
-            <option value="90">90 days</option>
-            <option value="all">All time</option>
-          </select>
+          {view !== "reviews" ? (
+            <select
+              value={range}
+              onChange={(event) => setRange(event.target.value)}
+              aria-label="Filter by date range"
+            >
+              <option value="7">7 days</option>
+              <option value="30">30 days</option>
+              <option value="90">90 days</option>
+              <option value="all">All time</option>
+            </select>
+          ) : null}
         </div>
         <div className="crm-system-strip">
           <span>
@@ -710,6 +739,32 @@ export function CrmApp({
             runtime={data.googleProfileRuntime}
             canManage={data.viewer.permissions.includes("profiles.manage")}
             canConnect={data.viewer.permissions.includes("profiles.connect")}
+          />
+        )}
+        {view === "reviews" && (
+          <ReviewsView
+            clients={data.clients}
+            contacts={data.contacts}
+            phoneConfigs={data.phoneConfigs}
+            googleProfiles={data.googleProfiles}
+            reviewRequests={data.reviewRequests}
+            reviewSettings={data.reviewSettings}
+            connections={data.providerConnections}
+            selectedClientId={selectedClientId}
+            mutate={mutate}
+            canReply={data.viewer.permissions.includes("reviews.reply")}
+            canRequest={data.viewer.permissions.includes("reviews.request")}
+            canManage={data.viewer.permissions.includes(
+              "reviews.settings.manage",
+            )}
+            canManageGoogle={data.viewer.permissions.includes(
+              "profiles.manage",
+            )}
+            canManageConnections={data.viewer.permissions.includes(
+              "phone_system.manage",
+            )}
+            onOpenGoogleProfiles={openGoogleProfiles}
+            onOpenConnections={openConnections}
           />
         )}
         {view === "connections" && (

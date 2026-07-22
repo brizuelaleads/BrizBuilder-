@@ -23,6 +23,10 @@ export type CrmPermission =
   | "websites.manage"
   | "profiles.manage"
   | "profiles.connect"
+  | "reviews.read"
+  | "reviews.reply"
+  | "reviews.request"
+  | "reviews.settings.manage"
   | "phone_system.manage"
   | "billing.read_shared"
   | "messages.write"
@@ -33,13 +37,13 @@ export type CrmPermission =
   | "feature_flags.manage";
 
 const rolePermissions: Record<CrmRole, CrmPermission[]> = {
-  SUPER_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_MEMBER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "messages.write"],
-  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage"],
-  CLIENT_MANAGER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "phone_system.manage", "messages.write", "automations.manage", "custom_data.manage"],
-  CLIENT_EMPLOYEE: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "messages.write"],
+  SUPER_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_MEMBER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "reviews.read", "reviews.reply", "reviews.request", "messages.write"],
+  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage"],
+  CLIENT_MANAGER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "messages.write", "automations.manage", "custom_data.manage"],
+  CLIENT_EMPLOYEE: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "reviews.read", "messages.write"],
 };
 
 export type CrmClient = {
@@ -383,6 +387,44 @@ export type CrmGoogleProfile = {
   revocationRetryAvailable: boolean;
 };
 
+export type CrmReviewRequest = {
+  id: string;
+  clientId: string;
+  contactId: string;
+  contactName: string;
+  channel: "sms";
+  status:
+    | "sending"
+    | "reconciling"
+    | "queued"
+    | "sent"
+    | "delivered"
+    | "failed"
+    | "cancelled";
+  messageBody: string;
+  requestedByEmail: string;
+  sentAt: string | null;
+  deliveredAt: string | null;
+  failedAt: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+};
+
+export type CrmReviewSettings = {
+  id: string;
+  clientId: string;
+  smsEnabled: boolean;
+  defaultSmsTemplate: string;
+  followUpEnabled: boolean;
+  followUpTemplate: string;
+  followUpDelayHours: number;
+  quietHoursStart: string;
+  quietHoursEnd: string;
+  dailyLimit: number;
+  notificationEmails: string[];
+  updatedAt: string;
+};
+
 export type CrmWorkflowNode = {
   id: string;
   type: "trigger" | "send_sms" | "create_task" | "add_tag" | "update_stage" | "condition";
@@ -444,6 +486,8 @@ export type CrmBootstrap = {
   providerConnections: CrmProviderConnection[];
   googleProfiles: CrmGoogleProfile[];
   googleProfileRuntime: { configured: boolean };
+  reviewRequests: CrmReviewRequest[];
+  reviewSettings: CrmReviewSettings[];
   workflows: CrmWorkflow[];
   workflowRuns: CrmWorkflowRun[];
   customFields: CrmCustomFieldDefinition[];
@@ -720,6 +764,8 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
     websites: websiteRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), name: String(row.name), domain: nullable(row.domain), status: String(row.status), platform: String(row.platform ?? "other"), leadCaptureEnabled: Boolean(row.lead_capture_enabled), lastLeadAt: nullable(row.last_lead_at), createdAt: String(row.created_at), updatedAt: String(row.updated_at) })),
     googleProfiles: googleProfileRows.results.map((row): CrmGoogleProfile => ({ id: String(row.id), clientId: String(row.client_id), status: String(row.status ?? "not_connected") as CrmGoogleProfile["status"], accountName: nullable(row.account_name), locationName: nullable(row.location_name), locationId: nullable(row.location_id), businessName: nullable(row.business_name), address: nullable(row.address), phone: nullable(row.phone), website: nullable(row.website), primaryCategory: nullable(row.primary_category), googleReviewUrl: nullable(row.google_review_url), lastSyncedAt: nullable(row.last_synced_at), connectedAt: nullable(row.connected_at), lastError: nullable(row.last_error), revocationRetryAvailable: false })),
     googleProfileRuntime: { configured: false },
+    reviewRequests: [],
+    reviewSettings: [],
     phoneConfigs: [],
     phoneCalls: [],
     conversations: [],

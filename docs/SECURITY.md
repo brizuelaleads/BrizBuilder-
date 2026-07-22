@@ -7,8 +7,9 @@ The highest-priority property is tenant isolation: an authenticated client must 
 ## Trust boundaries
 
 - The browser and all request input are untrusted.
-- Sites dispatch establishes the hosted identity. The application verifies and maps that identity to persisted membership.
-- The local password session exists only for localhost development and production rejects those routes.
+- Cloudflare Access establishes hosted identity and sends a signed application JWT. The Worker independently verifies its signature, issuer, audience, algorithm, required claims, and time limits before mapping the email to persisted membership.
+- The administrator cookie session is an independent fallback and is accepted only when its long random token matches the server-side Cloudflare secret.
+- Unsigned identity headers are untrusted. Integration tests use a separately enabled, host-bound, short-lived HMAC identity that must never be configured in production.
 - The CRM application service is the authorization boundary. UI visibility is not authorization.
 - Provider webhooks and asynchronous jobs will be untrusted until signature, replay, scope, and idempotency checks succeed.
 
@@ -17,9 +18,11 @@ The highest-priority property is tenant isolation: an authenticated client must 
 ### Authentication
 
 - All CRM API reads and writes require an authenticated user.
-- Hosted deployments use dispatch-owned Sign in with ChatGPT.
-- Local credentials are development-only, configurable through environment variables, and never a production fallback.
-- Cookies use protected attributes appropriate to the runtime and are not exposed to client JavaScript.
+- Hosted deployments use Cloudflare Access as the primary identity provider.
+- The Worker reads `Cf-Access-Jwt-Assertion` and verifies RS256 against the remote JWKS at the configured `TEAM_DOMAIN`, with the exact `POLICY_AUD` and issuer required.
+- Missing, malformed, expired, wrongly issued, wrongly scoped, or unsigned identity tokens do not establish a user.
+- Administrator fallback credentials are configurable only through environment variables; the session token is compared without early exit and is never exposed to client JavaScript.
+- Session cookies are HTTP-only, SameSite protected, and Secure on HTTPS.
 
 ### Authorization and tenancy
 
@@ -55,6 +58,7 @@ The highest-priority property is tenant isolation: an authenticated client must 
 
 | Threat | Primary control | Verification |
 |---|---|---|
+| Spoofed identity header or JWT | Remote-JWKS signature verification plus exact issuer, audience, RS256, claim, and expiry checks | Worker integration test rejects unsigned/tampered identities; deployment smoke test uses a real Access token |
 | Cross-client ID manipulation | Server-derived tenant context and scoped queries | D1 integration test |
 | Privilege escalation | Named server permissions | Forbidden-action tests and audit |
 | Cross-site mutation | Same-origin enforcement and protected cookies | Integration test |
@@ -76,7 +80,7 @@ Payment card data must remain on provider-hosted collection surfaces; BrizBuilde
 Before a public production release:
 
 1. Replace main-admin bootstrap provisioning with an approved invitation/onboarding flow.
-2. Verify hosted authentication and logout behavior on the final domain.
+2. Configure `TEAM_DOMAIN` and `POLICY_AUD`, then verify Access authentication, origin JWT rejection, and logout behavior on the final domain.
 3. Run migration backup/restore and tenant-isolation smoke tests.
 4. Add rate limiting and structured security telemetry.
 5. Add CSRF tokens if cross-origin product surfaces are introduced.

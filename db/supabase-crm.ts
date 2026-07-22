@@ -7,9 +7,12 @@ import {
   encryptGoogleSecret,
   exchangeGoogleAuthorizationCode,
   getGoogleBusinessRuntimeStatus,
+  listGoogleBusinessReviews,
   listGoogleBusinessLocations,
+  deleteGoogleBusinessReviewReply,
   refreshGoogleAccessToken,
   revokeGoogleRefreshToken,
+  updateGoogleBusinessReviewReply,
   type GoogleBusinessLocation,
 } from "../lib/google-business";
 import {
@@ -21,8 +24,10 @@ import {
   getTwilioVisibleBalance,
   listTwilioNumbers,
   purchaseTwilioNumber,
+  renderMessageTemplate,
   searchTwilioNumbers,
   sendTwilioMessage,
+  TwilioMessageDeliveryUnknownError,
 } from "../lib/twilio";
 import {
   executeWorkflow,
@@ -56,6 +61,8 @@ import type {
   CrmWorkflow,
   CrmWorkflowRun,
   CrmGoogleProfile,
+  CrmReviewRequest,
+  CrmReviewSettings,
 } from "./crm";
 
 type TenantContext = {
@@ -161,6 +168,10 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "websites.manage",
     "profiles.manage",
     "profiles.connect",
+    "reviews.read",
+    "reviews.reply",
+    "reviews.request",
+    "reviews.settings.manage",
     "phone_system.manage",
     "billing.read_shared",
     "messages.write",
@@ -181,6 +192,10 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "websites.manage",
     "profiles.manage",
     "profiles.connect",
+    "reviews.read",
+    "reviews.reply",
+    "reviews.request",
+    "reviews.settings.manage",
     "phone_system.manage",
     "billing.read_shared",
     "messages.write",
@@ -201,6 +216,10 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "websites.manage",
     "profiles.manage",
     "profiles.connect",
+    "reviews.read",
+    "reviews.reply",
+    "reviews.request",
+    "reviews.settings.manage",
     "phone_system.manage",
     "billing.read_shared",
     "messages.write",
@@ -219,6 +238,9 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "appointments.write",
     "websites.manage",
     "profiles.manage",
+    "reviews.read",
+    "reviews.reply",
+    "reviews.request",
     "messages.write",
   ],
   CLIENT_OWNER: [
@@ -231,6 +253,10 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "websites.manage",
     "profiles.manage",
     "profiles.connect",
+    "reviews.read",
+    "reviews.reply",
+    "reviews.request",
+    "reviews.settings.manage",
     "phone_system.manage",
     "billing.read_shared",
     "messages.write",
@@ -245,6 +271,10 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "appointments.write",
     "websites.manage",
     "profiles.manage",
+    "reviews.read",
+    "reviews.reply",
+    "reviews.request",
+    "reviews.settings.manage",
     "phone_system.manage",
     "messages.write",
     "automations.manage",
@@ -256,6 +286,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "opportunities.write",
     "tasks.write",
     "appointments.write",
+    "reviews.read",
     "messages.write",
   ],
 };
@@ -285,6 +316,108 @@ function requireText(value: unknown, label: string, max = 200): string {
 function optionalText(value: unknown, max = 500): string | null {
   if (typeof value !== "string" || !value.trim()) return null;
   return value.trim().slice(0, max);
+}
+
+const DEFAULT_REVIEW_SMS_TEMPLATE =
+  "Hi {{first_name}}, thank you for choosing {{business_name}}. Would you share your honest experience? {{review_link}} Reply STOP to opt out.";
+const DEFAULT_REVIEW_FOLLOW_UP_TEMPLATE =
+  "A quick reminder from {{business_name}}: if you have a moment, you can share your honest experience here: {{review_link}} Reply STOP to opt out.";
+
+function boundedInteger(
+  value: unknown,
+  label: string,
+  minimum: number,
+  maximum: number,
+) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new Error(`${label} must be between ${minimum} and ${maximum}.`);
+  }
+  return parsed;
+}
+
+function reviewTemplate(value: unknown, label: string) {
+  const template = requireText(value, label, 1500);
+  if (!template.includes("{{review_link}}")) {
+    throw new Error(`${label} must include {{review_link}}.`);
+  }
+  if (!template.includes("{{business_name}}")) {
+    throw new Error(`${label} must include {{business_name}}.`);
+  }
+  if (!/\bSTOP\b/i.test(template)) {
+    throw new Error(`${label} must tell the customer they can reply STOP.`);
+  }
+  if (
+    /\b(?:discount|gift(?:\s+card)?|reward|coupon|cash|compensation)\b/i.test(
+      template,
+    ) ||
+    /\b(?:5\s*[- ]?star|five\s*[- ]?star|only if|if you (?:were|are|'re) (?:happy|satisfied))\b/i.test(
+      template,
+    )
+  ) {
+    throw new Error(
+      `${label} must be neutral and cannot offer rewards, request a specific rating, or ask only happy customers.`,
+    );
+  }
+  return template;
+}
+
+function quietHour(value: unknown, label: string) {
+  const entry = requireText(value, label, 5);
+  if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(entry)) {
+    throw new Error(`${label} must use a 24-hour time such as 20:00.`);
+  }
+  return entry;
+}
+
+function notificationEmails(value: unknown) {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/[\s,;]+/)
+      : [];
+  const emails = [...new Set(raw.map((entry) => String(entry).trim().toLowerCase()).filter(Boolean))];
+  if (emails.length > 20) throw new Error("Add no more than 20 notification emails.");
+  for (const email of emails) {
+    if (email.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new Error(`Enter a valid notification email: ${email.slice(0, 80)}`);
+    }
+  }
+  return emails;
+}
+
+function minutesInTimeZone(timeZone: string, date = new Date()) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(date);
+    const hour = Number(parts.find((part) => part.type === "hour")?.value);
+    const minute = Number(parts.find((part) => part.type === "minute")?.value);
+    if (Number.isInteger(hour) && Number.isInteger(minute)) return hour * 60 + minute;
+  } catch {
+    throw new Error(
+      "This business has an invalid time zone. Fix the client profile before sending review requests.",
+    );
+  }
+  throw new Error(
+    "BrizBuilder could not confirm the business's local time. Try again later.",
+  );
+}
+
+function isWithinQuietHours(current: number, start: string, end: string) {
+  const toMinutes = (value: string) => {
+    const [hour, minute] = value.split(":").map(Number);
+    return hour * 60 + minute;
+  };
+  const startMinutes = toMinutes(start);
+  const endMinutes = toMinutes(end);
+  if (startMinutes === endMinutes) return false;
+  return startMinutes < endMinutes
+    ? current >= startMinutes && current < endMinutes
+    : current >= startMinutes || current < endMinutes;
 }
 
 function normalizeDomain(value: unknown): string {
@@ -813,6 +946,70 @@ async function authorizedGoogleLocations(
   }, organizationId, clientId);
   const tokens = await refreshGoogleAccessToken(refreshToken);
   return listGoogleBusinessLocations(tokens.accessToken);
+}
+
+async function authorizedGoogleReviewContext(
+  context: TenantContext,
+  clientId: string,
+) {
+  await requireClient(context, clientId);
+  const [credential, profile] = await Promise.all([
+    googleCredential(context.organizationId, clientId),
+    assertOk(
+      supabase()
+        .from("google_business_profiles")
+        .select("status,account_id,location_id")
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .maybeSingle(),
+    ),
+  ]);
+  if (!credential || !profile) {
+    throw new Error("Connect this business's Google account first.");
+  }
+  if (String(profile.status).toLowerCase() !== "connected") {
+    throw new Error("Choose an active Google Business Profile location first.");
+  }
+  const accountResourceName = requireText(
+    profile.account_id,
+    "Google account",
+    240,
+  );
+  const locationResourceName = requireText(
+    profile.location_id,
+    "Google location",
+    240,
+  );
+  const refreshToken = await decryptGoogleSecret(
+    {
+      ciphertext: String(credential.refresh_token_ciphertext),
+      iv: String(credential.refresh_token_iv),
+    },
+    context.organizationId,
+    clientId,
+  );
+  const tokens = await refreshGoogleAccessToken(refreshToken);
+  return {
+    accessToken: tokens.accessToken,
+    accountResourceName,
+    locationResourceName,
+  };
+}
+
+export async function getSupabaseGoogleReviews(
+  user: ChatGPTUser,
+  clientId: string,
+  pageToken?: string | null,
+) {
+  const context = await getTenantContext(user);
+  requirePermission(context, "reviews.read");
+  const authorized = await authorizedGoogleReviewContext(context, clientId);
+  return listGoogleBusinessReviews(
+    authorized.accessToken,
+    authorized.accountResourceName,
+    authorized.locationResourceName,
+    pageToken,
+  );
 }
 
 async function saveGoogleLocation(
@@ -1808,6 +2005,8 @@ export async function getSupabaseCrmBootstrap(
     providerConnections,
     googleProfiles,
     googleCredentialRefs,
+    reviewRequests,
+    reviewSettings,
     workflows,
     workflowVersions,
     workflowRuns,
@@ -1927,6 +2126,25 @@ export async function getSupabaseCrmBootstrap(
         })
       : Promise.resolve([] as AnyRecord[]),
     assertOk(
+      query<AnyRecord>(
+        "review_requests",
+        "*,contacts(first_name,last_name)",
+      )
+        .order("created_at", { ascending: false })
+        .limit(250),
+    ).catch((error) => {
+      console.error("Reviews workspace tables are not migrated yet.", error);
+      return [] as AnyRecord[];
+    }),
+    assertOk(
+      query<AnyRecord>("review_settings").order("updated_at", {
+        ascending: false,
+      }),
+    ).catch((error) => {
+      console.error("Review settings table is not migrated yet.", error);
+      return [] as AnyRecord[];
+    }),
+    assertOk(
       query<AnyRecord>("workflows").order("updated_at", { ascending: false }),
     ),
     assertOk(
@@ -1953,6 +2171,8 @@ export async function getSupabaseCrmBootstrap(
   const auditRows = (auditEvents ?? []) as AnyRecord[];
   const providerConnectionRows = (providerConnections ?? []) as AnyRecord[];
   const googleProfileRows = (googleProfiles ?? []) as AnyRecord[];
+  const reviewRequestRows = (reviewRequests ?? []) as AnyRecord[];
+  const reviewSettingRows = (reviewSettings ?? []) as AnyRecord[];
   const googleCredentialClientIds = new Set(
     ((googleCredentialRefs ?? []) as AnyRecord[]).map((row) =>
       String(row.client_id),
@@ -2052,6 +2272,46 @@ export async function getSupabaseCrmBootstrap(
         googleCredentialClientIds.has(String(row.client_id)),
     })),
     googleProfileRuntime: googleProfileRuntime(),
+    reviewRequests: reviewRequestRows.map(
+      (row: AnyRecord): CrmReviewRequest => {
+        const contact = nestedOne(row.contacts) ?? {};
+        return {
+          id: String(row.id),
+          clientId: String(row.client_id),
+          contactId: String(row.contact_id),
+          contactName:
+            `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() ||
+            "Unknown contact",
+          channel: "sms",
+          status: String(row.status) as CrmReviewRequest["status"],
+          messageBody: String(row.message_body ?? ""),
+          requestedByEmail: String(row.requested_by_email ?? ""),
+          sentAt: nullable(row.sent_at),
+          deliveredAt: nullable(row.delivered_at),
+          failedAt: nullable(row.failed_at),
+          errorMessage: nullable(row.error_message),
+          createdAt: String(row.created_at),
+        };
+      },
+    ),
+    reviewSettings: reviewSettingRows.map(
+      (row: AnyRecord): CrmReviewSettings => ({
+        id: String(row.id),
+        clientId: String(row.client_id),
+        smsEnabled: Boolean(row.sms_enabled),
+        defaultSmsTemplate: String(row.default_sms_template ?? ""),
+        followUpEnabled: Boolean(row.follow_up_enabled),
+        followUpTemplate: String(row.follow_up_template ?? ""),
+        followUpDelayHours: Number(row.follow_up_delay_hours ?? 72),
+        quietHoursStart: String(row.quiet_hours_start ?? "20:00").slice(0, 5),
+        quietHoursEnd: String(row.quiet_hours_end ?? "08:00").slice(0, 5),
+        dailyLimit: Number(row.daily_limit ?? 25),
+        notificationEmails: Array.isArray(row.notification_emails)
+          ? row.notification_emails.map(String)
+          : [],
+        updatedAt: String(row.updated_at),
+      }),
+    ),
     workflows: ((workflows ?? []) as AnyRecord[]).map((row) =>
       mapWorkflow(row, (workflowVersions ?? []) as AnyRecord[]),
     ),
@@ -2216,6 +2476,474 @@ export async function executeSupabaseCrmAction(
       clientId,
     );
     return { saved: true };
+  }
+
+  if (action === "save_review_settings") {
+    requirePermission(context, "reviews.settings.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const smsTemplate = reviewTemplate(
+      input.defaultSmsTemplate ?? DEFAULT_REVIEW_SMS_TEMPLATE,
+      "SMS template",
+    );
+    const followUpTemplate = reviewTemplate(
+      input.followUpTemplate ?? DEFAULT_REVIEW_FOLLOW_UP_TEMPLATE,
+      "Follow-up template",
+    );
+    const quietHoursStart = quietHour(
+      input.quietHoursStart ?? "20:00",
+      "Quiet hours start",
+    );
+    const quietHoursEnd = quietHour(
+      input.quietHoursEnd ?? "08:00",
+      "Quiet hours end",
+    );
+    if (quietHoursStart === quietHoursEnd) {
+      throw new Error("Quiet hours must have different start and end times.");
+    }
+    const now = new Date().toISOString();
+    const settings = requireRow(
+      await assertOk(
+        supabase()
+          .from("review_settings")
+          .upsert(
+            {
+              organization_id: context.organizationId,
+              client_id: clientId,
+              sms_enabled: input.smsEnabled === true,
+              default_sms_template: smsTemplate,
+              follow_up_enabled: input.followUpEnabled === true,
+              follow_up_template: followUpTemplate,
+              follow_up_delay_hours: boundedInteger(
+                input.followUpDelayHours ?? 72,
+                "Follow-up delay",
+                1,
+                720,
+              ),
+              quiet_hours_start: quietHoursStart,
+              quiet_hours_end: quietHoursEnd,
+              daily_limit: boundedInteger(
+                input.dailyLimit ?? 25,
+                "Daily sending limit",
+                1,
+                250,
+              ),
+              notification_emails: notificationEmails(
+                input.notificationEmails,
+              ),
+              updated_at: now,
+            },
+            { onConflict: "organization_id,client_id" },
+          )
+          .select("id")
+          .single(),
+      ),
+      "Review settings were not saved.",
+    );
+    await audit(
+      context,
+      "review.settings_updated",
+      "review_settings",
+      String(settings.id),
+      {
+        smsEnabled: input.smsEnabled === true,
+        followUpEnabled: input.followUpEnabled === true,
+      },
+      clientId,
+    );
+    return { id: settings.id };
+  }
+
+  if (action === "send_review_request") {
+    requirePermission(context, "reviews.request");
+    const clientId = requireText(input.clientId, "Client", 100);
+    const contactId = requireText(input.contactId, "Contact", 100);
+    const idempotencyKey = requireText(
+      input.idempotencyKey,
+      "Request identifier",
+      100,
+    );
+    if (!/^[A-Za-z0-9_-]{12,100}$/.test(idempotencyKey)) {
+      throw new Error("The request identifier is invalid. Refresh and try again.");
+    }
+    if (input.consentConfirmed !== true) {
+      throw new Error(
+        "Confirm that this customer agreed to receive this review request by text.",
+      );
+    }
+    await requireClient(context, clientId);
+
+    const duplicate = await assertOk(
+      supabase()
+        .from("review_requests")
+        .select("id,status")
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .eq("idempotency_key", idempotencyKey)
+        .maybeSingle(),
+    );
+    if (duplicate) {
+      return { id: duplicate.id, status: duplicate.status, duplicate: true };
+    }
+    await requireActiveTwilioConnection(context, clientId);
+
+    const [client, contact, config, profile, settings] = await Promise.all([
+      assertOk(
+        supabase()
+          .from("clients")
+          .select("business_name,time_zone")
+          .eq("organization_id", context.organizationId)
+          .eq("id", clientId)
+          .single(),
+      ),
+      assertOk(
+        supabase()
+          .from("contacts")
+          .select("id,first_name,last_name,phone,marketing_consent")
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId)
+          .eq("id", contactId)
+          .is("archived_at", null)
+          .maybeSingle(),
+      ),
+      assertOk(
+        supabase()
+          .from("phone_system_configs")
+          .select("*")
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId)
+          .maybeSingle(),
+      ),
+      assertOk(
+        supabase()
+          .from("google_business_profiles")
+          .select("google_review_url")
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId)
+          .maybeSingle(),
+      ),
+      assertOk(
+        supabase()
+          .from("review_settings")
+          .select("*")
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId)
+          .maybeSingle(),
+      ),
+    ]);
+    const selectedClient = requireRow(client, "Client not found.");
+    const selectedContact = requireRow(contact, "Contact not found.");
+    if (!selectedContact.phone) {
+      throw new Error("This contact does not have a phone number.");
+    }
+    if (String(selectedContact.marketing_consent).toLowerCase() === "opt_out") {
+      throw new Error("This contact opted out of text messages.");
+    }
+    if (!settings?.sms_enabled) {
+      throw new Error("Turn on SMS review requests in Reviews settings first.");
+    }
+    const reviewUrl = normalizeGoogleReviewUrl(profile?.google_review_url);
+    if (!reviewUrl) {
+      throw new Error("Save this business's official Google review link first.");
+    }
+    if (
+      !config ||
+      String(config.provider_status ?? "").toLowerCase() !== "connected"
+    ) {
+      throw new Error("Connect this client's Twilio phone system first.");
+    }
+    if (String(config.a2p_status ?? "").toLowerCase() !== "approved") {
+      throw new Error(
+        "A2P registration must be approved before sending review requests.",
+      );
+    }
+    const start = quietHour(settings.quiet_hours_start, "Quiet hours start");
+    const end = quietHour(settings.quiet_hours_end, "Quiet hours end");
+    const localMinutes = minutesInTimeZone(
+      String(selectedClient.time_zone ?? "America/Chicago"),
+    );
+    if (
+      localMinutes < 8 * 60 ||
+      localMinutes >= 20 * 60 ||
+      isWithinQuietHours(localMinutes, start, end)
+    ) {
+      throw new Error(
+        `Review requests are paused outside the allowed local sending window and during quiet hours (${start}-${end}).`,
+      );
+    }
+
+    const dailyLimit = boundedInteger(
+      settings.daily_limit,
+      "Daily sending limit",
+      1,
+      250,
+    );
+
+    const now = new Date().toISOString();
+    const template = reviewTemplate(
+      settings.default_sms_template ?? DEFAULT_REVIEW_SMS_TEMPLATE,
+      "SMS template",
+    );
+    const messageBody = renderMessageTemplate(template, {
+      first_name: String(selectedContact.first_name ?? "there"),
+      last_name: String(selectedContact.last_name ?? ""),
+      business_name: String(selectedClient.business_name),
+      review_link: reviewUrl,
+    });
+    if (!messageBody.includes(reviewUrl)) {
+      throw new Error("The review request must include the official Google review link.");
+    }
+    if (messageBody.length > 1600) {
+      throw new Error(
+        "The final review request is longer than 1,600 characters. Shorten the saved template and review it again.",
+      );
+    }
+    if (typeof input.body !== "string" || input.body !== messageBody) {
+      throw new Error(
+        "The saved message changed after this preview loaded. Refresh Reviews and approve the exact message again.",
+      );
+    }
+
+    const reservation = requireRow(
+      await assertOk(
+        supabase()
+          .rpc("reserve_review_request", {
+            p_organization_id: context.organizationId,
+            p_client_id: clientId,
+            p_contact_id: contactId,
+            p_idempotency_key: idempotencyKey,
+            p_message_body: messageBody,
+            p_requested_by_email: context.email,
+            p_consent_evidence: {
+              confirmedBy: context.email,
+              confirmedAt: now,
+              contactConsentStatus: String(
+                selectedContact.marketing_consent ?? "unknown",
+              ),
+            },
+            p_daily_limit: dailyLimit,
+          })
+          .single(),
+      ),
+      "Review request was not reserved.",
+    ) as AnyRecord;
+    const requestRow = {
+      id: String(reservation.request_id),
+      status: String(reservation.request_status),
+    };
+    if (reservation.duplicate === true) {
+      return { id: requestRow.id, status: requestRow.status, duplicate: true };
+    }
+
+    let conversation: AnyRecord;
+    try {
+      conversation = requireRow(
+        await assertOk(
+          supabase()
+            .from("conversations")
+            .upsert(
+              {
+                organization_id: context.organizationId,
+                client_id: clientId,
+                contact_id: contactId,
+                channel: "sms",
+                status: "open",
+                last_message_at: now,
+                updated_at: now,
+              },
+              { onConflict: "client_id,contact_id,channel" },
+            )
+            .select("id")
+            .single(),
+        ),
+        "Conversation was not created.",
+      );
+    } catch (error) {
+      const failure =
+        error instanceof Error
+          ? error.message.slice(0, 500)
+          : "Conversation was not created.";
+      await assertOk(
+        supabase()
+          .from("review_requests")
+          .update({
+            status: "failed",
+            failed_at: new Date().toISOString(),
+            error_message: failure,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId)
+          .eq("id", requestRow.id),
+      );
+      throw new Error(failure);
+    }
+
+    let sent: { sid: string; status: string };
+    try {
+      sent = await sendTwilioMessage({
+        accountSid: nullable(config.provider_account_sid),
+        fromNumber: nullable(config.phone_number),
+        messagingServiceSid: nullable(config.messaging_service_sid),
+        to: String(selectedContact.phone),
+        body: messageBody,
+        allowPlatformFallback: false,
+      });
+    } catch (error) {
+      const deliveryUnknown =
+        error instanceof TwilioMessageDeliveryUnknownError;
+      const failure =
+        error instanceof Error ? error.message.slice(0, 500) : "Twilio could not send the review request.";
+      const failureTime = new Date().toISOString();
+      await assertOk(
+        supabase()
+          .from("review_requests")
+          .update({
+            status: deliveryUnknown ? "reconciling" : "failed",
+            failed_at: deliveryUnknown ? null : failureTime,
+            error_message: failure,
+            updated_at: failureTime,
+          })
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId)
+          .eq("id", requestRow.id),
+      );
+      await audit(
+        context,
+        deliveryUnknown
+          ? "review_request.delivery_unknown"
+          : "review_request.failed",
+        "review_request",
+        String(requestRow.id),
+        {},
+        clientId,
+      );
+      throw new Error(failure);
+    }
+
+    const requestStatus = sent.status === "sent" ? "sent" : "queued";
+    try {
+      const message = requireRow(
+        await assertOk(
+          supabase()
+            .from("messages")
+            .insert({
+              organization_id: context.organizationId,
+              client_id: clientId,
+              conversation_id: conversation.id,
+              contact_id: contactId,
+              provider_message_sid: sent.sid,
+              direction: "outbound",
+              channel: "sms",
+              from_number: String(config.phone_number ?? ""),
+              to_number: String(selectedContact.phone),
+              body: messageBody,
+              status: sent.status,
+              automation_key: "review_request",
+              sent_at: new Date().toISOString(),
+            })
+            .select("id")
+            .single(),
+        ),
+        "Message was not saved.",
+      );
+      await assertOk(
+        supabase()
+          .from("review_requests")
+          .update({
+            message_id: message.id,
+            status: requestStatus,
+            sent_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId)
+          .eq("id", requestRow.id),
+      );
+    } catch (error) {
+      const warning =
+        error instanceof Error ? error.message.slice(0, 500) : "The sent request was not linked to message history.";
+      await assertOk(
+        supabase()
+          .from("review_requests")
+          .update({
+            status: requestStatus,
+            sent_at: new Date().toISOString(),
+            error_message: warning,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId)
+          .eq("id", requestRow.id),
+      );
+    }
+    await audit(
+      context,
+      "review_request.sent",
+      "review_request",
+      String(requestRow.id),
+      { providerMessageSid: sent.sid },
+      clientId,
+    );
+    return { id: requestRow.id, status: requestStatus };
+  }
+
+  if (action === "publish_google_review_reply") {
+    requirePermission(context, "reviews.reply");
+    if (input.confirmed !== true) {
+      throw new Error("Review the exact reply and confirm before publishing it.");
+    }
+    const clientId = requireText(input.clientId, "Client", 100);
+    const reviewId = requireText(input.reviewId, "Google review", 300);
+    if (typeof input.comment !== "string" || !input.comment.trim()) {
+      throw new Error("Reply is required.");
+    }
+    const comment = input.comment.trim();
+    if (new TextEncoder().encode(comment).byteLength > 4096) {
+      throw new Error("Google review replies must be 4,096 bytes or less.");
+    }
+    const authorized = await authorizedGoogleReviewContext(context, clientId);
+    await updateGoogleBusinessReviewReply(
+      authorized.accessToken,
+      authorized.accountResourceName,
+      authorized.locationResourceName,
+      reviewId,
+      comment,
+    );
+    await audit(
+      context,
+      "google_review.reply_published",
+      "google_business_profile",
+      clientId,
+      { source: "manual_confirmed_publish" },
+      clientId,
+    );
+    return { published: true };
+  }
+
+  if (action === "delete_google_review_reply") {
+    requirePermission(context, "reviews.reply");
+    if (input.confirmed !== true) {
+      throw new Error("Confirm before deleting this Google review reply.");
+    }
+    const clientId = requireText(input.clientId, "Client", 100);
+    const reviewId = requireText(input.reviewId, "Google review", 300);
+    const authorized = await authorizedGoogleReviewContext(context, clientId);
+    await deleteGoogleBusinessReviewReply(
+      authorized.accessToken,
+      authorized.accountResourceName,
+      authorized.locationResourceName,
+      reviewId,
+    );
+    await audit(
+      context,
+      "google_review.reply_deleted",
+      "google_business_profile",
+      clientId,
+      { source: "manual_confirmed_delete" },
+      clientId,
+    );
+    return { deleted: true };
   }
 
   if (action === "disconnect_google_profile") {

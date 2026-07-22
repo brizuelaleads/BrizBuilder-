@@ -30,13 +30,15 @@ supabase/migrations/20260718210000_connections_and_visual_workflows.sql
 supabase/migrations/20260721170000_remove_stored_twilio_balances.sql
 supabase/migrations/20260721190000_google_business_profiles.sql
 supabase/migrations/20260722040000_google_business_oauth_credentials.sql
+supabase/migrations/20260722130000_reviews_workspace.sql
+supabase/migrations/20260722143000_reviews_workspace_indexes.sql
 ```
 
 `supabase/schema.sql` is the baseline copy of
 `20260717150000_brizbuilder_initial_schema.sql`; do not run both on a fresh
-database. The later dated migrations are required. In particular, the final
-two create the Google Business Profile table and the server-only encrypted
-OAuth credential table.
+database. The later dated migrations are required. The final three create the
+Google Business Profile table, the server-only encrypted OAuth credential
+table, and the tenant-scoped Reviews workspace tables.
 
 If you use the Supabase CLI instead of the SQL Editor, apply the complete
 `supabase/migrations` directory to an empty database and skip `schema.sql`.
@@ -135,6 +137,27 @@ Connected now:
 - Notes.
 - Companies.
 - Audit events.
+- Review-request settings, purpose-specific SMS consent evidence, and request
+  delivery history.
+
+## Reviews workspace requirements
+
+The Reviews workspace uses real provider data and honest empty states:
+
+- Copy-link and QR-code tools use the selected client's official Google review
+  URL. A Google Business Profile must be connected or its official review link
+  must be configured first.
+- Manual SMS review requests require a connected Twilio account for that
+  client, approved A2P registration, and an explicit confirmation that the
+  chosen contact consented to receive this review-request message.
+- Run `supabase/migrations/20260722130000_reviews_workspace.sql` and then
+  `supabase/migrations/20260722143000_reviews_workspace_indexes.sql` before
+  enabling the Reviews workspace. They create indexed, server-only,
+  tenant-scoped settings, consent, and request-history tables.
+- Google review inbox and reply actions wait for Google's Business Profile API
+  access approval. Once approved, Google review content is requested on demand;
+  BrizBuilder does not permanently persist that content in Supabase.
+- The application never seeds fake ratings, reviews, or review counts.
 
 Still intentionally staged for the next phase:
 

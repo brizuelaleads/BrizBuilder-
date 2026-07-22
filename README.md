@@ -2,15 +2,15 @@
 
 BrizBuilder is a multi-tenant agency operating platform. This repository delivers its Phase 1 CRM foundation: organizations, client subaccounts, contacts, companies, custom data, opportunities, tasks, appointments, reports, and audit controls.
 
-Phase 1 is implemented as a production-quality MVP. Records are stored in Cloudflare D1, authentication is provided by the Sites dispatch layer, and every CRM query is scoped on the server to an authorized organization and, for client users, a single client.
+Phase 1 is implemented as a production-quality MVP. Records are stored in Cloudflare D1, hosted identity is provided by Cloudflare Access and cryptographically verified again by the Worker, and every CRM query is scoped on the server to an authorized organization and, for client users, a single client.
 
 ## Current architecture
 
 - Vinext / Next.js App Router, React 19, and TypeScript strict mode
 - Cloudflare Worker deployment target
 - Cloudflare D1 with Drizzle schema and generated migrations
-- Dispatch-owned Sign in with ChatGPT for hosted authentication
-- Local-only administrator test session for localhost development
+- Cloudflare Access application JWT authentication with origin-side signature, issuer, audience, algorithm, and expiry verification
+- Independent administrator cookie-session fallback backed by Cloudflare secrets
 - Server-rendered tenant snapshot with a focused `/api/crm` action API
 - Responsive custom component system in `app/globals.css`
 - Miniflare integration tests using a real local D1 binding
@@ -62,6 +62,8 @@ supabase/migrations/20260718210000_connections_and_visual_workflows.sql
 supabase/migrations/20260721170000_remove_stored_twilio_balances.sql
 supabase/migrations/20260721190000_google_business_profiles.sql
 supabase/migrations/20260722040000_google_business_oauth_credentials.sql
+supabase/migrations/20260722130000_reviews_workspace.sql
+supabase/migrations/20260722143000_reviews_workspace_indexes.sql
 ```
 
 `supabase/schema.sql` is the same baseline as
@@ -81,9 +83,28 @@ BRIZBUILDER_BACKEND=supabase
 
 Do not put the real `SUPABASE_SERVICE_ROLE_KEY` in GitHub. After deploying, open `/api/supabase/status` to confirm the backend is connected.
 
-Local credentials are required and are accepted only by the development server. Production builds reject the local login routes and use Sign in with ChatGPT.
+Copy `.env.example` to `.env.local`, then set `MAIN_ADMIN_EMAIL`, `MAIN_ADMIN_NAME`, `LOCAL_DEV_ADMIN_PASSWORD`, and a long random `LOCAL_DEV_SESSION_TOKEN`. Restart the development server after changing them. The `.env.local` file is intentionally excluded from Git. The same administrator fallback can remain available on the hosted Worker when those values are stored as Cloudflare secrets.
 
-Copy `.env.example` to `.env.local`, then set `MAIN_ADMIN_EMAIL`, `MAIN_ADMIN_NAME`, `LOCAL_DEV_ADMIN_PASSWORD`, and a long random `LOCAL_DEV_SESSION_TOKEN`. Restart the development server after changing them. The `.env.local` file is intentionally excluded from Git.
+## Production authentication
+
+The dashboard is protected by Cloudflare Access. Add these two runtime variables
+to the production Worker:
+
+```txt
+TEAM_DOMAIN=https://your-team-name.cloudflareaccess.com
+POLICY_AUD=your-application-audience-aud-tag
+```
+
+Find the team domain under **Zero Trust > Settings**. Find the AUD tag under
+**Zero Trust > Access controls > Applications > BrizBuilder > Additional
+settings**. Access sends the application token in `Cf-Access-Jwt-Assertion`;
+BrizBuilder verifies its RS256 signature against Cloudflare's remote JWKS and
+also verifies the exact issuer, audience, required identity claims, and token
+time limits before using the email address.
+
+Unsigned identity headers are ignored. The `BRIZBUILDER_TEST_AUTH_*` variables
+exist only for the Miniflare integration suite and must never be configured on
+the production Worker.
 
 ## Database and migrations
 
@@ -92,8 +113,9 @@ The logical D1 binding is declared as `DB` in `.openai/hosting.json`.
 Supabase/Postgres changes live in `supabase/migrations` and must be applied in
 filename order. `supabase/schema.sql` is only the baseline snapshot; a fresh
 manual SQL Editor setup is not current until the later migrations listed above
-have also run. This is what creates the Google Business Profile and protected
-Google OAuth credential tables.
+have also run. These migrations create the Google Business Profile connection,
+protected Google OAuth credentials, and tenant-scoped review request settings,
+consent evidence, and delivery history.
 
 Generate a migration after changing `db/schema.ts`:
 
@@ -162,7 +184,24 @@ npm run build
 - Connected website management for WordPress, Wix, Squarespace, Webflow, Shopify, and custom sites
 - Public website lead-capture gateway that creates tenant-scoped contacts and pipeline leads
 - Copy-ready webhook URL and JavaScript integration instructions for every connected site
-- Navigable UI previews for conversations, automations, forms, funnels, payments, reviews, and AI
+- Navigable UI previews for conversations, automations, forms, funnels, payments, and AI
+- A real Reviews workspace with per-business settings, honest empty states, Google review-link copy/QR tools, and manual SMS request history
+
+### Reviews workspace
+
+- The copy button and QR code use the selected business's official Google review
+  link. Connect or configure that Google Business Profile before sharing them.
+- A manual SMS review request is available only after that business has a
+  connected Twilio account, an approved A2P registration, and explicit consent
+  from the selected contact for this review-request message.
+- BrizBuilder records its own request status and delivery history. It does not
+  claim that an SMS recipient later posted a particular Google review.
+- The Google review inbox and reply controls remain unavailable until Google
+  approves BrizBuilder for Business Profile API access. After approval, Google
+  reviews are loaded on demand and are not permanently copied into BrizBuilder's
+  database.
+- Empty accounts stay empty: BrizBuilder does not create sample ratings, fake
+  reviews, or made-up review totals.
 
 ## Not implemented yet
 
@@ -172,7 +211,8 @@ The following have clearly labeled UI previews, but their live providers and act
 - missed-call text-back
 - Meta Ads, Google Ads, GA4, Search Console, and call-tracking sync
 - general-purpose form builder publishing and tracking-health monitor
-- automations and review requests
+- automatic review follow-ups and workflow-triggered review requests
+- live Google review inbox and replies until Business Profile API access is approved
 - estimates, invoices, payments, and Stripe
 - AI summaries, scoring automation, and reply suggestions
 - background job infrastructure
@@ -185,6 +225,6 @@ See [the phased roadmap](docs/ROADMAP.md) and [feature parity matrix](docs/FEATU
 2. Confirm `.openai/hosting.json` contains the existing Sites `project_id` and `"d1": "DB"`.
 3. Package and publish through the Sites hosting workflow.
 4. Keep the site private or explicitly configure an allowlist before sharing it.
-5. Verify hosted Sign in with ChatGPT, the D1 migration, and one agency/client isolation check after deployment.
+5. Verify Cloudflare Access sign-in, origin JWT validation, the D1 migration, and one agency/client isolation check after deployment.
 
 Runtime secrets belong in Sites environment settings, never in the repository.

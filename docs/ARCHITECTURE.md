@@ -6,7 +6,7 @@ BrizBuilder begins as a modular monolith deployed to a Cloudflare Worker. The UI
 
 ```mermaid
 flowchart LR
-    U["Agency or client user"] --> E["Cloudflare edge and Sites dispatch"]
+    U["Agency or client user"] --> E["Cloudflare edge and Access"]
     E --> A["Authenticated Next.js/Vinext application"]
     A --> P["Tenant context and permission policy"]
     P --> C["CRM application service"]
@@ -39,6 +39,18 @@ flowchart LR
 **Decision:** Build request context from the authenticated identity and persisted membership. Repositories receive that context and always filter by organization; client users receive an additional client constraint.
 
 **Reason:** Browser-provided tenant identifiers are untrusted. UI filtering is a usability feature, never a security boundary.
+
+### ADR-003A: Verify Access identity at the origin
+
+**Decision:** Treat `Cf-Access-Jwt-Assertion` as the only hosted identity input
+and verify it in the Worker with Cloudflare's remote JWKS, the configured team
+issuer, the application's audience tag, RS256, required claims, and JWT time
+limits. Do not trust unsigned user-email or user-name headers.
+
+**Reason:** An Access policy protects the normal edge route, but origin-side
+verification prevents a routing mistake or forged request header from becoming
+an authenticated BrizBuilder user. The administrator cookie remains a separate,
+secret-backed recovery path.
 
 ### ADR-004: Explicit role permissions
 

@@ -2,7 +2,7 @@
 
 import { Badge } from "./ui";
 
-export type FutureModule = "conversations" | "automations" | "forms" | "payments" | "ai" | "funnels" | "reviews";
+export type FutureModule = "conversations" | "automations" | "forms" | "payments" | "ai" | "funnels";
 
 type ModuleDefinition = {
   name: string;
@@ -55,13 +55,6 @@ const modules: Record<FutureModule, ModuleDefinition> = {
     description: "Design step-by-step conversion journeys with landing pages, forms, appointments, offers, and attribution.",
     features: ["Visual funnel steps", "Traffic and conversion reporting", "Experiments, templates, and reusable sections"],
   },
-  reviews: {
-    name: "Reputation",
-    eyebrow: "REVIEWS & FEEDBACK",
-    phase: "Planned for Phase 7",
-    description: "Request, monitor, and respond to customer reviews while giving every client a clear view of reputation growth.",
-    features: ["Automated review requests", "Google Business Profile monitoring", "Response approvals and reporting"],
-  },
 };
 
 const previewStats: Record<FutureModule, Array<[string, string, string]>> = {
@@ -71,7 +64,6 @@ const previewStats: Record<FutureModule, Array<[string, string, string]>> = {
   payments: [["Collected", "$0", "Live"], ["Outstanding", "$0", "Live"], ["Paid invoices", "0", "Live"]],
   ai: [["Drafts created", "0", "Live"], ["Time saved", "—", "Live"], ["Approval rate", "—", "Live"]],
   funnels: [["Visitors", "0", "Live"], ["Conversions", "0", "Live"], ["Conversion rate", "—", "Live"]],
-  reviews: [["Average rating", "—", "Live"], ["New this month", "0", "Live"], ["Response rate", "—", "Live"]],
 };
 
 function PreviewNotice() {
@@ -123,19 +115,13 @@ function FunnelsPreview() {
   return <div className="crm-funnel-preview"><header><div><strong>Free estimate funnel</strong><small>Draft conversion journey</small></div><Badge tone="orange">Draft preview</Badge></header><section>{steps.map(([number, name, visitors, rate], index) => <article key={number}><span>{number}</span><div><strong>{name}</strong><small>{visitors} visitors</small></div><b>{rate}</b>{index < steps.length - 1 ? <i>→</i> : null}</article>)}</section></div>;
 }
 
-function ReviewsPreview() {
-  const reviews = [["—", "No reviews yet", "—", "Connect a review provider to collect live feedback."]];
-  return <div className="crm-reviews-preview"><section><header><div><strong>Recent review examples</strong><small>Google Business Profile preview</small></div><button disabled>Request review</button></header>{reviews.map(([initial, name, rating, copy]) => <article key={name}><span className="crm-preview-avatar">{initial}</span><div><strong>{name}<b>{rating} ★</b></strong><p>{copy}</p><small>Response workflow not connected</small></div></article>)}</section><aside><strong>Rating trend</strong><div className="crm-rating-score">4.8<small>out of 5</small></div>{[["5 stars", "82%"], ["4 stars", "14%"], ["3 stars", "3%"], ["1–2 stars", "1%"]].map(([label, width]) => <p key={label}><span>{label}</span><i><b style={{ width }} /></i><small>{width}</small></p>)}</aside></div>;
-}
-
 function ModuleBody({ module }: { module: FutureModule }) {
   if (module === "conversations") return <ConversationsPreview />;
   if (module === "automations") return <AutomationsPreview />;
   if (module === "forms") return <FormsPreview />;
   if (module === "payments") return <PaymentsPreview />;
   if (module === "ai") return <AiPreview />;
-  if (module === "funnels") return <FunnelsPreview />;
-  return <ReviewsPreview />;
+  return <FunnelsPreview />;
 }
 
 export function FutureModuleView({ module }: { module: FutureModule }) {

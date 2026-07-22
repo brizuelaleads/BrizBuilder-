@@ -381,15 +381,35 @@ export async function handleIncomingMessage(request: Request) {
     .trim()
     .toLowerCase()
     .replace(/[^a-z]/g, "");
-  if (SMS_STOP_WORDS.has(normalized))
-    await db()
-      .from("contacts")
-      .update({
-        marketing_consent: "opt_out",
-        last_interaction_at: new Date().toISOString(),
-      })
-      .eq("id", contact.id);
-  else
+  if (SMS_STOP_WORDS.has(normalized)) {
+    const revokedAt = new Date().toISOString();
+    const [contactUpdate, consentEvent] = await Promise.all([
+      db()
+        .from("contacts")
+        .update({
+          marketing_consent: "opt_out",
+          last_interaction_at: revokedAt,
+        })
+        .eq("id", contact.id),
+      db().from("contact_message_consents").insert({
+        organization_id: config.organization_id,
+        client_id: config.client_id,
+        contact_id: contact.id,
+        channel: "sms",
+        purpose: "review_request",
+        status: "revoked",
+        source: "twilio_stop_keyword",
+        evidence: { providerMessageSid: messageSid },
+        policy_version: "review-request-v1",
+        captured_by_email: "twilio-webhook",
+        captured_at: revokedAt,
+        revoked_at: revokedAt,
+        updated_at: revokedAt,
+      }),
+    ]);
+    if (contactUpdate.error) throw new Error(contactUpdate.error.message);
+    if (consentEvent.error) throw new Error(consentEvent.error.message);
+  } else
     await db()
       .from("contacts")
       .update({ last_interaction_at: new Date().toISOString() })
@@ -434,8 +454,43 @@ export async function handleMessageStatus(request: Request) {
   const form = await verifiedForm(request);
   if (!form) return xml("<Response></Response>", 403);
   const sid = form.get("MessageSid") ?? "";
-  const status =
-    form.get("MessageStatus") ?? form.get("SmsStatus") ?? "unknown";
+  const status = (
+    form.get("MessageStatus") ??
+    form.get("SmsStatus") ??
+    "unknown"
+  ).toLowerCase();
+  const currentMessage = await db()
+    .from("messages")
+    .select("id,status")
+    .eq("provider_message_sid", sid)
+    .maybeSingle();
+  if (currentMessage.error) throw new Error(currentMessage.error.message);
+  if (!currentMessage.data?.id) return xml();
+
+  const currentStatus = String(currentMessage.data.status ?? "unknown").toLowerCase();
+  const terminalStatuses = new Set([
+    "delivered",
+    "failed",
+    "undelivered",
+    "canceled",
+  ]);
+  const statusRank: Record<string, number> = {
+    unknown: 0,
+    accepted: 1,
+    queued: 1,
+    sending: 1,
+    sent: 2,
+    delivered: 3,
+    failed: 3,
+    undelivered: 3,
+    canceled: 3,
+  };
+  const shouldAdvance =
+    currentStatus === status ||
+    (!terminalStatuses.has(currentStatus) &&
+      (statusRank[status] ?? 0) >= (statusRank[currentStatus] ?? 0));
+  if (!shouldAdvance) return xml();
+
   const update: Row = {
     status,
     error_code: form.get("ErrorCode") || null,
@@ -443,6 +498,50 @@ export async function handleMessageStatus(request: Request) {
     updated_at: new Date().toISOString(),
   };
   if (status === "delivered") update.delivered_at = new Date().toISOString();
-  await db().from("messages").update(update).eq("provider_message_sid", sid);
+  const messageUpdate = await db()
+    .from("messages")
+    .update(update)
+    .eq("id", currentMessage.data.id)
+    .eq("status", currentMessage.data.status)
+    .select("id")
+    .maybeSingle();
+  if (messageUpdate.error) throw new Error(messageUpdate.error.message);
+  if (messageUpdate.data?.id) {
+    const reviewUpdate: Row = { updated_at: new Date().toISOString() };
+    if (status === "delivered") {
+      reviewUpdate.status = "delivered";
+      reviewUpdate.delivered_at = new Date().toISOString();
+    } else if (status === "sent") {
+      reviewUpdate.status = "sent";
+    } else if (["failed", "undelivered", "canceled"].includes(status)) {
+      reviewUpdate.status = "failed";
+      reviewUpdate.failed_at = new Date().toISOString();
+      reviewUpdate.error_code = form.get("ErrorCode") || null;
+      reviewUpdate.error_message = form.get("ErrorMessage") || null;
+    } else if (["accepted", "queued", "sending"].includes(status)) {
+      reviewUpdate.status = "queued";
+    }
+    if (reviewUpdate.status) {
+      const allowedReviewStatuses =
+        reviewUpdate.status === "queued"
+          ? ["sending", "reconciling", "queued"]
+          : reviewUpdate.status === "sent"
+            ? ["sending", "reconciling", "queued", "sent"]
+            : reviewUpdate.status === "delivered"
+              ? ["sending", "reconciling", "queued", "sent", "delivered"]
+              : ["sending", "reconciling", "queued", "sent", "failed"];
+      const reviewRequestUpdate = await db()
+        .from("review_requests")
+        .update(reviewUpdate)
+        .eq("message_id", messageUpdate.data.id)
+        .in("status", allowedReviewStatuses);
+      if (reviewRequestUpdate.error) {
+        console.error(
+          "Twilio delivery status was saved, but the linked review request could not be updated.",
+          reviewRequestUpdate.error,
+        );
+      }
+    }
+  }
   return xml();
 }

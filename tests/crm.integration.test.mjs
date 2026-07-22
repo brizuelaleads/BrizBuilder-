@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { SignJWT, exportJWK, generateKeyPair } from "jose";
 import { Miniflare } from "miniflare";
 
 const root = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
 const adminEmail = "admin@brizbuilder.local";
+const testAuthHost = "127.0.0.1";
+const testAuthSecret = "brizbuilder-worker-test-secret-rotate-2026";
+const localAuthToken = "brizbuilder-local-session-test-token-2026";
+const accessTeamDomain = "https://brizbuilder-test.cloudflareaccess.com";
+const accessAudience = "brizbuilder-test-application-audience";
 
 function collectWorkerModules(serverRoot) {
   function walk(directory) {
@@ -28,27 +35,228 @@ function collectWorkerModules(serverRoot) {
     .map((file) => ({ type: "ESModule", path: file }));
 }
 
-function authHeaders(email = adminEmail, name = "Luciano Brizuela") {
+function authHeaders(
+  email = adminEmail,
+  name = "Luciano Brizuela",
+  issuedAt = Math.floor(Date.now() / 1000),
+) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const encodedName = encodeURIComponent(name);
+  const timestamp = String(issuedAt);
+  const canonical = [
+    "brizbuilder-test-auth-v1",
+    timestamp,
+    testAuthHost,
+    normalizedEmail,
+    encodedName,
+  ].join("\n");
+  const signature = createHmac("sha256", testAuthSecret)
+    .update(canonical)
+    .digest("base64url");
+
   return {
-    "oai-authenticated-user-email": email,
-    "oai-authenticated-user-full-name": encodeURIComponent(name),
-    "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
+    "x-brizbuilder-test-email": normalizedEmail,
+    "x-brizbuilder-test-name": encodedName,
+    "x-brizbuilder-test-timestamp": timestamp,
+    "x-brizbuilder-test-signature": signature,
   };
 }
 
+test("Reviews migration preserves tenant boundaries without storing Google reviews", () => {
+  const migration = fs.readFileSync(
+    path.join(root, "supabase/migrations/20260722130000_reviews_workspace.sql"),
+    "utf8",
+  );
+
+  for (const table of ["review_settings", "contact_message_consents", "review_requests"]) {
+    assert.match(migration, new RegExp(`create table if not exists public\\.${table}\\b`, "i"));
+    assert.match(migration, new RegExp(`alter table public\\.${table} enable row level security`, "i"));
+    assert.match(
+      migration,
+      new RegExp(`revoke all on table public\\.${table} from anon, authenticated`, "i"),
+      `${table} remains server-only`,
+    );
+  }
+
+  assert.match(
+    migration,
+    /foreign key \(organization_id, client_id, contact_id\)[\s\S]*references public\.contacts\(organization_id, client_id, id\)/i,
+    "review consent and request records enforce a tenant-scoped contact relationship",
+  );
+  assert.match(
+    migration,
+    /foreign key \(organization_id, client_id, consent_id\)[\s\S]*references public\.contact_message_consents\(organization_id, client_id, id\)/i,
+    "review requests cannot reference another tenant's consent event",
+  );
+  assert.match(
+    migration,
+    /foreign key \(organization_id, client_id, message_id\)[\s\S]*references public\.messages\(organization_id, client_id, id\)/i,
+    "review requests cannot reference another tenant's message",
+  );
+  assert.match(
+    migration,
+    /create or replace function public\.reserve_review_request[\s\S]*pg_advisory_xact_lock[\s\S]*insert into public\.contact_message_consents[\s\S]*insert into public\.review_requests/i,
+    "consent evidence and request reservation are created atomically under a database lock",
+  );
+  assert.match(
+    migration,
+    /revoke all on function public\.reserve_review_request[\s\S]*from public, anon, authenticated;[\s\S]*grant execute[\s\S]*to service_role;/i,
+    "only the trusted Worker service role can reserve review requests",
+  );
+  assert.doesNotMatch(
+    migration,
+    /unique\s*\(organization_id, client_id, contact_id, channel, purpose\)/i,
+    "consent assertions remain immutable events instead of overwriting one contact row",
+  );
+  assert.doesNotMatch(
+    migration,
+    /create table(?: if not exists)? public\.(?:google_)?(?:business_)?reviews\b/i,
+    "Google review content is not permanently copied into BrizBuilder",
+  );
+});
+
+test("Reviews sending keeps the approved preview exact and never uses BrizBuilder's Twilio account", () => {
+  const crmSource = fs.readFileSync(path.join(root, "db/supabase-crm.ts"), "utf8");
+  const reviewsSource = fs.readFileSync(path.join(root, "app/crm/ReviewsView.tsx"), "utf8");
+
+  assert.match(crmSource, /input\.body !== messageBody/);
+  assert.match(crmSource, /\.rpc\("reserve_review_request"/);
+  assert.match(crmSource, /allowPlatformFallback: false/);
+  assert.match(crmSource, /TwilioMessageDeliveryUnknownError/);
+  assert.match(crmSource, /status: deliveryUnknown \? "reconciling" : "failed"/);
+  assert.match(
+    reviewsSource,
+    /const smsReady = twilioActive && phoneConfigured && a2pApproved/,
+    "the UI blocks review texts until Twilio, the phone configuration, and carrier approval are ready",
+  );
+});
+
 test("Phase 1 CRM authentication, tenant isolation, imports, custom data, companies, and opportunities", async () => {
   const serverRoot = path.join(root, "dist/server");
+  const { privateKey, publicKey } = await generateKeyPair("RS256", {
+    extractable: true,
+  });
+  const accessJwk = await exportJWK(publicKey);
+  accessJwk.alg = "RS256";
+  accessJwk.kid = "brizbuilder-access-test-key";
+  accessJwk.use = "sig";
+
+  function accessToken(
+    email = adminEmail,
+    name = "Luciano Brizuela",
+    options = {},
+  ) {
+    const now = Math.floor(Date.now() / 1000);
+    return new SignJWT({ email, name, type: "app" })
+      .setProtectedHeader({ alg: "RS256", kid: accessJwk.kid })
+      .setIssuer(options.issuer ?? accessTeamDomain)
+      .setAudience(options.audience ?? accessAudience)
+      .setSubject(options.subject ?? `user:${email}`)
+      .setIssuedAt(options.issuedAt ?? now)
+      .setNotBefore(options.notBefore ?? now - 1)
+      .setExpirationTime(options.expiresAt ?? now + 300)
+      .sign(privateKey);
+  }
+
   const mf = new Miniflare({
     modules: collectWorkerModules(serverRoot),
     modulesRoot: serverRoot,
     compatibilityDate: "2026-05-22",
     compatibilityFlags: ["nodejs_compat"],
+    bindings: {
+      BRIZBUILDER_TEST_AUTH_ENABLED: "true",
+      BRIZBUILDER_TEST_AUTH_HOST: testAuthHost,
+      BRIZBUILDER_TEST_AUTH_SECRET: testAuthSecret,
+      LOCAL_DEV_SESSION_TOKEN: localAuthToken,
+      MAIN_ADMIN_EMAIL: adminEmail,
+      MAIN_ADMIN_NAME: "BrizBuilder Test Administrator",
+      POLICY_AUD: accessAudience,
+      TEAM_DOMAIN: accessTeamDomain,
+    },
     d1Databases: { DB: "crm-phase-one-test" },
+    outboundService: async (request) => {
+      if (
+        request.url === `${accessTeamDomain}/cdn-cgi/access/certs`
+      ) {
+        return Response.json(
+          { keys: [accessJwk] },
+          { headers: { "Cache-Control": "public, max-age=3600" } },
+        );
+      }
+      return new Response("Unexpected outbound request", { status: 502 });
+    },
   });
 
   try {
     const anonymous = await mf.dispatchFetch("http://crm.test/api/crm");
     assert.equal(anonymous.status, 401, "protected API rejects anonymous requests");
+
+    const accessResponse = await mf.dispatchFetch("http://crm.test/api/crm", {
+      headers: {
+        "cf-access-jwt-assertion": await accessToken(),
+      },
+    });
+    assert.equal(
+      accessResponse.status,
+      200,
+      "a correctly signed and scoped Cloudflare Access JWT is accepted",
+    );
+
+    const wrongAudience = await mf.dispatchFetch("http://crm.test/api/crm", {
+      headers: {
+        "cf-access-jwt-assertion": await accessToken(
+          adminEmail,
+          "Luciano Brizuela",
+          { audience: "some-other-application" },
+        ),
+      },
+    });
+    assert.equal(wrongAudience.status, 401, "a JWT for another Access application is rejected");
+
+    const now = Math.floor(Date.now() / 1000);
+    const expiredAccessToken = await mf.dispatchFetch("http://crm.test/api/crm", {
+      headers: {
+        "cf-access-jwt-assertion": await accessToken(
+          adminEmail,
+          "Luciano Brizuela",
+          { issuedAt: now - 600, notBefore: now - 600, expiresAt: now - 300 },
+        ),
+      },
+    });
+    assert.equal(expiredAccessToken.status, 401, "an expired Access JWT is rejected");
+
+    const spoofedIdentity = await mf.dispatchFetch("http://crm.test/api/crm", {
+      headers: {
+        "oai-authenticated-user-email": adminEmail,
+        "oai-authenticated-user-full-name": "Spoofed Administrator",
+      },
+    });
+    assert.equal(
+      spoofedIdentity.status,
+      401,
+      "unsigned legacy identity headers are never trusted",
+    );
+
+    const tamperedHeaders = authHeaders();
+    tamperedHeaders["x-brizbuilder-test-signature"] = "A".repeat(43);
+    const tamperedIdentity = await mf.dispatchFetch("http://crm.test/api/crm", {
+      headers: tamperedHeaders,
+    });
+    assert.equal(tamperedIdentity.status, 401, "tampered test identity is rejected");
+
+    const expiredIdentity = await mf.dispatchFetch("http://crm.test/api/crm", {
+      headers: authHeaders(
+        adminEmail,
+        "Luciano Brizuela",
+        Math.floor(Date.now() / 1000) - 120,
+      ),
+    });
+    assert.equal(expiredIdentity.status, 401, "expired test identity is rejected");
+
+    const localAdmin = await mf.dispatchFetch("http://crm.test/api/crm", {
+      headers: { cookie: `brizbuilder_local_session=${localAuthToken}` },
+    });
+    assert.equal(localAdmin.status, 200, "configured local admin session remains available");
 
     const adminResponse = await mf.dispatchFetch("http://crm.test/api/crm", { headers: authHeaders() });
     assert.equal(adminResponse.status, 200);
@@ -59,6 +267,11 @@ test("Phase 1 CRM authentication, tenant isolation, imports, custom data, compan
     assert.ok(adminBody.data.featureFlags.some((flag) => flag.moduleKey === "crm" && flag.enabled));
     assert.ok(adminBody.data.featureFlags.some((flag) => flag.moduleKey === "communications" && !flag.enabled));
     assert.ok(adminBody.data.viewer.permissions.includes("audit.read"));
+    for (const permission of ["reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage"]) {
+      assert.ok(adminBody.data.viewer.permissions.includes(permission), `agency owner has ${permission}`);
+    }
+    assert.deepEqual(adminBody.data.reviewRequests, [], "a new account has no fabricated review-request history");
+    assert.deepEqual(adminBody.data.reviewSettings, [], "a new account has no fabricated review settings");
 
     const invalidOrigin = await mf.dispatchFetch("http://crm.test/api/crm", {
       method: "POST",
@@ -215,6 +428,25 @@ test("Phase 1 CRM authentication, tenant isolation, imports, custom data, compan
     assert.ok(clientBody.data.customValues.length > 0 && clientBody.data.customValues.every((value) => value.clientId === primaryClient.id), "custom values are tenant scoped");
     assert.equal(clientBody.data.auditLogs.length, 0, "client roles cannot read agency audit logs");
     assert.ok(!clientBody.data.viewer.permissions.includes("audit.read"));
+    for (const permission of ["reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage"]) {
+      assert.ok(clientBody.data.viewer.permissions.includes(permission), `client owner has ${permission}`);
+    }
+    assert.ok(clientBody.data.reviewRequests.every((request) => request.clientId === primaryClient.id), "review requests are tenant scoped");
+    assert.ok(clientBody.data.reviewSettings.every((settings) => settings.clientId === primaryClient.id), "review settings are tenant scoped");
+
+    await db.prepare("INSERT INTO accounts (id, email, display_name, role, client_id, status) VALUES ('account_client_employee_test', 'employee@tenant-one.example', 'Tenant One Employee', 'client', ?, 'active')").bind(primaryClientAccess.legacy_client_id).run();
+    await db.prepare("INSERT INTO client_members (id, organization_id, client_id, account_id, role, status) VALUES ('client_member_employee_test', 'org_brizuela_leads', ?, 'account_client_employee_test', 'CLIENT_EMPLOYEE', 'active')").bind(primaryClient.id).run();
+
+    const employeeResponse = await mf.dispatchFetch("http://crm.test/api/crm", { headers: authHeaders("employee@tenant-one.example", "Tenant One Employee") });
+    assert.equal(employeeResponse.status, 200);
+    const employeeBody = await employeeResponse.json();
+    assert.equal(employeeBody.data.clients.length, 1, "client employee receives only the assigned business");
+    assert.equal(employeeBody.data.clients[0].id, primaryClient.id);
+    assert.deepEqual(
+      employeeBody.data.viewer.permissions.filter((permission) => permission.startsWith("reviews.")).sort(),
+      ["reviews.read"],
+      "client employees can view Reviews but cannot reply, send requests, or change settings",
+    );
 
     const forbiddenClientCreate = await mf.dispatchFetch("http://crm.test/api/crm", {
       method: "POST",

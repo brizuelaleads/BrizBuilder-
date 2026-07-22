@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   foreignKey,
   index,
   integer,
@@ -8,6 +9,7 @@ import {
   pgEnum,
   pgTable,
   text,
+  time,
   timestamp,
   unique,
   uniqueIndex,
@@ -190,6 +192,11 @@ export const contacts = pgTable(
     archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (table) => [
+    uniqueIndex("contacts_organization_client_id_uidx").on(
+      table.organizationId,
+      table.clientId,
+      table.id,
+    ),
     index("contacts_client_idx").on(table.organizationId, table.clientId),
   ],
 );
@@ -378,7 +385,14 @@ export const messages = pgTable("messages", {
   deliveredAt: timestamp("delivered_at", { withTimezone: true }),
   createdAt,
   updatedAt,
-}, (table) => [index("messages_conversation_time_idx").on(table.conversationId, table.createdAt)]);
+}, (table) => [
+  uniqueIndex("messages_organization_client_id_uidx").on(
+    table.organizationId,
+    table.clientId,
+    table.id,
+  ),
+  index("messages_conversation_time_idx").on(table.conversationId, table.createdAt),
+]);
 
 export const automationRules = pgTable("automation_rules", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -486,6 +500,136 @@ export const googleBusinessCredentials = pgTable("google_business_credentials", 
     name: "google_business_credentials_organization_client_fk",
   }).onDelete("cascade"),
   index("google_business_credentials_scope_idx").on(table.organizationId, table.clientId),
+]);
+
+export const reviewSettings = pgTable("review_settings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  smsEnabled: boolean("sms_enabled").notNull().default(false),
+  defaultSmsTemplate: text("default_sms_template").notNull(),
+  followUpEnabled: boolean("follow_up_enabled").notNull().default(false),
+  followUpTemplate: text("follow_up_template").notNull(),
+  followUpDelayHours: integer("follow_up_delay_hours").notNull().default(72),
+  quietHoursStart: time("quiet_hours_start").notNull().default("20:00"),
+  quietHoursEnd: time("quiet_hours_end").notNull().default("08:00"),
+  dailyLimit: integer("daily_limit").notNull().default(25),
+  notificationEmails: text("notification_emails").array().notNull().default(sql`'{}'::text[]`),
+  createdAt,
+  updatedAt,
+}, (table) => [
+  unique("review_settings_organization_id_client_id_key").on(table.organizationId, table.clientId),
+  check("review_settings_follow_up_delay_check", sql`${table.followUpDelayHours} between 1 and 720`),
+  check("review_settings_daily_limit_check", sql`${table.dailyLimit} between 1 and 250`),
+  check("review_settings_quiet_hours_check", sql`${table.quietHoursStart} <> ${table.quietHoursEnd}`),
+  foreignKey({
+    columns: [table.organizationId, table.clientId],
+    foreignColumns: [clients.organizationId, clients.id],
+    name: "review_settings_organization_client_fk",
+  }).onDelete("cascade"),
+  index("review_settings_client_id_idx").on(table.clientId),
+  index("review_settings_scope_idx").on(table.organizationId, table.clientId),
+]);
+
+export const contactMessageConsents = pgTable("contact_message_consents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  contactId: uuid("contact_id").notNull().references(() => contacts.id, { onDelete: "cascade" }),
+  channel: text("channel").notNull().default("sms"),
+  purpose: text("purpose").notNull().default("review_request"),
+  status: text("status").notNull(),
+  source: text("source").notNull(),
+  evidence: jsonb("evidence").notNull().default({}),
+  policyVersion: text("policy_version").notNull().default("review-request-v1"),
+  capturedByEmail: text("captured_by_email").notNull(),
+  capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt,
+  updatedAt,
+}, (table) => [
+  unique("contact_message_consents_organization_client_id_key").on(
+    table.organizationId,
+    table.clientId,
+    table.id,
+  ),
+  check("contact_message_consents_channel_check", sql`${table.channel} = 'sms'`),
+  check("contact_message_consents_purpose_check", sql`${table.purpose} = 'review_request'`),
+  check("contact_message_consents_status_check", sql`${table.status} in ('granted', 'revoked')`),
+  foreignKey({
+    columns: [table.organizationId, table.clientId],
+    foreignColumns: [clients.organizationId, clients.id],
+    name: "contact_message_consents_organization_client_fk",
+  }).onDelete("cascade"),
+  foreignKey({
+    columns: [table.organizationId, table.clientId, table.contactId],
+    foreignColumns: [contacts.organizationId, contacts.clientId, contacts.id],
+    name: "contact_message_consents_tenant_contact_fk",
+  }).onDelete("cascade"),
+  index("review_consents_client_id_idx").on(table.clientId),
+  index("review_consents_contact_id_idx").on(table.contactId),
+  index("review_consents_contact_idx").on(table.organizationId, table.clientId, table.contactId),
+]);
+
+export const reviewRequests = pgTable("review_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  contactId: uuid("contact_id").notNull().references(() => contacts.id, { onDelete: "cascade" }),
+  messageId: uuid("message_id"),
+  consentId: uuid("consent_id").notNull(),
+  channel: text("channel").notNull().default("sms"),
+  status: text("status").notNull().default("sending"),
+  requestKind: text("request_kind").notNull().default("initial"),
+  triggerSource: text("trigger_source").notNull().default("manual"),
+  triggerEventId: text("trigger_event_id"),
+  idempotencyKey: text("idempotency_key").notNull(),
+  messageBody: text("message_body").notNull(),
+  requestedByEmail: text("requested_by_email").notNull(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+  failedAt: timestamp("failed_at", { withTimezone: true }),
+  errorCode: text("error_code"),
+  errorMessage: text("error_message"),
+  createdAt,
+  updatedAt,
+}, (table) => [
+  unique("review_requests_organization_id_client_id_idempotency_key_key").on(table.organizationId, table.clientId, table.idempotencyKey),
+  check("review_requests_channel_check", sql`${table.channel} = 'sms'`),
+  check("review_requests_status_check", sql`${table.status} in ('sending', 'reconciling', 'queued', 'sent', 'delivered', 'failed', 'cancelled')`),
+  check("review_requests_kind_check", sql`${table.requestKind} in ('initial', 'follow_up')`),
+  check("review_requests_trigger_source_check", sql`${table.triggerSource} in ('manual', 'job_completed', 'workflow')`),
+  foreignKey({
+    columns: [table.organizationId, table.clientId],
+    foreignColumns: [clients.organizationId, clients.id],
+    name: "review_requests_organization_client_fk",
+  }).onDelete("cascade"),
+  foreignKey({
+    columns: [table.organizationId, table.clientId, table.consentId],
+    foreignColumns: [
+      contactMessageConsents.organizationId,
+      contactMessageConsents.clientId,
+      contactMessageConsents.id,
+    ],
+    name: "review_requests_tenant_consent_fk",
+  }).onDelete("restrict"),
+  foreignKey({
+    columns: [table.organizationId, table.clientId, table.messageId],
+    foreignColumns: [messages.organizationId, messages.clientId, messages.id],
+    name: "review_requests_tenant_message_fk",
+  }).onDelete("restrict"),
+  foreignKey({
+    columns: [table.organizationId, table.clientId, table.contactId],
+    foreignColumns: [contacts.organizationId, contacts.clientId, contacts.id],
+    name: "review_requests_tenant_contact_fk",
+  }).onDelete("cascade"),
+  index("review_requests_scope_time_idx").on(table.organizationId, table.clientId, table.createdAt),
+  index("review_requests_contact_time_idx").on(table.clientId, table.contactId, table.createdAt),
+  index("review_requests_contact_id_idx").on(table.contactId),
+  index("review_requests_tenant_contact_idx").on(table.organizationId, table.clientId, table.contactId),
+  index("review_requests_tenant_consent_idx").on(table.organizationId, table.clientId, table.consentId),
+  index("review_requests_tenant_message_idx").on(table.organizationId, table.clientId, table.messageId),
+  uniqueIndex("review_requests_message_idx").on(table.messageId),
 ]);
 
 export const workflows = pgTable("workflows", {

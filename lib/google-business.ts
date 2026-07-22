@@ -7,6 +7,7 @@ const GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke";
 const ACCOUNT_API = "https://mybusinessaccountmanagement.googleapis.com/v1";
 const BUSINESS_INFO_API =
   "https://mybusinessbusinessinformation.googleapis.com/v1";
+const GOOGLE_MY_BUSINESS_API = "https://mybusiness.googleapis.com/v4";
 const GOOGLE_REQUEST_TIMEOUT_MS = 10_000;
 const GOOGLE_API_ATTEMPTS = 2;
 const GOOGLE_MAX_ACCOUNT_PAGES = 2;
@@ -50,6 +51,28 @@ export type GoogleBusinessLocation = {
   website: string | null;
   primaryCategory: string | null;
   reviewUrl: string | null;
+};
+
+export type GoogleBusinessReview = {
+  reviewId: string;
+  reviewerName: string;
+  starRating: number;
+  comment: string | null;
+  createTime: string | null;
+  updateTime: string | null;
+  reply: {
+    comment: string;
+    updateTime: string | null;
+    status: string | null;
+    policyViolation: string | null;
+  } | null;
+};
+
+export type GoogleBusinessReviewsPage = {
+  reviews: GoogleBusinessReview[];
+  averageRating: number | null;
+  totalReviewCount: number;
+  nextPageToken: string | null;
 };
 
 function asRecord(value: unknown): UnknownRecord {
@@ -327,6 +350,7 @@ async function googleApiJson(
   url: URL,
   accessToken: string,
   budget: GoogleRequestBudget,
+  init: { method?: "GET" | "PUT" | "DELETE"; body?: UnknownRecord } = {},
 ) {
   let response: Response | null = null;
   let requestError: unknown = null;
@@ -339,10 +363,13 @@ async function googleApiJson(
     budget.remainingFetches -= 1;
     try {
       response = await fetchGoogle(url, {
+        method: init.method ?? "GET",
         headers: {
           Authorization: `Bearer ${accessToken}`,
           Accept: "application/json",
+          ...(init.body ? { "Content-Type": "application/json" } : {}),
         },
+        body: init.body ? JSON.stringify(init.body) : undefined,
       });
       requestError = null;
     } catch (error) {
@@ -524,4 +551,142 @@ export async function listGoogleBusinessLocations(
     }
   }
   return locations;
+}
+
+function googleResourceName(value: string, prefix: "accounts" | "locations") {
+  const normalized = value.trim();
+  if (!new RegExp(`^${prefix}/[A-Za-z0-9_-]{1,160}$`).test(normalized)) {
+    throw new Error(`Google returned an invalid ${prefix.slice(0, -1)} identifier.`);
+  }
+  return normalized;
+}
+
+function googleReviewId(value: string) {
+  const normalized = value.trim();
+  if (!/^[A-Za-z0-9_-]{1,300}$/.test(normalized)) {
+    throw new Error("Google returned an invalid review identifier.");
+  }
+  return normalized;
+}
+
+function ratingNumber(value: unknown) {
+  const ratings: Record<string, number> = {
+    ONE: 1,
+    TWO: 2,
+    THREE: 3,
+    FOUR: 4,
+    FIVE: 5,
+  };
+  return ratings[String(value ?? "").toUpperCase()] ?? 0;
+}
+
+function mapGoogleReview(value: unknown): GoogleBusinessReview | null {
+  const review = asRecord(value);
+  const reviewId = asString(review.reviewId);
+  const rating = ratingNumber(review.starRating);
+  if (!reviewId || !rating) return null;
+  const reviewer = asRecord(review.reviewer);
+  const reply = asRecord(review.reviewReply);
+  const replyComment = asString(reply.comment);
+  const policyViolation = asRecord(review.policyViolation);
+  return {
+    reviewId: googleReviewId(reviewId),
+    reviewerName: (asString(reviewer.displayName) ?? "Google user").slice(0, 300),
+    starRating: rating,
+    comment: asString(review.comment)?.slice(0, 20_000) ?? null,
+    createTime: asString(review.createTime),
+    updateTime: asString(review.updateTime),
+    reply: replyComment
+      ? {
+          comment: replyComment.slice(0, 20_000),
+          updateTime: asString(reply.updateTime),
+          status:
+            asString(review.reviewReplyState) ??
+            asString(reply.reviewReplyState),
+          policyViolation:
+            asString(policyViolation.type) ??
+            asString(policyViolation.policyTopic),
+        }
+      : null,
+  };
+}
+
+export async function listGoogleBusinessReviews(
+  accessToken: string,
+  accountResourceName: string,
+  locationResourceName: string,
+  pageToken?: string | null,
+): Promise<GoogleBusinessReviewsPage> {
+  const account = googleResourceName(accountResourceName, "accounts");
+  const location = googleResourceName(locationResourceName, "locations");
+  const token = pageToken?.trim() ?? "";
+  if (token.length > 2048) throw new Error("Google review page token is invalid.");
+  const url = new URL(
+    `${GOOGLE_MY_BUSINESS_API}/${account}/${location}/reviews`,
+  );
+  url.searchParams.set("pageSize", "50");
+  url.searchParams.set("orderBy", "updateTime desc");
+  if (token) url.searchParams.set("pageToken", token);
+  const payload = await googleApiJson(url, accessToken, {
+    remainingFetches: 2,
+  });
+  const averageRating = Number(payload.averageRating);
+  const totalReviewCount = Number(payload.totalReviewCount);
+  return {
+    reviews: asArray(payload.reviews)
+      .map(mapGoogleReview)
+      .filter((review): review is GoogleBusinessReview => Boolean(review)),
+    averageRating: Number.isFinite(averageRating) ? averageRating : null,
+    totalReviewCount:
+      Number.isFinite(totalReviewCount) && totalReviewCount >= 0
+        ? Math.floor(totalReviewCount)
+        : 0,
+    nextPageToken: asString(payload.nextPageToken),
+  };
+}
+
+export async function updateGoogleBusinessReviewReply(
+  accessToken: string,
+  accountResourceName: string,
+  locationResourceName: string,
+  reviewIdValue: string,
+  comment: string,
+) {
+  const account = googleResourceName(accountResourceName, "accounts");
+  const location = googleResourceName(locationResourceName, "locations");
+  const reviewId = googleReviewId(reviewIdValue);
+  const reply = comment.trim();
+  if (!reply) throw new Error("Reply text is required.");
+  if (new TextEncoder().encode(reply).byteLength > 4096) {
+    throw new Error("Google review replies must be 4,096 bytes or less.");
+  }
+  const url = new URL(
+    `${GOOGLE_MY_BUSINESS_API}/${account}/${location}/reviews/${encodeURIComponent(reviewId)}/reply`,
+  );
+  return googleApiJson(
+    url,
+    accessToken,
+    { remainingFetches: 2 },
+    { method: "PUT", body: { comment: reply } },
+  );
+}
+
+export async function deleteGoogleBusinessReviewReply(
+  accessToken: string,
+  accountResourceName: string,
+  locationResourceName: string,
+  reviewIdValue: string,
+) {
+  const account = googleResourceName(accountResourceName, "accounts");
+  const location = googleResourceName(locationResourceName, "locations");
+  const reviewId = googleReviewId(reviewIdValue);
+  const url = new URL(
+    `${GOOGLE_MY_BUSINESS_API}/${account}/${location}/reviews/${encodeURIComponent(reviewId)}/reply`,
+  );
+  await googleApiJson(
+    url,
+    accessToken,
+    { remainingFetches: 2 },
+    { method: "DELETE" },
+  );
 }
