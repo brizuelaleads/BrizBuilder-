@@ -18,7 +18,7 @@ type Runtime = {
   endpoint: string;
 };
 
-const CHATGPT_CONNECTORS_URL = "https://chatgpt.com/#settings/Connectors";
+const CHATGPT_CONNECTORS_URL = "https://chatgpt.com/plugins";
 
 const scopeLabels: Record<string, string> = {
   "crm:read": "View CRM records",
@@ -422,8 +422,8 @@ export function AiConnectorView({
               <div>
                 <strong>Add it in your AI app</strong>
                 <p>
-                  Open Apps &amp; Connectors (sometimes called Plugins), add a
-                  custom connector, and paste the address.
+                  Open Settings &rarr; Plugins, choose the plus button, and
+                  paste the address as the MCP server URL.
                 </p>
               </div>
             </li>
@@ -450,7 +450,7 @@ export function AiConnectorView({
                 if (!runtime.configured) event.preventDefault();
               }}
             >
-              Open ChatGPT Apps &amp; Connectors
+              Open ChatGPT Plugins
             </a>
             <small>
               Chat happens inside your AI app, not inside BrizBuilder.
