@@ -2,7 +2,7 @@
 
 import { Badge } from "./ui";
 
-export type FutureModule = "conversations" | "automations" | "forms" | "payments" | "funnels";
+export type FutureModule = "conversations" | "automations" | "forms" | "funnels";
 
 type ModuleDefinition = {
   name: string;
@@ -34,13 +34,6 @@ const modules: Record<FutureModule, ModuleDefinition> = {
     description: "Create branded forms and surveys that route new inquiries into the correct client, pipeline, and follow-up process.",
     features: ["Drag-and-drop fields", "Embeds and hosted links", "Routing, attribution, and spam controls"],
   },
-  payments: {
-    name: "Payments",
-    eyebrow: "REVENUE OPERATIONS",
-    phase: "Planned for Phase 6",
-    description: "Manage estimates, invoices, payment links, subscriptions, refunds, and revenue reporting from one workspace.",
-    features: ["Products, estimates, and invoices", "Stripe-hosted payment collection", "Subscriptions and reconciliation"],
-  },
   funnels: {
     name: "Funnels",
     eyebrow: "CONVERSION JOURNEYS",
@@ -54,7 +47,6 @@ const previewStats: Record<FutureModule, Array<[string, string, string]>> = {
   conversations: [["Open conversations", "0", "Live"], ["Median response", "—", "Live"], ["Unread", "0", "Live"]],
   automations: [["Published workflows", "0", "Live"], ["Active enrollments", "0", "Live"], ["Completion rate", "—", "Live"]],
   forms: [["Form views", "0", "Live"], ["Submissions", "0", "Live"], ["Conversion rate", "—", "Live"]],
-  payments: [["Collected", "$0", "Live"], ["Outstanding", "$0", "Live"], ["Paid invoices", "0", "Live"]],
   funnels: [["Visitors", "0", "Live"], ["Conversions", "0", "Live"], ["Conversion rate", "—", "Live"]],
 };
 
@@ -93,11 +85,6 @@ function FormsPreview() {
   return <div className="crm-form-builder-preview"><aside><header><strong>Field library</strong><small>Drag-and-drop preview</small></header>{["Full name", "Email address", "Phone number", "Service needed", "Preferred date", "Consent checkbox"].map((field) => <span key={field}><b>+</b>{field}</span>)}</aside><section><div className="crm-form-preview-card"><Badge tone="purple">LEAD FORM</Badge><h3>Request your free service estimate</h3><p>Tell us how we can help and our team will get back to you shortly.</p><label>Name<input disabled placeholder="Your full name" /></label><label>Phone<input disabled placeholder="(555) 555-0123" /></label><label>How can we help?<textarea disabled placeholder="Describe the service you need" /></label><button disabled>Request estimate</button></div></section><aside className="crm-form-settings-preview"><header><strong>Form settings</strong><small>Preview</small></header><dl><div><dt>Destination</dt><dd>New leads</dd></div><div><dt>Pipeline stage</dt><dd>New inquiry</dd></div><div><dt>Spam protection</dt><dd>Planned</dd></div><div><dt>Consent evidence</dt><dd>Planned</dd></div></dl></aside></div>;
 }
 
-function PaymentsPreview() {
-  const rows = [["No invoices", "Connect payments", "$0", "Draft"]];
-  return <section className="crm-preview-table-card"><header><div><strong>Recent invoices</strong><small>Payment workspace</small></div><button disabled>+ New invoice</button></header><div className="crm-preview-table-scroll"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Amount</th><th>Status</th></tr></thead><tbody>{rows.map((row) => <tr key={row[0]}>{row.map((cell, index) => <td key={cell}>{index === 3 ? <Badge tone={cell === "Paid" ? "green" : cell === "Draft" ? "neutral" : "orange"}>{cell}</Badge> : cell}</td>)}</tr>)}</tbody></table></div><footer><p>Stripe connection, payment collection, refunds, and reconciliation are not active in this preview.</p></footer></section>;
-}
-
 function FunnelsPreview() {
   const steps = [["1", "Service landing page", "0", "—"], ["2", "Estimate form", "0", "—"], ["3", "Booking calendar", "0", "—"], ["4", "Thank-you page", "0", "—"]];
   return <div className="crm-funnel-preview"><header><div><strong>Free estimate funnel</strong><small>Draft conversion journey</small></div><Badge tone="orange">Draft preview</Badge></header><section>{steps.map(([number, name, visitors, rate], index) => <article key={number}><span>{number}</span><div><strong>{name}</strong><small>{visitors} visitors</small></div><b>{rate}</b>{index < steps.length - 1 ? <i>→</i> : null}</article>)}</section></div>;
@@ -107,7 +94,6 @@ function ModuleBody({ module }: { module: FutureModule }) {
   if (module === "conversations") return <ConversationsPreview />;
   if (module === "automations") return <AutomationsPreview />;
   if (module === "forms") return <FormsPreview />;
-  if (module === "payments") return <PaymentsPreview />;
   return <FunnelsPreview />;
 }
 

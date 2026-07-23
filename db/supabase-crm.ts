@@ -31,6 +31,12 @@ import {
   TwilioMessageDeliveryUnknownError,
 } from "../lib/twilio";
 import {
+  buildStripeConnectUrl,
+  checkStripeConnectedAccount,
+  exchangeStripeConnectCode,
+  getStripeConnectStatus,
+} from "../lib/stripe";
+import {
   executeWorkflow,
   runPublishedWorkflowsForEvent,
   validateWorkflowGraph,
@@ -179,6 +185,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "reviews.settings.manage",
     "phone_system.manage",
     "billing.read_shared",
+    "payments.manage",
     "messages.write",
     "automations.manage",
     "ai_connector.manage",
@@ -204,6 +211,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "reviews.settings.manage",
     "phone_system.manage",
     "billing.read_shared",
+    "payments.manage",
     "messages.write",
     "automations.manage",
     "ai_connector.manage",
@@ -229,6 +237,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "reviews.settings.manage",
     "phone_system.manage",
     "billing.read_shared",
+    "payments.manage",
     "messages.write",
     "automations.manage",
     "ai_connector.manage",
@@ -267,6 +276,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "reviews.settings.manage",
     "phone_system.manage",
     "billing.read_shared",
+    "payments.manage",
     "messages.write",
     "automations.manage",
     "ai_connector.manage",
@@ -895,6 +905,96 @@ export async function finishSupabaseTwilioConnect(
         ),
     ),
   ]);
+  return String(authorization.client_id);
+}
+
+export async function beginSupabaseStripeConnect(
+  user: ChatGPTUser,
+  clientId: string,
+) {
+  const context = await getTenantContext(user);
+  requirePermission(context, "payments.manage");
+  await requireClient(context, clientId);
+  if (!getStripeConnectStatus().ready)
+    throw new Error(
+      "BrizBuilder's Stripe Connect app needs to be configured first.",
+    );
+  const state = `${crypto.randomUUID()}${crypto.randomUUID()}`.replaceAll(
+    "-",
+    "",
+  );
+  const connectUrl = buildStripeConnectUrl(state);
+  await assertOk(
+    supabase()
+      .from("provider_authorization_states")
+      .insert({
+        organization_id: context.organizationId,
+        client_id: clientId,
+        provider: "stripe",
+        state_hash: await stateHash(state),
+        requested_by_email: context.email,
+        expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
+      }),
+  );
+  return connectUrl;
+}
+
+export async function finishSupabaseStripeConnect(state: string, code: string) {
+  if (!code) throw new Error("Stripe did not return an authorization code.");
+  const now = new Date().toISOString();
+  const authorization = await assertOk(
+    supabase()
+      .from("provider_authorization_states")
+      .select("*")
+      .eq("provider", "stripe")
+      .eq("state_hash", await stateHash(state))
+      .is("used_at", null)
+      .gt("expires_at", now)
+      .maybeSingle(),
+  );
+  if (!authorization)
+    throw new Error(
+      "This connection request expired. Start again from BrizBuilder.",
+    );
+  const { accountId } = await exchangeStripeConnectCode(code);
+  const account = await checkStripeConnectedAccount(accountId);
+  const status = account.isEnabled ? "connected" : "inactive";
+  await assertOk(
+    supabase()
+      .from("provider_connections")
+      .upsert(
+        {
+          organization_id: authorization.organization_id,
+          client_id: authorization.client_id,
+          provider: "stripe",
+          status,
+          billing_owner: "customer",
+          external_account_id: account.id,
+          external_account_name: account.name,
+          scopes: ["read_write"],
+          public_config: {
+            accountStatus: account.isEnabled ? "active" : "restricted",
+            accountType: "Stripe Standard account",
+            currency: account.currency,
+          },
+          connected_by_email: authorization.requested_by_email,
+          connected_at: now,
+          disconnected_at: null,
+          last_health_check_at: now,
+          last_error: account.isEnabled
+            ? null
+            : "Stripe needs more information from this account before it can accept payments.",
+          updated_at: now,
+        },
+        { onConflict: "organization_id,client_id,provider" },
+      ),
+  );
+  await assertOk(
+    supabase()
+      .from("provider_authorization_states")
+      .update({ used_at: now })
+      .eq("id", authorization.id),
+  );
   return String(authorization.client_id);
 }
 
@@ -3167,11 +3267,15 @@ export async function executeSupabaseCrmAction(
   }
 
   if (action === "disconnect_provider") {
-    requirePermission(context, "phone_system.manage");
+    const provider = optionalText(input.provider, 40) ?? "twilio";
+    requirePermission(
+      context,
+      provider === "stripe" ? "payments.manage" : "phone_system.manage",
+    );
     const clientId = requireText(input.clientId, "Client", 100);
     await requireClient(context, clientId);
     const now = new Date().toISOString();
-    await Promise.all([
+    const updates = [
       assertOk(
         supabase()
           .from("provider_connections")
@@ -3184,37 +3288,46 @@ export async function executeSupabaseCrmAction(
           })
           .eq("organization_id", context.organizationId)
           .eq("client_id", clientId)
-          .eq("provider", "twilio"),
+          .eq("provider", provider),
       ),
-      assertOk(
-        supabase()
-          .from("phone_system_configs")
-          .update({
-            provider_status: "disconnected",
-            provider_account_sid: null,
-            phone_number_sid: null,
-            messaging_service_sid: null,
-            phone_number: null,
-            missed_call_text_enabled: false,
-            updated_at: now,
-          })
-          .eq("organization_id", context.organizationId)
-          .eq("client_id", clientId),
-      ),
-    ]);
+    ];
+    if (provider === "twilio") {
+      updates.push(
+        assertOk(
+          supabase()
+            .from("phone_system_configs")
+            .update({
+              provider_status: "disconnected",
+              provider_account_sid: null,
+              phone_number_sid: null,
+              messaging_service_sid: null,
+              phone_number: null,
+              missed_call_text_enabled: false,
+              updated_at: now,
+            })
+            .eq("organization_id", context.organizationId)
+            .eq("client_id", clientId),
+        ),
+      );
+    }
+    await Promise.all(updates);
     await audit(
       context,
       "provider.disconnected",
       "provider_connection",
       null,
-      { provider: "twilio" },
+      { provider },
       clientId,
     );
     return { disconnected: true };
   }
 
   if (action === "check_provider_connection") {
-    requirePermission(context, "phone_system.manage");
+    const provider = optionalText(input.provider, 40) ?? "twilio";
+    requirePermission(
+      context,
+      provider === "stripe" ? "payments.manage" : "phone_system.manage",
+    );
     const clientId = requireText(input.clientId, "Client", 100);
     await requireClient(context, clientId);
     const connection = await assertOk(
@@ -3225,11 +3338,82 @@ export async function executeSupabaseCrmAction(
         )
         .eq("organization_id", context.organizationId)
         .eq("client_id", clientId)
-        .eq("provider", "twilio")
+        .eq("provider", provider)
         .maybeSingle(),
     );
     if (!connection || !providerIsLinked(connection))
-      throw new Error("Connect the customer's Twilio account first.");
+      throw new Error(
+        provider === "stripe"
+          ? "Connect the customer's Stripe account first."
+          : "Connect the customer's Twilio account first.",
+      );
+
+    if (provider === "stripe") {
+      try {
+        const account = await checkStripeConnectedAccount(
+          String(connection.external_account_id),
+        );
+        const status = account.isEnabled ? "connected" : "inactive";
+        const lastError = account.isEnabled
+          ? null
+          : "Stripe needs more information from this account before it can accept payments. Finish setup in the Stripe dashboard, then refresh.";
+        const now = new Date().toISOString();
+        await assertOk(
+          supabase()
+            .from("provider_connections")
+            .update({
+              status,
+              external_account_name: account.name,
+              public_config: {
+                accountStatus: account.isEnabled ? "active" : "restricted",
+                accountType: "Stripe Standard account",
+                currency: account.currency,
+              },
+              last_health_check_at: now,
+              last_error: lastError,
+              updated_at: now,
+            })
+            .eq("id", connection.id),
+        );
+        return {
+          id: account.id,
+          name: account.name,
+          chargesEnabled: account.chargesEnabled,
+          payoutsEnabled: account.payoutsEnabled,
+          detailsSubmitted: account.detailsSubmitted,
+          status,
+          isLinked: true,
+          isActive: account.isEnabled,
+          healthy: account.isEnabled,
+          error: lastError,
+        };
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message.slice(0, 500)
+            : "Connection failed";
+        const now = new Date().toISOString();
+        await assertOk(
+          supabase()
+            .from("provider_connections")
+            .update({
+              status: "error",
+              last_health_check_at: now,
+              last_error: message,
+              updated_at: now,
+            })
+            .eq("id", connection.id),
+        );
+        return {
+          status: "error",
+          isLinked: true,
+          isActive: false,
+          healthy: false,
+          error: message,
+        };
+      }
+    }
+
     try {
       const account = await checkTwilioConnectedAccount(
         String(connection.external_account_id),

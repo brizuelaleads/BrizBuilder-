@@ -1721,7 +1721,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 .crm-provider-logo.twilio { background: #f22f67; }
 .crm-provider-logo.ai { background: linear-gradient(135deg, #6657e8, #2f8f82); font-size: 10px; letter-spacing: -.2px; }
+.crm-provider-logo.stripe { background: #635bff; }
 .crm-connection-card.ai { border-top: 3px solid #6657e8; }
+.crm-connection-card.stripe { border-top: 3px solid #635bff; }
 .crm-connection-details.compact { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .crm-connection-details { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
 .crm-connection-details > div { padding: 12px; border-radius: 11px; background: #f8f8fb; }

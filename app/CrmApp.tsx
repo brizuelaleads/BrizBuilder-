@@ -37,6 +37,7 @@ import { WebsitesView } from "./crm/WebsitesView";
 import { ConversationsView, PhoneSystemView } from "./crm/PhoneViews";
 import { ConnectionsView, VisualAutomationsView } from "./crm/WorkflowViews";
 import { GoogleProfilesView } from "./crm/GoogleProfilesView";
+import { PaymentsView } from "./crm/PaymentsView";
 import { ReviewsView } from "./crm/ReviewsView";
 import { AiConnectorView } from "./crm/AiConnectorView";
 import { Badge, initials, Modal } from "./crm/ui";
@@ -54,6 +55,7 @@ type View =
   | "websites"
   | "profiles"
   | "reviews"
+  | "payments"
   | "connections"
   | "phone-system"
   | "ai"
@@ -78,7 +80,6 @@ type ModalName =
 
 const futureModules: FutureModule[] = [
   "forms",
-  "payments",
   "funnels",
 ];
 
@@ -154,7 +155,13 @@ const nav: Array<{
     permission: "reviews.read",
   },
   { id: "funnels", label: "Funnels", icon: "N", preview: true },
-  { id: "payments", label: "Payments", icon: "$", preview: true },
+  {
+    id: "payments",
+    label: "Payments",
+    icon: "$",
+    section: "Revenue",
+    permission: "payments.manage",
+  },
   {
     id: "ai",
     label: "AI Connector",
@@ -782,6 +789,14 @@ export function CrmApp({
             )}
             onOpenGoogleProfiles={openGoogleProfiles}
             onOpenConnections={openConnections}
+          />
+        )}
+        {view === "payments" && (
+          <PaymentsView
+            clients={data.clients}
+            connections={data.providerConnections}
+            selectedClientId={selectedClientId}
+            mutate={mutate}
           />
         )}
         {view === "connections" && (
