@@ -131,6 +131,98 @@ test("Reviews sending keeps the approved preview exact and never uses BrizBuilde
   );
 });
 
+test("AI Connector stores only hashed OAuth credentials and exposes bounded CRM tools", () => {
+  const migration = fs.readFileSync(
+    path.join(root, "supabase/migrations/20260722200000_ai_connector.sql"),
+    "utf8",
+  );
+  const mcpSource = fs.readFileSync(
+    path.join(root, "lib/ai-connector/mcp.ts"),
+    "utf8",
+  );
+  const connectorUi = fs.readFileSync(
+    path.join(root, "app/crm/AiConnectorView.tsx"),
+    "utf8",
+  );
+  const futureUi = fs.readFileSync(
+    path.join(root, "app/crm/FutureModuleViews.tsx"),
+    "utf8",
+  );
+  const oauthSource = fs.readFileSync(
+    path.join(root, "lib/ai-connector/oauth.ts"),
+    "utf8",
+  );
+  const oauthPolicySource = fs.readFileSync(
+    path.join(root, "lib/ai-connector/oauth-policy.ts"),
+    "utf8",
+  );
+  const oauthSecuritySource = fs.readFileSync(
+    path.join(root, "lib/ai-connector/http-security.ts"),
+    "utf8",
+  );
+  const authorizeSource = fs.readFileSync(
+    path.join(root, "app/oauth/authorize/page.tsx"),
+    "utf8",
+  );
+  const proxySource = fs.readFileSync(path.join(root, "proxy.ts"), "utf8");
+
+  for (const table of [
+    "ai_oauth_clients",
+    "ai_oauth_consent_requests",
+    "ai_authorizations",
+    "ai_oauth_authorization_codes",
+    "ai_oauth_access_tokens",
+    "ai_oauth_refresh_tokens",
+  ]) {
+    assert.match(
+      migration,
+      new RegExp(`create table if not exists public\\.${table}\\b`, "i"),
+    );
+    assert.match(
+      migration,
+      new RegExp(`alter table public\\.${table} enable row level security`, "i"),
+    );
+    assert.match(
+      migration,
+      new RegExp(`revoke all on table public\\.${table} from public, anon, authenticated`, "i"),
+    );
+  }
+
+  assert.match(migration, /code_hash text not null unique/i);
+  assert.match(migration, /token_hash text not null unique/i);
+  assert.doesNotMatch(migration, /\b(?:access|refresh)_token\s+text\b/i);
+  assert.doesNotMatch(
+    migration,
+    /^\s*(?:prompt|conversation|response_body)\s+(?:text|jsonb?)\b/im,
+  );
+
+  for (const safeTool of [
+    "crm_get_overview",
+    "crm_search_contacts",
+    "crm_list_opportunities",
+    "crm_list_tasks",
+    "crm_list_appointments",
+    "crm_create_task",
+    "crm_add_opportunity_note",
+    "crm_move_opportunity_stage",
+  ]) {
+    assert.match(mcpSource, new RegExp(`\\b${safeTool}\\b`));
+  }
+  assert.doesNotMatch(mcpSource, /send_(?:sms|email)|delete_(?:contact|lead)|charge_(?:card|payment)/i);
+  assert.match(connectorUi, /No BrizBuilder AI usage bill/);
+  assert.match(connectorUi, /Customer messages[\s\S]*Blocked/);
+  assert.doesNotMatch(futureUi, /AI PLAYGROUND PREVIEW/);
+  assert.match(
+    mcpSource,
+    /supabaseRoleHasPermission\(context, "ai_connector\.manage"\)/,
+  );
+  assert.match(oauthSource, /isSafeOAuthClientName/);
+  assert.match(oauthPolicySource, /\\p\{Cf\}/);
+  assert.match(authorizeSource, /identity not verified by BrizBuilder/);
+  assert.match(proxySource, /applyAiConsentSecurityHeaders/);
+  assert.match(oauthSecuritySource, /frame-ancestors 'none'/);
+});
+
 test("Phase 1 CRM authentication, tenant isolation, imports, custom data, companies, and opportunities", async () => {
   const serverRoot = path.join(root, "dist/server");
   const { privateKey, publicKey } = await generateKeyPair("RS256", {
@@ -188,6 +280,86 @@ test("Phase 1 CRM authentication, tenant isolation, imports, custom data, compan
   });
 
   try {
+    const protectedResource = await mf.dispatchFetch(
+      "http://crm.test/.well-known/oauth-protected-resource",
+    );
+    assert.equal(protectedResource.status, 200);
+    const protectedResourceBody = await protectedResource.json();
+    assert.match(protectedResourceBody.resource, /\/mcp$/);
+    assert.deepEqual(protectedResourceBody.scopes_supported, [
+      "crm:read",
+      "crm:tasks.write",
+      "crm:opportunities.write",
+    ]);
+
+    const authorizationMetadata = await mf.dispatchFetch(
+      "http://crm.test/.well-known/oauth-authorization-server",
+    );
+    assert.equal(authorizationMetadata.status, 200);
+    const authorizationMetadataBody = await authorizationMetadata.json();
+    assert.deepEqual(authorizationMetadataBody.code_challenge_methods_supported, ["S256"]);
+    assert.deepEqual(authorizationMetadataBody.token_endpoint_auth_methods_supported, ["none"]);
+
+    const initializeMcp = await mf.dispatchFetch("http://crm.test/mcp", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "BrizBuilder test", version: "1" } },
+      }),
+    });
+    assert.equal(initializeMcp.status, 200);
+    const initializeMcpBody = await initializeMcp.json();
+    assert.equal(initializeMcpBody.result.serverInfo.name, "BrizBuilder CRM Connector");
+
+    const listMcpTools = await mf.dispatchFetch("http://crm.test/mcp", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
+    });
+    assert.equal(listMcpTools.status, 200);
+    const listMcpToolsBody = await listMcpTools.json();
+    assert.deepEqual(
+      listMcpToolsBody.result.tools.map((tool) => tool.name),
+      [
+        "crm_get_overview",
+        "crm_search_contacts",
+        "crm_list_opportunities",
+        "crm_list_tasks",
+        "crm_list_appointments",
+        "crm_create_task",
+        "crm_add_opportunity_note",
+        "crm_move_opportunity_stage",
+      ],
+    );
+    assert.ok(
+      listMcpToolsBody.result.tools.every(
+        (tool) =>
+          tool.annotations?.openWorldHint === false &&
+          tool.annotations?.destructiveHint === false &&
+          Array.isArray(tool.securitySchemes),
+      ),
+      "every connector tool declares closed-world safety and OAuth security metadata",
+    );
+
+    const unauthenticatedToolCall = await mf.dispatchFetch("http://crm.test/mcp", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: { name: "crm_get_overview", arguments: {} },
+      }),
+    });
+    assert.equal(unauthenticatedToolCall.status, 401);
+    assert.match(
+      unauthenticatedToolCall.headers.get("www-authenticate") ?? "",
+      /oauth-protected-resource/,
+    );
+
     const anonymous = await mf.dispatchFetch("http://crm.test/api/crm");
     assert.equal(anonymous.status, 401, "protected API rejects anonymous requests");
 

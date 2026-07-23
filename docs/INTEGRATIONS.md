@@ -52,7 +52,8 @@ The current application implements the outbox write boundary. Queue dispatch, cl
 | Payments | Stripe Connect/Billing | 6 | Hosted collection, webhook idempotency, ledger reconciliation, refund/dispute handling |
 | Reputation | Google Business Profile and supported networks | 7 | OAuth verification, platform policy review, review-link attribution and consent |
 | Social publishing | Meta, LinkedIn, Google Business Profile | 7 | Platform app approval, token rotation, scheduling/retry, media validation |
-| AI generation/agents | OpenAI API | 9 | Tenant budget, content policy, tool allowlists, human approval, disclosure and audit |
+| Customer-owned AI connector | ChatGPT and other compatible MCP clients | Current | OAuth PKCE, explicit tenant/business consent, tool allowlists, revocation and sanitized audit |
+| Built-in AI generation/agents | Optional model APIs | 9 | Tenant budget, content policy, human approval, disclosure and audit |
 | Agency SaaS billing | Stripe Billing | 10 | Entitlement source of truth, proration, grace periods, dunning and webhook recovery |
 | Public developer platform | OAuth 2.1 and scoped API keys | 11 | Scope review, hashing, rotation, quotas, abuse detection, audit and revocation |
 
@@ -67,4 +68,3 @@ Inbound deliveries require a receipt record keyed by provider and provider event
 ## Observability and support
 
 All provider work needs structured logs with tenant-safe correlation IDs, latency, attempt count, normalized error code, cost/usage where available, and redacted provider response. Dashboards must distinguish credential errors, customer configuration errors, provider outages, throttling, and code defects. Support tools may retry or reconcile work but must not reveal secrets or bypass tenant policy.
-

@@ -32,13 +32,18 @@ supabase/migrations/20260721190000_google_business_profiles.sql
 supabase/migrations/20260722040000_google_business_oauth_credentials.sql
 supabase/migrations/20260722130000_reviews_workspace.sql
 supabase/migrations/20260722143000_reviews_workspace_indexes.sql
+supabase/migrations/20260722200000_ai_connector.sql
+supabase/migrations/20260722210000_ai_connector_indexes.sql
+supabase/migrations/20260722220000_ai_connector_transactional_mutations.sql
+supabase/migrations/20260722230000_ai_connector_performance_indexes.sql
 ```
 
 `supabase/schema.sql` is the baseline copy of
 `20260717150000_brizbuilder_initial_schema.sql`; do not run both on a fresh
-database. The later dated migrations are required. The final three create the
-Google Business Profile table, the server-only encrypted OAuth credential
-table, and the tenant-scoped Reviews workspace tables.
+database. The later dated migrations are required. They add Google Business
+Profile support, server-only encrypted OAuth credentials, the tenant-scoped
+Reviews workspace, and the customer-owned AI connector with transactional,
+idempotent CRM writes.
 
 If you use the Supabase CLI instead of the SQL Editor, apply the complete
 `supabase/migrations` directory to an empty database and skip `schema.sql`.

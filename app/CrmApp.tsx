@@ -38,6 +38,7 @@ import { ConversationsView, PhoneSystemView } from "./crm/PhoneViews";
 import { ConnectionsView, VisualAutomationsView } from "./crm/WorkflowViews";
 import { GoogleProfilesView } from "./crm/GoogleProfilesView";
 import { ReviewsView } from "./crm/ReviewsView";
+import { AiConnectorView } from "./crm/AiConnectorView";
 import { Badge, initials, Modal } from "./crm/ui";
 
 type View =
@@ -55,6 +56,7 @@ type View =
   | "reviews"
   | "connections"
   | "phone-system"
+  | "ai"
   | "custom-data"
   | "audit"
   | "team"
@@ -77,7 +79,6 @@ type ModalName =
 const futureModules: FutureModule[] = [
   "forms",
   "payments",
-  "ai",
   "funnels",
 ];
 
@@ -154,7 +155,13 @@ const nav: Array<{
   },
   { id: "funnels", label: "Funnels", icon: "N", preview: true },
   { id: "payments", label: "Payments", icon: "$", preview: true },
-  { id: "ai", label: "AI workspace", icon: "AI", preview: true },
+  {
+    id: "ai",
+    label: "AI Connector",
+    icon: "AI",
+    permission: "ai_connector.manage",
+    section: "Intelligence",
+  },
   {
     id: "custom-data",
     label: "Custom data",
@@ -402,6 +409,16 @@ export function CrmApp({
     setSelectedClientId(clientId);
     const url = new URL(window.location.href);
     url.searchParams.set("view", "profiles");
+    url.searchParams.set("client", clientId);
+    window.history.replaceState({}, "", url);
+    window.dispatchEvent(new Event(viewChangeEvent));
+    setMobileNav(false);
+  }
+
+  function openAiConnector(clientId: string) {
+    setSelectedClientId(clientId);
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", "ai");
     url.searchParams.set("client", clientId);
     window.history.replaceState({}, "", url);
     window.dispatchEvent(new Event(viewChangeEvent));
@@ -771,11 +788,13 @@ export function CrmApp({
           <ConnectionsView
             clients={data.clients}
             connections={data.providerConnections}
+            aiAuthorizations={data.aiAuthorizations}
             selectedClientId={selectedClientId}
             mutate={mutate}
             canReadSharedBilling={data.viewer.permissions.includes(
               "billing.read_shared",
             )}
+            onOpenAiConnector={openAiConnector}
           />
         )}
         {view === "phone-system" && (
@@ -811,6 +830,20 @@ export function CrmApp({
             onOpenConnections={openConnections}
           />
         )}
+        {view === "ai" &&
+          data.viewer.permissions.includes("ai_connector.manage") && (
+            <AiConnectorView
+              clients={data.clients}
+              authorizations={data.aiAuthorizations}
+              activities={data.aiActivities}
+              runtime={data.aiConnectorRuntime}
+              selectedClientId={selectedClientId}
+              mutate={mutate}
+              canManage={data.viewer.permissions.includes(
+                "ai_connector.manage",
+              )}
+            />
+          )}
         {futureModules.includes(view as FutureModule) && (
           <FutureModuleView module={view as FutureModule} />
         )}

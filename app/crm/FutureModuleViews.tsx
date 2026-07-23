@@ -2,7 +2,7 @@
 
 import { Badge } from "./ui";
 
-export type FutureModule = "conversations" | "automations" | "forms" | "payments" | "ai" | "funnels";
+export type FutureModule = "conversations" | "automations" | "forms" | "payments" | "funnels";
 
 type ModuleDefinition = {
   name: string;
@@ -41,13 +41,6 @@ const modules: Record<FutureModule, ModuleDefinition> = {
     description: "Manage estimates, invoices, payment links, subscriptions, refunds, and revenue reporting from one workspace.",
     features: ["Products, estimates, and invoices", "Stripe-hosted payment collection", "Subscriptions and reconciliation"],
   },
-  ai: {
-    name: "AI workspace",
-    eyebrow: "BRIZBUILDER AI",
-    phase: "Planned for Phase 9",
-    description: "Help teams write, summarize, organize, and respond faster with approval-based AI tools connected to CRM context.",
-    features: ["Conversation and lead summaries", "Draft replies and campaign content", "Knowledge bases and guarded agents"],
-  },
   funnels: {
     name: "Funnels",
     eyebrow: "CONVERSION JOURNEYS",
@@ -62,7 +55,6 @@ const previewStats: Record<FutureModule, Array<[string, string, string]>> = {
   automations: [["Published workflows", "0", "Live"], ["Active enrollments", "0", "Live"], ["Completion rate", "—", "Live"]],
   forms: [["Form views", "0", "Live"], ["Submissions", "0", "Live"], ["Conversion rate", "—", "Live"]],
   payments: [["Collected", "$0", "Live"], ["Outstanding", "$0", "Live"], ["Paid invoices", "0", "Live"]],
-  ai: [["Drafts created", "0", "Live"], ["Time saved", "—", "Live"], ["Approval rate", "—", "Live"]],
   funnels: [["Visitors", "0", "Live"], ["Conversions", "0", "Live"], ["Conversion rate", "—", "Live"]],
 };
 
@@ -106,10 +98,6 @@ function PaymentsPreview() {
   return <section className="crm-preview-table-card"><header><div><strong>Recent invoices</strong><small>Payment workspace</small></div><button disabled>+ New invoice</button></header><div className="crm-preview-table-scroll"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Amount</th><th>Status</th></tr></thead><tbody>{rows.map((row) => <tr key={row[0]}>{row.map((cell, index) => <td key={cell}>{index === 3 ? <Badge tone={cell === "Paid" ? "green" : cell === "Draft" ? "neutral" : "orange"}>{cell}</Badge> : cell}</td>)}</tr>)}</tbody></table></div><footer><p>Stripe connection, payment collection, refunds, and reconciliation are not active in this preview.</p></footer></section>;
 }
 
-function AiPreview() {
-  return <div className="crm-ai-preview"><section><Badge tone="purple">AI PLAYGROUND PREVIEW</Badge><h3>What would you like help with?</h3><p>Use CRM context to prepare work while keeping a person in control of every external action.</p><textarea disabled placeholder="Summarize this week's new leads and suggest the next follow-up..." /><div>{["Summarize leads", "Draft a reply", "Write campaign copy", "Find follow-up risks"].map((item) => <button disabled key={item}>{item}</button>)}</div></section><aside><strong>Safety controls</strong><ul><li><span>1</span>Human approval before sending</li><li><span>2</span>Tenant-scoped CRM context</li><li><span>3</span>Usage limits and audit history</li><li><span>4</span>Tool and provider allowlists</li></ul></aside></div>;
-}
-
 function FunnelsPreview() {
   const steps = [["1", "Service landing page", "0", "—"], ["2", "Estimate form", "0", "—"], ["3", "Booking calendar", "0", "—"], ["4", "Thank-you page", "0", "—"]];
   return <div className="crm-funnel-preview"><header><div><strong>Free estimate funnel</strong><small>Draft conversion journey</small></div><Badge tone="orange">Draft preview</Badge></header><section>{steps.map(([number, name, visitors, rate], index) => <article key={number}><span>{number}</span><div><strong>{name}</strong><small>{visitors} visitors</small></div><b>{rate}</b>{index < steps.length - 1 ? <i>→</i> : null}</article>)}</section></div>;
@@ -120,7 +108,6 @@ function ModuleBody({ module }: { module: FutureModule }) {
   if (module === "automations") return <AutomationsPreview />;
   if (module === "forms") return <FormsPreview />;
   if (module === "payments") return <PaymentsPreview />;
-  if (module === "ai") return <AiPreview />;
   return <FunnelsPreview />;
 }
 

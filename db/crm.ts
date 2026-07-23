@@ -31,18 +31,19 @@ export type CrmPermission =
   | "billing.read_shared"
   | "messages.write"
   | "automations.manage"
+  | "ai_connector.manage"
   | "custom_data.manage"
   | "team.manage"
   | "audit.read"
   | "feature_flags.manage";
 
 const rolePermissions: Record<CrmRole, CrmPermission[]> = {
-  SUPER_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  SUPER_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "ai_connector.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "ai_connector.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "ai_connector.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
   AGENCY_MEMBER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "reviews.read", "reviews.reply", "reviews.request", "messages.write"],
-  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "custom_data.manage"],
-  CLIENT_MANAGER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "messages.write", "automations.manage", "custom_data.manage"],
+  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "messages.write", "automations.manage", "ai_connector.manage", "custom_data.manage"],
+  CLIENT_MANAGER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "messages.write", "automations.manage", "ai_connector.manage", "custom_data.manage"],
   CLIENT_EMPLOYEE: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "reviews.read", "messages.write"],
 };
 
@@ -368,6 +369,29 @@ export type CrmProviderConnection = {
   lastError: string | null;
 };
 
+export type CrmAiAuthorization = {
+  id: string;
+  appName: string;
+  status: "active" | "revoked";
+  clientIds: string[];
+  scopes: string[];
+  connectedByEmail: string;
+  connectedAt: string;
+  lastUsedAt: string | null;
+  lastSuccessAt: string | null;
+  lastError: string | null;
+};
+
+export type CrmAiActivity = {
+  id: string;
+  authorizationId: string | null;
+  appName: string;
+  clientId: string | null;
+  action: string;
+  outcome: "success" | "error" | "denied";
+  createdAt: string;
+};
+
 export type CrmGoogleProfile = {
   id: string;
   clientId: string;
@@ -484,6 +508,9 @@ export type CrmBootstrap = {
   automationRules: CrmAutomationRule[];
   automationRuns: CrmAutomationRun[];
   providerConnections: CrmProviderConnection[];
+  aiAuthorizations: CrmAiAuthorization[];
+  aiActivities: CrmAiActivity[];
+  aiConnectorRuntime: { configured: boolean; endpoint: string };
   googleProfiles: CrmGoogleProfile[];
   googleProfileRuntime: { configured: boolean };
   reviewRequests: CrmReviewRequest[];
@@ -773,6 +800,9 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
     automationRules: [],
     automationRuns: [],
     providerConnections: [],
+    aiAuthorizations: [],
+    aiActivities: [],
+    aiConnectorRuntime: { configured: false, endpoint: "" },
     workflows: [],
     workflowRuns: [],
     customFields: customFieldRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), entityType: String(row.entity_type) as CrmCustomFieldDefinition["entityType"], fieldKey: String(row.field_key), label: String(row.label), fieldType: String(row.field_type), options: parseStringArray(row.options_json), isRequired: Boolean(row.is_required), position: Number(row.position ?? 0) })),

@@ -11,9 +11,13 @@ export const metadata: Metadata = {
 export default async function LocalLogin({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    return_to?: string | string[];
+  }>;
 }) {
-  const { error } = await searchParams;
+  const { error, return_to: rawReturnTo } = await searchParams;
+  const returnTo = safeLocalReturnTo(rawReturnTo);
 
   return (
     <main className="auth-page">
@@ -45,6 +49,7 @@ export default async function LocalLogin({
             Enter your admin credentials to open the agency dashboard.
           </span>
           <form className="local-login-form" action="/api/local-auth/login" method="post">
+            <input type="hidden" name="return_to" value={returnTo} />
             <label>
               <span>Email</span>
               <input name="email" type="email" defaultValue={MAIN_ADMIN_EMAIL} autoComplete="username" required />
@@ -82,4 +87,24 @@ export default async function LocalLogin({
       </section>
     </main>
   );
+}
+
+function safeLocalReturnTo(value: string | string[] | undefined): string {
+  if (typeof value !== "string" || value.length > 16_384) return "/dashboard";
+  if (!value.startsWith("/") || value.startsWith("//")) return "/dashboard";
+
+  try {
+    const url = new URL(value, "https://brizbuilder.local");
+    if (url.origin !== "https://brizbuilder.local") return "/dashboard";
+    if (
+      url.pathname === "/local-login" ||
+      url.pathname === "/api/local-auth/login" ||
+      url.pathname === "/signout-with-chatgpt"
+    ) {
+      return "/dashboard";
+    }
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return "/dashboard";
+  }
 }

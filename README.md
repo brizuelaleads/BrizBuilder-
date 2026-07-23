@@ -64,6 +64,10 @@ supabase/migrations/20260721190000_google_business_profiles.sql
 supabase/migrations/20260722040000_google_business_oauth_credentials.sql
 supabase/migrations/20260722130000_reviews_workspace.sql
 supabase/migrations/20260722143000_reviews_workspace_indexes.sql
+supabase/migrations/20260722200000_ai_connector.sql
+supabase/migrations/20260722210000_ai_connector_indexes.sql
+supabase/migrations/20260722220000_ai_connector_transactional_mutations.sql
+supabase/migrations/20260722230000_ai_connector_performance_indexes.sql
 ```
 
 `supabase/schema.sql` is the same baseline as
@@ -79,6 +83,7 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 BRIZBUILDER_BACKEND=supabase
+BRIZBUILDER_PUBLIC_ORIGIN=https://brizbuilder.brizuelaleads.workers.dev
 ```
 
 Do not put the real `SUPABASE_SERVICE_ROLE_KEY` in GitHub. After deploying, open `/api/supabase/status` to confirm the backend is connected.
@@ -184,7 +189,8 @@ npm run build
 - Connected website management for WordPress, Wix, Squarespace, Webflow, Shopify, and custom sites
 - Public website lead-capture gateway that creates tenant-scoped contacts and pipeline leads
 - Copy-ready webhook URL and JavaScript integration instructions for every connected site
-- Navigable UI previews for conversations, automations, forms, funnels, payments, and AI
+- Navigable UI previews for conversations, automations, forms, funnels, and payments
+- Secure AI Connector for compatible AI subscriptions, with explicit business and permission consent, short-lived OAuth access, revocation, and sanitized audit history
 - A real Reviews workspace with per-business settings, honest empty states, Google review-link copy/QR tools, and manual SMS request history
 
 ### Reviews workspace
@@ -203,6 +209,22 @@ npm run build
 - Empty accounts stay empty: BrizBuilder does not create sample ratings, fake
   reviews, or made-up review totals.
 
+### AI Connector
+
+- Customers add BrizBuilder as a custom connector inside a compatible AI app
+  and continue chatting in that AI app. BrizBuilder does not run a paid model
+  API or add a per-message AI charge; the customer remains subject to their AI
+  provider's normal plan limits and connector availability.
+- Every connection uses OAuth authorization-code flow with PKCE. The approving
+  user chooses the exact businesses and CRM permissions before access begins.
+- Available tools are deliberately narrow: view CRM summaries, contacts,
+  opportunities, tasks, and appointments; create follow-up tasks; add internal
+  opportunity notes; and move opportunities between valid stages.
+- The connector cannot send messages, make calls, delete records, manage users,
+  collect payments, reveal credentials, or run arbitrary database queries.
+- Access is rechecked against the current BrizBuilder membership on every tool
+  call. Disconnecting an app revokes both access and refresh tokens.
+
 ## Not implemented yet
 
 The following have clearly labeled UI previews, but their live providers and actions are intentionally unavailable in Phase 1:
@@ -214,7 +236,8 @@ The following have clearly labeled UI previews, but their live providers and act
 - automatic review follow-ups and workflow-triggered review requests
 - live Google review inbox and replies until Business Profile API access is approved
 - estimates, invoices, payments, and Stripe
-- AI summaries, scoring automation, and reply suggestions
+- built-in AI generation, scoring automation, and reply suggestions that would
+  require BrizBuilder to pay a model provider
 - background job infrastructure
 
 See [the phased roadmap](docs/ROADMAP.md) and [feature parity matrix](docs/FEATURE_PARITY_MATRIX.md).

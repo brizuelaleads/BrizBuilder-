@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type {
+  CrmAiAuthorization,
   CrmClient,
   CrmProviderConnection,
   CrmStage,
@@ -36,15 +37,19 @@ function clientChoice(
 export function ConnectionsView({
   clients,
   connections,
+  aiAuthorizations,
   selectedClientId,
   mutate,
   canReadSharedBilling,
+  onOpenAiConnector,
 }: {
   clients: CrmClient[];
   connections: CrmProviderConnection[];
+  aiAuthorizations: CrmAiAuthorization[];
   selectedClientId: string;
   mutate: Mutate;
   canReadSharedBilling: boolean;
+  onOpenAiConnector: (clientId: string) => void;
 }) {
   const [localClient, setLocalClient] = useState(clients[0]?.id ?? "");
   const clientId = clientChoice(clients, selectedClientId, localClient);
@@ -54,6 +59,12 @@ export function ConnectionsView({
   );
   const isLinked = Boolean(connection?.isLinked);
   const isActive = Boolean(connection?.isActive);
+  const activeAiAuthorizations = aiAuthorizations.filter(
+    (authorization) =>
+      authorization.status === "active" &&
+      authorization.clientIds.includes(clientId),
+  );
+  const aiConnected = activeAiAuthorizations.length > 0;
   const [balanceResult, setBalanceResult] = useState<{
     key: string;
     data: TwilioVisibleBalance | null;
@@ -327,6 +338,74 @@ export function ConnectionsView({
                   Connect
                 </a>
               )}
+            </div>
+          </article>
+          <article className="crm-connection-card ai">
+            <header>
+              <span className="crm-provider-logo ai">AI</span>
+              <div>
+                <h3>AI Connector</h3>
+                <p>Let your own AI account safely work with this CRM</p>
+              </div>
+              <Badge tone={aiConnected ? "green" : "orange"}>
+                {aiConnected ? "Connected" : "Not connected"}
+              </Badge>
+            </header>
+            <div className="crm-connection-details compact">
+              <div>
+                <span>Integration status</span>
+                <strong>
+                  <Badge tone={aiConnected ? "green" : "red"}>
+                    {aiConnected ? "Active" : "Not active"}
+                  </Badge>
+                </strong>
+              </div>
+              <div>
+                <span>Connected AI apps</span>
+                <strong>{activeAiAuthorizations.length}</strong>
+              </div>
+              <div>
+                <span>Business</span>
+                <strong>{client.businessName}</strong>
+              </div>
+              <div>
+                <span>Billing</span>
+                <strong>Uses customer&apos;s AI plan</strong>
+              </div>
+            </div>
+            <div className="crm-connection-actions">
+              <button
+                className="crm-button-primary"
+                type="button"
+                onClick={() => onOpenAiConnector(clientId)}
+              >
+                {aiConnected ? "Manage" : "Connect"}
+              </button>
+              {activeAiAuthorizations.length === 1 ? (
+                <button
+                  className="danger"
+                  type="button"
+                  onClick={() => {
+                    const authorization = activeAiAuthorizations[0];
+                    if (
+                      authorization &&
+                      window.confirm(
+                        `Disconnect ${authorization.appName}? It will immediately lose access to every business approved for this connection.`,
+                      )
+                    ) {
+                      void mutate(
+                        {
+                          action: "revoke_ai_authorization",
+                          authorizationId: authorization.id,
+                        },
+                        `${authorization.appName} disconnected.`,
+                      );
+                    }
+                  }}
+                >
+                  Disconnect
+                </button>
+              ) : null}
             </div>
           </article>
         </div>

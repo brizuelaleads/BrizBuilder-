@@ -54,6 +54,23 @@ The highest-priority property is tenant isolation: an authenticated client must 
 - Future provider credentials must be encrypted at rest, redacted from logs, scoped per tenant, and rotatable.
 - Webhook signing secrets and OAuth refresh tokens require separate access controls from normal CRM records.
 
+### Remote AI connector
+
+- Remote AI apps authenticate with OAuth authorization code plus PKCE S256;
+  BrizBuilder browser cookies are never accepted by the MCP endpoint.
+- Access and refresh tokens are opaque random values. Only SHA-256 token hashes
+  are stored, access tokens expire quickly, and refresh tokens rotate.
+- Consent records pin the requesting app, callback address, exact businesses,
+  scopes, resource, actor, expiration, and PKCE challenge. New businesses are
+  never added to an existing grant automatically.
+- Every tool call rechecks the actor's current organization membership, role,
+  explicit business grant, and scope. Records are queried by both organization
+  and business before data is returned or changed.
+- The tool allowlist excludes customer messaging, calls, deletion, payments,
+  user administration, credentials, and arbitrary database access.
+- Connector audit events store only the app, tool, business, outcome, record
+  reference, and timing. They do not store prompts or returned CRM content.
+
 ## Threat model
 
 | Threat | Primary control | Verification |
@@ -68,6 +85,8 @@ The highest-priority property is tenant isolation: an authenticated client must 
 | Secret leakage | Environment-managed secrets and log redaction | Deployment review |
 | Audit tampering | Agency-only read and append-only application workflow | Database access review |
 | Provider outage | Transactional outbox and adapter isolation | Required before live delivery |
+| Stolen or replayed AI connector token | Short access-token lifetime, hashed opaque tokens, rotating refresh tokens, revocation, exact resource binding | OAuth/MCP integration tests and audit review |
+| AI app crosses business boundaries | Explicit immutable business grant plus current membership and tenant checks on every tool call | Cross-client connector tests |
 
 ## Compliance posture
 

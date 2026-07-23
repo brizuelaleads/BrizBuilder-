@@ -1,6 +1,7 @@
 import type { ChatGPTUser } from "../app/chatgpt-auth";
 import { MAIN_ADMIN_EMAIL } from "../app/auth-config";
 import { getSupabaseAdminClient } from "../lib/supabase/server";
+import { getAiConnectorRuntime } from "../lib/ai-connector/config";
 import {
   buildGoogleAuthorizationUrl,
   decryptGoogleSecret,
@@ -58,6 +59,8 @@ import type {
   CrmAutomationRule,
   CrmAutomationRun,
   CrmProviderConnection,
+  CrmAiAuthorization,
+  CrmAiActivity,
   CrmWorkflow,
   CrmWorkflowRun,
   CrmGoogleProfile,
@@ -73,6 +76,8 @@ type TenantContext = {
   role: CrmRole;
   clientId: string | null;
 };
+
+export type SupabaseTenantContext = TenantContext;
 
 // Supabase relation payloads are dynamic until generated database types are added.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -176,6 +181,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "billing.read_shared",
     "messages.write",
     "automations.manage",
+    "ai_connector.manage",
     "custom_data.manage",
     "team.manage",
     "audit.read",
@@ -200,6 +206,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "billing.read_shared",
     "messages.write",
     "automations.manage",
+    "ai_connector.manage",
     "custom_data.manage",
     "team.manage",
     "audit.read",
@@ -224,6 +231,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "billing.read_shared",
     "messages.write",
     "automations.manage",
+    "ai_connector.manage",
     "custom_data.manage",
     "team.manage",
     "audit.read",
@@ -261,6 +269,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "billing.read_shared",
     "messages.write",
     "automations.manage",
+    "ai_connector.manage",
     "custom_data.manage",
   ],
   CLIENT_MANAGER: [
@@ -278,6 +287,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "phone_system.manage",
     "messages.write",
     "automations.manage",
+    "ai_connector.manage",
     "custom_data.manage",
   ],
   CLIENT_EMPLOYEE: [
@@ -1674,6 +1684,39 @@ async function audit(
   );
 }
 
+// Remote connectors use the same tenant and role checks as the dashboard, but
+// they fail closed and never use the D1 fallback.
+export async function getSupabaseTenantContext(
+  user: ChatGPTUser,
+): Promise<SupabaseTenantContext> {
+  return getTenantContext(user);
+}
+
+export function supabaseRoleHasPermission(
+  context: SupabaseTenantContext,
+  permission: CrmPermission,
+): boolean {
+  return rolePermissions[context.role].includes(permission);
+}
+
+export async function requireSupabaseClientAccess(
+  context: SupabaseTenantContext,
+  clientId: string,
+): Promise<void> {
+  await requireClient(context, clientId);
+}
+
+export async function writeSupabaseAuditEvent(
+  context: SupabaseTenantContext,
+  action: string,
+  recordType: string,
+  recordId: string | null,
+  metadata: Record<string, unknown> = {},
+  clientId: string | null = context.clientId,
+): Promise<void> {
+  await audit(context, action, recordType, recordId, metadata, clientId);
+}
+
 function mapClient(row: AnyRecord): CrmClient {
   return {
     id: String(row.id),
@@ -2003,6 +2046,8 @@ export async function getSupabaseCrmBootstrap(
     automationRules,
     automationRuns,
     providerConnections,
+    aiAuthorizations,
+    aiActivityEvents,
     googleProfiles,
     googleCredentialRefs,
     reviewRequests,
@@ -2109,6 +2154,36 @@ export async function getSupabaseCrmBootstrap(
         ascending: false,
       }),
     ),
+    rolePermissions[context.role].includes("ai_connector.manage")
+      ? (() => {
+          let builder = supabase()
+            .from("ai_authorizations")
+            .select("*,ai_oauth_clients(client_name)")
+            .eq("organization_id", context.organizationId)
+            .order("connected_at", { ascending: false })
+            .limit(100);
+          if (context.clientId) {
+            builder = builder.contains("allowed_client_ids", [context.clientId]);
+          }
+          return assertOk(builder).catch((error) => {
+            console.error("AI connector tables are not migrated yet.", error);
+            return [] as AnyRecord[];
+          });
+        })()
+      : Promise.resolve([] as AnyRecord[]),
+    rolePermissions[context.role].includes("ai_connector.manage")
+      ? (() => {
+          let builder = supabase()
+            .from("audit_events")
+            .select("id,client_id,action,record_id,metadata,created_at")
+            .eq("organization_id", context.organizationId)
+            .like("action", "ai.%")
+            .order("created_at", { ascending: false })
+            .limit(100);
+          if (context.clientId) builder = builder.eq("client_id", context.clientId);
+          return assertOk(builder);
+        })()
+      : Promise.resolve([] as AnyRecord[]),
     assertOk(
       query<AnyRecord>("google_business_profiles").order("updated_at", {
         ascending: false,
@@ -2170,6 +2245,8 @@ export async function getSupabaseCrmBootstrap(
   const noteRows = (notes ?? []) as AnyRecord[];
   const auditRows = (auditEvents ?? []) as AnyRecord[];
   const providerConnectionRows = (providerConnections ?? []) as AnyRecord[];
+  const aiAuthorizationRows = (aiAuthorizations ?? []) as AnyRecord[];
+  const aiActivityRows = (aiActivityEvents ?? []) as AnyRecord[];
   const googleProfileRows = (googleProfiles ?? []) as AnyRecord[];
   const reviewRequestRows = (reviewRequests ?? []) as AnyRecord[];
   const reviewSettingRows = (reviewSettings ?? []) as AnyRecord[];
@@ -2251,6 +2328,47 @@ export async function getSupabaseCrmBootstrap(
           rolePermissions[context.role].includes("billing.read_shared"),
         ),
     ),
+    aiAuthorizations: aiAuthorizationRows.map(
+      (row: AnyRecord): CrmAiAuthorization => {
+        const oauthClient = nestedOne(row.ai_oauth_clients) ?? {};
+        return {
+          id: String(row.id),
+          appName: String(oauthClient.client_name ?? "Compatible AI app"),
+          status: String(row.status) === "revoked" ? "revoked" : "active",
+          clientIds: Array.isArray(row.allowed_client_ids)
+            ? row.allowed_client_ids.map(String)
+            : [],
+          scopes: Array.isArray(row.scopes) ? row.scopes.map(String) : [],
+          connectedByEmail: String(row.actor_email ?? ""),
+          connectedAt: String(row.connected_at),
+          lastUsedAt: nullable(row.last_used_at),
+          lastSuccessAt: nullable(row.last_success_at),
+          lastError: nullable(row.last_error),
+        };
+      },
+    ),
+    aiActivities: aiActivityRows.map((row: AnyRecord): CrmAiActivity => {
+      const metadata =
+        row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+      const outcomeValue = String(metadata.outcome ?? "success");
+      return {
+        id: String(row.id),
+        authorizationId: nullable(metadata.authorizationId ?? row.record_id),
+        appName: String(
+          metadata.appName ?? metadata.oauth_client_name ?? "AI app",
+        ),
+        clientId: nullable(row.client_id),
+        action: String(row.action),
+        outcome:
+          outcomeValue === "denied"
+            ? "denied"
+            : outcomeValue === "error"
+              ? "error"
+              : "success",
+        createdAt: String(row.created_at),
+      };
+    }),
+    aiConnectorRuntime: getAiConnectorRuntime(),
     googleProfiles: googleProfileRows.map((row: AnyRecord): CrmGoogleProfile => ({
       id: String(row.id),
       clientId: String(row.client_id),
@@ -2438,6 +2556,71 @@ export async function executeSupabaseCrmAction(
 ) {
   const context = await getTenantContext(user);
   const action = requireText(input.action, "Action", 50);
+
+  if (action === "revoke_ai_authorization") {
+    requirePermission(context, "ai_connector.manage");
+    const authorizationId = requireText(
+      input.authorizationId,
+      "AI connection",
+      100,
+    );
+    const authorization = await assertOk(
+      supabase()
+        .from("ai_authorizations")
+        .select("id,allowed_client_ids,status")
+        .eq("id", authorizationId)
+        .eq("organization_id", context.organizationId)
+        .maybeSingle(),
+    );
+    if (!authorization) throw new Error("AI connection not found.");
+    const allowedClientIds = Array.isArray(authorization.allowed_client_ids)
+      ? authorization.allowed_client_ids.map(String)
+      : [];
+    if (context.clientId && !allowedClientIds.includes(context.clientId)) {
+      throw new Error("Forbidden");
+    }
+    if (String(authorization.status) === "revoked") {
+      return { revoked: true, alreadyRevoked: true };
+    }
+    const now = new Date().toISOString();
+    await assertOk(
+      supabase()
+        .from("ai_authorizations")
+        .update({
+          status: "revoked",
+          revoked_at: now,
+          revoked_by_email: context.email,
+          last_error: null,
+        })
+        .eq("id", authorizationId)
+        .eq("organization_id", context.organizationId),
+    );
+    await Promise.all([
+      assertOk(
+        supabase()
+          .from("ai_oauth_access_tokens")
+          .update({ revoked_at: now })
+          .eq("authorization_id", authorizationId)
+          .is("revoked_at", null),
+      ),
+      assertOk(
+        supabase()
+          .from("ai_oauth_refresh_tokens")
+          .update({ revoked_at: now })
+          .eq("authorization_id", authorizationId)
+          .is("revoked_at", null),
+      ),
+    ]);
+    await audit(
+      context,
+      "ai.authorization.revoked",
+      "ai_authorization",
+      authorizationId,
+      { outcome: "success", authorizationId },
+      context.clientId ?? (allowedClientIds.length === 1 ? allowedClientIds[0] : null),
+    );
+    return { revoked: true };
+  }
 
   if (action === "save_google_profile_settings") {
     requirePermission(context, "profiles.manage");
@@ -4248,6 +4431,35 @@ export async function executeSupabaseCrmAction(
     requirePermission(context, "tasks.write");
     const clientId = requireText(input.clientId, "Client", 80);
     await requireClient(context, clientId);
+    const leadId = optionalText(input.leadId, 100);
+    const contactId = optionalText(input.contactId, 100);
+    if (leadId) {
+      const lead = await assertOk(
+        supabase()
+          .from("leads")
+          .select("id")
+          .eq("id", leadId)
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId)
+          .is("archived_at", null)
+          .maybeSingle(),
+      );
+      if (!lead) throw new Error("The selected lead does not belong to this business.");
+    }
+    if (contactId) {
+      const contact = await assertOk(
+        supabase()
+          .from("contacts")
+          .select("id")
+          .eq("id", contactId)
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId)
+          .is("archived_at", null)
+          .maybeSingle(),
+      );
+      if (!contact)
+        throw new Error("The selected contact does not belong to this business.");
+    }
     const priority = ["LOW", "MEDIUM", "HIGH", "URGENT"].includes(
       String(input.priority),
     )
@@ -4259,8 +4471,8 @@ export async function executeSupabaseCrmAction(
         .insert({
           organization_id: context.organizationId,
           client_id: clientId,
-          lead_id: optionalText(input.leadId, 100),
-          contact_id: optionalText(input.contactId, 100),
+          lead_id: leadId,
+          contact_id: contactId,
           title: requireText(input.title, "Task title", 180),
           description: optionalText(input.description, 1000) ?? "",
           assignee: optionalText(input.assignee, 120) ?? context.name,
