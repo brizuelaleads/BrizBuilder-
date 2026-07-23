@@ -1,11 +1,17 @@
-import { finishSupabaseStripeConnect } from "../../../../../db/supabase-crm";
+import {
+  cancelSupabaseStripeConnect,
+  finishSupabaseStripeConnect,
+} from "../../../../../db/supabase-crm";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
   try {
-    if (url.searchParams.get("error")) throw new Error("Stripe connection was canceled.");
+    if (url.searchParams.get("error")) {
+      await cancelSupabaseStripeConnect(url.searchParams.get("state") ?? "");
+      throw new Error("Stripe connection was canceled.");
+    }
     const clientId = await finishSupabaseStripeConnect(
       url.searchParams.get("state") ?? "",
       url.searchParams.get("code") ?? "",

@@ -356,6 +356,17 @@ export type CrmProviderConnection = {
   accountLabel: string | null;
   accountStatus: string | null;
   accountType: string | null;
+  setupStatus: string | null;
+  chargesEnabled: boolean | null;
+  payoutsEnabled: boolean | null;
+  detailsSubmitted: boolean | null;
+  currentlyDueCount: number | null;
+  pastDueCount: number | null;
+  pendingVerificationCount: number | null;
+  disabledReason: string | null;
+  currentDeadline: string | null;
+  country: string | null;
+  livemode: boolean | null;
   balance: number | null;
   balanceStatus: string | null;
   currency: string | null;

@@ -33,8 +33,12 @@ import {
 import {
   buildStripeConnectUrl,
   checkStripeConnectedAccount,
+  createStripeAccountSession,
+  deauthorizeStripeAccount,
   exchangeStripeConnectCode,
   getStripeConnectStatus,
+  getStripeRuntimeStatus,
+  type StripeWebhookEvent,
 } from "../lib/stripe";
 import {
   executeWorkflow,
@@ -699,13 +703,16 @@ async function requireClient(context: TenantContext, clientId: string) {
   const client = await assertOk(
     supabase()
       .from("clients")
-      .select("id")
+      .select(
+        "id,organization_id,business_name,industry,website,phone,email,address,city,state,zip,status",
+      )
       .eq("id", clientId)
       .eq("organization_id", context.organizationId)
       .neq("status", "archived")
       .maybeSingle(),
   );
   if (!client) throw new Error("Client not found.");
+  return client;
 }
 
 const UNLINKED_PROVIDER_STATUSES = new Set([
@@ -734,6 +741,57 @@ function providerIsActive(row: AnyRecord | null | undefined) {
     providerIsLinked(row) &&
     String(row?.status ?? "").toLowerCase() === "connected" &&
     providerAccountStatus(row) === "active"
+  );
+}
+
+type StripeAccountSummary = Awaited<
+  ReturnType<typeof checkStripeConnectedAccount>
+>;
+
+function stripeConnectionStatus(account: StripeAccountSummary) {
+  return account.isEnabled ? "connected" : "needs_attention";
+}
+
+function stripePublicConfig(
+  account: StripeAccountSummary,
+  livemode: boolean,
+) {
+  return {
+    accountStatus: account.isEnabled ? "active" : account.setupStatus,
+    accountType: "Stripe Standard account",
+    setupStatus: account.setupStatus,
+    currency: account.currency,
+    country: account.country,
+    chargesEnabled: account.chargesEnabled,
+    payoutsEnabled: account.payoutsEnabled,
+    detailsSubmitted: account.detailsSubmitted,
+    currentlyDueCount: account.currentlyDueCount,
+    pastDueCount: account.pastDueCount,
+    pendingVerificationCount: account.pendingVerificationCount,
+    disabledReason: account.disabledReason,
+    currentDeadline: account.currentDeadline,
+    livemode,
+  };
+}
+
+function stripeFriendlyStatus(account: StripeAccountSummary) {
+  if (account.setupStatus === "ready") return null;
+  if (account.setupStatus === "setup_required")
+    return "Finish the secure Stripe setup steps in BrizBuilder.";
+  if (account.setupStatus === "under_review")
+    return "Stripe is reviewing the information that was submitted.";
+  if (account.setupStatus === "payments_ready")
+    return "Card payments are ready. Stripe still needs a payout update.";
+  if (account.setupStatus === "action_required")
+    return "Stripe needs an update before all payment tools can work.";
+  return "Stripe is connected, but payment tools are not ready yet.";
+}
+
+function isStripeFinancialOwner(context: TenantContext) {
+  return (
+    context.role === "SUPER_ADMIN" ||
+    context.role === "AGENCY_OWNER" ||
+    context.role === "CLIENT_OWNER"
   );
 }
 
@@ -914,7 +972,7 @@ export async function beginSupabaseStripeConnect(
 ) {
   const context = await getTenantContext(user);
   requirePermission(context, "payments.manage");
-  await requireClient(context, clientId);
+  const client = await requireClient(context, clientId);
   if (!getStripeConnectStatus().ready)
     throw new Error(
       "BrizBuilder's Stripe Connect app needs to be configured first.",
@@ -923,7 +981,17 @@ export async function beginSupabaseStripeConnect(
     "-",
     "",
   );
-  const connectUrl = buildStripeConnectUrl(state);
+  const connectUrl = buildStripeConnectUrl(state, {
+    businessName: client.business_name,
+    industry: client.industry,
+    website: client.website,
+    phone: client.phone,
+    email: client.email,
+    address: client.address,
+    city: client.city,
+    state: client.state,
+    zip: client.zip,
+  });
   await assertOk(
     supabase()
       .from("provider_authorization_states")
@@ -939,63 +1007,345 @@ export async function beginSupabaseStripeConnect(
   return connectUrl;
 }
 
+export async function cancelSupabaseStripeConnect(state: string) {
+  if (!/^[A-Za-z0-9]{40,200}$/.test(state)) return;
+  await assertOk(
+    supabase()
+      .from("provider_authorization_states")
+      .update({ used_at: new Date().toISOString() })
+      .eq("provider", "stripe")
+      .eq("state_hash", await stateHash(state))
+      .is("used_at", null),
+  );
+}
+
 export async function finishSupabaseStripeConnect(state: string, code: string) {
-  if (!code) throw new Error("Stripe did not return an authorization code.");
+  if (!/^[A-Za-z0-9]{40,200}$/.test(state))
+    throw new Error("This connection request is invalid. Start again.");
+  if (!/^ac_[A-Za-z0-9_]{8,500}$/.test(code))
+    throw new Error("Stripe did not return a valid authorization code.");
   const now = new Date().toISOString();
   const authorization = await assertOk(
     supabase()
       .from("provider_authorization_states")
-      .select("*")
+      .update({ used_at: now })
       .eq("provider", "stripe")
       .eq("state_hash", await stateHash(state))
       .is("used_at", null)
       .gt("expires_at", now)
+      .select("*")
       .maybeSingle(),
   );
   if (!authorization)
     throw new Error(
       "This connection request expired. Start again from BrizBuilder.",
     );
-  const { accountId } = await exchangeStripeConnectCode(code);
-  const account = await checkStripeConnectedAccount(accountId);
-  const status = account.isEnabled ? "connected" : "inactive";
-  await assertOk(
+
+  const initiatingContext = await getTenantContext({
+    displayName: String(authorization.requested_by_email),
+    email: String(authorization.requested_by_email),
+    fullName: null,
+  });
+  if (
+    initiatingContext.organizationId !== String(authorization.organization_id)
+  )
+    throw new Error("Forbidden");
+  requirePermission(initiatingContext, "payments.manage");
+  await requireClient(initiatingContext, String(authorization.client_id));
+
+  const { accountId, livemode } = await exchangeStripeConnectCode(code);
+  try {
+    const [account, duplicate, current] = await Promise.all([
+      checkStripeConnectedAccount(accountId),
+      assertOk(
+        supabase()
+          .from("provider_connections")
+          .select("id,organization_id,client_id")
+          .eq("provider", "stripe")
+          .eq("external_account_id", accountId)
+          .is("disconnected_at", null)
+          .neq("client_id", authorization.client_id)
+          .limit(1)
+          .maybeSingle(),
+      ),
+      assertOk(
+        supabase()
+          .from("provider_connections")
+          .select("id,external_account_id,disconnected_at")
+          .eq("organization_id", authorization.organization_id)
+          .eq("client_id", authorization.client_id)
+          .eq("provider", "stripe")
+          .maybeSingle(),
+      ),
+    ]);
+    if (duplicate)
+      throw new Error(
+        "This Stripe account is already connected to another BrizBuilder business.",
+      );
+    if (
+      current?.external_account_id &&
+      !current.disconnected_at &&
+      current.external_account_id !== accountId
+    )
+      throw new Error(
+        "Disconnect the current Stripe account before connecting a different one.",
+      );
+
+    await assertOk(
+      supabase()
+        .from("provider_connections")
+        .upsert(
+          {
+            organization_id: authorization.organization_id,
+            client_id: authorization.client_id,
+            provider: "stripe",
+            status: stripeConnectionStatus(account),
+            billing_owner: "customer",
+            external_account_id: account.id,
+            external_account_name: account.name,
+            scopes: ["read_write"],
+            livemode,
+            public_config: stripePublicConfig(account, livemode),
+            connected_by_email: authorization.requested_by_email,
+            connected_at: now,
+            disconnected_at: null,
+            last_health_check_at: now,
+            last_error: stripeFriendlyStatus(account),
+            updated_at: now,
+          },
+          { onConflict: "organization_id,client_id,provider" },
+        ),
+    );
+    await audit(
+      initiatingContext,
+      "stripe.connected",
+      "provider_connection",
+      null,
+      { livemode, setupStatus: account.setupStatus },
+      String(authorization.client_id),
+    );
+    return String(authorization.client_id);
+  } catch (error) {
+    try {
+      await deauthorizeStripeAccount(accountId);
+    } catch {
+      // A signed deauthorization webhook and the health check provide cleanup
+      // if Stripe accepted OAuth but a later local persistence step failed.
+    }
+    throw error;
+  }
+}
+
+export async function createSupabaseStripeAccountSession(
+  user: ChatGPTUser,
+  clientId: string,
+) {
+  const context = await getTenantContext(user);
+  requirePermission(context, "payments.manage");
+  if (!isStripeFinancialOwner(context)) throw new Error("Forbidden");
+  await requireClient(context, clientId);
+  if (!getStripeRuntimeStatus().embeddedConfigured)
+    throw new Error("Stripe's secure account tools are not available yet.");
+
+  const connection = await assertOk(
     supabase()
       .from("provider_connections")
-      .upsert(
-        {
-          organization_id: authorization.organization_id,
-          client_id: authorization.client_id,
-          provider: "stripe",
-          status,
-          billing_owner: "customer",
-          external_account_id: account.id,
-          external_account_name: account.name,
-          scopes: ["read_write"],
-          public_config: {
-            accountStatus: account.isEnabled ? "active" : "restricted",
-            accountType: "Stripe Standard account",
-            currency: account.currency,
-          },
-          connected_by_email: authorization.requested_by_email,
-          connected_at: now,
-          disconnected_at: null,
-          last_health_check_at: now,
-          last_error: account.isEnabled
-            ? null
-            : "Stripe needs more information from this account before it can accept payments.",
+      .select(
+        "id,status,external_account_id,disconnected_at,livemode",
+      )
+      .eq("organization_id", context.organizationId)
+      .eq("client_id", clientId)
+      .eq("provider", "stripe")
+      .maybeSingle(),
+  );
+  if (
+    !connection ||
+    !providerIsLinked(connection) ||
+    ["disconnecting", "deauthorization_pending", "revoked"].includes(
+      String(connection.status).toLowerCase(),
+    )
+  )
+    throw new Error("Connect this business's Stripe account first.");
+
+  if (typeof connection.livemode !== "boolean")
+    throw new Error("Reconnect Stripe before opening the secure account tools.");
+
+  const capabilities = {
+    paymentsRead: true,
+    payoutsRead: true,
+    onboarding: true,
+    accountManagement: true,
+    refunds: true,
+    disputes: true,
+    payouts: true,
+    instantPayouts: false,
+  };
+  const session = await createStripeAccountSession(
+    String(connection.external_account_id),
+    capabilities,
+    connection.livemode,
+  );
+  await audit(
+    context,
+    "stripe.account_session.created",
+    "provider_connection",
+    String(connection.id),
+    {
+      livemode: connection.livemode,
+      components: Object.entries(session.capabilities)
+        .filter(([, enabled]) => enabled)
+        .map(([name]) => name),
+    },
+    clientId,
+  );
+  return session;
+}
+
+const STRIPE_WEBHOOK_EVENTS = new Set([
+  "account.updated",
+  "account.application.deauthorized",
+]);
+
+function stripeWebhookAccountId(event: StripeWebhookEvent) {
+  const objectId = event.data?.object?.id;
+  const accountId =
+    typeof event.account === "string"
+      ? event.account
+      : typeof objectId === "string"
+        ? objectId
+        : "";
+  if (!/^acct_[A-Za-z0-9]{8,}$/.test(accountId))
+    throw new Error("Stripe event is missing a connected account.");
+  return accountId;
+}
+
+export async function handleSupabaseStripeWebhook(event: StripeWebhookEvent) {
+  const accountId = stripeWebhookAccountId(event);
+  const claimed = await assertOk(
+    supabase().rpc("claim_provider_webhook_event", {
+      p_provider: "stripe",
+      p_event_id: event.id,
+      p_event_type: event.type,
+      p_external_account_id: accountId,
+      p_livemode: event.livemode,
+    }),
+  );
+  if (!claimed) return { duplicate: true };
+
+  try {
+    const connections = await assertOk(
+      supabase()
+        .from("provider_connections")
+        .select("id,organization_id,client_id")
+        .eq("provider", "stripe")
+        .eq("external_account_id", accountId)
+        .eq("livemode", event.livemode)
+        .is("disconnected_at", null),
+    );
+    const matched = (connections ?? []) as AnyRecord[];
+    const now = new Date().toISOString();
+
+    if (
+      event.type === "account.application.deauthorized" &&
+      matched.length
+    ) {
+      await Promise.all(
+        matched.map((connection) =>
+          assertOk(
+            supabase()
+              .from("provider_connections")
+              .update({
+                status: "revoked",
+                external_account_id: null,
+                disconnected_at: now,
+                last_health_check_at: now,
+                last_error:
+                  "This business disconnected BrizBuilder from inside Stripe.",
+                updated_at: now,
+              })
+              .eq("id", connection.id)
+              .eq("organization_id", connection.organization_id)
+              .eq("client_id", connection.client_id),
+          ),
+        ),
+      );
+    } else if (event.type === "account.updated" && matched.length) {
+      const account = await checkStripeConnectedAccount(accountId);
+      await Promise.all(
+        matched.map((connection) =>
+          assertOk(
+            supabase()
+              .from("provider_connections")
+              .update({
+                status: stripeConnectionStatus(account),
+                external_account_name: account.name,
+                public_config: stripePublicConfig(account, event.livemode),
+                last_health_check_at: now,
+                last_error: stripeFriendlyStatus(account),
+                updated_at: now,
+              })
+              .eq("id", connection.id)
+              .eq("organization_id", connection.organization_id)
+              .eq("client_id", connection.client_id)
+              .eq("livemode", event.livemode),
+          ),
+        ),
+      );
+    }
+
+    if (matched.length && STRIPE_WEBHOOK_EVENTS.has(event.type)) {
+      await assertOk(
+        supabase().from("audit_events").insert(
+          matched.map((connection) => ({
+            organization_id: connection.organization_id,
+            client_id: connection.client_id,
+            actor_email: "stripe-webhook",
+            action:
+              event.type === "account.updated"
+                ? "stripe.account.updated"
+                : "stripe.deauthorized",
+            record_type: "provider_connection",
+            record_id: connection.id,
+            metadata: {
+              eventId: event.id,
+              livemode: event.livemode,
+            },
+          })),
+        ),
+      );
+    }
+    await assertOk(
+      supabase()
+        .from("provider_webhook_events")
+        .update({
+          status: STRIPE_WEBHOOK_EVENTS.has(event.type)
+            ? "processed"
+            : "ignored",
+          processed_at: now,
+          last_error: null,
           updated_at: now,
-        },
-        { onConflict: "organization_id,client_id,provider" },
-      ),
-  );
-  await assertOk(
-    supabase()
-      .from("provider_authorization_states")
-      .update({ used_at: now })
-      .eq("id", authorization.id),
-  );
-  return String(authorization.client_id);
+        })
+        .eq("provider", "stripe")
+        .eq("event_id", event.id),
+    );
+    return {
+      processed: STRIPE_WEBHOOK_EVENTS.has(event.type),
+      matched: matched.length,
+    };
+  } catch (error) {
+    await assertOk(
+      supabase()
+        .from("provider_webhook_events")
+        .update({
+          status: "failed",
+          last_error: "Stripe webhook processing failed.",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("provider", "stripe")
+        .eq("event_id", event.id),
+    );
+    throw error;
+  }
 }
 
 const GOOGLE_BUSINESS_PROVIDER = "google_business_profile";
@@ -2044,6 +2394,35 @@ function mapProviderConnection(row: AnyRecord): CrmProviderConnection {
     accountLabel: nullable(row.external_account_name),
     accountStatus: providerAccountStatus(row),
     accountType: nullable(publicConfig.accountType),
+    setupStatus: nullable(publicConfig.setupStatus),
+    chargesEnabled:
+      typeof publicConfig.chargesEnabled === "boolean"
+        ? publicConfig.chargesEnabled
+        : null,
+    payoutsEnabled:
+      typeof publicConfig.payoutsEnabled === "boolean"
+        ? publicConfig.payoutsEnabled
+        : null,
+    detailsSubmitted:
+      typeof publicConfig.detailsSubmitted === "boolean"
+        ? publicConfig.detailsSubmitted
+        : null,
+    currentlyDueCount:
+      publicConfig.currentlyDueCount == null
+        ? null
+        : Number(publicConfig.currentlyDueCount),
+    pastDueCount:
+      publicConfig.pastDueCount == null
+        ? null
+        : Number(publicConfig.pastDueCount),
+    pendingVerificationCount:
+      publicConfig.pendingVerificationCount == null
+        ? null
+        : Number(publicConfig.pendingVerificationCount),
+    disabledReason: nullable(publicConfig.disabledReason),
+    currentDeadline: nullable(publicConfig.currentDeadline),
+    country: nullable(publicConfig.country),
+    livemode: typeof row.livemode === "boolean" ? row.livemode : null,
     balance: null,
     balanceStatus: isLinked ? "shared" : "unavailable",
     currency: nullable(publicConfig.currency),
@@ -3268,6 +3647,8 @@ export async function executeSupabaseCrmAction(
 
   if (action === "disconnect_provider") {
     const provider = optionalText(input.provider, 40) ?? "twilio";
+    if (provider !== "twilio" && provider !== "stripe")
+      throw new Error("Unsupported provider.");
     requirePermission(
       context,
       provider === "stripe" ? "payments.manage" : "phone_system.manage",
@@ -3275,6 +3656,55 @@ export async function executeSupabaseCrmAction(
     const clientId = requireText(input.clientId, "Client", 100);
     await requireClient(context, clientId);
     const now = new Date().toISOString();
+    const connection = await assertOk(
+      supabase()
+        .from("provider_connections")
+        .select("id,status,external_account_id,disconnected_at")
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", provider)
+        .maybeSingle(),
+    );
+    if (!connection || !providerIsLinked(connection))
+      throw new Error(
+        provider === "stripe"
+          ? "Stripe is not connected."
+          : "Twilio is not connected.",
+      );
+    if (provider === "stripe") {
+      await assertOk(
+        supabase()
+          .from("provider_connections")
+          .update({
+            status: "disconnecting",
+            last_error: null,
+            updated_at: now,
+          })
+          .eq("id", connection.id)
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId),
+      );
+      try {
+        await deauthorizeStripeAccount(String(connection.external_account_id));
+      } catch {
+        await assertOk(
+          supabase()
+            .from("provider_connections")
+            .update({
+              status: "deauthorization_pending",
+              last_error:
+                "Stripe could not confirm the disconnect yet. BrizBuilder access is blocked and will be retried.",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", connection.id)
+            .eq("organization_id", context.organizationId)
+            .eq("client_id", clientId),
+        );
+        throw new Error(
+          "Stripe could not confirm the disconnect yet. BrizBuilder access has been blocked.",
+        );
+      }
+    }
     const updates = [
       assertOk(
         supabase()
@@ -3334,7 +3764,7 @@ export async function executeSupabaseCrmAction(
       supabase()
         .from("provider_connections")
         .select(
-          "id,status,external_account_id,disconnected_at,public_config",
+          "id,status,external_account_id,disconnected_at,public_config,livemode",
         )
         .eq("organization_id", context.organizationId)
         .eq("client_id", clientId)
@@ -3353,10 +3783,9 @@ export async function executeSupabaseCrmAction(
         const account = await checkStripeConnectedAccount(
           String(connection.external_account_id),
         );
-        const status = account.isEnabled ? "connected" : "inactive";
-        const lastError = account.isEnabled
-          ? null
-          : "Stripe needs more information from this account before it can accept payments. Finish setup in the Stripe dashboard, then refresh.";
+        const livemode = connection.livemode === true;
+        const status = stripeConnectionStatus(account);
+        const lastError = stripeFriendlyStatus(account);
         const now = new Date().toISOString();
         await assertOk(
           supabase()
@@ -3364,11 +3793,7 @@ export async function executeSupabaseCrmAction(
             .update({
               status,
               external_account_name: account.name,
-              public_config: {
-                accountStatus: account.isEnabled ? "active" : "restricted",
-                accountType: "Stripe Standard account",
-                currency: account.currency,
-              },
+              public_config: stripePublicConfig(account, livemode),
               last_health_check_at: now,
               last_error: lastError,
               updated_at: now,
@@ -3381,6 +3806,10 @@ export async function executeSupabaseCrmAction(
           chargesEnabled: account.chargesEnabled,
           payoutsEnabled: account.payoutsEnabled,
           detailsSubmitted: account.detailsSubmitted,
+          setupStatus: account.setupStatus,
+          currentlyDueCount: account.currentlyDueCount,
+          pastDueCount: account.pastDueCount,
+          pendingVerificationCount: account.pendingVerificationCount,
           status,
           isLinked: true,
           isActive: account.isEnabled,

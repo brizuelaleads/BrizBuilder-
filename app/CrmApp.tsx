@@ -278,6 +278,11 @@ export function CrmApp({
           "Twilio connected. The customer keeps ownership and billing.",
         );
         window.setTimeout(() => setToast(""), 5000);
+      } else if (query.get("connected") === "stripe") {
+        setToast(
+          "Stripe connected. The business keeps ownership, billing, and payouts.",
+        );
+        window.setTimeout(() => setToast(""), 5000);
       }
     }, 0);
     return () => window.clearTimeout(timer);
@@ -796,6 +801,7 @@ export function CrmApp({
             clients={data.clients}
             connections={data.providerConnections}
             selectedClientId={selectedClientId}
+            viewerRole={data.viewer.role}
             mutate={mutate}
           />
         )}

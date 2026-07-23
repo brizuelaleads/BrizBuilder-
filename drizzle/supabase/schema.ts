@@ -8,6 +8,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   time,
   timestamp,
@@ -431,6 +432,7 @@ export const providerConnections = pgTable("provider_connections", {
   externalAccountName: text("external_account_name"),
   scopes: jsonb("scopes").notNull().default([]),
   publicConfig: jsonb("public_config").notNull().default({}),
+  livemode: boolean("livemode"),
   connectedByEmail: text("connected_by_email"),
   connectedAt: timestamp("connected_at", { withTimezone: true }),
   disconnectedAt: timestamp("disconnected_at", { withTimezone: true }),
@@ -438,7 +440,18 @@ export const providerConnections = pgTable("provider_connections", {
   lastError: text("last_error"),
   createdAt,
   updatedAt,
-}, (table) => [uniqueIndex("provider_connections_org_client_provider_uidx").on(table.organizationId, table.clientId, table.provider), index("provider_connections_scope_idx").on(table.organizationId, table.clientId, table.provider)]);
+}, (table) => [
+  uniqueIndex("provider_connections_org_client_provider_uidx").on(table.organizationId, table.clientId, table.provider),
+  uniqueIndex("provider_connections_active_stripe_account_uidx")
+    .on(table.externalAccountId)
+    .where(sql`${table.provider} = 'stripe' and ${table.externalAccountId} is not null and ${table.disconnectedAt} is null`),
+  index("provider_connections_scope_idx").on(table.organizationId, table.clientId, table.provider),
+  foreignKey({
+    columns: [table.organizationId, table.clientId],
+    foreignColumns: [clients.organizationId, clients.id],
+    name: "provider_connections_organization_client_fk",
+  }).onDelete("cascade"),
+]);
 
 export const providerAuthorizationStates = pgTable("provider_authorization_states", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -450,7 +463,31 @@ export const providerAuthorizationStates = pgTable("provider_authorization_state
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   usedAt: timestamp("used_at", { withTimezone: true }),
   createdAt,
-}, (table) => [index("provider_auth_expiry_idx").on(table.provider, table.expiresAt)]);
+}, (table) => [
+  index("provider_auth_expiry_idx").on(table.provider, table.expiresAt),
+  foreignKey({
+    columns: [table.organizationId, table.clientId],
+    foreignColumns: [clients.organizationId, clients.id],
+    name: "provider_authorization_states_organization_client_fk",
+  }).onDelete("cascade"),
+]);
+
+export const providerWebhookEvents = pgTable("provider_webhook_events", {
+  provider: text("provider").notNull(),
+  eventId: text("event_id").notNull(),
+  eventType: text("event_type").notNull(),
+  externalAccountId: text("external_account_id"),
+  livemode: boolean("livemode").notNull(),
+  status: text("status").notNull().default("received"),
+  attempts: integer("attempts").notNull().default(1),
+  lastError: text("last_error"),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  processedAt: timestamp("processed_at", { withTimezone: true }),
+  updatedAt,
+}, (table) => [
+  primaryKey({ columns: [table.provider, table.eventId] }),
+  index("provider_webhook_events_status_idx").on(table.provider, table.status, table.updatedAt),
+]);
 
 export const googleBusinessProfiles = pgTable("google_business_profiles", {
   id: uuid("id").primaryKey().defaultRandom(),

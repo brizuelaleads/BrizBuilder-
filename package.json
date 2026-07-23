@@ -24,12 +24,14 @@
   },
   "dependencies": {
     "@jridgewell/sourcemap-codec": "1.5.5",
+    "@stripe/connect-js": "^3.4.6",
+    "@stripe/react-connect-js": "^3.4.4",
     "@supabase/server": "^1.4.0",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.7",
     "drizzle-orm": "0.45.2",
     "jose": "^6.2.4",
-    "next": "16.2.6",
+    "next": "^16.2.11",
     "postgres": "^3.4.9",
     "qrcode.react": "^4.2.0",
     "react": "19.2.6",
@@ -53,6 +55,15 @@
     "vinext": "0.0.50",
     "vite": "8.0.13",
     "wrangler": "4.92.0"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.14",
+      "sharp": "0.35.0"
+    },
+    "miniflare": {
+      "sharp": "0.35.0"
+    }
   },
   "type": "module"
 }
