@@ -3,6 +3,8 @@ import { getSupabaseConfigStatus } from "../supabase/env";
 
 const DEFAULT_PRODUCTION_ORIGIN =
   "https://brizbuilder.brizuelaleads.workers.dev";
+const DEFAULT_PRODUCTION_CONNECTOR_ORIGIN =
+  "https://brizbuilder-ai.brizuelaleads.workers.dev";
 
 function runtimeValue(name: string): string {
   const value = (env as Record<string, unknown>)[name] ?? process.env[name];
@@ -36,6 +38,9 @@ function normalizedPublicOrigin(value: string): string | null {
 const configuredOrigin = normalizedPublicOrigin(
   runtimeValue("BRIZBUILDER_PUBLIC_ORIGIN"),
 );
+const configuredConnectorOrigin = normalizedPublicOrigin(
+  runtimeValue("BRIZBUILDER_AI_CONNECTOR_ORIGIN"),
+);
 
 export const AI_CONNECTOR_ISSUER =
   configuredOrigin ??
@@ -43,8 +48,13 @@ export const AI_CONNECTOR_ISSUER =
     ? DEFAULT_PRODUCTION_ORIGIN
     : "http://localhost:3000");
 
-export const AI_CONNECTOR_ENDPOINT = `${AI_CONNECTOR_ISSUER}/mcp`;
-export const AI_CONNECTOR_RESOURCE = AI_CONNECTOR_ENDPOINT;
+export const AI_CONNECTOR_RESOURCE = `${AI_CONNECTOR_ISSUER}/mcp`;
+export const AI_CONNECTOR_PUBLIC_ORIGIN =
+  configuredConnectorOrigin ??
+  (process.env.NODE_ENV === "production"
+    ? DEFAULT_PRODUCTION_CONNECTOR_ORIGIN
+    : AI_CONNECTOR_ISSUER);
+export const AI_CONNECTOR_ENDPOINT = `${AI_CONNECTOR_PUBLIC_ORIGIN}/mcp`;
 
 export const AI_CONNECTOR_SCOPES = [
   "crm:read",

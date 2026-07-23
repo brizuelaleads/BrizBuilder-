@@ -84,6 +84,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 BRIZBUILDER_BACKEND=supabase
 BRIZBUILDER_PUBLIC_ORIGIN=https://brizbuilder.brizuelaleads.workers.dev
+BRIZBUILDER_AI_CONNECTOR_ORIGIN=https://brizbuilder-ai.brizuelaleads.workers.dev
 ```
 
 Do not put the real `SUPABASE_SERVICE_ROLE_KEY` in GitHub. After deploying, open `/api/supabase/status` to confirm the backend is connected.
@@ -224,6 +225,12 @@ npm run build
   collect payments, reveal credentials, or run arbitrary database queries.
 - Access is rechecked against the current BrizBuilder membership on every tool
   call. Disconnecting an app revokes both access and refresh tokens.
+- Production uses the separate `brizbuilder-ai` machine gateway. It exposes only
+  OAuth discovery/registration/token routes and `/mcp`; the dashboard and human
+  approval screen remain on the Cloudflare Access-protected `brizbuilder` Worker.
+- Deploy the gateway with
+  `npx wrangler deploy --config ai-gateway/wrangler.jsonc`. Its service binding
+  reaches the protected Worker without duplicating Supabase or OAuth secrets.
 
 ## Not implemented yet
 
