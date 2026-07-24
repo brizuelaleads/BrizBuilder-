@@ -2213,6 +2213,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .crm-review-settings-form > footer { align-items: stretch; flex-direction: column; }
   .crm-review-settings-form > footer span { margin-right: 0; }
 .crm-review-settings-form > footer .crm-button-primary { width: 100%; }
+}
 
 /* Stripe Connect workspace */
 .crm-payments-view { display: grid; gap: 18px; }
@@ -2525,5 +2526,4 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .crm-stripe-workspace-header button { justify-content: center; }
   .crm-stripe-component { padding: 12px; }
   .crm-stripe-danger-zone button { width: 100%; }
-}
 }
