@@ -300,8 +300,9 @@ export function CrmApp({
         (selectedClientId === "all" || lead.clientId === selectedClientId) &&
         (!cutoff ||
           new Date(
-            lead.createdAt.replace(" ", "T") +
-              (lead.createdAt.includes("Z") ? "" : "Z"),
+            lead.createdAt.includes("T")
+              ? lead.createdAt
+              : `${lead.createdAt.replace(" ", "T")}Z`,
           ) >= cutoff),
     );
   }, [data.leads, data.generatedAt, selectedClientId, range]);
