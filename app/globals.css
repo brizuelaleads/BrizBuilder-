@@ -2527,3 +2527,90 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .crm-stripe-component { padding: 12px; }
   .crm-stripe-danger-zone button { width: 100%; }
 }
+
+/* A2P 10DLC registration card */
+.crm-a2p-card {
+  margin-top: 18px;
+  padding: 22px;
+  border: 1px solid var(--crm-border);
+  border-radius: 17px;
+  background: var(--crm-surface);
+  box-shadow: 0 9px 30px rgb(19 24 43 / 4%);
+}
+.crm-a2p-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.crm-a2p-card header p {
+  margin: 0;
+  color: var(--crm-purple);
+  font-size: 7px;
+  font-weight: 850;
+  letter-spacing: 1.15px;
+}
+.crm-a2p-card header h3 { margin: 4px 0 0; font-size: 16px; }
+.crm-a2p-guidance {
+  margin: 12px 0 0;
+  color: var(--crm-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.crm-a2p-steps {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.crm-a2p-steps article {
+  display: flex;
+  gap: 11px;
+  padding: 13px;
+  border: 1px solid var(--crm-border);
+  border-radius: 12px;
+  background: #f8f8fb;
+}
+.crm-a2p-steps b {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--crm-purple);
+  font-size: 11px;
+  font-weight: 800;
+}
+.crm-a2p-steps strong { display: block; font-size: 12px; }
+.crm-a2p-steps p { margin: 4px 0 0; color: var(--crm-muted); font-size: 10px; line-height: 1.5; }
+.crm-a2p-actions {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.crm-a2p-secondary {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 16px;
+  border: 1px solid var(--crm-border);
+  border-radius: 10px;
+  color: var(--crm-text);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  background: #fff;
+}
+.crm-a2p-secondary:hover { border-color: var(--crm-purple); color: #4a3fd0; }
+.crm-a2p-note {
+  margin: 14px 0 0;
+  color: var(--crm-muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+@media (max-width: 620px) {
+  .crm-a2p-steps { grid-template-columns: 1fr; }
+  .crm-a2p-actions a { width: 100%; justify-content: center; }
+}

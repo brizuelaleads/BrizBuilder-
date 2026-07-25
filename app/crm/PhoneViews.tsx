@@ -67,6 +67,23 @@ function statusTone(value: string) {
       : "orange";
 }
 
+// Customers complete registration in their own Twilio account. These open the
+// Twilio Console; deep links may drift, but they land on the right area.
+const TWILIO_A2P_ONBOARDING_URL =
+  "https://console.twilio.com/us1/develop/sms/regulatory-compliance/onboarding";
+const TWILIO_TRUST_HUB_URL =
+  "https://console.twilio.com/us1/account/trust-hub/customer-profiles";
+
+function a2pGuidance(status: string) {
+  if (status === "approved")
+    return "This business is registered. Texting features are unlocked.";
+  if (status === "in_progress")
+    return "Twilio is reviewing the registration. This can take a few days. Set the status to Approved once Twilio confirms it.";
+  if (status === "rejected")
+    return "Twilio flagged something in the registration. Open it in Twilio, fix the noted items, and resubmit.";
+  return "US business texting requires a one-time A2P 10DLC registration in this business's Twilio account before any text can be sent.";
+}
+
 export function PhoneSystemView({
   clients,
   configs,
@@ -434,6 +451,67 @@ export function PhoneSystemView({
               </Badge>
             </article>
           </section>
+          <article className="crm-a2p-card">
+            <header>
+              <div>
+                <p>TEXT MESSAGE REGISTRATION</p>
+                <h3>A2P 10DLC status</h3>
+              </div>
+              <Badge tone={statusTone(config?.a2pStatus ?? "not_started")}>
+                {(config?.a2pStatus ?? "not_started").replaceAll("_", " ")}
+              </Badge>
+            </header>
+            <p className="crm-a2p-guidance">
+              {a2pGuidance(config?.a2pStatus ?? "not_started")}
+            </p>
+            <div className="crm-a2p-steps">
+              <article>
+                <b>1</b>
+                <div>
+                  <strong>Verify the business (Trust Hub)</strong>
+                  <p>
+                    Twilio confirms the business&apos;s legal identity. This is
+                    required before buying a number or registering to text.
+                  </p>
+                </div>
+              </article>
+              <article>
+                <b>2</b>
+                <div>
+                  <strong>Register for A2P 10DLC</strong>
+                  <p>
+                    Register the business and its texting use case so US
+                    carriers allow the messages through.
+                  </p>
+                </div>
+              </article>
+            </div>
+            <div className="crm-a2p-actions">
+              <a
+                className="crm-button-primary"
+                href={TWILIO_A2P_ONBOARDING_URL}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Register for A2P in Twilio
+              </a>
+              <a
+                className="crm-a2p-secondary"
+                href={TWILIO_TRUST_HUB_URL}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Business verification (Trust Hub)
+              </a>
+            </div>
+            <p className="crm-a2p-note">
+              Registration and verification happen in {client.businessName}
+              &apos;s own Twilio account — BrizBuilder can&apos;t submit it for
+              them. Once Twilio marks it approved, set the status to{" "}
+              <strong>Approved</strong> in the settings below to turn on
+              texting.
+            </p>
+          </article>
           <div className="crm-phone-layout">
             <form
               className="crm-phone-settings"
