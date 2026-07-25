@@ -3069,6 +3069,70 @@ function defaultFeatureFlags(clients: AnyRecord[]): CrmFeatureFlag[] {
   }));
 }
 
+// Resolves the business a lead belongs to. Accepts an explicit clientId
+// (existing callers) or a typed business name: matches an existing business
+// case-insensitively, otherwise creates one (which needs clients.manage).
+async function resolveLeadClientId(
+  context: TenantContext,
+  input: CrmAction,
+): Promise<string> {
+  const explicitId = optionalText(input.clientId, 80);
+  if (explicitId) {
+    await requireClient(context, explicitId);
+    return explicitId;
+  }
+  const businessName = requireText(input.businessName, "Business name", 160);
+  const existing = (await assertOk(
+    supabase()
+      .from("clients")
+      .select("id,business_name")
+      .eq("organization_id", context.organizationId)
+      .neq("status", "archived"),
+  )) as AnyRecord[];
+  const match = existing.find(
+    (row) =>
+      String(row.business_name).trim().toLowerCase() ===
+      businessName.toLowerCase(),
+  );
+  if (match) {
+    // Enforces tenant scope: a client-scoped user only reaches their own business.
+    await requireClient(context, String(match.id));
+    return String(match.id);
+  }
+
+  requirePermission(context, "clients.manage");
+  const slugBase =
+    businessName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 70) || crypto.randomUUID();
+  const created = requireRow(
+    await assertOk(
+      supabase()
+        .from("clients")
+        .insert({
+          organization_id: context.organizationId,
+          business_name: businessName,
+          slug: `${slugBase}-${crypto.randomUUID().slice(0, 6)}`,
+          industry: optionalText(input.industry, 100) ?? "General",
+          city: "",
+          state: "",
+          zip: "",
+          time_zone: "America/Chicago",
+          assigned_account_manager: context.name,
+        })
+        .select("id")
+        .single(),
+    ),
+    "Business could not be created.",
+  );
+  await audit(context, "client.created", "client", String(created.id), {
+    via: "lead_form",
+  });
+  return String(created.id);
+}
+
 export async function executeSupabaseCrmAction(
   user: ChatGPTUser,
   input: CrmAction,
@@ -4949,8 +5013,7 @@ export async function executeSupabaseCrmAction(
 
   if (action === "create_lead") {
     requirePermission(context, "opportunities.write");
-    const clientId = requireText(input.clientId, "Client", 80);
-    await requireClient(context, clientId);
+    const clientId = await resolveLeadClientId(context, input);
     const firstName = requireText(input.firstName, "First name", 80);
     const lastName = requireText(input.lastName, "Last name", 80);
     const phone = optionalText(input.phone, 40);
