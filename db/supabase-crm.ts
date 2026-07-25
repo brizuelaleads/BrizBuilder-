@@ -5146,11 +5146,39 @@ export async function executeSupabaseCrmAction(
       typeof input.status === "string" && allowedStatuses.has(input.status)
         ? input.status
         : String(lead.status);
+    // When the status changes, move the lead to the matching pipeline stage so
+    // the Leads status and the Pipeline board stay in sync (inverse of the
+    // stage->status mapping used by move_lead).
+    const stageSlugByStatus: Record<string, string> = {
+      NEW: "new",
+      CONTACTED: "contacted",
+      QUALIFIED: "qualified",
+      APPOINTMENT_BOOKED: "appointment-booked",
+      ESTIMATE_SENT: "estimate-sent",
+      WON: "won",
+      LOST: "lost",
+      SPAM: "lost",
+      UNRESPONSIVE: "lost",
+    };
+    let syncedStageId: string | null = null;
+    if (status !== String(lead.status) && stageSlugByStatus[status]) {
+      const stage = await assertOk(
+        supabase()
+          .from("pipeline_stages")
+          .select("id")
+          .eq("organization_id", context.organizationId)
+          .eq("slug", stageSlugByStatus[status])
+          .limit(1)
+          .maybeSingle(),
+      );
+      if (stage) syncedStageId = String(stage.id);
+    }
     await assertOk(
       supabase()
         .from("leads")
         .update({
           status,
+          ...(syncedStageId ? { stage_id: syncedStageId } : {}),
           assigned_user:
             optionalText(input.assignedUser, 120) ?? lead.assigned_user,
           estimated_value_cents:
