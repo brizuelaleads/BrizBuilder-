@@ -697,6 +697,7 @@ export function CrmApp({
             leads={filteredLeads}
             onOpenLead={openLead}
             onAddLead={() => setModal("lead")}
+            mutate={mutate}
           />
         )}
         {view === "pipeline" && (

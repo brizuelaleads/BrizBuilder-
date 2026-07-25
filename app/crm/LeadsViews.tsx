@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type DragEvent, type FormEvent } from "react";
+import { useMemo, useState, type DragEvent, type FormEvent, type MouseEvent } from "react";
 import type { CrmActivity, CrmLead, CrmNote, CrmStage, CrmTask, CrmAppointment } from "../../db/crm";
 import { Badge, dateTime, EmptyState, money, shortDate } from "./ui";
 
@@ -14,8 +14,13 @@ function statusTone(status: string): "neutral" | "purple" | "green" | "orange" |
   return "orange";
 }
 
-export function LeadsView({ leads, onOpenLead, onAddLead }: { leads: CrmLead[]; onOpenLead: (lead: CrmLead) => void; onAddLead: () => void }) {
+export function LeadsView({ leads, onOpenLead, onAddLead, mutate }: { leads: CrmLead[]; onOpenLead: (lead: CrmLead) => void; onAddLead: () => void; mutate: Mutate }) {
   const [query, setQuery] = useState("");
+  async function deleteLead(event: MouseEvent, lead: CrmLead) {
+    event.stopPropagation();
+    if (!window.confirm(`Delete this lead for ${lead.firstName} ${lead.lastName}? This permanently removes the lead. The contact stays in Contacts.`)) return;
+    await mutate({ action: "delete_lead", leadId: lead.id }, "Lead deleted");
+  }
   const [status, setStatus] = useState("ALL");
   const [source, setSource] = useState("ALL");
   const sources = Array.from(new Set(leads.map((lead) => lead.source))).sort();
@@ -44,7 +49,7 @@ export function LeadsView({ leads, onOpenLead, onAddLead }: { leads: CrmLead[]; 
       <select value={source} onChange={(event) => setSource(event.target.value)} aria-label="Filter leads by source"><option value="ALL">All sources</option>{sources.map((item) => <option key={item}>{item}</option>)}</select>
       <span>{filtered.length} results</span>
     </section>
-    {filtered.length ? <section className="crm-table-panel"><table className="crm-table"><thead><tr><th>Lead</th><th>Client</th><th>Service</th><th>Source</th><th>Status</th><th>Value</th><th>Created</th></tr></thead><tbody>{filtered.map((lead) => <tr key={lead.id} onClick={() => onOpenLead(lead)} tabIndex={0} onKeyDown={(event) => event.key === "Enter" && onOpenLead(lead)}><td><span className="crm-table-person"><i>{lead.firstName[0]}{lead.lastName[0]}</i><span><strong>{lead.firstName} {lead.lastName}</strong><small>{lead.phone ?? lead.email ?? "No contact method"}</small></span></span></td><td>{lead.clientName}</td><td>{lead.serviceRequested}</td><td>{lead.source}</td><td><Badge tone={statusTone(lead.status)}>{lead.status.replaceAll("_", " ")}</Badge></td><td>{money(lead.estimatedValueCents)}</td><td>{shortDate(lead.createdAt)}</td></tr>)}</tbody></table></section> : <EmptyState title="No leads match these filters" description="Clear a filter or add a new lead to get started." action={<button className="crm-button-primary" onClick={onAddLead}>Add Lead</button>} />}
+    {filtered.length ? <section className="crm-table-panel"><table className="crm-table"><thead><tr><th>Lead</th><th>Client</th><th>Service</th><th>Source</th><th>Status</th><th>Value</th><th>Created</th><th aria-label="Actions" /></tr></thead><tbody>{filtered.map((lead) => <tr key={lead.id} onClick={() => onOpenLead(lead)} tabIndex={0} onKeyDown={(event) => event.key === "Enter" && onOpenLead(lead)}><td><span className="crm-table-person"><i>{lead.firstName[0]}{lead.lastName[0]}</i><span><strong>{lead.firstName} {lead.lastName}</strong><small>{lead.phone ?? lead.email ?? "No contact method"}</small></span></span></td><td>{lead.clientName}</td><td>{lead.serviceRequested}</td><td>{lead.source}</td><td><Badge tone={statusTone(lead.status)}>{lead.status.replaceAll("_", " ")}</Badge></td><td>{money(lead.estimatedValueCents)}</td><td>{shortDate(lead.createdAt)}</td><td className="crm-lead-actions"><button type="button" className="crm-danger-link" onClick={(event) => void deleteLead(event, lead)}>Delete</button></td></tr>)}</tbody></table></section> : <EmptyState title="No leads match these filters" description="Clear a filter or add a new lead to get started." action={<button className="crm-button-primary" onClick={onAddLead}>Add Lead</button>} />}
   </div>;
 }
 

@@ -2644,3 +2644,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 .crm-sendblue-help:hover { border-color: #2f7bff; color: #0a4bd8; }
 .crm-sendblue-note { margin: 12px 0 0; color: var(--crm-muted); font-size: 10px; line-height: 1.55; }
+
+/* Per-row lead delete action */
+.crm-lead-actions { text-align: right; white-space: nowrap; }
+.crm-lead-actions .crm-danger-link { padding: 4px 8px; }

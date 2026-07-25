@@ -5274,6 +5274,30 @@ export async function executeSupabaseCrmAction(
     return { id: leadId };
   }
 
+  if (action === "delete_lead") {
+    requirePermission(context, "opportunities.write");
+    const leadId = requireText(input.leadId, "Lead", 100);
+    const lead = await assertOk(
+      supabase()
+        .from("leads")
+        .select("client_id")
+        .eq("id", leadId)
+        .eq("organization_id", context.organizationId)
+        .maybeSingle(),
+    );
+    if (!lead) throw new Error("Lead not found.");
+    await requireClient(context, lead.client_id);
+    await assertOk(
+      supabase()
+        .from("leads")
+        .delete()
+        .eq("id", leadId)
+        .eq("organization_id", context.organizationId),
+    );
+    await audit(context, "lead.deleted", "lead", leadId, {}, lead.client_id);
+    return { id: leadId, deleted: true };
+  }
+
   if (action === "add_note") {
     requirePermission(context, "opportunities.write");
     const leadId = requireText(input.leadId, "Lead", 100);
