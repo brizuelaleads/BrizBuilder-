@@ -914,7 +914,12 @@ export function CrmApp({
       {modal === "lead" && (
         <AddLeadModal
           clients={data.clients}
-          mutate={mutate}
+          mutate={async (input, success) => {
+            const result = await mutate(input, success);
+            // Show the new lead even if it created/used a different business.
+            setSelectedClientId("all");
+            return result;
+          }}
           onClose={() => setModal(null)}
         />
       )}
