@@ -14,7 +14,7 @@ export function DashboardView({ leads, clients, appointments, tasks, generatedAt
 }) {
   const won = leads.filter((lead) => lead.status === "WON");
   const newLeads = leads.filter((lead) => lead.status === "NEW");
-  const revenue = leads.reduce((sum, lead) => sum + lead.finalRevenueCents, 0);
+  const revenue = won.reduce((sum, lead) => sum + lead.finalRevenueCents, 0);
   const spend = clients.reduce((sum, client) => sum + client.monthlyAdBudgetCents, 0);
   const booked = leads.filter((lead) => ["APPOINTMENT_BOOKED", "ESTIMATE_SENT", "WON"].includes(lead.status)).length;
   const closeRate = leads.length ? Math.round((won.length / leads.length) * 100) : 0;
