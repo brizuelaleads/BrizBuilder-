@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import type {
   CrmAiAuthorization,
   CrmClient,
@@ -59,6 +59,12 @@ export function ConnectionsView({
   );
   const isLinked = Boolean(connection?.isLinked);
   const isActive = Boolean(connection?.isActive);
+  const sendblueConnection = connections.find(
+    (item) => item.clientId === clientId && item.provider === "sendblue",
+  );
+  const sendblueLinked = Boolean(sendblueConnection?.isLinked);
+  const sendblueActive = Boolean(sendblueConnection?.isActive);
+  const [sendblueError, setSendblueError] = useState("");
   const activeAiAuthorizations = aiAuthorizations.filter(
     (authorization) =>
       authorization.status === "active" &&
@@ -148,6 +154,30 @@ export function ConnectionsView({
     canReadSharedBilling &&
     displayedBalance != null &&
     displayedBalance < 10;
+  async function connectSendblue(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSendblueError("");
+    const formEl = event.currentTarget;
+    const form = new FormData(formEl);
+    const apiKeyId = String(form.get("apiKeyId") ?? "").trim();
+    const apiSecret = String(form.get("apiSecret") ?? "").trim();
+    if (!apiKeyId || !apiSecret) {
+      setSendblueError("Enter both the API Key ID and Secret from Sendblue.");
+      return;
+    }
+    try {
+      await mutate(
+        { action: "connect_sendblue", clientId, apiKeyId, apiSecret },
+        "Sendblue connected.",
+      );
+      formEl.reset();
+    } catch (caught) {
+      setSendblueError(
+        caught instanceof Error ? caught.message : "Could not connect Sendblue.",
+      );
+    }
+  }
+
   return (
     <div className="crm-view crm-connections-view">
       <section className="crm-page-heading">
@@ -407,6 +437,139 @@ export function ConnectionsView({
                 </button>
               ) : null}
             </div>
+          </article>
+          <article className="crm-connection-card sendblue">
+            <header>
+              <span className="crm-provider-logo sendblue">SB</span>
+              <div>
+                <h3>Sendblue</h3>
+                <p>
+                  Send iMessage (blue bubbles) and SMS from this business&apos;s
+                  own Sendblue account
+                </p>
+              </div>
+              <Badge tone={sendblueLinked ? "green" : "orange"}>
+                {sendblueLinked ? "Connected" : "Not connected"}
+              </Badge>
+            </header>
+            {sendblueLinked ? (
+              <>
+                <div className="crm-connection-details compact">
+                  <div>
+                    <span>Integration status</span>
+                    <strong>
+                      <Badge tone={sendblueActive ? "green" : "red"}>
+                        {sendblueActive ? "Active" : "Needs a number"}
+                      </Badge>
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Sendblue number</span>
+                    <strong>
+                      {sendblueConnection?.accountLabel ?? "Not provisioned"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Business</span>
+                    <strong>{client.businessName}</strong>
+                  </div>
+                  <div>
+                    <span>Billing</span>
+                    <strong>Uses customer&apos;s Sendblue plan</strong>
+                  </div>
+                </div>
+                {sendblueConnection?.lastError ? (
+                  <p className="crm-inline-error">
+                    <strong>Needs attention:</strong>{" "}
+                    {sendblueConnection.lastError}
+                  </p>
+                ) : null}
+                <div className="crm-connection-actions">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void mutate(
+                        {
+                          action: "check_provider_connection",
+                          provider: "sendblue",
+                          clientId,
+                        },
+                        "Sendblue status refreshed.",
+                      )
+                    }
+                  >
+                    Refresh connection
+                  </button>
+                  <button
+                    className="danger"
+                    type="button"
+                    onClick={() =>
+                      window.confirm(
+                        "Disconnect Sendblue? iMessage and SMS through Sendblue will stop for this business.",
+                      ) &&
+                      void mutate(
+                        {
+                          action: "disconnect_provider",
+                          provider: "sendblue",
+                          clientId,
+                        },
+                        "Sendblue disconnected.",
+                      )
+                    }
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="crm-sendblue-intro">
+                  Paste this business&apos;s Sendblue API keys to connect.
+                  BrizBuilder stores them encrypted and never shows them again.
+                </p>
+                <form className="crm-sendblue-form" onSubmit={connectSendblue}>
+                  <label>
+                    <span>API Key ID</span>
+                    <input
+                      name="apiKeyId"
+                      autoComplete="off"
+                      spellCheck={false}
+                      placeholder="From the Sendblue dashboard"
+                    />
+                  </label>
+                  <label>
+                    <span>API Secret</span>
+                    <input
+                      name="apiSecret"
+                      type="password"
+                      autoComplete="off"
+                      spellCheck={false}
+                      placeholder="Secret key"
+                    />
+                  </label>
+                  {sendblueError ? (
+                    <p className="crm-inline-error">{sendblueError}</p>
+                  ) : null}
+                  <div className="crm-connection-actions">
+                    <button className="crm-button-primary" type="submit">
+                      Connect Sendblue
+                    </button>
+                    <a
+                      className="crm-sendblue-help"
+                      href="https://sendblue.com/dashboard"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Get API keys
+                    </a>
+                  </div>
+                </form>
+                <p className="crm-sendblue-note">
+                  iMessage delivery depends on Apple and can vary; Sendblue falls
+                  back to SMS. Get consent and honor STOP replies before texting.
+                </p>
+              </>
+            )}
           </article>
         </div>
       )}

@@ -2614,3 +2614,33 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .crm-a2p-steps { grid-template-columns: 1fr; }
   .crm-a2p-actions a { width: 100%; justify-content: center; }
 }
+
+/* Sendblue connection card */
+.crm-provider-logo.sendblue { background: linear-gradient(135deg, #2f7bff, #0a4bd8); font-size: 12px; }
+.crm-connection-card.sendblue { border-top: 3px solid #2f7bff; }
+.crm-sendblue-intro { margin: 18px 0 0; color: var(--crm-muted); font-size: 11px; line-height: 1.55; }
+.crm-sendblue-form { margin-top: 14px; display: grid; gap: 12px; }
+.crm-sendblue-form label { display: grid; gap: 5px; }
+.crm-sendblue-form label span { color: var(--crm-ink); font-size: 11px; font-weight: 700; }
+.crm-sendblue-form input {
+  padding: 10px 12px;
+  border: 1px solid var(--crm-border);
+  border-radius: 10px;
+  font-size: 13px;
+  background: #fff;
+}
+.crm-sendblue-form input:focus-visible { border-color: #2f7bff; outline: none; }
+.crm-sendblue-help {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 16px;
+  border: 1px solid var(--crm-border);
+  border-radius: 10px;
+  color: var(--crm-text);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  background: #fff;
+}
+.crm-sendblue-help:hover { border-color: #2f7bff; color: #0a4bd8; }
+.crm-sendblue-note { margin: 12px 0 0; color: var(--crm-muted); font-size: 10px; line-height: 1.55; }
