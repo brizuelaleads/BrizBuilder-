@@ -43,6 +43,27 @@ export async function getSupabaseAccountAccess(
   if (profileError) throw new Error(profileError.message);
   if (!profile?.id) return null;
 
+  // Agency members are checked first, mirroring getTenantContext. Without this
+  // an invited agency teammate resolves to no access at all and is stranded on
+  // the "access pending" screen even though their membership is active.
+  const { data: agencyMembership, error: agencyError } = await supabase
+    .from("organization_members")
+    .select("role,status")
+    .eq("profile_id", profile.id)
+    .eq("status", "active")
+    .limit(1)
+    .maybeSingle();
+
+  if (agencyError) throw new Error(agencyError.message);
+  if (agencyMembership?.role) {
+    return {
+      email,
+      displayName: String(profile.display_name ?? user.displayName),
+      role: "admin",
+      client: null,
+    };
+  }
+
   const { data: membership, error: membershipError } = await supabase
     .from("client_members")
     .select(

@@ -8,6 +8,7 @@ const root = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
 const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
 
 const crmSource = read("db/supabase-crm.ts");
+const accessSource = read("db/supabase-access.ts");
 const formsSource = read("app/crm/ActionForms.tsx");
 const opsSource = read("app/crm/OperationsViews.tsx");
 
@@ -77,6 +78,21 @@ test("the team roster never leaks beyond the viewer's own workspace", () => {
   assert.match(rosterBlock, /context\.clientId\s*\?\s*Promise\.resolve\(\[\]/);
   assert.match(rosterBlock, /clientMemberQuery\.eq\("client_id", context\.clientId\)/);
   assert.match(rosterBlock, /\.eq\("organization_id", context\.organizationId\)/);
+});
+
+test("an invited person of either kind actually resolves to access", () => {
+  const block = accessSource.match(
+    /export async function getSupabaseAccountAccess\([\s\S]*?\n\}/,
+  )?.[0];
+  assert.ok(block, "getSupabaseAccountAccess exists");
+  // Both membership tables must be consulted, or one kind of invited user
+  // lands on the "access pending" screen forever.
+  const agencyIndex = block.indexOf('.from("organization_members")');
+  const clientIndex = block.indexOf('.from("client_members")');
+  assert.ok(agencyIndex >= 0, "agency memberships are recognized");
+  assert.ok(clientIndex >= 0, "client memberships are recognized");
+  assert.ok(agencyIndex < clientIndex, "agency is checked first, as in getTenantContext");
+  assert.match(block, /\.eq\("status", "active"\)/);
 });
 
 test("the invite UI requires a sub-account for client roles and explains the Access step", () => {
