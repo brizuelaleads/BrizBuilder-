@@ -5,6 +5,7 @@ import type {
   CrmAutomationRule,
   CrmAutomationRun,
   CrmClient,
+  CrmContact,
   CrmConversation,
   CrmMessage,
   CrmPhoneCall,
@@ -700,6 +701,8 @@ export function PhoneSystemView({
 
 export function ConversationsView({
   clients,
+  contacts,
+  connections,
   conversations,
   messages,
   calls,
@@ -707,6 +710,8 @@ export function ConversationsView({
   mutate,
 }: {
   clients: CrmClient[];
+  contacts: CrmContact[];
+  connections: CrmProviderConnection[];
   conversations: CrmConversation[];
   messages: CrmMessage[];
   calls: CrmPhoneCall[];
@@ -716,6 +721,48 @@ export function ConversationsView({
   const visible = conversations.filter(
     (item) => selectedClientId === "all" || item.clientId === selectedClientId,
   );
+  // Businesses with an active Sendblue connection can send iMessage/SMS.
+  const sendblueClientIds = new Set(
+    connections
+      .filter((item) => item.provider === "sendblue" && item.isLinked)
+      .map((item) => item.clientId),
+  );
+  const sendblueContacts = contacts.filter(
+    (contact) =>
+      sendblueClientIds.has(contact.clientId) &&
+      contact.phone &&
+      (selectedClientId === "all" || contact.clientId === selectedClientId),
+  );
+  const [composeError, setComposeError] = useState("");
+  async function sendNewMessage(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setComposeError("");
+    const formEl = event.currentTarget;
+    const form = new FormData(formEl);
+    const contactId = String(form.get("contactId") ?? "");
+    const contact = sendblueContacts.find((item) => item.id === contactId);
+    if (!contact) {
+      setComposeError("Choose a contact to message.");
+      return;
+    }
+    try {
+      await mutate(
+        {
+          action: "send_sms",
+          provider: "sendblue",
+          clientId: contact.clientId,
+          contactId,
+          body: form.get("body"),
+        },
+        "Message sent through Sendblue.",
+      );
+      formEl.reset();
+    } catch (caught) {
+      setComposeError(
+        caught instanceof Error ? caught.message : "Could not send the message.",
+      );
+    }
+  }
   const [activeId, setActiveId] = useState(visible[0]?.id ?? "");
   const effectiveActiveId = visible.some((item) => item.id === activeId)
     ? activeId
@@ -776,6 +823,52 @@ export function ConversationsView({
           <strong>{missedCalls.length}</strong>
         </article>
       </section>
+      {sendblueContacts.length ? (
+        <section className="crm-sendblue-compose">
+          <header>
+            <div>
+              <p>SEND A MESSAGE</p>
+              <h3>New iMessage / SMS via Sendblue</h3>
+            </div>
+            <Badge tone="blue">Sendblue</Badge>
+          </header>
+          <form onSubmit={sendNewMessage}>
+            <label>
+              <span>To contact</span>
+              <select name="contactId" required defaultValue="">
+                <option value="" disabled>
+                  Choose a contact
+                </option>
+                {sendblueContacts.map((contact) => (
+                  <option key={contact.id} value={contact.id}>
+                    {contact.firstName} {contact.lastName} · {contact.phone}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Message</span>
+              <textarea
+                name="body"
+                rows={3}
+                required
+                placeholder="iPhones get a blue iMessage; other phones get an SMS."
+              />
+            </label>
+            {composeError ? (
+              <p className="crm-inline-error">{composeError}</p>
+            ) : null}
+            <div className="crm-sendblue-compose-actions">
+              <button className="crm-button-primary" type="submit">
+                Send message
+              </button>
+              <span>
+                Get consent before texting. Recipients can reply STOP to opt out.
+              </span>
+            </div>
+          </form>
+        </section>
+      ) : null}
       {!visible.length ? (
         <section className="crm-empty-state">
           <h3>No conversations yet</h3>

@@ -120,6 +120,44 @@ function extractNumbers(payload: unknown): string[] {
   return numbers;
 }
 
+// Sends an iMessage (with automatic SMS fallback) from the connected Sendblue
+// number. Returns a normalized handle + status shaped like Twilio's send result.
+export async function sendSendblueMessage(
+  credentials: SendblueCredentials,
+  input: {
+    to: string;
+    fromNumber?: string | null;
+    content: string;
+    mediaUrl?: string | null;
+  },
+): Promise<{ handle: string | null; status: string }> {
+  if (!E164.test(input.to.trim()))
+    throw new Error("Enter the recipient's phone number in +1XXXXXXXXXX format.");
+  const body: Record<string, unknown> = {
+    number: input.to.trim(),
+    content: input.content.slice(0, 18_000),
+  };
+  if (input.fromNumber && E164.test(input.fromNumber.trim()))
+    body.from_number = input.fromNumber.trim();
+  if (input.mediaUrl) body.media_url = input.mediaUrl;
+  const payload = await sendblueApi<{
+    message_handle?: string;
+    handle?: string;
+    id?: string;
+    status?: string;
+    error_message?: string;
+  }>(credentials, "/api/send-message", { method: "POST", body });
+  const status = String(payload.status ?? "QUEUED").toUpperCase();
+  if (status === "ERROR" || status === "DECLINED")
+    throw new Error(
+      payload.error_message || "Sendblue could not send this message.",
+    );
+  return {
+    handle: payload.message_handle ?? payload.handle ?? payload.id ?? null,
+    status,
+  };
+}
+
 // Validates the keys with a lightweight authenticated call and returns the
 // account's provisioned Sendblue numbers. A 200 confirms the keys are good.
 export async function checkSendblueAccount(credentials: SendblueCredentials) {

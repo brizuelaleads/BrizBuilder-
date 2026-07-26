@@ -834,6 +834,8 @@ export function CrmApp({
         {view === "conversations" && (
           <ConversationsView
             clients={data.clients}
+            contacts={filteredContacts}
+            connections={data.providerConnections}
             conversations={data.conversations}
             messages={data.messages}
             calls={data.phoneCalls}

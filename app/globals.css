@@ -2648,3 +2648,35 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 /* Per-row lead delete action */
 .crm-lead-actions { text-align: right; white-space: nowrap; }
 .crm-lead-actions .crm-danger-link { padding: 4px 8px; }
+
+/* Sendblue compose panel in Conversations */
+.crm-sendblue-compose {
+  margin-bottom: 16px;
+  padding: 18px;
+  border: 1px solid var(--crm-border);
+  border-top: 3px solid #2f7bff;
+  border-radius: 15px;
+  background: var(--crm-surface);
+}
+.crm-sendblue-compose > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.crm-sendblue-compose header p { margin: 0; color: var(--crm-purple); font-size: 7px; font-weight: 850; letter-spacing: 1.15px; }
+.crm-sendblue-compose header h3 { margin: 4px 0 0; font-size: 15px; }
+.crm-sendblue-compose form { margin-top: 14px; display: grid; gap: 12px; }
+.crm-sendblue-compose label { display: grid; gap: 5px; }
+.crm-sendblue-compose label span { color: var(--crm-ink); font-size: 11px; font-weight: 700; }
+.crm-sendblue-compose select,
+.crm-sendblue-compose textarea {
+  padding: 10px 12px;
+  border: 1px solid var(--crm-border);
+  border-radius: 10px;
+  font-size: 13px;
+  background: #fff;
+  font-family: inherit;
+}
+.crm-sendblue-compose select:focus-visible,
+.crm-sendblue-compose textarea:focus-visible { border-color: #2f7bff; outline: none; }
+.crm-sendblue-compose-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.crm-sendblue-compose-actions span { color: var(--crm-muted); font-size: 10px; }
+@media (max-width: 620px) {
+  .crm-sendblue-compose-actions .crm-button-primary { width: 100%; }
+}

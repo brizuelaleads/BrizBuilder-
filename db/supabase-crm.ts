@@ -45,6 +45,7 @@ import {
   decryptSendblueCredentials,
   encryptSendblueCredentials,
   getSendblueRuntimeStatus,
+  sendSendblueMessage,
 } from "../lib/sendblue";
 import {
   executeWorkflow,
@@ -4710,6 +4711,7 @@ export async function executeSupabaseCrmAction(
     const clientId = requireText(input.clientId, "Client", 100);
     const contactId = requireText(input.contactId, "Contact", 100);
     await requireClient(context, clientId);
+    const provider = optionalText(input.provider, 40) ?? "twilio";
     const [contactResult, config] = await Promise.all([
       assertOk(
         supabase()
@@ -4734,6 +4736,84 @@ export async function executeSupabaseCrmAction(
       throw new Error("This contact does not have a phone number.");
     if (String(contact.marketing_consent).toLowerCase() === "opt_out")
       throw new Error("This contact opted out of text messages.");
+
+    if (provider === "sendblue") {
+      const connection = await assertOk(
+        supabase()
+          .from("provider_connections")
+          .select("external_account_id,status,disconnected_at")
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId)
+          .eq("provider", "sendblue")
+          .maybeSingle(),
+      );
+      if (!connection || !providerIsLinked(connection))
+        throw new Error(
+          "Connect this business's Sendblue account before sending messages.",
+        );
+      const credentials = await loadSendblueCredentials(context, clientId);
+      const fromNumber = nullable(connection.external_account_id);
+      const body = requireText(input.body, "Message", 18000);
+      const conversation = requireRow(
+        await assertOk(
+          supabase()
+            .from("conversations")
+            .upsert(
+              {
+                organization_id: context.organizationId,
+                client_id: clientId,
+                contact_id: contactId,
+                channel: "imessage",
+                status: "open",
+                last_message_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "client_id,contact_id,channel" },
+            )
+            .select("id")
+            .single(),
+        ),
+        "Conversation was not created.",
+      );
+      const sent = await sendSendblueMessage(credentials, {
+        to: String(contact.phone),
+        fromNumber,
+        content: body,
+      });
+      const message = requireRow(
+        await assertOk(
+          supabase()
+            .from("messages")
+            .insert({
+              organization_id: context.organizationId,
+              client_id: clientId,
+              conversation_id: conversation.id,
+              contact_id: contactId,
+              provider_message_sid: sent.handle,
+              direction: "outbound",
+              channel: "imessage",
+              from_number: fromNumber ?? "",
+              to_number: String(contact.phone),
+              body,
+              status: sent.status,
+              sent_at: new Date().toISOString(),
+            })
+            .select("id")
+            .single(),
+        ),
+        "Message was not saved.",
+      );
+      await audit(
+        context,
+        "message.sent",
+        "message",
+        String(message.id),
+        { provider: "sendblue" },
+        clientId,
+      );
+      return { id: message.id, status: sent.status };
+    }
+
     if (!config || config.provider_status !== "connected")
       throw new Error(
         "Connect this client's Twilio phone system before sending messages.",
