@@ -104,7 +104,7 @@ const nav: Array<{
   },
   { id: "calendar", label: "Calendar", icon: "A", section: "Operations" },
   { id: "tasks", label: "Tasks", icon: "T" },
-  { id: "clients", label: "Clients", icon: "B", agencyOnly: true },
+  { id: "clients", label: "Agency", icon: "B", agencyOnly: true, section: "Agency" },
   { id: "reports", label: "Reports", icon: "R", section: "Insights" },
   {
     id: "connections",

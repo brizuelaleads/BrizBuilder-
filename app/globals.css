@@ -2650,3 +2650,152 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 @media (max-width: 620px) {
   .crm-message-compose-actions .crm-button-primary { width: 100%; }
 }
+
+/* Dashboard theme pilot: a single scoped test of a cyberpunk look. Nothing
+   here can leak outside .crm-dashboard-view.cyberpunk. */
+.crm-theme-pilot-actions { display: flex; align-items: center; gap: 10px; }
+.crm-theme-pilot-toggle {
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 20px;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  background: rgba(255, 255, 255, 0.08);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.crm-theme-pilot-toggle:hover { background: rgba(255, 255, 255, 0.16); }
+.crm-dashboard-view.cyberpunk .crm-theme-pilot-toggle {
+  border-color: #ff2fd0;
+  color: #ff2fd0;
+  background: rgba(255, 47, 208, 0.12);
+  text-shadow: 0 0 8px rgba(255, 47, 208, 0.65);
+}
+.crm-dashboard-view.cyberpunk .crm-theme-pilot-toggle:hover {
+  background: rgba(255, 47, 208, 0.22);
+}
+
+.crm-dashboard-view.cyberpunk {
+  padding: 22px;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 15% 0%, rgba(0, 255, 242, 0.12), transparent 45%),
+    radial-gradient(circle at 100% 20%, rgba(255, 47, 208, 0.12), transparent 40%),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.025) 0px, rgba(255, 255, 255, 0.025) 1px, transparent 1px, transparent 3px),
+    linear-gradient(160deg, #06040f, #0a0620 55%, #06040f);
+  box-shadow: inset 0 0 0 1px rgba(0, 255, 242, 0.15), 0 20px 60px rgb(0 0 0 / 45%);
+}
+.crm-dashboard-view.cyberpunk,
+.crm-dashboard-view.cyberpunk .crm-empty-inline { color: #d9e6ff; }
+.crm-dashboard-view.cyberpunk .crm-welcome-row {
+  color: #eafcff;
+  background: linear-gradient(115deg, #0c0a26, #1a0e3a);
+  box-shadow: 0 0 0 1px rgba(0, 255, 242, 0.35), 0 0 30px rgba(255, 47, 208, 0.12);
+}
+.crm-dashboard-view.cyberpunk .crm-welcome-row h2 {
+  color: #eafcff;
+  text-shadow: 0 0 16px rgba(0, 255, 242, 0.35);
+}
+.crm-dashboard-view.cyberpunk .crm-welcome-row > div > span { color: #9fb3e6; }
+.crm-dashboard-view.cyberpunk .crm-page-heading p,
+.crm-dashboard-view.cyberpunk .crm-welcome-row p,
+.crm-dashboard-view.cyberpunk .crm-panel header p {
+  color: #00fff2;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  letter-spacing: 1.6px;
+  text-shadow: 0 0 8px rgba(0, 255, 242, 0.55);
+}
+
+.crm-dashboard-view.cyberpunk .crm-metric-grid article {
+  border: 1px solid rgba(0, 255, 242, 0.25);
+  border-radius: 11px;
+  background: rgba(9, 8, 28, 0.75);
+  box-shadow: 0 0 0 1px rgba(0, 255, 242, 0.08), 0 10px 30px rgb(0 0 0 / 35%);
+}
+.crm-dashboard-view.cyberpunk .crm-metric-grid article > span { color: #7fa3e0; }
+.crm-dashboard-view.cyberpunk .crm-metric-grid article strong {
+  color: #f2fbff;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  text-shadow: 0 0 10px rgba(0, 255, 242, 0.55);
+}
+.crm-dashboard-view.cyberpunk .crm-metric-grid article small { color: #6b7bb0; }
+.crm-dashboard-view.cyberpunk .crm-metric-grid .crm-metric-primary {
+  color: #06040f;
+  border-color: #ff2fd0;
+  background: linear-gradient(135deg, #ff2fd0, #00fff2);
+  box-shadow: 0 0 26px rgba(255, 47, 208, 0.45);
+}
+.crm-dashboard-view.cyberpunk .crm-metric-grid .crm-metric-primary span,
+.crm-dashboard-view.cyberpunk .crm-metric-grid .crm-metric-primary small { color: #1a0e2e; }
+.crm-dashboard-view.cyberpunk .crm-metric-grid .crm-metric-primary strong { color: #06040f; text-shadow: none; }
+
+.crm-dashboard-view.cyberpunk .crm-panel {
+  border: 1px solid rgba(0, 255, 242, 0.2);
+  border-radius: 12px;
+  background: rgba(9, 8, 28, 0.75);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 35%);
+}
+.crm-dashboard-view.cyberpunk .crm-panel header span { color: #7fa3e0; }
+.crm-dashboard-view.cyberpunk .crm-panel header h3 { color: #eafcff; }
+.crm-dashboard-view.cyberpunk .crm-panel header button {
+  border: 1px solid rgba(255, 47, 208, 0.45);
+  border-radius: 16px;
+  padding: 5px 10px;
+  color: #ff2fd0;
+  font-size: 8px;
+  font-weight: 800;
+  background: rgba(255, 47, 208, 0.08);
+}
+.crm-dashboard-view.cyberpunk .crm-panel header button:hover { background: rgba(255, 47, 208, 0.18); }
+
+.crm-dashboard-view.cyberpunk .crm-column-chart {
+  background-image: linear-gradient(rgba(0, 255, 242, 0.08) 1px, transparent 1px);
+}
+.crm-dashboard-view.cyberpunk .crm-column-chart strong { color: #eafcff; }
+.crm-dashboard-view.cyberpunk .crm-column-chart small { color: #6b7bb0; }
+.crm-dashboard-view.cyberpunk .crm-column-chart div > span {
+  background: linear-gradient(180deg, #00fff2, #ff2fd0);
+  box-shadow: 0 0 16px rgba(0, 255, 242, 0.55);
+}
+
+.crm-dashboard-view.cyberpunk .crm-bar-list > div > div { color: #a9bce8; }
+.crm-dashboard-view.cyberpunk .crm-bar-list i { background: rgba(255, 255, 255, 0.06); }
+.crm-dashboard-view.cyberpunk .crm-bar-list i span {
+  background: linear-gradient(90deg, #00fff2, #ff2fd0);
+  box-shadow: 0 0 10px rgba(0, 255, 242, 0.5);
+}
+
+.crm-dashboard-view.cyberpunk .crm-compact-list > button,
+.crm-dashboard-view.cyberpunk .crm-next-panel > button {
+  border-bottom: 1px solid rgba(0, 255, 242, 0.1);
+}
+.crm-dashboard-view.cyberpunk .crm-compact-list > button:hover,
+.crm-dashboard-view.cyberpunk .crm-next-panel > button:hover {
+  background: rgba(0, 255, 242, 0.06);
+}
+.crm-dashboard-view.cyberpunk .crm-compact-list strong,
+.crm-dashboard-view.cyberpunk .crm-next-panel strong { color: #eafcff; }
+.crm-dashboard-view.cyberpunk .crm-compact-list small,
+.crm-dashboard-view.cyberpunk .crm-next-panel small { color: #7fa3e0; }
+.crm-dashboard-view.cyberpunk .crm-avatar {
+  color: #06040f;
+  background: linear-gradient(135deg, #00fff2, #ff2fd0);
+}
+.crm-dashboard-view.cyberpunk .crm-next-icon {
+  color: #00fff2;
+  background: rgba(0, 255, 242, 0.12);
+  box-shadow: 0 0 0 1px rgba(0, 255, 242, 0.3);
+}
+.crm-dashboard-view.cyberpunk .crm-next-icon.crm-next-task {
+  color: #ff2fd0;
+  background: rgba(255, 47, 208, 0.12);
+  box-shadow: 0 0 0 1px rgba(255, 47, 208, 0.3);
+}
+
+.crm-dashboard-view.cyberpunk .crm-badge-neutral { color: #a9bce8; background: rgba(169, 188, 232, 0.12); }
+.crm-dashboard-view.cyberpunk .crm-badge-purple { color: #ff2fd0; background: rgba(255, 47, 208, 0.14); }
+.crm-dashboard-view.cyberpunk .crm-badge-green { color: #39ff88; background: rgba(57, 255, 136, 0.14); }
+.crm-dashboard-view.cyberpunk .crm-badge-orange { color: #ffb020; background: rgba(255, 176, 32, 0.14); }
+.crm-dashboard-view.cyberpunk .crm-badge-red { color: #ff4d6d; background: rgba(255, 77, 109, 0.14); }
+.crm-dashboard-view.cyberpunk .crm-badge-blue { color: #00fff2; background: rgba(0, 255, 242, 0.14); }

@@ -1,7 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { CrmAppointment, CrmClient, CrmLead, CrmTask } from "../../db/crm";
 import { Badge, dateTime, money } from "./ui";
+
+const THEME_STORAGE_KEY = "brizbuilder:dashboard-theme-preview";
 
 export function DashboardView({ leads, clients, appointments, tasks, generatedAt, onOpenLead, onNavigate }: {
   leads: CrmLead[];
@@ -12,6 +15,16 @@ export function DashboardView({ leads, clients, appointments, tasks, generatedAt
   onOpenLead: (lead: CrmLead) => void;
   onNavigate: (view: "leads" | "calendar" | "tasks" | "reports") => void;
 }) {
+  // Local-only theme pilot, scoped to this one tab. No account/theme data
+  // model yet -- this is a throwaway toggle to test the look before deciding
+  // whether to build real theming.
+  const [cyberpunk, setCyberpunk] = useState(
+    () => typeof window !== "undefined" && window.localStorage.getItem(THEME_STORAGE_KEY) === "1",
+  );
+  useEffect(() => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, cyberpunk ? "1" : "0");
+  }, [cyberpunk]);
+
   const won = leads.filter((lead) => lead.status === "WON");
   const newLeads = leads.filter((lead) => lead.status === "NEW");
   const revenue = won.reduce((sum, lead) => sum + lead.finalRevenueCents, 0);
@@ -47,10 +60,15 @@ export function DashboardView({ leads, clients, appointments, tasks, generatedAt
     ["ROAS", `${roas.toFixed(1)}x`, "Revenue ÷ ad spend"],
   ];
 
-  return <div className="crm-view crm-dashboard-view">
+  return <div className={`crm-view crm-dashboard-view${cyberpunk ? " cyberpunk" : ""}`}>
     <section className="crm-welcome-row">
       <div><p>AGENCY COMMAND CENTER</p><h2>Every lead, next step, and dollar in one view.</h2><span>Your workspace is empty until you add real clients, leads, forms, and appointments.</span></div>
-      <Badge tone="green">Live workspace</Badge>
+      <div className="crm-theme-pilot-actions">
+        <button type="button" className="crm-theme-pilot-toggle" onClick={() => setCyberpunk((value) => !value)} aria-pressed={cyberpunk}>
+          {cyberpunk ? "⚡ Cyberpunk: On" : "⚡ Try cyberpunk theme"}
+        </button>
+        <Badge tone="green">Live workspace</Badge>
+      </div>
     </section>
 
     <section className="crm-metric-grid" aria-label="Key performance indicators">
