@@ -41,13 +41,6 @@ import {
   type StripeWebhookEvent,
 } from "../lib/stripe";
 import {
-  checkSendblueAccount,
-  decryptSendblueCredentials,
-  encryptSendblueCredentials,
-  getSendblueRuntimeStatus,
-  sendSendblueMessage,
-} from "../lib/sendblue";
-import {
   executeWorkflow,
   runPublishedWorkflowsForEvent,
   validateWorkflowGraph,
@@ -1353,40 +1346,6 @@ export async function handleSupabaseStripeWebhook(event: StripeWebhookEvent) {
     );
     throw error;
   }
-}
-
-// Reads and decrypts the client's Sendblue API keys. Server-only: the
-// sendblue_credentials table is service-role only, and plaintext keys never
-// leave this module.
-async function loadSendblueCredentials(
-  context: TenantContext,
-  clientId: string,
-) {
-  const row = await assertOk(
-    supabase()
-      .from("sendblue_credentials")
-      .select(
-        "api_key_id_ciphertext,api_key_id_iv,api_secret_ciphertext,api_secret_iv",
-      )
-      .eq("organization_id", context.organizationId)
-      .eq("client_id", clientId)
-      .maybeSingle(),
-  );
-  if (!row) throw new Error("Sendblue is not connected for this business.");
-  return decryptSendblueCredentials(
-    {
-      apiKeyId: {
-        ciphertext: String(row.api_key_id_ciphertext),
-        iv: String(row.api_key_id_iv),
-      },
-      apiSecret: {
-        ciphertext: String(row.api_secret_ciphertext),
-        iv: String(row.api_secret_iv),
-      },
-    },
-    context.organizationId,
-    clientId,
-  );
 }
 
 const GOOGLE_BUSINESS_PROVIDER = "google_business_profile";
@@ -3750,94 +3709,9 @@ export async function executeSupabaseCrmAction(
     );
   }
 
-  if (action === "connect_sendblue") {
-    requirePermission(context, "phone_system.manage");
-    const clientId = requireText(input.clientId, "Client", 100);
-    await requireClient(context, clientId);
-    if (!getSendblueRuntimeStatus().configured)
-      throw new Error(
-        "Sendblue is not configured on this BrizBuilder yet. Add the encryption key first.",
-      );
-    const apiKeyId = requireText(input.apiKeyId, "Sendblue API Key ID", 300);
-    const apiSecret = requireText(input.apiSecret, "Sendblue API Secret", 300);
-    const account = await checkSendblueAccount({ apiKeyId, apiSecret });
-    const now = new Date().toISOString();
-    const encrypted = await encryptSendblueCredentials(
-      { apiKeyId, apiSecret },
-      context.organizationId,
-      clientId,
-    );
-    await assertOk(
-      supabase()
-        .from("sendblue_credentials")
-        .upsert(
-          {
-            organization_id: context.organizationId,
-            client_id: clientId,
-            api_key_id_ciphertext: encrypted.apiKeyId.ciphertext,
-            api_key_id_iv: encrypted.apiKeyId.iv,
-            api_secret_ciphertext: encrypted.apiSecret.ciphertext,
-            api_secret_iv: encrypted.apiSecret.iv,
-            sendblue_number: account.primaryNumber,
-            connected_by_email: context.email,
-            updated_at: now,
-          },
-          { onConflict: "organization_id,client_id" },
-        ),
-    );
-    const status = account.hasNumber ? "connected" : "inactive";
-    await assertOk(
-      supabase()
-        .from("provider_connections")
-        .upsert(
-          {
-            organization_id: context.organizationId,
-            client_id: clientId,
-            provider: "sendblue",
-            status,
-            billing_owner: "customer",
-            external_account_id: account.primaryNumber ?? "sendblue",
-            external_account_name: account.primaryNumber ?? "Sendblue account",
-            scopes: ["send", "receive"],
-            public_config: {
-              number: account.primaryNumber,
-              numbers: account.numbers,
-              imessageEnabled: true,
-            },
-            connected_by_email: context.email,
-            connected_at: now,
-            disconnected_at: null,
-            last_health_check_at: now,
-            last_error: account.hasNumber
-              ? null
-              : "Sendblue is connected but has no phone number yet. Provision a number in Sendblue to start messaging.",
-            updated_at: now,
-          },
-          { onConflict: "organization_id,client_id,provider" },
-        ),
-    );
-    await audit(
-      context,
-      "sendblue.connected",
-      "provider_connection",
-      null,
-      { hasNumber: account.hasNumber },
-      clientId,
-    );
-    return {
-      connected: true,
-      number: account.primaryNumber,
-      hasNumber: account.hasNumber,
-    };
-  }
-
   if (action === "disconnect_provider") {
     const provider = optionalText(input.provider, 40) ?? "twilio";
-    if (
-      provider !== "twilio" &&
-      provider !== "stripe" &&
-      provider !== "sendblue"
-    )
+    if (provider !== "twilio" && provider !== "stripe")
       throw new Error("Unsupported provider.");
     requirePermission(
       context,
@@ -3859,9 +3733,7 @@ export async function executeSupabaseCrmAction(
       throw new Error(
         provider === "stripe"
           ? "Stripe is not connected."
-          : provider === "sendblue"
-            ? "Sendblue is not connected."
-            : "Twilio is not connected.",
+          : "Twilio is not connected.",
       );
     if (provider === "stripe") {
       await assertOk(
@@ -3932,17 +3804,6 @@ export async function executeSupabaseCrmAction(
         ),
       );
     }
-    if (provider === "sendblue") {
-      updates.push(
-        assertOk(
-          supabase()
-            .from("sendblue_credentials")
-            .delete()
-            .eq("organization_id", context.organizationId)
-            .eq("client_id", clientId),
-        ),
-      );
-    }
     await Promise.all(updates);
     await audit(
       context,
@@ -3978,9 +3839,7 @@ export async function executeSupabaseCrmAction(
       throw new Error(
         provider === "stripe"
           ? "Connect the customer's Stripe account first."
-          : provider === "sendblue"
-            ? "Connect the customer's Sendblue account first."
-            : "Connect the customer's Twilio account first.",
+          : "Connect the customer's Twilio account first.",
       );
 
     if (provider === "stripe") {
@@ -4019,69 +3878,6 @@ export async function executeSupabaseCrmAction(
           isLinked: true,
           isActive: account.isEnabled,
           healthy: account.isEnabled,
-          error: lastError,
-        };
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message.slice(0, 500)
-            : "Connection failed";
-        const now = new Date().toISOString();
-        await assertOk(
-          supabase()
-            .from("provider_connections")
-            .update({
-              status: "error",
-              last_health_check_at: now,
-              last_error: message,
-              updated_at: now,
-            })
-            .eq("id", connection.id),
-        );
-        return {
-          status: "error",
-          isLinked: true,
-          isActive: false,
-          healthy: false,
-          error: message,
-        };
-      }
-    }
-
-    if (provider === "sendblue") {
-      try {
-        const credentials = await loadSendblueCredentials(context, clientId);
-        const account = await checkSendblueAccount(credentials);
-        const status = account.hasNumber ? "connected" : "inactive";
-        const lastError = account.hasNumber
-          ? null
-          : "Sendblue is connected but has no phone number yet. Provision a number in Sendblue to start messaging.";
-        const now = new Date().toISOString();
-        await assertOk(
-          supabase()
-            .from("provider_connections")
-            .update({
-              status,
-              external_account_id: account.primaryNumber ?? "sendblue",
-              external_account_name: account.primaryNumber ?? "Sendblue account",
-              public_config: {
-                number: account.primaryNumber,
-                numbers: account.numbers,
-                imessageEnabled: true,
-              },
-              last_health_check_at: now,
-              last_error: lastError,
-              updated_at: now,
-            })
-            .eq("id", connection.id),
-        );
-        return {
-          number: account.primaryNumber,
-          numbers: account.numbers,
-          status,
-          isLinked: true,
-          isActive: status === "connected",
-          healthy: status === "connected",
           error: lastError,
         };
       } catch (error) {
@@ -4711,7 +4507,6 @@ export async function executeSupabaseCrmAction(
     const clientId = requireText(input.clientId, "Client", 100);
     const contactId = requireText(input.contactId, "Contact", 100);
     await requireClient(context, clientId);
-    const provider = optionalText(input.provider, 40) ?? "twilio";
     const [contactResult, config] = await Promise.all([
       assertOk(
         supabase()
@@ -4736,84 +4531,6 @@ export async function executeSupabaseCrmAction(
       throw new Error("This contact does not have a phone number.");
     if (String(contact.marketing_consent).toLowerCase() === "opt_out")
       throw new Error("This contact opted out of text messages.");
-
-    if (provider === "sendblue") {
-      const connection = await assertOk(
-        supabase()
-          .from("provider_connections")
-          .select("external_account_id,status,disconnected_at")
-          .eq("organization_id", context.organizationId)
-          .eq("client_id", clientId)
-          .eq("provider", "sendblue")
-          .maybeSingle(),
-      );
-      if (!connection || !providerIsLinked(connection))
-        throw new Error(
-          "Connect this business's Sendblue account before sending messages.",
-        );
-      const credentials = await loadSendblueCredentials(context, clientId);
-      const fromNumber = nullable(connection.external_account_id);
-      const body = requireText(input.body, "Message", 18000);
-      const conversation = requireRow(
-        await assertOk(
-          supabase()
-            .from("conversations")
-            .upsert(
-              {
-                organization_id: context.organizationId,
-                client_id: clientId,
-                contact_id: contactId,
-                channel: "imessage",
-                status: "open",
-                last_message_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: "client_id,contact_id,channel" },
-            )
-            .select("id")
-            .single(),
-        ),
-        "Conversation was not created.",
-      );
-      const sent = await sendSendblueMessage(credentials, {
-        to: String(contact.phone),
-        fromNumber,
-        content: body,
-      });
-      const message = requireRow(
-        await assertOk(
-          supabase()
-            .from("messages")
-            .insert({
-              organization_id: context.organizationId,
-              client_id: clientId,
-              conversation_id: conversation.id,
-              contact_id: contactId,
-              provider_message_sid: sent.handle,
-              direction: "outbound",
-              channel: "imessage",
-              from_number: fromNumber ?? "",
-              to_number: String(contact.phone),
-              body,
-              status: sent.status,
-              sent_at: new Date().toISOString(),
-            })
-            .select("id")
-            .single(),
-        ),
-        "Message was not saved.",
-      );
-      await audit(
-        context,
-        "message.sent",
-        "message",
-        String(message.id),
-        { provider: "sendblue" },
-        clientId,
-      );
-      return { id: message.id, status: sent.status };
-    }
-
     if (!config || config.provider_status !== "connected")
       throw new Error(
         "Connect this client's Twilio phone system before sending messages.",

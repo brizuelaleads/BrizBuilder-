@@ -2615,57 +2615,27 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .crm-a2p-actions a { width: 100%; justify-content: center; }
 }
 
-/* Sendblue connection card */
-.crm-provider-logo.sendblue { background: linear-gradient(135deg, #2f7bff, #0a4bd8); font-size: 12px; }
-.crm-connection-card.sendblue { border-top: 3px solid #2f7bff; }
-.crm-sendblue-intro { margin: 18px 0 0; color: var(--crm-muted); font-size: 11px; line-height: 1.55; }
-.crm-sendblue-form { margin-top: 14px; display: grid; gap: 12px; }
-.crm-sendblue-form label { display: grid; gap: 5px; }
-.crm-sendblue-form label span { color: var(--crm-ink); font-size: 11px; font-weight: 700; }
-.crm-sendblue-form input {
-  padding: 10px 12px;
-  border: 1px solid var(--crm-border);
-  border-radius: 10px;
-  font-size: 13px;
-  background: #fff;
-}
-.crm-sendblue-form input:focus-visible { border-color: #2f7bff; outline: none; }
-.crm-sendblue-help {
-  display: inline-flex;
-  align-items: center;
-  padding: 10px 16px;
-  border: 1px solid var(--crm-border);
-  border-radius: 10px;
-  color: var(--crm-text);
-  font-size: 12px;
-  font-weight: 700;
-  text-decoration: none;
-  background: #fff;
-}
-.crm-sendblue-help:hover { border-color: #2f7bff; color: #0a4bd8; }
-.crm-sendblue-note { margin: 12px 0 0; color: var(--crm-muted); font-size: 10px; line-height: 1.55; }
-
 /* Per-row lead delete action */
 .crm-lead-actions { text-align: right; white-space: nowrap; }
 .crm-lead-actions .crm-danger-link { padding: 4px 8px; }
 
-/* Sendblue compose panel in Conversations */
-.crm-sendblue-compose {
+/* New-message compose panel in Conversations */
+.crm-message-compose {
   margin-bottom: 16px;
   padding: 18px;
   border: 1px solid var(--crm-border);
-  border-top: 3px solid #2f7bff;
+  border-top: 3px solid var(--crm-purple);
   border-radius: 15px;
   background: var(--crm-surface);
 }
-.crm-sendblue-compose > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.crm-sendblue-compose header p { margin: 0; color: var(--crm-purple); font-size: 7px; font-weight: 850; letter-spacing: 1.15px; }
-.crm-sendblue-compose header h3 { margin: 4px 0 0; font-size: 15px; }
-.crm-sendblue-compose form { margin-top: 14px; display: grid; gap: 12px; }
-.crm-sendblue-compose label { display: grid; gap: 5px; }
-.crm-sendblue-compose label span { color: var(--crm-ink); font-size: 11px; font-weight: 700; }
-.crm-sendblue-compose select,
-.crm-sendblue-compose textarea {
+.crm-message-compose > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.crm-message-compose header p { margin: 0; color: var(--crm-purple); font-size: 7px; font-weight: 850; letter-spacing: 1.15px; }
+.crm-message-compose header h3 { margin: 4px 0 0; font-size: 15px; }
+.crm-message-compose form { margin-top: 14px; display: grid; gap: 12px; }
+.crm-message-compose label { display: grid; gap: 5px; }
+.crm-message-compose label span { color: var(--crm-ink); font-size: 11px; font-weight: 700; }
+.crm-message-compose select,
+.crm-message-compose textarea {
   padding: 10px 12px;
   border: 1px solid var(--crm-border);
   border-radius: 10px;
@@ -2673,10 +2643,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   background: #fff;
   font-family: inherit;
 }
-.crm-sendblue-compose select:focus-visible,
-.crm-sendblue-compose textarea:focus-visible { border-color: #2f7bff; outline: none; }
-.crm-sendblue-compose-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.crm-sendblue-compose-actions span { color: var(--crm-muted); font-size: 10px; }
+.crm-message-compose select:focus-visible,
+.crm-message-compose textarea:focus-visible { border-color: var(--crm-purple); outline: none; }
+.crm-message-compose-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.crm-message-compose-actions span { color: var(--crm-muted); font-size: 10px; }
 @media (max-width: 620px) {
-  .crm-sendblue-compose-actions .crm-button-primary { width: 100%; }
+  .crm-message-compose-actions .crm-button-primary { width: 100%; }
 }
