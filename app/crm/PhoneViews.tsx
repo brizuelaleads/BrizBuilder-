@@ -783,14 +783,17 @@ export function ConversationsView({
     event.preventDefault();
     if (!active) return;
     const form = new FormData(event.currentTarget);
+    // Prefer Sendblue (iMessage/SMS, no A2P) when this business has it connected.
+    const useSendblue = sendblueClientIds.has(active.clientId);
     await mutate(
       {
         action: "send_sms",
+        ...(useSendblue ? { provider: "sendblue" } : {}),
         clientId: active.clientId,
         contactId: active.contactId,
         body: form.get("body"),
       },
-      "Text message sent.",
+      useSendblue ? "Message sent through Sendblue." : "Text message sent.",
     );
     event.currentTarget.reset();
   }
