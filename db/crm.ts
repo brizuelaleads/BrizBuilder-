@@ -498,6 +498,11 @@ export type CrmWorkflowRun = {
   completedAt: string | null;
 };
 
+export type { CrmTheme } from "./theme";
+export { CRM_THEMES } from "./theme";
+import { CRM_THEMES } from "./theme";
+import type { CrmTheme } from "./theme";
+
 export type CrmBootstrap = {
   viewer: {
     name: string;
@@ -506,6 +511,7 @@ export type CrmBootstrap = {
     clientId: string | null;
     isAgency: boolean;
     permissions: CrmPermission[];
+    theme: CrmTheme;
   };
   organization: { id: string; name: string };
   clients: CrmClient[];
@@ -794,7 +800,7 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
   ]);
 
   return {
-    viewer: { name: context.name, email: context.email, role: context.role, clientId: context.clientId, isAgency: !context.clientId, permissions: rolePermissions[context.role] },
+    viewer: { name: context.name, email: context.email, role: context.role, clientId: context.clientId, isAgency: !context.clientId, permissions: rolePermissions[context.role], theme: "classic" },
     organization: { id: context.organizationId, name: context.organizationName },
     clients: clientRows.results.map(mapClient),
     leads: leadRows.results.map(mapLead),
@@ -961,6 +967,14 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
   const context = await getTenantContext(user);
   const action = requireText(input.action, "Action", 50);
   const db = database();
+
+  if (action === "set_theme") {
+    // D1 has no preferences table; validate and accept without persisting so
+    // the theme picker never 500s while running on the fallback backend.
+    const theme = requireText(input.theme, "Theme", 20) as CrmTheme;
+    if (!CRM_THEMES.includes(theme)) throw new Error("Unknown theme.");
+    return { saved: true, persisted: false, theme };
+  }
 
   if (action === "save_google_profile_settings") {
     requirePermission(context, "profiles.manage");

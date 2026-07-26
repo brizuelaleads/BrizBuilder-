@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { CrmBootstrap, CrmLead, CrmPermission } from "../db/crm";
+import type { CrmTheme } from "../db/theme";
+import { CRM_THEMES } from "../db/theme";
 import { DashboardView } from "./crm/DashboardView";
 import { LeadDetail, LeadsView, PipelineView } from "./crm/LeadsViews";
 import {
@@ -225,6 +227,10 @@ export function CrmApp({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
+  // Optimistic theme: apply instantly, persist through the CRM action, and
+  // fall back to the server value once the bootstrap refresh lands.
+  const [themeOverride, setThemeOverride] = useState<CrmTheme | null>(null);
+  const theme: CrmTheme = themeOverride ?? data.viewer.theme ?? "classic";
 
   const visibleNav = nav.filter(
     (item) =>
@@ -400,6 +406,19 @@ export function CrmApp({
     }
   }
 
+  async function switchTheme(next: CrmTheme) {
+    if (next === theme) return;
+    setThemeOverride(next);
+    try {
+      await mutate({ action: "set_theme", theme: next }, "Theme updated.");
+    } catch {
+      // mutate already refreshed and surfaced the error; the override clear
+      // below reverts the UI to the server's stored theme.
+    } finally {
+      setThemeOverride(null);
+    }
+  }
+
   function navigate(next: View) {
     const url = new URL(window.location.href);
     url.searchParams.set("view", next);
@@ -502,7 +521,7 @@ export function CrmApp({
   }, [search, data]);
 
   return (
-    <div className="crm-shell">
+    <div className="crm-shell" data-theme={theme === "classic" ? undefined : theme}>
       <aside className={`crm-sidebar ${mobileNav ? "crm-sidebar-open" : ""}`}>
         <div className="crm-brand">
           <span>BL</span>
@@ -564,6 +583,21 @@ export function CrmApp({
             </div>
           ))}
         </nav>
+        <div className="crm-theme-picker">
+          <span>THEME</span>
+          <div>
+            {CRM_THEMES.map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={theme === option}
+                onClick={() => void switchTheme(option)}
+              >
+                {option === "cyberpunk" ? "Cyber" : option === "midnight" ? "Midnight" : "Classic"}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="crm-sidebar-foot">
           <div>
             <span className="crm-avatar">{initials(data.viewer.name)}</span>

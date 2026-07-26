@@ -76,7 +76,9 @@ import type {
   CrmGoogleProfile,
   CrmReviewRequest,
   CrmReviewSettings,
+  CrmTheme,
 } from "./crm";
+import { CRM_THEMES } from "./crm";
 
 type TenantContext = {
   organizationId: string;
@@ -2772,6 +2774,23 @@ export async function getSupabaseCrmBootstrap(
     }
   }
 
+  // Fault-isolated: a preferences hiccup must degrade to the classic theme,
+  // never bubble up and trip the silent whole-bootstrap fallback to D1.
+  let viewerTheme: CrmTheme = "classic";
+  try {
+    const preference = await assertOk(
+      supabase()
+        .from("user_preferences")
+        .select("theme")
+        .eq("email", context.email)
+        .maybeSingle(),
+    );
+    if (preference && CRM_THEMES.includes(preference.theme as CrmTheme))
+      viewerTheme = preference.theme as CrmTheme;
+  } catch (error) {
+    console.error("User theme preference could not be loaded.", error);
+  }
+
   return {
     viewer: {
       name: context.name,
@@ -2780,6 +2799,7 @@ export async function getSupabaseCrmBootstrap(
       clientId: context.clientId,
       isAgency: !context.clientId,
       permissions: rolePermissions[context.role],
+      theme: viewerTheme,
     },
     organization: {
       id: context.organizationId,
@@ -3099,6 +3119,26 @@ export async function executeSupabaseCrmAction(
 ) {
   const context = await getTenantContext(user);
   const action = requireText(input.action, "Action", 50);
+
+  if (action === "set_theme") {
+    // Per-user cosmetic preference: every role may set their own theme, and
+    // identity comes only from the authenticated context, never the request.
+    const theme = requireText(input.theme, "Theme", 20) as CrmTheme;
+    if (!CRM_THEMES.includes(theme)) throw new Error("Unknown theme.");
+    await assertOk(
+      supabase()
+        .from("user_preferences")
+        .upsert(
+          {
+            email: context.email,
+            theme,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "email" },
+        ),
+    );
+    return { saved: true, theme };
+  }
 
   if (action === "revoke_ai_authorization") {
     requirePermission(context, "ai_connector.manage");
