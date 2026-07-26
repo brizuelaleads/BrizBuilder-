@@ -10,7 +10,7 @@ import {
 // which are stored encrypted (never in env, never returned to the browser).
 // Sendblue blocks browser/frontend requests, so all calls run server-side here.
 
-const SENDBLUE_BASE_URL = "https://api.sendblue.com";
+const SENDBLUE_BASE_URL = "https://api.sendblue.co";
 const ENCRYPTION_KEY_ENV = "SENDBLUE_TOKEN_ENCRYPTION_KEY";
 const E164 = /^\+[1-9]\d{6,14}$/;
 

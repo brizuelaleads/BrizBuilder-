@@ -14,7 +14,7 @@ const migration = read("supabase/migrations/20260725000000_sendblue_credentials.
 const workflowSource = read("app/crm/WorkflowViews.tsx");
 
 test("Sendblue API client only ever targets api.sendblue.com with the documented key headers", () => {
-  assert.match(sendblueSource, /const SENDBLUE_BASE_URL = "https:\/\/api\.sendblue\.com"/);
+  assert.match(sendblueSource, /const SENDBLUE_BASE_URL = "https:\/\/api\.sendblue\.co"/);
   assert.match(sendblueSource, /"sb-api-key-id": credentials\.apiKeyId/);
   assert.match(sendblueSource, /"sb-api-secret-key": credentials\.apiSecret/);
   // Keys are validated with a lightweight authenticated call.
