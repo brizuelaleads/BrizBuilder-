@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CrmBootstrap, CrmLead, CrmPermission } from "../db/crm";
 import type { CrmTheme } from "../db/theme";
 import { CRM_THEMES } from "../db/theme";
@@ -94,25 +94,38 @@ const nav: Array<{
   section?: string;
   preview?: boolean;
 }> = [
+  // Every item carries an explicit section so hiding agency-only tabs can never
+  // orphan a section label onto an unrelated item below it.
+  // agencyOnly marks the tabs a client user must never see; their underlying
+  // permissions are withheld from client roles too, so this is defence in depth
+  // rather than the only gate.
   { id: "dashboard", label: "Dashboard", icon: "D", section: "Workspace" },
-  { id: "leads", label: "Leads", icon: "L" },
-  { id: "pipeline", label: "Pipeline", icon: "P" },
-  { id: "contacts", label: "Contacts", icon: "C" },
+  { id: "leads", label: "Leads", icon: "L", section: "Workspace" },
+  { id: "pipeline", label: "Pipeline", icon: "P", section: "Workspace" },
+  { id: "contacts", label: "Contacts", icon: "C", section: "Workspace" },
   {
     id: "companies",
     label: "Companies",
     icon: "O",
+    section: "Workspace",
     permission: "companies.write",
   },
   { id: "calendar", label: "Calendar", icon: "A", section: "Operations" },
-  { id: "tasks", label: "Tasks", icon: "T" },
-  { id: "clients", label: "Agency", icon: "B", agencyOnly: true, section: "Agency" },
+  { id: "tasks", label: "Tasks", icon: "T", section: "Operations" },
   { id: "reports", label: "Reports", icon: "R", section: "Insights" },
+  {
+    id: "conversations",
+    label: "Conversations",
+    icon: "Q",
+    section: "Communication",
+    permission: "messages.write",
+  },
   {
     id: "connections",
     label: "Connections",
     icon: "C",
     section: "Communication",
+    agencyOnly: true,
     permission: "phone_system.manage",
   },
   {
@@ -120,67 +133,92 @@ const nav: Array<{
     label: "Phone System",
     icon: "☎",
     section: "Communication",
+    agencyOnly: true,
     permission: "phone_system.manage",
-  },
-  {
-    id: "conversations",
-    label: "Conversations",
-    icon: "Q",
-    permission: "messages.write",
   },
   {
     id: "automations",
     label: "Automations",
     icon: "W",
+    section: "Communication",
+    agencyOnly: true,
     permission: "automations.manage",
+  },
+  { id: "websites", label: "Websites", icon: "W", section: "Growth" },
+  {
+    id: "reviews",
+    label: "Reviews",
+    icon: "★",
+    section: "Growth",
+    permission: "reviews.read",
+  },
+  {
+    id: "profiles",
+    label: "Google Profiles",
+    icon: "G",
+    section: "Growth",
+    agencyOnly: true,
+    permission: "profiles.manage",
   },
   {
     id: "forms",
     label: "Forms",
     icon: "F",
-    section: "Future previews",
+    section: "Growth",
+    agencyOnly: true,
     preview: true,
   },
-  { id: "websites", label: "Websites", icon: "W" },
   {
-    id: "profiles",
-    label: "Google Profiles",
-    icon: "G",
-    section: "Reputation",
-    permission: "profiles.manage",
+    id: "funnels",
+    label: "Funnels",
+    icon: "N",
+    section: "Growth",
+    agencyOnly: true,
+    preview: true,
   },
-  {
-    id: "reviews",
-    label: "Reviews",
-    icon: "★",
-    section: "Reputation",
-    permission: "reviews.read",
-  },
-  { id: "funnels", label: "Funnels", icon: "N", preview: true },
   {
     id: "payments",
     label: "Payments",
     icon: "$",
     section: "Revenue",
+    agencyOnly: true,
     permission: "payments.manage",
   },
   {
     id: "ai",
     label: "AI Connector",
     icon: "AI",
-    permission: "ai_connector.manage",
     section: "Intelligence",
+    agencyOnly: true,
+    permission: "ai_connector.manage",
   },
+  {
+    id: "clients",
+    label: "Sub-accounts",
+    icon: "B",
+    section: "Agency",
+    agencyOnly: true,
+  },
+  // Client owners manage their own staff here; the server restricts them to
+  // client roles inside their own sub-account.
+  { id: "team", label: "Team", icon: "M", section: "Agency", permission: "team.manage" },
   {
     id: "custom-data",
     label: "Custom data",
     icon: "V",
-    permission: "custom_data.manage",
     section: "Manage",
+    agencyOnly: true,
+    permission: "custom_data.manage",
   },
-  { id: "audit", label: "Audit log", icon: "H", permission: "audit.read" },
-  { id: "team", label: "Team", icon: "M", agencyOnly: true },
-  { id: "settings", label: "Settings", icon: "S", agencyOnly: true },
+  {
+    id: "audit",
+    label: "Audit log",
+    icon: "H",
+    section: "Manage",
+    agencyOnly: true,
+    permission: "audit.read",
+  },
+  { id: "settings", label: "Settings", icon: "S", section: "Manage", agencyOnly: true },
 ];
 
 const viewChangeEvent = "brizuela:crm-view-change";
@@ -231,12 +269,19 @@ export function CrmApp({
   // fall back to the server value once the bootstrap refresh lands.
   const [themeOverride, setThemeOverride] = useState<CrmTheme | null>(null);
   const theme: CrmTheme = themeOverride ?? data.viewer.theme ?? "classic";
+  // Workspace switcher: agency users pick which sub-account they are managing.
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const switcherRef = useRef<HTMLDivElement | null>(null);
 
   const visibleNav = nav.filter(
     (item) =>
       (!item.agencyOnly || data.viewer.isAgency) &&
       (!item.permission || data.viewer.permissions.includes(item.permission)),
   );
+  const scopedClient = data.clients.find(
+    (client) => client.id === selectedClientId,
+  );
+  const workspaceName = scopedClient?.businessName ?? data.organization.name;
   const view = visibleNav.some((item) => item.id === requestedView)
     ? requestedView
     : "dashboard";
@@ -253,11 +298,22 @@ export function CrmApp({
         setModal(null);
         setSelectedLeadId(null);
         setMobileNav(false);
+        setSwitcherOpen(false);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
+
+  useEffect(() => {
+    if (!switcherOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!switcherRef.current?.contains(event.target as Node))
+        setSwitcherOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [switcherOpen]);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -536,14 +592,71 @@ export function CrmApp({
             ×
           </button>
         </div>
-        <div className="crm-org-card">
-          <span>{initials(data.organization.name)}</span>
-          <div>
-            <strong>{data.organization.name}</strong>
-            <small>
-              {data.viewer.isAgency ? "Agency workspace" : "Client workspace"}
-            </small>
-          </div>
+        <div className="crm-org-switcher" ref={switcherRef}>
+          {data.viewer.isAgency ? (
+            <>
+              <button
+                type="button"
+                className="crm-org-card crm-org-card-button"
+                aria-haspopup="listbox"
+                aria-expanded={switcherOpen}
+                onClick={() => setSwitcherOpen((open) => !open)}
+              >
+                <span>{initials(workspaceName)}</span>
+                <div>
+                  <strong>{workspaceName}</strong>
+                  <small>
+                    {scopedClient ? "Managing sub-account" : "Agency workspace"}
+                  </small>
+                </div>
+                <b aria-hidden="true">⌄</b>
+              </button>
+              {switcherOpen ? (
+                <div className="crm-org-menu" role="listbox" aria-label="Choose workspace">
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={selectedClientId === "all"}
+                    className={selectedClientId === "all" ? "active" : ""}
+                    onClick={() => {
+                      setSelectedClientId("all");
+                      setSwitcherOpen(false);
+                    }}
+                  >
+                    <strong>Whole agency</strong>
+                    <small>Every sub-account</small>
+                  </button>
+                  {data.clients.map((client) => (
+                    <button
+                      key={client.id}
+                      type="button"
+                      role="option"
+                      aria-selected={selectedClientId === client.id}
+                      className={selectedClientId === client.id ? "active" : ""}
+                      onClick={() => {
+                        setSelectedClientId(client.id);
+                        setSwitcherOpen(false);
+                      }}
+                    >
+                      <strong>{client.businessName}</strong>
+                      <small>{client.industry || "Sub-account"}</small>
+                    </button>
+                  ))}
+                  {!data.clients.length ? (
+                    <p>No sub-accounts yet. Add one from the Sub-accounts tab.</p>
+                  ) : null}
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <div className="crm-org-card">
+              <span>{initials(workspaceName)}</span>
+              <div>
+                <strong>{workspaceName}</strong>
+                <small>Client workspace</small>
+              </div>
+            </div>
+          )}
         </div>
         <nav aria-label="Main navigation">
           {visibleNav.map((item, index) => (
@@ -632,20 +745,6 @@ export function CrmApp({
             </div>
           </div>
           <div className="crm-topbar-filters">
-            {data.viewer.isAgency ? (
-              <select
-                value={selectedClientId}
-                onChange={(event) => setSelectedClientId(event.target.value)}
-                aria-label="Filter workspace by client"
-              >
-                <option value="all">All clients</option>
-                {data.clients.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.businessName}
-                  </option>
-                ))}
-              </select>
-            ) : null}
             {view !== "reviews" ? (
               <select
                 value={range}
@@ -1017,7 +1116,7 @@ export function CrmApp({
         <AddClientModal mutate={mutate} onClose={() => setModal(null)} />
       )}
       {modal === "invite" && (
-        <InviteMemberModal clients={data.clients} mutate={mutate} onClose={() => setModal(null)} />
+        <InviteMemberModal clients={data.clients} isAgency={data.viewer.isAgency} mutate={mutate} onClose={() => setModal(null)} />
       )}
       {modal === "search" && (
         <Modal

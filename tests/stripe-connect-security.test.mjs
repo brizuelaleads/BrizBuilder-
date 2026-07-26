@@ -167,14 +167,16 @@ test("payments.manage remains owner tier and Account Sessions narrow it to finan
     d1CrmSource,
     /"billing\.read_shared"\s*\n\s*\|\s*"payments\.manage"/,
   );
-  for (const role of [
-    "SUPER_ADMIN",
-    "AGENCY_OWNER",
-    "AGENCY_ADMIN",
-    "CLIENT_OWNER",
-  ])
+  // Payments is an agency-only tab: no client role may hold payments.manage,
+  // so a client user cannot reach Stripe setup even by crafting a request.
+  for (const role of ["SUPER_ADMIN", "AGENCY_OWNER", "AGENCY_ADMIN"])
     assert.match(rolePermissionBlock(supabaseCrmSource, role), /"payments\.manage"/);
-  for (const role of ["AGENCY_MEMBER", "CLIENT_MANAGER", "CLIENT_EMPLOYEE"])
+  for (const role of [
+    "AGENCY_MEMBER",
+    "CLIENT_OWNER",
+    "CLIENT_MANAGER",
+    "CLIENT_EMPLOYEE",
+  ])
     assert.doesNotMatch(
       rolePermissionBlock(supabaseCrmSource, role),
       /"payments\.manage"/,

@@ -318,6 +318,42 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .crm-org-card div { display: grid; gap: 3px; min-width: 0; }
 .crm-org-card strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .crm-org-card small { color: #8991ad; font-size: 8px; }
+/* Workspace switcher: the org card doubles as the sub-account picker. */
+.crm-org-switcher { position: relative; }
+.crm-org-card-button { width: 100%; text-align: left; color: inherit; font: inherit; }
+.crm-org-card-button:hover { border-color: #3a4266; background: #1e2542; }
+.crm-org-card-button > b { margin-left: auto; flex: 0 0 auto; color: #8991ad; font-size: 10px; }
+.crm-org-menu {
+  position: absolute;
+  z-index: 70;
+  top: calc(100% - 14px);
+  left: 0;
+  right: 0;
+  max-height: 320px;
+  padding: 6px;
+  overflow-y: auto;
+  display: grid;
+  gap: 2px;
+  border: 1px solid #2b324e;
+  border-radius: 11px;
+  background: #151b33;
+  box-shadow: 0 18px 40px rgb(0 0 0 / 45%);
+}
+.crm-org-menu button {
+  padding: 8px 10px;
+  display: grid;
+  gap: 2px;
+  border: 0;
+  border-radius: 8px;
+  color: #dfe3f2;
+  text-align: left;
+  background: transparent;
+}
+.crm-org-menu button:hover { background: #1e2542; }
+.crm-org-menu button.active { color: #fff; background: #2a2f52; }
+.crm-org-menu strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.crm-org-menu small { color: #8991ad; font-size: 8px; }
+.crm-org-menu p { margin: 0; padding: 10px; color: #8991ad; font-size: 9px; }
 .crm-sidebar nav { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
 .crm-sidebar nav p { margin: 18px 10px 7px; color: #68718f; font-size: 7px; font-weight: 850; letter-spacing: 1.25px; text-transform: uppercase; }
 .crm-sidebar nav button { width: 100%; min-height: 38px; padding: 0 10px; display: flex; align-items: center; gap: 10px; border: 0; border-radius: 8px; color: #aab1c9; background: transparent; font-size: 10px; text-align: left; }
@@ -2710,6 +2746,15 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
   /* --- Chrome (sidebar + topbar), shared by all dark themes ------------- */
   .crm-shell[data-theme] .crm-org-card { border-color: var(--crm-chrome-line); background: var(--crm-chrome-card); }
+  .crm-shell[data-theme] .crm-org-card-button:hover { border-color: var(--crm-accent); background: var(--crm-chrome-hover); }
+  .crm-shell[data-theme] .crm-org-card-button > b { color: var(--crm-chrome-dim); }
+  .crm-shell[data-theme] .crm-org-menu { border-color: var(--crm-chrome-line); background: var(--crm-chrome-card); }
+  .crm-shell[data-theme] .crm-org-menu button { color: var(--crm-chrome-text); }
+  .crm-shell[data-theme] .crm-org-menu button:hover { background: var(--crm-chrome-hover); }
+  .crm-shell[data-theme] .crm-org-menu button.active { color: var(--crm-on-accent); background: var(--crm-accent); }
+  .crm-shell[data-theme] .crm-org-menu button.active small { color: var(--crm-on-accent); opacity: 0.75; }
+  .crm-shell[data-theme] .crm-org-menu small,
+  .crm-shell[data-theme] .crm-org-menu p { color: var(--crm-chrome-dim); }
   .crm-shell[data-theme] .crm-sidebar nav p { color: var(--crm-chrome-dim); }
   .crm-shell[data-theme] .crm-sidebar nav button { color: var(--crm-chrome-text); }
   .crm-shell[data-theme] .crm-sidebar nav button:hover { background: var(--crm-chrome-hover); }

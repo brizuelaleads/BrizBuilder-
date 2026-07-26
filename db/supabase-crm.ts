@@ -267,6 +267,11 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "reviews.request",
     "messages.write",
   ],
+  // Client roles are scoped to their own sub-account and deliberately exclude
+  // provider setup (Twilio/Stripe/Google), automations, AI, custom data, and
+  // agency administration. Those stay with the agency, so the hidden tabs are
+  // genuinely unreachable on the server, not merely hidden in the UI.
+  // Must stay identical to the map in db/crm.ts (asserted by tests).
   CLIENT_OWNER: [
     "contacts.write",
     "contacts.import",
@@ -275,37 +280,26 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "tasks.write",
     "appointments.write",
     "websites.manage",
-    "profiles.manage",
-    "profiles.connect",
     "reviews.read",
     "reviews.reply",
     "reviews.request",
     "reviews.settings.manage",
-    "phone_system.manage",
-    "billing.read_shared",
-    "payments.manage",
     "messages.write",
-    "automations.manage",
-    "ai_connector.manage",
-    "custom_data.manage",
+    "team.manage",
   ],
   CLIENT_MANAGER: [
     "contacts.write",
+    "contacts.import",
     "companies.write",
     "opportunities.write",
     "tasks.write",
     "appointments.write",
     "websites.manage",
-    "profiles.manage",
     "reviews.read",
     "reviews.reply",
     "reviews.request",
     "reviews.settings.manage",
-    "phone_system.manage",
     "messages.write",
-    "automations.manage",
-    "ai_connector.manage",
-    "custom_data.manage",
   ],
   CLIENT_EMPLOYEE: [
     "contacts.write",
@@ -2786,25 +2780,30 @@ export async function getSupabaseCrmBootstrap(
     }
   }
 
-  // Team roster. Only agency users see it (the Team tab is agency-only), so a
-  // client user never receives other people's access records.
+  // Team roster. Agency users see everyone in the organization; a client owner
+  // sees only their own sub-account's members and never agency memberships.
   let teamMembers: CrmTeamMember[] = [];
-  if (!context.clientId) {
+  if (supabaseRoleHasPermission(context, "team.manage")) {
     try {
+      const clientMemberQuery = supabase()
+        .from("client_members")
+        .select(
+          "id,role,status,client_id,profiles(email,display_name),clients(business_name)",
+        )
+        .eq("organization_id", context.organizationId);
       const [agencyRows, clientRows] = await Promise.all([
+        context.clientId
+          ? Promise.resolve([] as AnyRecord[])
+          : assertOk(
+              supabase()
+                .from("organization_members")
+                .select("id,role,status,profiles(email,display_name)")
+                .eq("organization_id", context.organizationId),
+            ),
         assertOk(
-          supabase()
-            .from("organization_members")
-            .select("id,role,status,profiles(email,display_name)")
-            .eq("organization_id", context.organizationId),
-        ),
-        assertOk(
-          supabase()
-            .from("client_members")
-            .select(
-              "id,role,status,client_id,profiles(email,display_name),clients(business_name)",
-            )
-            .eq("organization_id", context.organizationId),
+          context.clientId
+            ? clientMemberQuery.eq("client_id", context.clientId)
+            : clientMemberQuery,
         ),
       ]);
       const mapMember = (row: AnyRecord, clientScoped: boolean): CrmTeamMember => {
@@ -5517,7 +5516,14 @@ export async function executeSupabaseCrmAction(
       throw new Error("That role cannot be assigned here.");
     const isClientRole = role.startsWith("CLIENT_");
     let clientId: string | null = null;
-    if (isClientRole) {
+    if (context.clientId) {
+      // A client owner may only add their own staff: agency roles are refused
+      // outright and the sub-account is taken from their session, never from
+      // the request, so a supplied clientId cannot reach another tenant.
+      if (!isClientRole)
+        throw new Error("You can only invite people to your own business.");
+      clientId = context.clientId;
+    } else if (isClientRole) {
       clientId = requireText(input.clientId, "Sub-account", 100);
       await requireClient(context, clientId);
     }
@@ -5600,12 +5606,49 @@ export async function executeSupabaseCrmAction(
   if (action === "revoke_member") {
     requirePermission(context, "team.manage");
     const memberId = requireText(input.memberId, "Member", 100);
-    const scope = optionalText(input.scope, 20) === "client" ? "client" : "agency";
-    const table = scope === "client" ? "client_members" : "organization_members";
+    // A client owner is always confined to the client branch, so they can
+    // never revoke an agency membership even by asking for that scope.
+    const scope = context.clientId
+      ? "client"
+      : optionalText(input.scope, 20) === "client"
+        ? "client"
+        : "agency";
+
+    if (scope === "client") {
+      const lookup = supabase()
+        .from("client_members")
+        .select("id,profile_id,client_id")
+        .eq("id", memberId)
+        .eq("organization_id", context.organizationId);
+      const member = await assertOk(
+        context.clientId
+          ? lookup.eq("client_id", context.clientId).maybeSingle()
+          : lookup.maybeSingle(),
+      );
+      if (!member) throw new Error("Team member not found.");
+      const update = supabase()
+        .from("client_members")
+        .update({ status: "inactive" })
+        .eq("id", memberId)
+        .eq("organization_id", context.organizationId);
+      await assertOk(
+        context.clientId ? update.eq("client_id", context.clientId) : update,
+      );
+      await audit(
+        context,
+        "team.access_revoked",
+        "profile",
+        String(member.profile_id),
+        { scope },
+        String(member.client_id),
+      );
+      return { revoked: true };
+    }
+
     const member = await assertOk(
       supabase()
-        .from(table)
-        .select("id,profile_id,client_id")
+        .from("organization_members")
+        .select("id,profile_id")
         .eq("id", memberId)
         .eq("organization_id", context.organizationId)
         .maybeSingle(),
@@ -5613,7 +5656,7 @@ export async function executeSupabaseCrmAction(
     if (!member) throw new Error("Team member not found.");
     await assertOk(
       supabase()
-        .from(table)
+        .from("organization_members")
         .update({ status: "inactive" })
         .eq("id", memberId)
         .eq("organization_id", context.organizationId),
@@ -5624,7 +5667,7 @@ export async function executeSupabaseCrmAction(
       "profile",
       String(member.profile_id),
       { scope },
-      scope === "client" ? String(member.client_id) : null,
+      null,
     );
     return { revoked: true };
   }

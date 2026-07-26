@@ -66,17 +66,21 @@ test("both access changes are audited", () => {
   assert.match(revokeBlock, /"team\.access_revoked"/);
 });
 
-test("the team roster is never sent to a client-scoped user", () => {
+test("the team roster never leaks beyond the viewer's own workspace", () => {
   const rosterBlock = crmSource.match(
     /let teamMembers: CrmTeamMember\[\][\s\S]*?\n {2}\}\n/,
   )?.[0];
   assert.ok(rosterBlock, "team roster block exists");
-  assert.match(rosterBlock, /if \(!context\.clientId\)/, "roster only builds for agency users");
+  // Only people who can manage a team receive a roster at all.
+  assert.match(rosterBlock, /supabaseRoleHasPermission\(context, "team\.manage"\)/);
+  // A client owner gets no agency memberships and only their own client's rows.
+  assert.match(rosterBlock, /context\.clientId\s*\?\s*Promise\.resolve\(\[\]/);
+  assert.match(rosterBlock, /clientMemberQuery\.eq\("client_id", context\.clientId\)/);
   assert.match(rosterBlock, /\.eq\("organization_id", context\.organizationId\)/);
 });
 
 test("the invite UI requires a sub-account for client roles and explains the Access step", () => {
-  assert.match(formsSource, /clientId: isClientRole \? getFormValue\(form, "clientId"\) : ""/);
+  assert.match(formsSource, /clientId: needsSubAccount \? getFormValue\(form, "clientId"\) : ""/);
   assert.match(formsSource, /Cloudflare Access policy/);
   assert.match(opsSource, /action: "revoke_member"/);
   // No fabricated sign-in data: profiles carry no last-login timestamp.
