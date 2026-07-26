@@ -462,6 +462,18 @@ export function CrmApp({
     }
   }
 
+  async function changeOwnPassword() {
+    const password = window.prompt(
+      "Choose a new password for your own account (at least 12 characters):",
+    );
+    if (!password) return;
+    try {
+      await mutate({ action: "change_own_password", password }, "Password changed.");
+    } catch {
+      // mutate surfaces the error banner already.
+    }
+  }
+
   async function switchTheme(next: CrmTheme) {
     if (next === theme) return;
     setThemeOverride(next);
@@ -719,7 +731,15 @@ export function CrmApp({
               <small>{data.viewer.role.replaceAll("_", " ")}</small>
             </p>
           </div>
-          <a href={signOutPath}>Sign out</a>
+          <div className="crm-sidebar-foot-actions">
+            <button type="button" onClick={() => void changeOwnPassword()}>
+              Change password
+            </button>
+            {/* POST so a prefetch or stray link can never sign someone out. */}
+            <form method="post" action={signOutPath}>
+              <button type="submit">Sign out</button>
+            </form>
+          </div>
         </div>
       </aside>
       {mobileNav ? (

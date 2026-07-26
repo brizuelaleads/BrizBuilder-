@@ -10,8 +10,11 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
+// Machine-to-machine traffic is excluded: MCP, webhooks, OAuth token/register
+// and public lead capture authenticate with bearer tokens or signatures and
+// carry no browser session, so refreshing one there is pure added latency.
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|mcp|oauth/token|oauth/register|api/twilio|api/website-leads|api/integrations/stripe/webhook|api/integrations/twilio/deauthorize|\\.well-known|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

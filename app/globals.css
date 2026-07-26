@@ -369,6 +369,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .crm-sidebar-foot strong { max-width: 105px; overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .crm-sidebar-foot small { color: #7c85a1; font-size: 7px; text-transform: capitalize; }
 .crm-sidebar-foot a { margin-left: auto; color: #9ea6c0; font-size: 8px; }
+.crm-sidebar-foot-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.crm-sidebar-foot-actions button { padding: 0; border: 0; color: #9ea6c0; font-size: 8px; background: transparent; white-space: nowrap; }
+.crm-sidebar-foot-actions button:hover { color: #dfe3f2; }
 .crm-avatar { width: 31px; height: 31px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 9px; color: #5146b7; background: #e9e6ff; font-size: 8px; font-weight: 850; font-style: normal; }
 .crm-avatar-lg { width: 46px; height: 46px; border-radius: 13px; font-size: 12px; }
 .crm-main { min-height: 100vh; margin-left: 252px; }

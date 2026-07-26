@@ -312,6 +312,20 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
   ],
 };
 
+// Minimum bar for a password anyone can actually be handed. Kept simple and
+// length-led rather than composition rules, which push people toward
+// predictable substitutions.
+const MIN_PASSWORD_LENGTH = 12;
+
+function assertUsablePassword(password: string) {
+  if (password.length < MIN_PASSWORD_LENGTH)
+    throw new Error(
+      `Use at least ${MIN_PASSWORD_LENGTH} characters for the password.`,
+    );
+  if (password.length > 200) throw new Error("That password is too long.");
+  if (!/\S/.test(password)) throw new Error("Enter a real password.");
+}
+
 // Roles an agency admin may grant through the invite UI. SUPER_ADMIN and
 // AGENCY_OWNER are deliberately excluded so an invite can never escalate
 // someone past the person sending it.
@@ -5528,9 +5542,13 @@ export async function executeSupabaseCrmAction(
       await requireClient(context, clientId);
     }
 
+    // Optional starting password. The agency shares it with the person
+    // directly; the app cannot send email yet. Never logged or returned.
+    const password = optionalText(input.password, 200);
+    if (password) assertUsablePassword(password);
+
     // A profile requires an auth user (profiles.id references auth.users), so
-    // create the auth user first when this email is new. No email is sent:
-    // people sign in through Cloudflare Access, not a Supabase password.
+    // create the auth user first when this email is new.
     let profile = await assertOk(
       supabase()
         .from("profiles")
@@ -5542,6 +5560,7 @@ export async function executeSupabaseCrmAction(
       const created = await supabase().auth.admin.createUser({
         email,
         email_confirm: true,
+        ...(password ? { password } : {}),
         user_metadata: { display_name: displayName },
       });
       if (created.error && !/already/i.test(created.error.message))
@@ -5558,6 +5577,16 @@ export async function executeSupabaseCrmAction(
       if (!profile?.id)
         throw new Error(
           "The sign-in account was not created. Check the Supabase project and try again.",
+        );
+    } else if (password) {
+      // Re-inviting someone who already has an account: set the new password.
+      const updated = await supabase().auth.admin.updateUserById(
+        String(profile.id),
+        { password },
+      );
+      if (updated.error)
+        throw new Error(
+          `The password could not be set: ${updated.error.message}`,
         );
     }
 
@@ -5601,6 +5630,82 @@ export async function executeSupabaseCrmAction(
       clientId,
     );
     return { invited: true, email, role, clientId, grantedAt: now };
+  }
+
+  if (action === "change_own_password") {
+    // No permission gate: anyone may change their own password. Deliberately
+    // uses the caller's session client rather than the admin client, so it is
+    // structurally incapable of targeting another account.
+    const password = requireText(input.password, "Password", 200);
+    assertUsablePassword(password);
+    const { createClient } = await import("../utils/supabase/server");
+    const sessionClient = await createClient();
+    const { data: sessionUser } = await sessionClient.auth.getUser();
+    if (!sessionUser?.user)
+      throw new Error(
+        "Sign in with your email and password before changing it.",
+      );
+    const { error } = await sessionClient.auth.updateUser({ password });
+    if (error)
+      throw new Error(`The password could not be changed: ${error.message}`);
+    await audit(context, "team.password_changed", "profile", null, {}, context.clientId);
+    return { updated: true };
+  }
+
+  if (action === "set_member_password") {
+    requirePermission(context, "team.manage");
+    const memberId = requireText(input.memberId, "Member", 100);
+    const password = requireText(input.password, "Password", 200);
+    assertUsablePassword(password);
+    // Same confinement as revoke: a client owner can only ever reach members
+    // of their own sub-account, never an agency membership.
+    const scope = context.clientId
+      ? "client"
+      : optionalText(input.scope, 20) === "client"
+        ? "client"
+        : "agency";
+
+    let profileId: string | null = null;
+    if (scope === "client") {
+      const lookup = supabase()
+        .from("client_members")
+        .select("profile_id")
+        .eq("id", memberId)
+        .eq("organization_id", context.organizationId);
+      const member = await assertOk(
+        context.clientId
+          ? lookup.eq("client_id", context.clientId).maybeSingle()
+          : lookup.maybeSingle(),
+      );
+      profileId = member ? String(member.profile_id) : null;
+    } else {
+      const member = await assertOk(
+        supabase()
+          .from("organization_members")
+          .select("profile_id")
+          .eq("id", memberId)
+          .eq("organization_id", context.organizationId)
+          .maybeSingle(),
+      );
+      profileId = member ? String(member.profile_id) : null;
+    }
+    if (!profileId) throw new Error("Team member not found.");
+
+    const updated = await supabase().auth.admin.updateUserById(profileId, {
+      password,
+    });
+    if (updated.error)
+      throw new Error(`The password could not be set: ${updated.error.message}`);
+    // The password itself is never written to the audit trail.
+    await audit(
+      context,
+      "team.password_set",
+      "profile",
+      profileId,
+      { scope },
+      context.clientId,
+    );
+    return { updated: true };
   }
 
   if (action === "revoke_member") {

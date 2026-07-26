@@ -97,7 +97,9 @@ test("an invited person of either kind actually resolves to access", () => {
 
 test("the invite UI requires a sub-account for client roles and explains the Access step", () => {
   assert.match(formsSource, /clientId: needsSubAccount \? getFormValue\(form, "clientId"\) : ""/);
-  assert.match(formsSource, /Cloudflare Access policy/);
+  // The Cloudflare Access caveat lives on the Team view (it applies to every
+  // grant, not just new invites) until Access is removed at launch.
+  assert.match(opsSource, /Cloudflare Access policy/);
   assert.match(opsSource, /action: "revoke_member"/);
   // No fabricated sign-in data: profiles carry no last-login timestamp.
   assert.doesNotMatch(opsSource, /Invite pending/);

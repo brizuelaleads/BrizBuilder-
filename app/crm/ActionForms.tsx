@@ -57,7 +57,7 @@ export function InviteMemberModal({ clients, isAgency, mutate, onClose }: { clie
   // Client owners only ever add their own staff; the server takes the
   // sub-account from their session and refuses agency roles outright.
   const needsSubAccount = isAgency && isClientRole;
-  function save(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); void submit.run({ action: "invite_member", displayName: getFormValue(form, "displayName"), email: getFormValue(form, "email"), role, clientId: needsSubAccount ? getFormValue(form, "clientId") : "" }, "Access granted"); }
+  function save(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); void submit.run({ action: "invite_member", displayName: getFormValue(form, "displayName"), email: getFormValue(form, "email"), role, clientId: needsSubAccount ? getFormValue(form, "clientId") : "", password: getFormValue(form, "password") }, "Access granted"); }
   return <Modal title="Give someone access" eyebrow="TEAM ACCESS" onClose={onClose}><form className="crm-form" onSubmit={save}>
     <Field label="Full name" span><input name="displayName" required autoFocus /></Field>
     <Field label="Email" span><input name="email" type="email" required /></Field>
@@ -76,7 +76,8 @@ export function InviteMemberModal({ clients, isAgency, mutate, onClose }: { clie
       <option value="" disabled>Choose the business they can see</option>
       {clients.map((client) => <option key={client.id} value={client.id}>{client.businessName}</option>)}
     </select></Field> : null}
-    <div className="crm-form-note crm-field-span">{!isAgency ? "This person joins your business only. " : isClientRole ? "This person will only ever see this one sub-account. " : "Agency roles can see every sub-account. "}After saving, add their email to your Cloudflare Access policy so they can reach the sign-in page. BrizBuilder never sets or receives a password.</div>
+    <Field label="Starting password" span><input name="password" type="password" autoComplete="new-password" minLength={12} required placeholder="At least 12 characters" /></Field>
+    <div className="crm-form-note crm-field-span">{!isAgency ? "This person joins your business only. " : isClientRole ? "This person will only ever see this one sub-account. " : "Agency roles can see every sub-account. "}Give them this password directly &mdash; BrizBuilder cannot email it yet. They can change it themselves after signing in, and you can reset it here any time.</div>
     <footer><button className="crm-button-secondary" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={submit.busy}>Grant Access</SubmitButton></footer>
   </form></Modal>;
 }

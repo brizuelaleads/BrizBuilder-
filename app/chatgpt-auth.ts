@@ -1,6 +1,7 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
+import { createClient as createSupabaseServerClient } from "../utils/supabase/server";
 import {
   LOCAL_AUTH_COOKIE,
   LOCAL_AUTH_TOKEN,
@@ -39,6 +40,9 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
     if (accessUser) return accessUser;
   }
 
+  const sessionUser = await verifySupabaseSession();
+  if (sessionUser) return sessionUser;
+
   const testUser = await verifySignedTestIdentity(requestHeaders);
   if (testUser) return testUser;
 
@@ -59,6 +63,29 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
   return null;
 }
 
+// The real sign-in path: an email + password session issued by Supabase Auth.
+// getUser() re-validates the token with the auth server on every call; never
+// use getSession(), which trusts whatever the cookie claims.
+async function verifySupabaseSession(): Promise<ChatGPTUser | null> {
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data?.user) return null;
+    const email = normalizedEmail(data.user.email);
+    if (!email) return null;
+    const metadata = (data.user.user_metadata ?? {}) as Record<string, unknown>;
+    const displayName =
+      normalizedName(metadata.display_name) ??
+      normalizedName(metadata.name) ??
+      email.split("@")[0];
+    return { displayName, email, fullName: displayName };
+  } catch {
+    // A misconfigured or unreachable Supabase must not hard-fail the request;
+    // the remaining mechanisms below still get their chance.
+    return null;
+  }
+}
+
 export async function requireChatGPTUser(
   returnTo: string,
 ): Promise<ChatGPTUser> {
@@ -77,14 +104,15 @@ export async function signInPathForCurrentRequest(
   returnTo: string,
 ): Promise<string> {
   const safeReturnTo = safeRelativeReturnPath(returnTo);
-  return `/local-login?return_to=${encodeURIComponent(safeReturnTo)}`;
+  return `/login?return_to=${encodeURIComponent(safeReturnTo)}`;
 }
 
+// Signing out is a POST so a stray link or prefetch can never end a session.
 export async function signOutPathForCurrentRequest(
   returnTo = "/",
 ): Promise<string> {
   void returnTo;
-  return "/api/local-auth/logout";
+  return "/api/auth/logout";
 }
 
 export function isLocalDevelopmentHost(requestHeaders: Headers): boolean {
@@ -299,6 +327,12 @@ function normalizedEmail(value: unknown): string | null {
     return null;
   }
   return email;
+}
+
+function normalizedName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const name = value.trim().slice(0, 200);
+  return name.length ? name : null;
 }
 
 function firstBoundedStringClaim(
