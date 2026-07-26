@@ -76,6 +76,7 @@ import type {
   CrmGoogleProfile,
   CrmReviewRequest,
   CrmReviewSettings,
+  CrmTeamMember,
   CrmTheme,
 } from "./crm";
 import { CRM_THEMES } from "./crm";
@@ -316,6 +317,17 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "messages.write",
   ],
 };
+
+// Roles an agency admin may grant through the invite UI. SUPER_ADMIN and
+// AGENCY_OWNER are deliberately excluded so an invite can never escalate
+// someone past the person sending it.
+const INVITABLE_ROLES: readonly CrmRole[] = [
+  "AGENCY_ADMIN",
+  "AGENCY_MEMBER",
+  "CLIENT_OWNER",
+  "CLIENT_MANAGER",
+  "CLIENT_EMPLOYEE",
+];
 
 function supabase() {
   return getSupabaseAdminClient();
@@ -2774,6 +2786,50 @@ export async function getSupabaseCrmBootstrap(
     }
   }
 
+  // Team roster. Only agency users see it (the Team tab is agency-only), so a
+  // client user never receives other people's access records.
+  let teamMembers: CrmTeamMember[] = [];
+  if (!context.clientId) {
+    try {
+      const [agencyRows, clientRows] = await Promise.all([
+        assertOk(
+          supabase()
+            .from("organization_members")
+            .select("id,role,status,profiles(email,display_name)")
+            .eq("organization_id", context.organizationId),
+        ),
+        assertOk(
+          supabase()
+            .from("client_members")
+            .select(
+              "id,role,status,client_id,profiles(email,display_name),clients(business_name)",
+            )
+            .eq("organization_id", context.organizationId),
+        ),
+      ]);
+      const mapMember = (row: AnyRecord, clientScoped: boolean): CrmTeamMember => {
+        const profile = nestedOne(row.profiles) ?? {};
+        const client = clientScoped ? (nestedOne(row.clients) ?? {}) : null;
+        return {
+          id: String(row.id),
+          email: String(profile.email ?? ""),
+          displayName: String(profile.display_name ?? profile.email ?? "Member"),
+          role: String(row.role) as CrmRole,
+          status: String(row.status ?? "active"),
+          lastLoginAt: null,
+          clientId: clientScoped ? String(row.client_id) : null,
+          clientName: client ? String(client.business_name ?? "") : null,
+        };
+      };
+      teamMembers = [
+        ...((agencyRows ?? []) as AnyRecord[]).map((row) => mapMember(row, false)),
+        ...((clientRows ?? []) as AnyRecord[]).map((row) => mapMember(row, true)),
+      ];
+    } catch (error) {
+      console.error("Team roster could not be loaded.", error);
+    }
+  }
+
   // Fault-isolated: a preferences hiccup must degrade to the classic theme,
   // never bubble up and trip the silent whole-bootstrap fallback to D1.
   let viewerTheme: CrmTheme = "classic";
@@ -3000,16 +3056,7 @@ export async function getSupabaseCrmBootstrap(
       authorEmail: "team",
       createdAt: String(row.created_at),
     })),
-    team: [
-      {
-        id: "main-admin",
-        email: MAIN_ADMIN_EMAIL,
-        displayName: context.name,
-        role: "AGENCY_OWNER",
-        status: "active",
-        lastLoginAt: null,
-      },
-    ],
+    team: teamMembers,
     demoData: false,
     generatedAt: new Date().toISOString(),
   };
@@ -5457,11 +5504,132 @@ export async function executeSupabaseCrmAction(
     );
   }
 
-  if (
-    action.includes("custom_") ||
-    action === "link_contact_company" ||
-    action === "invite_member"
-  ) {
+  if (action === "invite_member") {
+    requirePermission(context, "team.manage");
+    const displayName = requireText(input.displayName, "Full name", 120);
+    const email = requireText(input.email, "Email", 160).toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      throw new Error("Enter a valid email address.");
+    const role = requireText(input.role, "Role", 40);
+    // SUPER_ADMIN and AGENCY_OWNER are never grantable through the UI, so an
+    // invite can't be used to escalate past the inviter.
+    if (!INVITABLE_ROLES.includes(role as CrmRole))
+      throw new Error("That role cannot be assigned here.");
+    const isClientRole = role.startsWith("CLIENT_");
+    let clientId: string | null = null;
+    if (isClientRole) {
+      clientId = requireText(input.clientId, "Sub-account", 100);
+      await requireClient(context, clientId);
+    }
+
+    // A profile requires an auth user (profiles.id references auth.users), so
+    // create the auth user first when this email is new. No email is sent:
+    // people sign in through Cloudflare Access, not a Supabase password.
+    let profile = await assertOk(
+      supabase()
+        .from("profiles")
+        .select("id")
+        .eq("email", email)
+        .maybeSingle(),
+    );
+    if (!profile?.id) {
+      const created = await supabase().auth.admin.createUser({
+        email,
+        email_confirm: true,
+        user_metadata: { display_name: displayName },
+      });
+      if (created.error && !/already/i.test(created.error.message))
+        throw new Error(
+          `The sign-in account could not be created: ${created.error.message}`,
+        );
+      profile = await assertOk(
+        supabase()
+          .from("profiles")
+          .select("id")
+          .eq("email", email)
+          .maybeSingle(),
+      );
+      if (!profile?.id)
+        throw new Error(
+          "The sign-in account was not created. Check the Supabase project and try again.",
+        );
+    }
+
+    const now = new Date().toISOString();
+    if (isClientRole && clientId) {
+      await assertOk(
+        supabase()
+          .from("client_members")
+          .upsert(
+            {
+              organization_id: context.organizationId,
+              client_id: clientId,
+              profile_id: profile.id,
+              role,
+              status: "active",
+            },
+            { onConflict: "client_id,profile_id" },
+          ),
+      );
+    } else {
+      await assertOk(
+        supabase()
+          .from("organization_members")
+          .upsert(
+            {
+              organization_id: context.organizationId,
+              profile_id: profile.id,
+              role,
+              status: "active",
+            },
+            { onConflict: "organization_id,profile_id" },
+          ),
+      );
+    }
+    await audit(
+      context,
+      "team.access_granted",
+      "profile",
+      String(profile.id),
+      { role, clientId },
+      clientId,
+    );
+    return { invited: true, email, role, clientId, grantedAt: now };
+  }
+
+  if (action === "revoke_member") {
+    requirePermission(context, "team.manage");
+    const memberId = requireText(input.memberId, "Member", 100);
+    const scope = optionalText(input.scope, 20) === "client" ? "client" : "agency";
+    const table = scope === "client" ? "client_members" : "organization_members";
+    const member = await assertOk(
+      supabase()
+        .from(table)
+        .select("id,profile_id,client_id")
+        .eq("id", memberId)
+        .eq("organization_id", context.organizationId)
+        .maybeSingle(),
+    );
+    if (!member) throw new Error("Team member not found.");
+    await assertOk(
+      supabase()
+        .from(table)
+        .update({ status: "inactive" })
+        .eq("id", memberId)
+        .eq("organization_id", context.organizationId),
+    );
+    await audit(
+      context,
+      "team.access_revoked",
+      "profile",
+      String(member.profile_id),
+      { scope },
+      scope === "client" ? String(member.client_id) : null,
+    );
+    return { revoked: true };
+  }
+
+  if (action.includes("custom_") || action === "link_contact_company") {
     throw new Error("This advanced Supabase feature is not connected yet.");
   }
 

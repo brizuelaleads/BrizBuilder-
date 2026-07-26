@@ -926,7 +926,7 @@ export function CrmApp({
           <AuditLogView logs={data.auditLogs} />
         )}
         {view === "team" && data.viewer.isAgency && (
-          <TeamView team={data.team} onInvite={() => setModal("invite")} />
+          <TeamView team={data.team} onInvite={() => setModal("invite")} mutate={mutate} />
         )}
         {view === "settings" && data.viewer.isAgency && (
           <SettingsView
@@ -1017,7 +1017,7 @@ export function CrmApp({
         <AddClientModal mutate={mutate} onClose={() => setModal(null)} />
       )}
       {modal === "invite" && (
-        <InviteMemberModal mutate={mutate} onClose={() => setModal(null)} />
+        <InviteMemberModal clients={data.clients} mutate={mutate} onClose={() => setModal(null)} />
       )}
       {modal === "search" && (
         <Modal

@@ -257,6 +257,8 @@ export type CrmTeamMember = {
   role: CrmRole;
   status: string;
   lastLoginAt: string | null;
+  clientId: string | null;
+  clientName: string | null;
 };
 
 export type CrmWebsite = {
@@ -832,7 +834,7 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
     appointments: appointmentRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), clientName: String(row.client_name), leadId: nullable(row.lead_id), contactId: String(row.contact_id), contactName: String(row.contact_name), assignedEmployee: nullable(row.assigned_employee), serviceType: String(row.service_type), startsAt: String(row.starts_at), endsAt: String(row.ends_at), address: nullable(row.address), notes: String(row.notes ?? ""), status: String(row.status) })),
     activities: activityRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), leadId: nullable(row.lead_id), contactId: nullable(row.contact_id), type: String(row.type), title: String(row.title), detail: nullable(row.detail), occurredAt: String(row.occurred_at) })),
     notes: noteRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), leadId: nullable(row.lead_id), contactId: nullable(row.contact_id), body: String(row.body), authorEmail: String(row.author_email), createdAt: String(row.created_at) })),
-    team: teamRows.results.map((row) => ({ id: String(row.id), email: String(row.email), displayName: String(row.display_name), role: String(row.role) as CrmRole, status: String(row.status), lastLoginAt: nullable(row.last_login_at) })),
+    team: teamRows.results.map((row) => ({ id: String(row.id), email: String(row.email), displayName: String(row.display_name), role: String(row.role) as CrmRole, status: String(row.status), lastLoginAt: nullable(row.last_login_at), clientId: null, clientName: null })),
     auditLogs: auditRows.results.map((row) => ({ id: String(row.id), actorEmail: String(row.actor_email), action: String(row.action), recordType: String(row.record_type), recordId: nullable(row.record_id), metadata: (() => { try { return JSON.parse(String(row.metadata_json ?? "{}")) as Record<string, unknown>; } catch { return {}; } })(), createdAt: String(row.created_at) })),
     demoData: false,
     generatedAt: new Date().toISOString(),

@@ -50,8 +50,30 @@ export function AddClientModal({ mutate, onClose }: { mutate: Mutate; onClose: (
   return <Modal title="Add a sub-account" eyebrow="AGENCY · SUB-ACCOUNTS" onClose={onClose} wide><form className="crm-form" onSubmit={save}><Field label="Business name" span><input name="businessName" required autoFocus /></Field><Field label="Industry"><input name="industry" required placeholder="Pest control" /></Field><Field label="Website"><input name="website" type="url" /></Field><Field label="Phone"><input name="phone" type="tel" /></Field><Field label="Email"><input name="email" type="email" /></Field><Field label="Address" span><input name="address" /></Field><Field label="City"><input name="city" /></Field><Field label="State"><input name="state" maxLength={2} /></Field><Field label="ZIP"><input name="zip" /></Field><Field label="Time zone"><select name="timeZone"><option>America/Chicago</option><option>America/New_York</option><option>America/Denver</option><option>America/Los_Angeles</option></select></Field><Field label="Monthly ad budget"><input name="monthlyAdBudget" type="number" min="0" /></Field><Field label="Account manager"><input name="assignedAccountManager" defaultValue="Luciano Brizuela" /></Field><Field label="Service areas" span><input name="serviceAreas" placeholder="Austin, Round Rock, Georgetown" /></Field><Field label="Notes" span><textarea name="notes" rows={3} /></Field><footer><button className="crm-button-secondary" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={submit.busy}>Create Sub-Account</SubmitButton></footer></form></Modal>;
 }
 
-export function InviteMemberModal({ mutate, onClose }: { mutate: Mutate; onClose: () => void }) {
+export function InviteMemberModal({ clients, mutate, onClose }: { clients: CrmClient[]; mutate: Mutate; onClose: () => void }) {
   const submit = useSubmit(mutate, onClose);
-  function save(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); void submit.run({ action: "invite_member", displayName: getFormValue(form, "displayName"), email: getFormValue(form, "email"), role: getFormValue(form, "role") }, "Team access assigned"); }
-  return <Modal title="Invite an agency member" eyebrow="TEAM ACCESS" onClose={onClose}><form className="crm-form" onSubmit={save}><Field label="Full name" span><input name="displayName" required autoFocus /></Field><Field label="Email" span><input name="email" type="email" required /></Field><Field label="Role" span><select name="role"><option value="AGENCY_MEMBER">Agency member</option><option value="AGENCY_ADMIN">Agency admin</option></select></Field><div className="crm-form-note crm-field-span">This assigns access to the email address. The person signs in with their own authorized ChatGPT account; Brizuela Leads never receives a password.</div><footer><button className="crm-button-secondary" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={submit.busy}>Assign Access</SubmitButton></footer></form></Modal>;
+  const [role, setRole] = useState("CLIENT_OWNER");
+  const isClientRole = role.startsWith("CLIENT_");
+  function save(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); void submit.run({ action: "invite_member", displayName: getFormValue(form, "displayName"), email: getFormValue(form, "email"), role, clientId: isClientRole ? getFormValue(form, "clientId") : "" }, "Access granted"); }
+  return <Modal title="Give someone access" eyebrow="TEAM ACCESS" onClose={onClose}><form className="crm-form" onSubmit={save}>
+    <Field label="Full name" span><input name="displayName" required autoFocus /></Field>
+    <Field label="Email" span><input name="email" type="email" required /></Field>
+    <Field label="Role" span><select name="role" value={role} onChange={(event) => setRole(event.target.value)}>
+      <optgroup label="Client (one sub-account only)">
+        <option value="CLIENT_OWNER">Client owner</option>
+        <option value="CLIENT_MANAGER">Client manager</option>
+        <option value="CLIENT_EMPLOYEE">Client employee</option>
+      </optgroup>
+      <optgroup label="Agency (all sub-accounts)">
+        <option value="AGENCY_MEMBER">Agency member</option>
+        <option value="AGENCY_ADMIN">Agency admin</option>
+      </optgroup>
+    </select></Field>
+    {isClientRole ? <Field label="Sub-account" span><select name="clientId" required defaultValue="">
+      <option value="" disabled>Choose the business they can see</option>
+      {clients.map((client) => <option key={client.id} value={client.id}>{client.businessName}</option>)}
+    </select></Field> : null}
+    <div className="crm-form-note crm-field-span">{isClientRole ? "This person will only ever see this one sub-account. " : "Agency roles can see every sub-account. "}After saving, add their email to your Cloudflare Access policy so they can reach the sign-in page. BrizBuilder never sets or receives a password.</div>
+    <footer><button className="crm-button-secondary" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={submit.busy}>Grant Access</SubmitButton></footer>
+  </form></Modal>;
 }
