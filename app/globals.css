@@ -712,7 +712,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .crm-sidebar, .crm-topbar, .crm-mobile-filterbar, .crm-system-strip, .crm-page-heading button { display: none !important; }
   .crm-main { margin: 0; }
   .crm-view { padding: 0; }
-  .crm-view > :not(.crm-report-note):not(.crm-report-summary):not(.crm-dashboard-grid):not(.crm-report-recommendations):not(.crm-page-heading) { display: none; }
+  .crm-view > :not(.crm-report-note):not(.crm-report-summary):not(.crm-dashboard-grid):not(.crm-report-recommendations):not(.crm-page-heading):not(.crm-welcome-row):not(.crm-metric-grid) { display: none; }
   .crm-panel, .crm-report-summary article { box-shadow: none; break-inside: avoid; }
 }
 
@@ -5741,5 +5741,16 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .crm-calendar-nav {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+/* Restored day-one dashboard inside the clean application shell. */
+.crm-main-dashboard .crm-topbar {
+  display: flex;
+}
+
+@media (min-width: 601px) and (max-width: 1240px) {
+  .crm-metric-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }

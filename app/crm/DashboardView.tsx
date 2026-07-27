@@ -6,7 +6,7 @@ import type {
   CrmLead,
   CrmTask,
 } from "../../db/crm";
-import { Badge, money } from "./ui";
+import { Badge, dateTime, money } from "./ui";
 
 type DashboardDestination = "leads" | "calendar" | "tasks" | "reports";
 
@@ -16,233 +16,260 @@ export function DashboardView({
   appointments,
   tasks,
   generatedAt,
-  viewerName,
-  workspaceName,
-  range,
+  onOpenLead,
   onNavigate,
-  onAddLead,
-  onRangeChange,
 }: {
   leads: CrmLead[];
   clients: CrmClient[];
   appointments: CrmAppointment[];
   tasks: CrmTask[];
   generatedAt: string;
-  viewerName: string;
-  workspaceName: string;
-  range: string;
   onOpenLead: (lead: CrmLead) => void;
   onNavigate: (view: DashboardDestination) => void;
-  onAddLead: () => void;
-  onRangeChange: (range: string) => void;
 }) {
-  const now = new Date(generatedAt);
-  const wonLeads = leads.filter((lead) => lead.status === "WON");
+  const won = leads.filter((lead) => lead.status === "WON");
   const newLeads = leads.filter((lead) => lead.status === "NEW");
-  const activeLeads = leads.filter(
-    (lead) => !["WON", "LOST", "SPAM"].includes(lead.status),
-  );
-  const wonRevenue = wonLeads.reduce(
+  const revenue = won.reduce(
     (sum, lead) => sum + lead.finalRevenueCents,
     0,
   );
-  const pipelineValue = activeLeads.reduce(
-    (sum, lead) => sum + lead.estimatedValueCents,
-    0,
-  );
-  const monthlyAdSpend = clients.reduce(
+  const spend = clients.reduce(
     (sum, client) => sum + client.monthlyAdBudgetCents,
     0,
   );
+  const booked = leads.filter((lead) =>
+    ["APPOINTMENT_BOOKED", "ESTIMATE_SENT", "WON"].includes(lead.status),
+  ).length;
   const closeRate = leads.length
-    ? Math.round((wonLeads.length / leads.length) * 100)
+    ? Math.round((won.length / leads.length) * 100)
     : 0;
-  const roas = monthlyAdSpend ? wonRevenue / monthlyAdSpend : 0;
-
+  const roas = spend ? revenue / spend : 0;
   const openTasks = tasks.filter(
     (task) => !["COMPLETED", "CANCELED"].includes(task.status),
   );
-  const overdueTasks = openTasks.filter(
-    (task) => task.dueAt && new Date(task.dueAt).getTime() < now.getTime(),
-  );
-
-  const upcomingAppointments = appointments
+  const futureAppointments = appointments
     .filter(
       (appointment) =>
         appointment.status !== "CANCELED" &&
-        new Date(appointment.startsAt).getTime() >= now.getTime(),
+        new Date(appointment.startsAt).getTime() >=
+          new Date(generatedAt).getTime(),
     )
     .sort(
       (first, second) =>
         new Date(first.startsAt).getTime() -
         new Date(second.startsAt).getTime(),
     );
-  const todayAppointments = upcomingAppointments.filter(
-    (appointment) =>
-      new Date(appointment.startsAt).toDateString() === now.toDateString(),
-  );
 
-  const hour = now.getHours();
-  const greeting =
-    hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  const firstName = viewerName.trim().split(/\s+/)[0] || "there";
-  const formattedDate = now.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
+  const daily = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(generatedAt);
+    date.setUTCDate(date.getUTCDate() - 6 + index);
+    const iso = date.toISOString().slice(0, 10);
+    return {
+      label: date.toLocaleDateString("en-US", { weekday: "short" }),
+      value: leads.filter((lead) => lead.createdAt.slice(0, 10) === iso)
+        .length,
+    };
   });
+  const maxDaily = Math.max(1, ...daily.map((item) => item.value));
+
+  const sources = Object.entries(
+    leads.reduce<Record<string, number>>((acc, lead) => {
+      const source = lead.source || "Unknown";
+      acc[source] = (acc[source] ?? 0) + 1;
+      return acc;
+    }, {}),
+  ).sort((first, second) => second[1] - first[1]);
+  const maxSource = Math.max(1, ...sources.map(([, count]) => count));
 
   const metrics = [
-    {
-      label: "Leads",
-      value: String(newLeads.length),
-      state: "New",
-      detail: `${leads.length} total in the selected range`,
-      action: () => onNavigate("leads"),
-    },
-    {
-      label: "Pipeline",
-      value: money(pipelineValue, true),
-      state: "Active value",
-      detail: `${activeLeads.length} open opportunities`,
-      action: () => onNavigate("leads"),
-    },
-    {
-      label: "Appointments",
-      value: String(todayAppointments.length),
-      state: "Today",
-      detail: `${upcomingAppointments.length} upcoming`,
-      action: () => onNavigate("calendar"),
-    },
-    {
-      label: "Tasks",
-      value: String(openTasks.length),
-      state: "Open",
-      detail: `${overdueTasks.length} past due`,
-      action: () => onNavigate("tasks"),
-    },
+    ["Total leads", String(leads.length), "All captured inquiries"],
+    ["New leads", String(newLeads.length), "Need first response"],
+    ["Appointments", String(booked), "Booked or later"],
+    ["Jobs won", String(won.length), `${closeRate}% close rate`],
+    ["Revenue", money(revenue, true), "Collected revenue"],
+    ["Ad spend", money(spend, true), "Monthly client budget"],
+    [
+      "Cost per lead",
+      money(leads.length ? Math.round(spend / leads.length) : 0),
+      "Budget ÷ leads",
+    ],
+    ["ROAS", `${roas.toFixed(1)}x`, "Revenue ÷ ad spend"],
   ];
 
   return (
-    <div className="crm-view crm-dashboard-view crm-calm-dashboard">
-      <section className="crm-dashboard-hero">
+    <div className="crm-view crm-dashboard-view">
+      <section className="crm-welcome-row">
         <div>
-          <time dateTime={now.toISOString()}>{formattedDate}</time>
-          <h2>
-            {greeting}, {firstName}
-          </h2>
-          <p>{workspaceName}</p>
+          <p>AGENCY COMMAND CENTER</p>
+          <h2>Every lead, next step, and dollar in one view.</h2>
+          <span>
+            Live performance from your leads, appointments, tasks, and client
+            budgets.
+          </span>
         </div>
-        <div className="crm-dashboard-hero-actions">
-          <select
-            value={range}
-            onChange={(event) => onRangeChange(event.target.value)}
-            aria-label="Filter dashboard by date range"
-          >
-            <option value="7">Last 7 days</option>
-            <option value="30">Last 30 days</option>
-            <option value="90">Last 90 days</option>
-            <option value="all">All time</option>
-          </select>
-          <button className="crm-button-primary" onClick={onAddLead}>
-            + New lead
-          </button>
-        </div>
+        <Badge tone="green">Live workspace</Badge>
       </section>
 
       <section
-        className="crm-overview-metrics"
-        aria-label="Workspace overview"
+        className="crm-metric-grid"
+        aria-label="Key performance indicators"
       >
-        {metrics.map((metric) => (
-          <button key={metric.label} type="button" onClick={metric.action}>
-            <span>{metric.label}</span>
-            <strong>{metric.value}</strong>
-            <span className="crm-dashboard-metric-copy">
-              <b>{metric.state}</b>
-              <small>{metric.detail}</small>
-            </span>
-          </button>
+        {metrics.map(([label, value, detail], index) => (
+          <article
+            key={label}
+            className={index === 0 ? "crm-metric-primary" : ""}
+          >
+            <span>{label}</span>
+            <strong>{value}</strong>
+            <small>{detail}</small>
+          </article>
         ))}
       </section>
 
-      <section
-        className="crm-dashboard-grid crm-dashboard-operations"
-        aria-label="Today's operations"
-      >
-        <article className="crm-panel crm-today-panel">
+      <section className="crm-dashboard-grid">
+        <article className="crm-panel crm-chart-panel">
           <header>
             <div>
-              <p>SCHEDULE</p>
-              <h3>Today&apos;s schedule</h3>
+              <p>LEAD VOLUME</p>
+              <h3>New inquiries this week</h3>
             </div>
-            <button type="button" onClick={() => onNavigate("calendar")}>
-              Open calendar
-            </button>
+            <span>7 days</span>
           </header>
-
-          <div className="crm-today-list">
-            {todayAppointments.slice(0, 5).map((appointment) => (
-              <button
-                key={appointment.id}
-                type="button"
-                onClick={() => onNavigate("calendar")}
-              >
-                <time dateTime={appointment.startsAt}>
-                  {new Date(appointment.startsAt).toLocaleTimeString("en-US", {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
-                </time>
-                <span>
-                  <strong>{appointment.contactName}</strong>
-                  <small>{appointment.serviceType}</small>
-                </span>
-                <Badge
-                  tone={
-                    appointment.status === "COMPLETED" ? "green" : "neutral"
-                  }
-                >
-                  {appointment.status.replaceAll("_", " ")}
-                </Badge>
-              </button>
-            ))}
-
-            {!todayAppointments.length ? (
-              <div className="crm-calm-empty">
-                <strong>Nothing scheduled today</strong>
-                <span>Appointments booked for today will appear here.</span>
-                <button type="button" onClick={() => onNavigate("calendar")}>
-                  Open the calendar →
-                </button>
+          <div
+            className="crm-column-chart"
+            role="img"
+            aria-label={`Lead volume by day: ${daily
+              .map((item) => `${item.label} ${item.value}`)
+              .join(", ")}`}
+          >
+            {daily.map((item) => (
+              <div key={item.label}>
+                <strong>{item.value}</strong>
+                <span
+                  style={{
+                    height: `${Math.max(8, (item.value / maxDaily) * 100)}%`,
+                  }}
+                />
+                <small>{item.label}</small>
               </div>
-            ) : null}
+            ))}
           </div>
         </article>
 
-        <aside
-          className="crm-dashboard-performance"
-          aria-labelledby="business-performance-title"
-        >
-          <h3 id="business-performance-title">Business performance</h3>
-          <div className="crm-performance-stack">
-            <article>
-              <span>Won revenue</span>
-              <strong>{money(wonRevenue, true)}</strong>
-              <small>{wonLeads.length} closed leads</small>
-            </article>
-            <article>
-              <span>Close rate</span>
-              <strong>{closeRate}%</strong>
-              <small>Across the selected lead range</small>
-            </article>
-            <article>
-              <span>Return on ad spend</span>
-              <strong>{roas.toFixed(1)}x</strong>
-              <small>{money(monthlyAdSpend, true)} monthly client budget</small>
-            </article>
+        <article className="crm-panel crm-source-panel">
+          <header>
+            <div>
+              <p>ATTRIBUTION</p>
+              <h3>Leads by source</h3>
+            </div>
+            <button type="button" onClick={() => onNavigate("reports")}>
+              Full report
+            </button>
+          </header>
+          <div className="crm-bar-list">
+            {sources.length ? (
+              sources.map(([source, count]) => (
+                <div key={source}>
+                  <div>
+                    <span>{source}</span>
+                    <strong>{count}</strong>
+                  </div>
+                  <i>
+                    <span style={{ width: `${(count / maxSource) * 100}%` }} />
+                  </i>
+                </div>
+              ))
+            ) : (
+              <p className="crm-empty-inline">No lead sources yet.</p>
+            )}
           </div>
-        </aside>
+        </article>
+      </section>
+
+      <section className="crm-dashboard-grid crm-dashboard-lower">
+        <article className="crm-panel crm-recent-panel">
+          <header>
+            <div>
+              <p>RECENT LEADS</p>
+              <h3>Newest opportunities</h3>
+            </div>
+            <button type="button" onClick={() => onNavigate("leads")}>
+              View all
+            </button>
+          </header>
+          <div className="crm-compact-list">
+            {leads.slice(0, 5).map((lead) => (
+              <button
+                key={lead.id}
+                type="button"
+                onClick={() => onOpenLead(lead)}
+              >
+                <span className="crm-avatar">
+                  {lead.firstName[0]}
+                  {lead.lastName[0]}
+                </span>
+                <span>
+                  <strong>
+                    {lead.firstName} {lead.lastName}
+                  </strong>
+                  <small>
+                    {lead.serviceRequested} · {lead.source}
+                  </small>
+                </span>
+                <Badge
+                  tone={
+                    lead.status === "NEW"
+                      ? "purple"
+                      : lead.status === "WON"
+                        ? "green"
+                        : "neutral"
+                  }
+                >
+                  {lead.status.replaceAll("_", " ")}
+                </Badge>
+              </button>
+            ))}
+          </div>
+        </article>
+
+        <article className="crm-panel crm-next-panel">
+          <header>
+            <div>
+              <p>NEXT UP</p>
+              <h3>Appointments and tasks</h3>
+            </div>
+          </header>
+          {futureAppointments.slice(0, 2).map((appointment) => (
+            <button
+              key={appointment.id}
+              type="button"
+              onClick={() => onNavigate("calendar")}
+            >
+              <span className="crm-next-icon">C</span>
+              <span>
+                <strong>{appointment.contactName}</strong>
+                <small>
+                  {appointment.serviceType} · {dateTime(appointment.startsAt)}
+                </small>
+              </span>
+            </button>
+          ))}
+          {openTasks.slice(0, 3).map((task) => (
+            <button
+              key={task.id}
+              type="button"
+              onClick={() => onNavigate("tasks")}
+            >
+              <span className="crm-next-icon crm-next-task">T</span>
+              <span>
+                <strong>{task.title}</strong>
+                <small>
+                  {task.priority} priority · {dateTime(task.dueAt)}
+                </small>
+              </span>
+            </button>
+          ))}
+        </article>
       </section>
     </div>
   );

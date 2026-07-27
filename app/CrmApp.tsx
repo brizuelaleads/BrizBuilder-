@@ -672,7 +672,7 @@ export function CrmApp({
                 : view === "team"
                   ? `${data.team.length} ${data.team.length === 1 ? "team member" : "team members"}`
                   : null;
-  const showRangeFilter = ["leads", "pipeline", "reports"].includes(
+  const showRangeFilter = ["dashboard", "leads", "pipeline", "reports"].includes(
     view,
   );
 
@@ -902,7 +902,7 @@ export function CrmApp({
                 Import
               </button>
             ) : null}
-            {view === "leads" || view === "pipeline" ? (
+            {["dashboard", "leads", "pipeline"].includes(view) ? (
               <button
                 type="button"
                 className="crm-topbar-action crm-topbar-action-primary"
@@ -1032,13 +1032,8 @@ export function CrmApp({
             appointments={filteredAppointments}
             tasks={filteredTasks}
             generatedAt={data.generatedAt}
-            viewerName={data.viewer.name}
-            workspaceName={workspaceName}
-            range={range}
             onOpenLead={openLead}
             onNavigate={navigate}
-            onAddLead={() => setModal("lead")}
-            onRangeChange={setRange}
           />
         )}
         {view === "leads" && (

@@ -45,8 +45,8 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/og-fieldbook.png",
-        alt: "BrizBuilder clean agency workspace preview",
+        url: "/og-dashboard.png",
+        alt: "BrizBuilder complete agency dashboard preview",
       },
     ],
   },
@@ -55,7 +55,7 @@ export const metadata: Metadata = {
     title: "BrizBuilder",
     description:
       "Launch service-business websites and manage client leads from one workspace.",
-    images: ["/og-fieldbook.png"],
+    images: ["/og-dashboard.png"],
   },
 };
 
