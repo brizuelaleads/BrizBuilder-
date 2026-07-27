@@ -43,12 +43,19 @@ export const metadata: Metadata = {
     description:
       "Launch service-business websites and manage client leads from one workspace.",
     type: "website",
+    images: [
+      {
+        url: "/og-calm.png",
+        alt: "BrizBuilder calm agency workspace preview",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "BrizBuilder",
     description:
       "Launch service-business websites and manage client leads from one workspace.",
+    images: ["/og-calm.png"],
   },
 };
 
