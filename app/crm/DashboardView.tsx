@@ -51,6 +51,55 @@ function appointmentTone(
   return "blue";
 }
 
+type DashboardSkeletonVariant =
+  | "chart"
+  | "sources"
+  | "list"
+  | "schedule"
+  | "pipeline"
+  | "conversations";
+
+const skeletonChartHeights = [38, 64, 48, 76, 56, 84, 46];
+
+function DashboardSkeleton({
+  variant,
+  caption,
+  rows = 3,
+}: {
+  variant: DashboardSkeletonVariant;
+  caption: string;
+  rows?: number;
+}) {
+  return (
+    <div className={`crm-dashboard-placeholder is-${variant}`}>
+      {variant === "chart" ? (
+        <div
+          className="crm-dashboard-placeholder-chart"
+          aria-hidden="true"
+        >
+          {skeletonChartHeights.map((height, index) => (
+            <span key={index} style={{ height: `${height}%` }} />
+          ))}
+        </div>
+      ) : (
+        <div className="crm-dashboard-placeholder-rows" aria-hidden="true">
+          {Array.from({ length: rows }, (_, index) => (
+            <div key={index} className="crm-dashboard-placeholder-row">
+              {!["sources", "pipeline"].includes(variant) ? <i /> : null}
+              <span>
+                <b />
+                <small />
+              </span>
+              <em />
+            </div>
+          ))}
+        </div>
+      )}
+      <p>{caption}</p>
+    </div>
+  );
+}
+
 export function DashboardView({
   leads,
   pipelineLeads,
@@ -125,6 +174,7 @@ export function DashboardView({
     };
   });
   const maxDaily = Math.max(1, ...daily.map((item) => item.value));
+  const hasDailyLeadActivity = daily.some((item) => item.value > 0);
 
   const sources = Object.entries(
     leads.reduce<Record<string, number>>((acc, lead) => {
@@ -196,6 +246,9 @@ export function DashboardView({
   const pipelineSnapshot = [...groupedStages.values()]
     .filter((stage) => !stage.isLost)
     .sort((first, second) => first.position - second.position);
+  const hasPipelineActivity = pipelineSnapshot.some(
+    (stage) => stage.count > 0,
+  );
   const maxPipelineStage = Math.max(
     1,
     ...pipelineSnapshot.map((stage) => stage.count),
@@ -254,18 +307,59 @@ export function DashboardView({
   );
 
   const metrics = [
-    ["Leads in range", String(leads.length), "Selected reporting period"],
-    ["New leads", String(newLeads.length), "Need first response"],
-    ["Booked leads", String(booked), "Appointment stage or later"],
-    ["Won opportunities", String(won.length), `${closeRate}% close rate`],
-    ["Recorded won value", money(revenue, true), "From won opportunities"],
-    ["Monthly ad budget", money(spend, true), "Across selected clients"],
-    [
-      "Budget per lead",
-      money(leads.length ? Math.round(spend / leads.length) : 0),
-      "Monthly budget ÷ leads",
-    ],
-    ["Value / budget", `${roas.toFixed(1)}x`, "Recorded won value ÷ budget"],
+    {
+      label: "Leads in range",
+      value: String(leads.length),
+      detail: "Selected reporting period",
+    },
+    {
+      label: "New leads",
+      value: String(newLeads.length),
+      detail: "Need first response",
+    },
+    {
+      label: "Booked leads",
+      value: String(booked),
+      detail: "Appointment stage or later",
+    },
+    {
+      label: "Won opportunities",
+      value: String(won.length),
+      detail: leads.length
+        ? `${closeRate}% close rate`
+        : "Add leads to calculate",
+    },
+    {
+      label: "Recorded won value",
+      value: money(revenue, true),
+      detail: "From won opportunities",
+    },
+    {
+      label: "Monthly ad budget",
+      value: clients.length ? money(spend, true) : "—",
+      detail: clients.length
+        ? "Across selected clients"
+        : "Add a client budget",
+    },
+    {
+      label: "Budget per lead",
+      value:
+        leads.length && spend
+          ? money(Math.round(spend / leads.length))
+          : "—",
+      detail: !leads.length
+        ? "Add leads to calculate"
+        : spend
+          ? "Monthly budget ÷ leads"
+          : "Add a client budget",
+    },
+    {
+      label: "Value / budget",
+      value: spend ? `${roas.toFixed(1)}x` : "—",
+      detail: spend
+        ? "Recorded won value ÷ budget"
+        : "Add a client budget",
+    },
   ];
 
   return (
@@ -286,7 +380,7 @@ export function DashboardView({
         className="crm-metric-grid"
         aria-label="Key performance indicators"
       >
-        {metrics.map(([label, value, detail], index) => (
+        {metrics.map(({ label, value, detail }, index) => (
           <article
             key={label}
             className={index === 0 ? "crm-metric-primary" : ""}
@@ -307,25 +401,32 @@ export function DashboardView({
             </div>
             <span>7 days</span>
           </header>
-          <div
-            className="crm-column-chart"
-            role="img"
-            aria-label={`Lead volume by day: ${daily
-              .map((item) => `${item.label} ${item.value}`)
-              .join(", ")}`}
-          >
-            {daily.map((item) => (
-              <div key={item.label}>
-                <strong>{item.value}</strong>
-                <span
-                  style={{
-                    height: `${Math.max(8, (item.value / maxDaily) * 100)}%`,
-                  }}
-                />
-                <small>{item.label}</small>
-              </div>
-            ))}
-          </div>
+          {hasDailyLeadActivity ? (
+            <div
+              className="crm-column-chart"
+              role="img"
+              aria-label={`Lead volume by day: ${daily
+                .map((item) => `${item.label} ${item.value}`)
+                .join(", ")}`}
+            >
+              {daily.map((item) => (
+                <div key={item.label}>
+                  <strong>{item.value}</strong>
+                  <span
+                    style={{
+                      height: `${Math.max(8, (item.value / maxDaily) * 100)}%`,
+                    }}
+                  />
+                  <small>{item.label}</small>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <DashboardSkeleton
+              variant="chart"
+              caption="No inquiries were recorded in the last 7 days."
+            />
+          )}
         </article>
 
         <article className="crm-panel crm-source-panel">
@@ -352,7 +453,10 @@ export function DashboardView({
                 </div>
               ))
             ) : (
-              <p className="crm-empty-inline">No lead sources yet.</p>
+              <DashboardSkeleton
+                variant="sources"
+                caption="Sources such as Meta and Google will appear here."
+              />
             )}
           </div>
         </article>
@@ -370,42 +474,46 @@ export function DashboardView({
             </button>
           </header>
           <div className="crm-compact-list">
-            {leads.slice(0, 5).map((lead) => (
-              <button
-                key={lead.id}
-                type="button"
-                onClick={() => onOpenLead(lead)}
-              >
-                <span className="crm-avatar">
-                  {lead.firstName[0]}
-                  {lead.lastName[0]}
-                </span>
-                <span>
-                  <strong>
-                    {lead.firstName} {lead.lastName}
-                  </strong>
-                  <small>
-                    {lead.serviceRequested}
-                    {" · "}
-                    {lead.source}
-                  </small>
-                </span>
-                <Badge
-                  tone={
-                    lead.status === "NEW"
-                      ? "purple"
-                      : lead.status === "WON"
-                        ? "green"
-                        : "neutral"
-                  }
+            {leads.length ? (
+              leads.slice(0, 5).map((lead) => (
+                <button
+                  key={lead.id}
+                  type="button"
+                  onClick={() => onOpenLead(lead)}
                 >
-                  {displayStatus(lead.status)}
-                </Badge>
-              </button>
-            ))}
-            {!leads.length ? (
-              <p className="crm-dashboard-empty-row">No leads yet.</p>
-            ) : null}
+                  <span className="crm-avatar">
+                    {lead.firstName[0]}
+                    {lead.lastName[0]}
+                  </span>
+                  <span>
+                    <strong>
+                      {lead.firstName} {lead.lastName}
+                    </strong>
+                    <small>
+                      {lead.serviceRequested}
+                      {" · "}
+                      {lead.source}
+                    </small>
+                  </span>
+                  <Badge
+                    tone={
+                      lead.status === "NEW"
+                        ? "purple"
+                        : lead.status === "WON"
+                          ? "green"
+                          : "neutral"
+                    }
+                  >
+                    {displayStatus(lead.status)}
+                  </Badge>
+                </button>
+              ))
+            ) : (
+              <DashboardSkeleton
+                variant="list"
+                caption="New leads will appear here as they arrive."
+              />
+            )}
           </div>
         </article>
 
@@ -455,9 +563,10 @@ export function DashboardView({
             </button>
           ))}
           {!futureAppointments.length && !openTasks.length ? (
-            <p className="crm-dashboard-empty-row">
-              No appointments or open tasks.
-            </p>
+            <DashboardSkeleton
+              variant="list"
+              caption="Upcoming appointments and tasks will appear here."
+            />
           ) : null}
         </article>
       </section>
@@ -500,9 +609,10 @@ export function DashboardView({
               </button>
             ))}
             {!futureAppointments.length ? (
-              <p className="crm-dashboard-empty-row">
-                Nothing is scheduled yet.
-              </p>
+              <DashboardSkeleton
+                variant="schedule"
+                caption="Scheduled appointments will appear here."
+              />
             ) : null}
           </div>
         </article>
@@ -517,43 +627,48 @@ export function DashboardView({
               Open pipeline
             </button>
           </header>
-          <div className="crm-pipeline-snapshot-summary">
-            <div>
-              <strong>{money(openPipelineValue, true)}</strong>
-              <span>Open pipeline value</span>
-            </div>
-            <Badge tone="green">{openPipeline.length} open</Badge>
-          </div>
-          <div className="crm-pipeline-snapshot-list">
-            {pipelineSnapshot.map((stage) => (
-              <button
-                key={`${stage.name}-${stage.position}`}
-                type="button"
-                onClick={() => onNavigate("pipeline")}
-              >
-                <span>
-                  <strong>{stage.name}</strong>
-                  <small>{money(stage.valueCents, true)}</small>
-                </span>
-                <i aria-hidden="true">
-                  <span
-                    style={{
-                      width: `${Math.max(
-                        stage.count ? 7 : 0,
-                        (stage.count / maxPipelineStage) * 100,
-                      )}%`,
-                    }}
-                  />
-                </i>
-                <b>{stage.count}</b>
-              </button>
-            ))}
-            {!pipelineSnapshot.length ? (
-              <p className="crm-dashboard-empty-row">
-                No pipeline stages are configured.
-              </p>
-            ) : null}
-          </div>
+          {hasPipelineActivity ? (
+            <>
+              <div className="crm-pipeline-snapshot-summary">
+                <div>
+                  <strong>{money(openPipelineValue, true)}</strong>
+                  <span>Open pipeline value</span>
+                </div>
+                <Badge tone="green">{openPipeline.length} open</Badge>
+              </div>
+              <div className="crm-pipeline-snapshot-list">
+                {pipelineSnapshot.map((stage) => (
+                  <button
+                    key={`${stage.name}-${stage.position}`}
+                    type="button"
+                    onClick={() => onNavigate("pipeline")}
+                  >
+                    <span>
+                      <strong>{stage.name}</strong>
+                      <small>{money(stage.valueCents, true)}</small>
+                    </span>
+                    <i aria-hidden="true">
+                      <span
+                        style={{
+                          width: `${Math.max(
+                            stage.count ? 7 : 0,
+                            (stage.count / maxPipelineStage) * 100,
+                          )}%`,
+                        }}
+                      />
+                    </i>
+                    <b>{stage.count}</b>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <DashboardSkeleton
+              variant="pipeline"
+              rows={4}
+              caption="Pipeline counts and values will appear with your first active opportunity."
+            />
+          )}
         </article>
       </section>
 
@@ -609,9 +724,10 @@ export function DashboardView({
                 )
               : null}
             {canViewConversations && !recentConversations.length ? (
-              <p className="crm-dashboard-empty-row">
-                No conversations yet.
-              </p>
+              <DashboardSkeleton
+                variant="conversations"
+                caption="Customer conversations will appear here."
+              />
             ) : null}
             {!canViewConversations ? (
               <p className="crm-dashboard-empty-row">

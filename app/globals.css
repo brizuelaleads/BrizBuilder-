@@ -6060,6 +6060,172 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   text-align: center;
 }
 
+.crm-dashboard-view .crm-dashboard-placeholder {
+  min-height: 214px;
+  padding: 14px 18px 16px;
+  display: grid;
+  align-content: space-between;
+  gap: 14px;
+  background: #fcfcfa;
+  pointer-events: none;
+}
+
+.crm-dashboard-view .crm-dashboard-placeholder > p {
+  margin: 0;
+  color: var(--crm-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.crm-dashboard-view .crm-dashboard-placeholder-rows {
+  display: grid;
+}
+
+.crm-dashboard-view .crm-dashboard-placeholder-row {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 62px;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--crm-line);
+}
+
+.crm-dashboard-view .crm-dashboard-placeholder-row:last-child {
+  border-bottom: 0;
+}
+
+.crm-dashboard-view .crm-dashboard-placeholder-row > i,
+.crm-dashboard-view .crm-dashboard-placeholder-row > span > b,
+.crm-dashboard-view .crm-dashboard-placeholder-row > span > small,
+.crm-dashboard-view .crm-dashboard-placeholder-row > em,
+.crm-dashboard-view .crm-dashboard-placeholder-chart > span {
+  display: block;
+  border-radius: 999px;
+  background: var(--crm-line);
+}
+
+.crm-dashboard-view .crm-dashboard-placeholder-row > i {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+}
+
+.crm-dashboard-view .crm-dashboard-placeholder-row > span {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.crm-dashboard-view .crm-dashboard-placeholder-row > span > b {
+  width: 58%;
+  height: 9px;
+}
+
+.crm-dashboard-view .crm-dashboard-placeholder-row > span > small {
+  width: 78%;
+  height: 7px;
+  opacity: 0.62;
+}
+
+.crm-dashboard-view .crm-dashboard-placeholder-row > em {
+  width: 62px;
+  height: 20px;
+  justify-self: end;
+  opacity: 0.72;
+}
+
+.crm-dashboard-view
+  .crm-dashboard-placeholder-row:nth-child(2)
+  > span
+  > b {
+  width: 72%;
+}
+
+.crm-dashboard-view
+  .crm-dashboard-placeholder-row:nth-child(2)
+  > span
+  > small {
+  width: 56%;
+}
+
+.crm-dashboard-view
+  .crm-dashboard-placeholder-row:nth-child(3)
+  > span
+  > b {
+  width: 46%;
+}
+
+.crm-dashboard-view
+  .crm-dashboard-placeholder-row:nth-child(4)
+  > span
+  > b {
+  width: 66%;
+}
+
+.crm-dashboard-view .crm-dashboard-placeholder.is-sources,
+.crm-dashboard-view .crm-dashboard-placeholder.is-pipeline {
+  min-height: 214px;
+}
+
+.crm-dashboard-view
+  .crm-dashboard-placeholder:is(.is-sources, .is-pipeline)
+  .crm-dashboard-placeholder-row {
+  grid-template-columns: minmax(0, 1fr) minmax(82px, 42%);
+}
+
+.crm-dashboard-view
+  .crm-dashboard-placeholder:is(.is-sources, .is-pipeline)
+  .crm-dashboard-placeholder-row
+  > em {
+  width: 100%;
+  height: 7px;
+}
+
+.crm-dashboard-view .crm-dashboard-placeholder.is-chart {
+  min-height: 250px;
+  padding: 24px 20px 16px;
+  background-image: linear-gradient(var(--crm-line) 1px, transparent 1px);
+  background-size: 100% 25%;
+}
+
+.crm-dashboard-view .crm-dashboard-placeholder-chart {
+  height: 178px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-around;
+  gap: 12px;
+}
+
+.crm-dashboard-view .crm-dashboard-placeholder-chart > span {
+  width: min(34px, 70%);
+  flex: 1;
+  border-radius: 5px 5px 2px 2px;
+  opacity: 0.88;
+}
+
+.crm-dashboard-view .crm-bar-list > .crm-dashboard-placeholder {
+  min-height: 210px;
+  padding: 0;
+  background: transparent;
+}
+
+.crm-dashboard-view
+  .crm-pipeline-snapshot-panel
+  > .crm-dashboard-placeholder {
+  min-height: 312px;
+}
+
+.crm-dashboard-view
+  :is(
+    .crm-compact-list,
+    .crm-next-panel,
+    .crm-schedule-list,
+    .crm-conversation-preview-list
+  )
+  .crm-dashboard-placeholder {
+  background: transparent;
+}
+
 .crm-dashboard-view .crm-schedule-list,
 .crm-dashboard-view .crm-conversation-preview-list,
 .crm-dashboard-view .crm-business-snapshot-list {
@@ -6270,6 +6436,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   color: var(--crm-ink);
   background: var(--crm-card);
   box-shadow: none;
+}
+
+.crm-shell[data-theme] .crm-dashboard-view .crm-dashboard-placeholder {
+  background-color: transparent;
 }
 
 .crm-shell[data-theme] .crm-dashboard-view .crm-welcome-row p,
