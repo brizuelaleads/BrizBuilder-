@@ -1,10 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { createClient as createSupabaseServerClient } from "../utils/supabase/server";
 import {
-  POLICY_AUD,
-  TEAM_DOMAIN,
   TEST_AUTH_ENABLED,
   TEST_AUTH_HOST,
   TEST_AUTH_SECRET,
@@ -16,7 +13,6 @@ export type ChatGPTUser = {
   fullName: string | null;
 };
 
-const CLOUDFLARE_ACCESS_JWT_HEADER = "cf-access-jwt-assertion";
 const TEST_EMAIL_HEADER = "x-brizbuilder-test-email";
 const TEST_NAME_HEADER = "x-brizbuilder-test-name";
 const TEST_TIMESTAMP_HEADER = "x-brizbuilder-test-timestamp";
@@ -29,16 +25,11 @@ const CALLBACK_PATH = "/callback";
 
 export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
   const requestHeaders = await headers();
-  // Cloudflare Access is an outer gate, not the BrizBuilder account. A user
-  // can pass Access as the owner while signing into Supabase as a client.
+  // Supabase is the only production identity source. Cloudflare Access may
+  // still sit in front of the Worker temporarily, but its identity headers
+  // must never decide which BrizBuilder account is active.
   const sessionUser = await verifySupabaseSession();
   if (sessionUser) return sessionUser;
-
-  const accessToken = requestHeaders.get(CLOUDFLARE_ACCESS_JWT_HEADER);
-  if (accessToken) {
-    const accessUser = await verifyCloudflareAccessIdentity(accessToken);
-    if (accessUser) return accessUser;
-  }
 
   const testUser = await verifySignedTestIdentity(requestHeaders);
   if (testUser) return testUser;
@@ -151,91 +142,6 @@ function safeDecodeURIComponent(value: string): string | null {
   }
 }
 
-let accessJwks:
-  | {
-      url: string;
-      keySet: ReturnType<typeof createRemoteJWKSet>;
-    }
-  | undefined;
-
-async function verifyCloudflareAccessIdentity(
-  token: string,
-): Promise<ChatGPTUser | null> {
-  const issuer = normalizedCloudflareTeamDomain(TEAM_DOMAIN);
-  if (!issuer || !POLICY_AUD || token.length > 16_384) return null;
-
-  const jwksUrl = `${issuer}/cdn-cgi/access/certs`;
-  if (!accessJwks || accessJwks.url !== jwksUrl) {
-    accessJwks = {
-      url: jwksUrl,
-      keySet: createRemoteJWKSet(new URL(jwksUrl)),
-    };
-  }
-
-  try {
-    const { payload } = await jwtVerify(token, accessJwks.keySet, {
-      algorithms: ["RS256"],
-      audience: POLICY_AUD,
-      issuer,
-      requiredClaims: ["email", "exp", "iat", "sub", "type"],
-    });
-
-    return cloudflareIdentityFromPayload(payload);
-  } catch {
-    return null;
-  }
-}
-
-function cloudflareIdentityFromPayload(
-  payload: JWTPayload,
-): ChatGPTUser | null {
-  // Cloudflare service tokens do not represent a person and do not carry an
-  // email. Accept only application tokens with a stable user subject.
-  if (payload.type !== "app" || typeof payload.sub !== "string" || !payload.sub) {
-    return null;
-  }
-
-  const now = Math.floor(Date.now() / 1000);
-  if (typeof payload.iat !== "number" || payload.iat > now + 60) return null;
-
-  const email = normalizedEmail(payload.email);
-  if (!email) return null;
-
-  const fullName = firstBoundedStringClaim(payload, [
-    "name",
-    "full_name",
-    "preferred_username",
-  ]);
-
-  return {
-    displayName: fullName ?? email,
-    email,
-    fullName,
-  };
-}
-
-function normalizedCloudflareTeamDomain(value: string): string | null {
-  if (!value) return null;
-
-  try {
-    const url = new URL(value);
-    if (
-      url.protocol !== "https:" ||
-      url.username ||
-      url.password ||
-      url.pathname !== "/" ||
-      url.search ||
-      url.hash ||
-      !url.hostname.endsWith(".cloudflareaccess.com")
-    ) {
-      return null;
-    }
-    return url.origin;
-  } catch {
-    return null;
-  }
-}
-
 async function verifySignedTestIdentity(
   requestHeaders: Headers,
 ): Promise<ChatGPTUser | null> {
@@ -319,17 +225,6 @@ function normalizedName(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const name = value.trim().slice(0, 200);
   return name.length ? name : null;
-}
-
-function firstBoundedStringClaim(
-  payload: JWTPayload,
-  names: string[],
-): string | null {
-  for (const name of names) {
-    const value = boundedIdentityName(payload[name]);
-    if (value) return value;
-  }
-  return null;
 }
 
 function boundedIdentityName(value: unknown): string | null {

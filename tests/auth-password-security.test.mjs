@@ -35,10 +35,10 @@ test("the session is validated with the auth server, never trusted from the cook
   assert.match(block, /normalizedEmail\(data\.user\.email\)/);
 });
 
-test("Supabase identity takes precedence over Cloudflare Access identity", () => {
-  const sessionIndex = authSource.indexOf("const sessionUser = await verifySupabaseSession()");
-  const accessIndex = authSource.indexOf("const accessToken = requestHeaders.get");
-  assert.ok(sessionIndex >= 0 && accessIndex >= 0 && sessionIndex < accessIndex);
+test("Cloudflare Access cannot choose the BrizBuilder account", () => {
+  assert.doesNotMatch(authSource, /cf-access-jwt-assertion/i);
+  assert.doesNotMatch(authSource, /verifyCloudflareAccessIdentity/);
+  assert.match(authSource, /Supabase is the only production identity source/);
 });
 
 test("sign-in never leaks the password and throttles repeated attempts", () => {

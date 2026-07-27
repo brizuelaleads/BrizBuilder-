@@ -89,24 +89,18 @@ BRIZBUILDER_AI_CONNECTOR_ORIGIN=https://brizbuilder-ai.brizuelaleads.workers.dev
 
 Do not put the real `SUPABASE_SERVICE_ROLE_KEY` in GitHub. After deploying, open `/api/supabase/status` to confirm the backend is connected.
 
-Copy `.env.example` to `.env.local`, then set `MAIN_ADMIN_EMAIL`, `MAIN_ADMIN_NAME`, `LOCAL_DEV_ADMIN_PASSWORD`, and a long random `LOCAL_DEV_SESSION_TOKEN`. Restart the development server after changing them. The `.env.local` file is intentionally excluded from Git. The same administrator fallback can remain available on the hosted Worker when those values are stored as Cloudflare secrets.
+Copy `.env.example` to `.env.local`, then set `MAIN_ADMIN_EMAIL`,
+`MAIN_ADMIN_NAME`, and the Supabase values above. Restart the development
+server after changing them. The `.env.local` file is intentionally excluded
+from Git.
 
 ## Production authentication
 
-The dashboard is protected by Cloudflare Access. Add these two runtime variables
-to the production Worker:
-
-```txt
-TEAM_DOMAIN=https://your-team-name.cloudflareaccess.com
-POLICY_AUD=your-application-audience-aud-tag
-```
-
-Find the team domain under **Zero Trust > Settings**. Find the AUD tag under
-**Zero Trust > Access controls > Applications > BrizBuilder > Additional
-settings**. Access sends the application token in `Cf-Access-Jwt-Assertion`;
-BrizBuilder verifies its RS256 signature against Cloudflare's remote JWKS and
-also verifies the exact issuer, audience, required identity claims, and token
-time limits before using the email address.
+Supabase email and password sessions are the only production identity source.
+Cloudflare Access identity headers are deliberately ignored, so passing an
+outer Cloudflare gate can never silently turn a client into the agency owner.
+Once Supabase login is verified on the production domain, the Cloudflare Access
+application can be removed.
 
 Unsigned identity headers are ignored. The `BRIZBUILDER_TEST_AUTH_*` variables
 exist only for the Miniflare integration suite and must never be configured on

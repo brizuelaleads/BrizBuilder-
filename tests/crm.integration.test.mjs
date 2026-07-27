@@ -4,7 +4,6 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { SignJWT, exportJWK, generateKeyPair } from "jose";
 import { Miniflare } from "miniflare";
 
 const root = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
@@ -12,8 +11,6 @@ const adminEmail = "admin@brizbuilder.local";
 const testAuthHost = "127.0.0.1";
 const testAuthSecret = "brizbuilder-worker-test-secret-rotate-2026";
 const localAuthToken = "brizbuilder-local-session-test-token-2026";
-const accessTeamDomain = "https://brizbuilder-test.cloudflareaccess.com";
-const accessAudience = "brizbuilder-test-application-audience";
 
 function collectWorkerModules(serverRoot) {
   function walk(directory) {
@@ -225,30 +222,6 @@ test("AI Connector stores only hashed OAuth credentials and exposes bounded CRM 
 
 test("Phase 1 CRM authentication, tenant isolation, imports, custom data, companies, and opportunities", async () => {
   const serverRoot = path.join(root, "dist/server");
-  const { privateKey, publicKey } = await generateKeyPair("RS256", {
-    extractable: true,
-  });
-  const accessJwk = await exportJWK(publicKey);
-  accessJwk.alg = "RS256";
-  accessJwk.kid = "brizbuilder-access-test-key";
-  accessJwk.use = "sig";
-
-  function accessToken(
-    email = adminEmail,
-    name = "Luciano Brizuela",
-    options = {},
-  ) {
-    const now = Math.floor(Date.now() / 1000);
-    return new SignJWT({ email, name, type: "app" })
-      .setProtectedHeader({ alg: "RS256", kid: accessJwk.kid })
-      .setIssuer(options.issuer ?? accessTeamDomain)
-      .setAudience(options.audience ?? accessAudience)
-      .setSubject(options.subject ?? `user:${email}`)
-      .setIssuedAt(options.issuedAt ?? now)
-      .setNotBefore(options.notBefore ?? now - 1)
-      .setExpirationTime(options.expiresAt ?? now + 300)
-      .sign(privateKey);
-  }
 
   const mf = new Miniflare({
     modules: collectWorkerModules(serverRoot),
@@ -262,19 +235,9 @@ test("Phase 1 CRM authentication, tenant isolation, imports, custom data, compan
       LOCAL_DEV_SESSION_TOKEN: localAuthToken,
       MAIN_ADMIN_EMAIL: adminEmail,
       MAIN_ADMIN_NAME: "BrizBuilder Test Administrator",
-      POLICY_AUD: accessAudience,
-      TEAM_DOMAIN: accessTeamDomain,
     },
     d1Databases: { DB: "crm-phase-one-test" },
-    outboundService: async (request) => {
-      if (
-        request.url === `${accessTeamDomain}/cdn-cgi/access/certs`
-      ) {
-        return Response.json(
-          { keys: [accessJwk] },
-          { headers: { "Cache-Control": "public, max-age=3600" } },
-        );
-      }
+    outboundService: async () => {
       return new Response("Unexpected outbound request", { status: 502 });
     },
   });
@@ -365,37 +328,14 @@ test("Phase 1 CRM authentication, tenant isolation, imports, custom data, compan
 
     const accessResponse = await mf.dispatchFetch("http://crm.test/api/crm", {
       headers: {
-        "cf-access-jwt-assertion": await accessToken(),
+        "cf-access-jwt-assertion": "retired-cloudflare-access-token",
       },
     });
     assert.equal(
       accessResponse.status,
-      200,
-      "a correctly signed and scoped Cloudflare Access JWT is accepted",
+      401,
+      "Cloudflare Access can no longer authenticate a BrizBuilder account",
     );
-
-    const wrongAudience = await mf.dispatchFetch("http://crm.test/api/crm", {
-      headers: {
-        "cf-access-jwt-assertion": await accessToken(
-          adminEmail,
-          "Luciano Brizuela",
-          { audience: "some-other-application" },
-        ),
-      },
-    });
-    assert.equal(wrongAudience.status, 401, "a JWT for another Access application is rejected");
-
-    const now = Math.floor(Date.now() / 1000);
-    const expiredAccessToken = await mf.dispatchFetch("http://crm.test/api/crm", {
-      headers: {
-        "cf-access-jwt-assertion": await accessToken(
-          adminEmail,
-          "Luciano Brizuela",
-          { issuedAt: now - 600, notBefore: now - 600, expiresAt: now - 300 },
-        ),
-      },
-    });
-    assert.equal(expiredAccessToken.status, 401, "an expired Access JWT is rejected");
 
     const spoofedIdentity = await mf.dispatchFetch("http://crm.test/api/crm", {
       headers: {

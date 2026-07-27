@@ -10,12 +10,6 @@ export const MAIN_ADMIN_EMAIL =
 export const MAIN_ADMIN_NAME =
   readRuntimeEnv("MAIN_ADMIN_NAME") || "BrizBuilder Administrator";
 
-// Cloudflare Access application identity. TEAM_DOMAIN must be the complete
-// HTTPS team URL (for example, https://example.cloudflareaccess.com), and
-// POLICY_AUD must be the Access application's Audience (AUD) tag.
-export const TEAM_DOMAIN = readRuntimeEnv("TEAM_DOMAIN");
-export const POLICY_AUD = readRuntimeEnv("POLICY_AUD");
-
 // The shared-admin session fallback (LOCAL_DEV_ADMIN_PASSWORD /
 // LOCAL_DEV_SESSION_TOKEN) was removed: the cookie it set carried the static
 // server secret verbatim, so it could not be revoked for one person or rotated
