@@ -99,40 +99,38 @@ const nav: Array<{
   // agencyOnly marks the tabs a client user must never see; their underlying
   // permissions are withheld from client roles too, so this is defence in depth
   // rather than the only gate.
-  { id: "dashboard", label: "Dashboard", icon: "D", section: "Workspace" },
-  { id: "leads", label: "Leads", icon: "L", section: "Workspace" },
-  { id: "pipeline", label: "Pipeline", icon: "P", section: "Workspace" },
-  { id: "contacts", label: "Contacts", icon: "C", section: "Workspace" },
+  { id: "dashboard", label: "Overview", icon: "O", section: "Command center" },
+  { id: "leads", label: "Leads", icon: "L", section: "CRM" },
+  { id: "contacts", label: "Contacts", icon: "C", section: "CRM" },
   {
     id: "companies",
     label: "Companies",
-    icon: "O",
-    section: "Workspace",
+    icon: "CO",
+    section: "CRM",
     permission: "companies.write",
   },
   { id: "calendar", label: "Calendar", icon: "A", section: "Operations" },
   { id: "tasks", label: "Tasks", icon: "T", section: "Operations" },
-  { id: "reports", label: "Reports", icon: "R", section: "Insights" },
   {
     id: "conversations",
-    label: "Conversations",
-    icon: "Q",
-    section: "Communication",
+    label: "Inbox",
+    icon: "IN",
+    section: "Engage",
     permission: "messages.write",
   },
   {
     id: "connections",
     label: "Connections",
     icon: "C",
-    section: "Communication",
+    section: "Engage",
     agencyOnly: true,
     permission: "phone_system.manage",
   },
   {
     id: "phone-system",
-    label: "Phone System",
+    label: "Phone & texting",
     icon: "☎",
-    section: "Communication",
+    section: "Engage",
     agencyOnly: true,
     permission: "phone_system.manage",
   },
@@ -140,7 +138,7 @@ const nav: Array<{
     id: "automations",
     label: "Automations",
     icon: "W",
-    section: "Communication",
+    section: "Engage",
     agencyOnly: true,
     permission: "automations.manage",
   },
@@ -176,11 +174,12 @@ const nav: Array<{
     agencyOnly: true,
     preview: true,
   },
+  { id: "reports", label: "Reports", icon: "RE", section: "Insights" },
   {
     id: "payments",
     label: "Payments",
     icon: "$",
-    section: "Revenue",
+    section: "Insights",
     agencyOnly: true,
     permission: "payments.manage",
   },
@@ -188,7 +187,7 @@ const nav: Array<{
     id: "ai",
     label: "AI Connector",
     icon: "AI",
-    section: "Intelligence",
+    section: "Tools",
     agencyOnly: true,
     permission: "ai_connector.manage",
   },
@@ -196,17 +195,17 @@ const nav: Array<{
     id: "clients",
     label: "Sub-accounts",
     icon: "B",
-    section: "Agency",
+    section: "Administration",
     agencyOnly: true,
   },
   // Client owners manage their own staff here; the server restricts them to
   // client roles inside their own sub-account.
-  { id: "team", label: "Team", icon: "M", section: "Agency", permission: "team.manage" },
+  { id: "team", label: "Team", icon: "T", section: "Administration", permission: "team.manage" },
   {
     id: "custom-data",
     label: "Custom data",
     icon: "V",
-    section: "Manage",
+    section: "Administration",
     agencyOnly: true,
     permission: "custom_data.manage",
   },
@@ -214,20 +213,23 @@ const nav: Array<{
     id: "audit",
     label: "Audit log",
     icon: "H",
-    section: "Manage",
+    section: "Administration",
     agencyOnly: true,
     permission: "audit.read",
   },
-  { id: "settings", label: "Settings", icon: "S", section: "Manage", agencyOnly: true },
+  { id: "settings", label: "Settings", icon: "S", section: "Administration", agencyOnly: true },
 ];
 
 const viewChangeEvent = "brizuela:crm-view-change";
+const nestedViews: View[] = ["pipeline"];
 
 function readViewFromLocation(): View {
   const requested = new URLSearchParams(window.location.search).get(
     "view",
   ) as View | null;
-  return requested && nav.some((item) => item.id === requested)
+  return requested &&
+    (nav.some((item) => item.id === requested) ||
+      nestedViews.includes(requested))
     ? requested
     : "dashboard";
 }
@@ -285,11 +287,17 @@ export function CrmApp({
     (client) => client.id === effectiveSelectedClientId,
   );
   const workspaceName = scopedClient?.businessName ?? data.organization.name;
-  const view = visibleNav.some((item) => item.id === requestedView)
-    ? requestedView
-    : "dashboard";
+  const view =
+    requestedView === "pipeline" &&
+    visibleNav.some((item) => item.id === "leads")
+      ? requestedView
+      : visibleNav.some((item) => item.id === requestedView)
+        ? requestedView
+        : "dashboard";
   const title =
-    visibleNav.find((item) => item.id === view)?.label ?? "Dashboard";
+    view === "pipeline"
+      ? "Leads"
+      : visibleNav.find((item) => item.id === view)?.label ?? "Overview";
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -320,8 +328,11 @@ export function CrmApp({
 
   useEffect(() => {
     if (!data.viewer.isAgency) {
-      if (selectedClientId !== data.viewer.clientId)
+      if (selectedClientId !== data.viewer.clientId) {
+        // Keep client sessions pinned even if a stale agency query is present.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelectedClientId(data.viewer.clientId ?? "");
+      }
       return;
     }
     const url = new URL(window.location.href);
@@ -613,10 +624,10 @@ export function CrmApp({
     <div className="crm-shell" data-theme={theme === "classic" ? undefined : theme}>
       <aside className={`crm-sidebar ${mobileNav ? "crm-sidebar-open" : ""}`}>
         <div className="crm-brand">
-          <span>BL</span>
+          <span>B</span>
           <div>
-            <strong>Brizuela Leads</strong>
-            <small>Agency CRM</small>
+            <strong>BrizBuilder</strong>
+            <small>Agency workspace</small>
           </div>
           <button
             onClick={() => setMobileNav(false)}
@@ -700,9 +711,19 @@ export function CrmApp({
                 <p>{item.section}</p>
               ) : null}
               <button
-                className={view === item.id ? "active" : ""}
+                className={
+                  view === item.id ||
+                  (item.id === "leads" && view === "pipeline")
+                    ? "active"
+                    : ""
+                }
                 onClick={() => navigate(item.id)}
-                aria-current={view === item.id ? "page" : undefined}
+                aria-current={
+                  view === item.id ||
+                  (item.id === "leads" && view === "pipeline")
+                    ? "page"
+                    : undefined
+                }
               >
                 <i>{item.icon}</i>
                 <span>{item.label}</span>
@@ -781,12 +802,12 @@ export function CrmApp({
               ☰
             </button>
             <div>
-              <span>{data.organization.name}</span>
+              <span>{workspaceName}</span>
               <h1>{title}</h1>
             </div>
           </div>
           <div className="crm-topbar-filters">
-            {view !== "reviews" ? (
+            {["dashboard", "leads", "pipeline", "reports"].includes(view) ? (
               <select
                 value={range}
                 onChange={(event) => setRange(event.target.value)}
@@ -805,12 +826,6 @@ export function CrmApp({
               <span>⌕ Search</span>
               <kbd>Ctrl K</kbd>
             </button>
-            <button
-              className="crm-button-primary crm-top-add"
-              onClick={() => setModal("lead")}
-            >
-              + Add Lead
-            </button>
           </div>
         </header>
         <div className="crm-mobile-filterbar">
@@ -828,7 +843,7 @@ export function CrmApp({
               ))}
             </select>
           ) : null}
-          {view !== "reviews" ? (
+          {["dashboard", "leads", "pipeline", "reports"].includes(view) ? (
             <select
               value={range}
               onChange={(event) => setRange(event.target.value)}
@@ -841,20 +856,6 @@ export function CrmApp({
             </select>
           ) : null}
         </div>
-        <div className="crm-system-strip">
-          <span>
-            <i /> Tenant protected
-          </span>
-          <span>
-            Last refreshed{" "}
-            {new Date(data.generatedAt).toLocaleTimeString("en-US", {
-              hour: "numeric",
-              minute: "2-digit",
-            })}
-          </span>
-          <Badge tone="green">Live workspace</Badge>
-        </div>
-
         {view === "dashboard" && (
           <DashboardView
             leads={filteredLeads}
@@ -862,8 +863,11 @@ export function CrmApp({
             appointments={filteredAppointments}
             tasks={filteredTasks}
             generatedAt={data.generatedAt}
+            viewerName={data.viewer.name}
+            workspaceName={workspaceName}
             onOpenLead={openLead}
             onNavigate={navigate}
+            onAddLead={() => setModal("lead")}
           />
         )}
         {view === "leads" && (
@@ -872,6 +876,7 @@ export function CrmApp({
             onOpenLead={openLead}
             onAddLead={() => setModal("lead")}
             mutate={mutate}
+            onShowPipeline={() => navigate("pipeline")}
           />
         )}
         {view === "pipeline" && (
@@ -880,6 +885,7 @@ export function CrmApp({
             stages={data.stages}
             mutate={mutate}
             onOpenLead={openLead}
+            onShowList={() => navigate("leads")}
           />
         )}
         {view === "contacts" && (
@@ -1077,6 +1083,52 @@ export function CrmApp({
         )}
       </main>
 
+      <nav className="crm-mobile-dock" aria-label="Mobile quick navigation">
+        <button
+          type="button"
+          className={view === "dashboard" ? "active" : ""}
+          onClick={() => navigate("dashboard")}
+        >
+          <span aria-hidden="true">O</span>
+          Overview
+        </button>
+        <button
+          type="button"
+          className={["leads", "pipeline"].includes(view) ? "active" : ""}
+          onClick={() => navigate("leads")}
+        >
+          <span aria-hidden="true">L</span>
+          Leads
+        </button>
+        {visibleNav.some((item) => item.id === "conversations") ? (
+          <button
+            type="button"
+            className={view === "conversations" ? "active" : ""}
+            onClick={() => navigate("conversations")}
+          >
+            <span aria-hidden="true">IN</span>
+            Inbox
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className={view === "calendar" ? "active" : ""}
+          onClick={() => navigate("calendar")}
+        >
+          <span aria-hidden="true">CA</span>
+          Calendar
+        </button>
+        <button
+          type="button"
+          className={mobileNav ? "active" : ""}
+          aria-expanded={mobileNav}
+          onClick={() => setMobileNav(true)}
+        >
+          <span aria-hidden="true">•••</span>
+          More
+        </button>
+      </nav>
+
       {selectedLead ? (
         <LeadDetail
           lead={selectedLead}
@@ -1161,7 +1213,7 @@ export function CrmApp({
       )}
       {modal === "search" && (
         <Modal
-          title="Search Brizuela Leads"
+          title="Search BrizBuilder"
           eyebrow="COMMAND MENU"
           onClose={() => {
             setModal(null);
