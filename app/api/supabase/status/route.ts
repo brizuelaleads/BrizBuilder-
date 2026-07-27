@@ -1,9 +1,21 @@
+import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getSupabaseConfigStatus } from "../../../../lib/supabase/env";
 import { getSupabaseAdminClient } from "../../../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+const PRIVATE_NO_STORE = { "Cache-Control": "private, no-store" };
+
 export async function GET() {
+  // This reports which credentials are configured and whether the database is
+  // reachable — useful reconnaissance for an attacker. Signed-in users only.
+  const user = await getChatGPTUser();
+  if (!user)
+    return Response.json(
+      { error: "Unauthorized" },
+      { status: 401, headers: PRIVATE_NO_STORE },
+    );
+
   const status = getSupabaseConfigStatus();
 
   if (!status.adminClientReady) {

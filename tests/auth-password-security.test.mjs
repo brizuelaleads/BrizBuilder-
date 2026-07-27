@@ -14,6 +14,11 @@ const crmSource = read("db/supabase-crm.ts");
 const proxySource = read("proxy.ts");
 const mcpRoute = read("app/mcp/route.ts");
 const twilioWebhook = read("app/api/twilio/messages/incoming/route.ts");
+const workerSource = read("worker/index.ts");
+const crmRoute = read("app/api/crm/route.ts");
+const statusRoute = read("app/api/supabase/status/route.ts");
+const accountsRoute = read("app/api/access/accounts/route.ts");
+const authConfigSource = read("app/auth-config.ts");
 
 test("the session is validated with the auth server, never trusted from the cookie", () => {
   const block = authSource.match(
@@ -105,6 +110,61 @@ test("no password is ever written to the audit trail", () => {
       `${action} audit metadata must omit the password value`,
     );
   }
+});
+
+test("the shared-admin login is gone, not merely hidden", () => {
+  for (const gone of [
+    "app/local-login/page.tsx",
+    "app/api/local-auth/login/route.ts",
+    "app/api/local-auth/logout/route.ts",
+  ]) {
+    assert.ok(
+      !fs.existsSync(path.join(root, gone)),
+      `${gone} must be deleted, not left reachable`,
+    );
+  }
+  // The static-token cookie can no longer authenticate anyone.
+  assert.doesNotMatch(authSource, /LOCAL_AUTH_TOKEN|LOCAL_AUTH_COOKIE/);
+  assert.doesNotMatch(authConfigSource, /export const LOCAL_(ADMIN_PASSWORD|AUTH_)/);
+});
+
+test("a missing Origin header no longer counts as same-origin", () => {
+  const guard = crmRoute.match(/function sameOrigin\([\s\S]*?\n\}/)?.[0];
+  assert.ok(guard, "sameOrigin guard exists");
+  assert.doesNotMatch(
+    guard,
+    /if \(!origin\) return true/,
+    "an absent Origin must not be trusted",
+  );
+  assert.match(guard, /sec-fetch-site/, "falls back to positive Sec-Fetch-Site proof");
+  // The one mutating endpoint that had no origin check at all is gone.
+  assert.doesNotMatch(accountsRoute, /export async function POST/);
+});
+
+test("config and reachability details require a signed-in user", () => {
+  const block = statusRoute.match(/export async function GET\([\s\S]*?\n\}/)?.[0];
+  assert.ok(block, "status route exists");
+  const authIndex = block.indexOf("await getChatGPTUser()");
+  const configIndex = block.indexOf("getSupabaseConfigStatus()");
+  assert.ok(authIndex >= 0, "status endpoint authenticates");
+  assert.ok(configIndex > authIndex, "no configuration is read before the check");
+});
+
+test("transport and framing protections ship on every response", () => {
+  assert.match(workerSource, /Strict-Transport-Security/);
+  assert.match(workerSource, /max-age=31536000/);
+  assert.match(workerSource, /frame-ancestors 'none'/);
+  assert.match(workerSource, /base-uri 'none'/);
+  assert.match(workerSource, /object-src 'none'/);
+  assert.match(workerSource, /form-action 'self'/);
+  // Routes with their own stricter policy keep it.
+  assert.match(workerSource, /if \(!secured\.headers\.has\("Content-Security-Policy"\)\)/);
+});
+
+test("repeated failures escalate the lockout and success clears it", () => {
+  assert.match(loginRoute, /MAX_LOCKOUT_MS/);
+  assert.match(loginRoute, /2 \*\* over/, "backoff grows with each failure past the limit");
+  assert.match(loginRoute, /clearThrottle\(throttleKey\)/, "a successful sign-in resets the counter");
 });
 
 test("machine-to-machine routes stay outside the human session system", () => {

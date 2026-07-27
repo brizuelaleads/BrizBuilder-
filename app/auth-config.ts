@@ -16,14 +16,11 @@ export const MAIN_ADMIN_NAME =
 export const TEAM_DOMAIN = readRuntimeEnv("TEAM_DOMAIN");
 export const POLICY_AUD = readRuntimeEnv("POLICY_AUD");
 
-// Independent administrator-session fallback. Keep both values secret and use
-// a long, random session token; Cloudflare Access remains the primary hosted
-// identity layer.
-export const LOCAL_ADMIN_PASSWORD =
-  readRuntimeEnv("LOCAL_DEV_ADMIN_PASSWORD");
-export const LOCAL_AUTH_COOKIE = "brizbuilder_local_session";
-export const LOCAL_AUTH_TOKEN =
-  readRuntimeEnv("LOCAL_DEV_SESSION_TOKEN");
+// The shared-admin session fallback (LOCAL_DEV_ADMIN_PASSWORD /
+// LOCAL_DEV_SESSION_TOKEN) was removed: the cookie it set carried the static
+// server secret verbatim, so it could not be revoked for one person or rotated
+// without an environment change. Everyone signs in with their own password
+// now. The Cloudflare secrets can be deleted.
 
 // These bindings exist only so the Worker integration suite can authenticate
 // without depending on Cloudflare's remote signing keys. They are deliberately

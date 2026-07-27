@@ -46,6 +46,22 @@ const worker = {
     secured.headers.set("X-Frame-Options", "DENY");
     secured.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
     secured.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    secured.headers.set(
+      "Strict-Transport-Security",
+      "max-age=31536000; includeSubDomains",
+    );
+    // Deliberately omits script-src/connect-src: the app relies on inline
+    // hydration scripts and talks to Supabase and Stripe, so a tight policy
+    // needs browser verification before being enforced. These directives are
+    // the high-value, zero-breakage subset -- they stop clickjacking, base-tag
+    // hijacking, plugin embedding, and form-based exfiltration. Routes that
+    // set their own CSP (the AI consent screen) keep theirs.
+    if (!secured.headers.has("Content-Security-Policy")) {
+      secured.headers.set(
+        "Content-Security-Policy",
+        "frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'",
+      );
+    }
     return secured;
   },
 };

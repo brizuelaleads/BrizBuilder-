@@ -1,5 +1,5 @@
 import { getChatGPTUser } from "../../../chatgpt-auth";
-import { listAccounts, upsertClientAccount } from "../../../../db/runtime-access";
+import { listAccounts } from "../../../../db/runtime-access";
 
 export async function GET() {
   const user = await getChatGPTUser();
@@ -17,27 +17,7 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
-  const user = await getChatGPTUser();
-  if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
-
-  try {
-    const payload = (await request.json()) as {
-      email?: string;
-      displayName?: string;
-      clientId?: string;
-    };
-    const account = await upsertClientAccount(user, {
-      email: payload.email ?? "",
-      displayName: payload.displayName ?? "",
-      clientId: payload.clientId ?? "",
-    });
-    return Response.json({ account }, { status: 201 });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unexpected error";
-    return Response.json(
-      { error: message },
-      { status: message === "Forbidden" ? 403 : 400 },
-    );
-  }
-}
+// The POST handler that used to live here always threw on the Supabase
+// backend and is superseded by the Team tab's invite_member action, which
+// carries the permission and tenant guards. It was also the one mutating
+// endpoint with no same-origin check, so it is removed rather than patched.

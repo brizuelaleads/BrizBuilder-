@@ -3,14 +3,20 @@ import { executeCrmAction, getCrmBootstrap, type CrmAction } from "../../../db/r
 
 export const dynamic = "force-dynamic";
 
+// A missing Origin used to be treated as same-origin, which let a
+// cross-site form post through. Browsers send Origin on every POST and also
+// send Sec-Fetch-Site, so require positive proof from one of them.
 function sameOrigin(request: Request) {
   const origin = request.headers.get("origin");
-  if (!origin) return true;
-  try {
-    return new URL(origin).host === new URL(request.url).host;
-  } catch {
-    return false;
+  if (origin) {
+    try {
+      return new URL(origin).host === new URL(request.url).host;
+    } catch {
+      return false;
+    }
   }
+  const fetchSite = request.headers.get("sec-fetch-site");
+  return fetchSite === "same-origin" || fetchSite === "none";
 }
 
 function errorResponse(error: unknown) {

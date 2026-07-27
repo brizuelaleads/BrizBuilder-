@@ -2,12 +2,16 @@ import { createClient } from "../../../../utils/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-// Per-isolate throttle. It resets on cold start and is not shared across
-// isolates, so it slows down guessing rather than stopping a distributed
-// attack; Supabase Auth also throttles sign-in server-side. A durable
-// limiter is tracked as pre-launch hardening.
+// Per-isolate throttle: it resets on cold start and is not shared between
+// isolates, so it slows guessing rather than stopping a distributed attack.
+// Supabase Auth also throttles sign-in server-side, and a Cloudflare Rate
+// Limiting rule on this path is the durable, edge-wide layer.
+//
+// Failures escalate the lockout so a slow grinder does not get a fresh
+// allowance every minute; a success clears the record entirely.
 const MAX_ATTEMPTS_PER_WINDOW = 8;
 const WINDOW_MS = 60_000;
+const MAX_LOCKOUT_MS = 15 * 60_000;
 const attempts = new Map<string, { count: number; resetAt: number }>();
 
 function throttled(key: string): boolean {
@@ -22,7 +26,16 @@ function throttled(key: string): boolean {
     return false;
   }
   bucket.count += 1;
-  return bucket.count > MAX_ATTEMPTS_PER_WINDOW;
+  if (bucket.count > MAX_ATTEMPTS_PER_WINDOW) {
+    const over = bucket.count - MAX_ATTEMPTS_PER_WINDOW;
+    bucket.resetAt = now + Math.min(WINDOW_MS * 2 ** over, MAX_LOCKOUT_MS);
+    return true;
+  }
+  return false;
+}
+
+function clearThrottle(key: string) {
+  attempts.delete(key);
 }
 
 function redirectTo(request: Request, path: string, error?: string) {
@@ -64,7 +77,8 @@ export async function POST(request: Request) {
     request.headers.get("cf-connecting-ip") ??
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     "unknown";
-  if (throttled(`${email}|${clientIp}`))
+  const throttleKey = `${email}|${clientIp}`;
+  if (throttled(throttleKey))
     return redirectTo(request, loginPath(returnTo), "rate");
 
   let supabase;
@@ -79,5 +93,6 @@ export async function POST(request: Request) {
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return redirectTo(request, loginPath(returnTo), "invalid");
 
+  clearThrottle(throttleKey);
   return redirectTo(request, returnTo);
 }

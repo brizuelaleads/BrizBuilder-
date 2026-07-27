@@ -1,12 +1,8 @@
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { createClient as createSupabaseServerClient } from "../utils/supabase/server";
 import {
-  LOCAL_AUTH_COOKIE,
-  LOCAL_AUTH_TOKEN,
-  MAIN_ADMIN_EMAIL,
-  MAIN_ADMIN_NAME,
   POLICY_AUD,
   TEAM_DOMAIN,
   TEST_AUTH_ENABLED,
@@ -46,20 +42,9 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
   const testUser = await verifySignedTestIdentity(requestHeaders);
   if (testUser) return testUser;
 
-  const cookieStore = await cookies();
-  const localSession = cookieStore.get(LOCAL_AUTH_COOKIE)?.value;
-  if (
-    LOCAL_AUTH_TOKEN &&
-    localSession &&
-    constantTimeEqual(localSession, LOCAL_AUTH_TOKEN)
-  ) {
-    return {
-      displayName: MAIN_ADMIN_NAME,
-      email: MAIN_ADMIN_EMAIL,
-      fullName: MAIN_ADMIN_NAME,
-    };
-  }
-
+  // The shared-admin cookie login was removed: its cookie value was the static
+  // server secret itself, so it could not be revoked per-user or rotated
+  // without an env change. Everyone now signs in with their own password.
   return null;
 }
 

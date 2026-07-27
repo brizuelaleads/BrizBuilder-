@@ -425,10 +425,18 @@ test("Phase 1 CRM authentication, tenant isolation, imports, custom data, compan
     });
     assert.equal(expiredIdentity.status, 401, "expired test identity is rejected");
 
+    // The shared-admin cookie login was retired: its value was the static
+    // server secret itself, so it could not be revoked for one person or
+    // rotated without an environment change. Presenting that cookie must now
+    // authenticate nobody, even while the old token is still configured.
     const localAdmin = await mf.dispatchFetch("http://crm.test/api/crm", {
       headers: { cookie: `brizbuilder_local_session=${localAuthToken}` },
     });
-    assert.equal(localAdmin.status, 200, "configured local admin session remains available");
+    assert.equal(
+      localAdmin.status,
+      401,
+      "the retired shared-admin session cookie no longer grants access",
+    );
 
     const adminResponse = await mf.dispatchFetch("http://crm.test/api/crm", { headers: authHeaders() });
     assert.equal(adminResponse.status, 200);
