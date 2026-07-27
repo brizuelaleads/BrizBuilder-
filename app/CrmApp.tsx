@@ -1,6 +1,39 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import {
+  BriefcaseBusiness,
+  Building2,
+  CalendarDays,
+  ChartNoAxesCombined,
+  ContactRound,
+  CreditCard,
+  Database,
+  FileText,
+  Funnel,
+  Globe2,
+  History,
+  LayoutDashboard,
+  ListChecks,
+  MapPin,
+  Menu,
+  MessageSquareText,
+  PhoneCall,
+  Plug,
+  Settings as SettingsIcon,
+  Sparkles,
+  Star,
+  UserRoundSearch,
+  UsersRound,
+  Workflow,
+} from "lucide-react";
 import type { CrmBootstrap, CrmLead, CrmPermission } from "../db/crm";
 import type { CrmTheme } from "../db/theme";
 import { CRM_THEMES } from "../db/theme";
@@ -88,7 +121,7 @@ const futureModules: FutureModule[] = [
 const nav: Array<{
   id: View;
   label: string;
-  icon: string;
+  icon: ReactNode;
   agencyOnly?: boolean;
   permission?: CrmPermission;
   section?: string;
@@ -99,125 +132,125 @@ const nav: Array<{
   // agencyOnly marks the tabs a client user must never see; their underlying
   // permissions are withheld from client roles too, so this is defence in depth
   // rather than the only gate.
-  { id: "dashboard", label: "Overview", icon: "O", section: "Command center" },
-  { id: "leads", label: "Leads", icon: "L", section: "CRM" },
-  { id: "contacts", label: "Contacts", icon: "C", section: "CRM" },
+  { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard />, section: "MAIN" },
+  { id: "leads", label: "Leads", icon: <UserRoundSearch />, section: "MAIN" },
+  { id: "contacts", label: "Contacts", icon: <ContactRound />, section: "MAIN" },
   {
     id: "companies",
     label: "Companies",
-    icon: "CO",
-    section: "CRM",
+    icon: <Building2 />,
+    section: "MAIN",
     permission: "companies.write",
   },
-  { id: "calendar", label: "Calendar", icon: "A", section: "Operations" },
-  { id: "tasks", label: "Tasks", icon: "T", section: "Operations" },
+  { id: "calendar", label: "Calendar", icon: <CalendarDays />, section: "MAIN" },
+  { id: "tasks", label: "Tasks", icon: <ListChecks />, section: "MAIN" },
   {
     id: "conversations",
-    label: "Inbox",
-    icon: "IN",
-    section: "Engage",
+    label: "Conversations",
+    icon: <MessageSquareText />,
+    section: "COMMUNICATIONS",
     permission: "messages.write",
   },
   {
     id: "connections",
     label: "Connections",
-    icon: "C",
-    section: "Engage",
+    icon: <Plug />,
+    section: "COMMUNICATIONS",
     agencyOnly: true,
     permission: "phone_system.manage",
   },
   {
     id: "phone-system",
-    label: "Phone & texting",
-    icon: "☎",
-    section: "Engage",
+    label: "Phone & Texting",
+    icon: <PhoneCall />,
+    section: "COMMUNICATIONS",
     agencyOnly: true,
     permission: "phone_system.manage",
   },
   {
     id: "automations",
     label: "Automations",
-    icon: "W",
-    section: "Engage",
+    icon: <Workflow />,
+    section: "COMMUNICATIONS",
     agencyOnly: true,
     permission: "automations.manage",
   },
-  { id: "websites", label: "Websites", icon: "W", section: "Growth" },
+  { id: "websites", label: "Websites", icon: <Globe2 />, section: "GROWTH" },
   {
     id: "reviews",
     label: "Reviews",
-    icon: "★",
-    section: "Growth",
+    icon: <Star />,
+    section: "GROWTH",
     permission: "reviews.read",
   },
   {
     id: "profiles",
     label: "Google Profiles",
-    icon: "G",
-    section: "Growth",
+    icon: <MapPin />,
+    section: "GROWTH",
     agencyOnly: true,
     permission: "profiles.manage",
   },
   {
     id: "forms",
     label: "Forms",
-    icon: "F",
-    section: "Growth",
+    icon: <FileText />,
+    section: "GROWTH",
     agencyOnly: true,
     preview: true,
   },
   {
     id: "funnels",
     label: "Funnels",
-    icon: "N",
-    section: "Growth",
+    icon: <Funnel />,
+    section: "GROWTH",
     agencyOnly: true,
     preview: true,
   },
-  { id: "reports", label: "Reports", icon: "RE", section: "Insights" },
+  { id: "reports", label: "Reports", icon: <ChartNoAxesCombined />, section: "BUSINESS" },
   {
     id: "payments",
     label: "Payments",
-    icon: "$",
-    section: "Insights",
+    icon: <CreditCard />,
+    section: "BUSINESS",
     agencyOnly: true,
     permission: "payments.manage",
   },
   {
-    id: "ai",
-    label: "AI Connector",
-    icon: "AI",
-    section: "Tools",
-    agencyOnly: true,
-    permission: "ai_connector.manage",
-  },
-  {
     id: "clients",
     label: "Sub-accounts",
-    icon: "B",
-    section: "Administration",
+    icon: <BriefcaseBusiness />,
+    section: "BUSINESS",
     agencyOnly: true,
   },
   // Client owners manage their own staff here; the server restricts them to
   // client roles inside their own sub-account.
-  { id: "team", label: "Team", icon: "T", section: "Administration", permission: "team.manage" },
+  { id: "team", label: "Team", icon: <UsersRound />, section: "BUSINESS", permission: "team.manage" },
+  {
+    id: "ai",
+    label: "AI Connector",
+    icon: <Sparkles />,
+    section: "TOOLS",
+    agencyOnly: true,
+    permission: "ai_connector.manage",
+  },
   {
     id: "custom-data",
     label: "Custom data",
-    icon: "V",
-    section: "Administration",
+    icon: <Database />,
+    section: "TOOLS",
     agencyOnly: true,
     permission: "custom_data.manage",
   },
   {
     id: "audit",
     label: "Audit log",
-    icon: "H",
-    section: "Administration",
+    icon: <History />,
+    section: "TOOLS",
     agencyOnly: true,
     permission: "audit.read",
   },
-  { id: "settings", label: "Settings", icon: "S", section: "Administration", agencyOnly: true },
+  { id: "settings", label: "Settings", icon: <SettingsIcon />, section: "TOOLS", agencyOnly: true },
 ];
 
 const viewChangeEvent = "brizuela:crm-view-change";
@@ -297,7 +330,7 @@ export function CrmApp({
   const title =
     view === "pipeline"
       ? "Leads"
-      : visibleNav.find((item) => item.id === view)?.label ?? "Overview";
+      : visibleNav.find((item) => item.id === view)?.label ?? "Dashboard";
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -620,16 +653,44 @@ export function CrmApp({
     ];
   }, [search, data]);
 
+  const openTaskCount = filteredTasks.filter(
+    (task) => !["COMPLETED", "CANCELED"].includes(task.status),
+  ).length;
+  const topbarDetail =
+    view === "leads" || view === "pipeline"
+      ? `${filteredLeads.length} ${filteredLeads.length === 1 ? "lead" : "leads"}`
+      : view === "contacts"
+        ? `${filteredContacts.length} ${filteredContacts.length === 1 ? "contact" : "contacts"}`
+        : view === "companies"
+          ? `${filteredCompanies.length} ${filteredCompanies.length === 1 ? "company" : "companies"}`
+          : view === "calendar"
+            ? `${filteredAppointments.length} ${filteredAppointments.length === 1 ? "appointment" : "appointments"}`
+            : view === "tasks"
+              ? `${openTaskCount} open`
+              : view === "clients"
+                ? `${data.clients.length} ${data.clients.length === 1 ? "sub-account" : "sub-accounts"}`
+                : view === "team"
+                  ? `${data.team.length} ${data.team.length === 1 ? "team member" : "team members"}`
+                  : null;
+  const showRangeFilter = ["leads", "pipeline", "reports"].includes(
+    view,
+  );
+
   return (
     <div className="crm-shell" data-theme={theme === "classic" ? undefined : theme}>
       <aside className={`crm-sidebar ${mobileNav ? "crm-sidebar-open" : ""}`}>
         <div className="crm-brand">
-          <span>B</span>
-          <div>
-            <strong>BrizBuilder</strong>
-            <small>Agency workspace</small>
-          </div>
           <button
+            type="button"
+            className="crm-brand-home"
+            onClick={() => navigate("dashboard")}
+            aria-label="Open BrizBuilder dashboard"
+          >
+            <strong>BrizBuilder</strong>
+          </button>
+          <button
+            type="button"
+            className="crm-sidebar-close"
             onClick={() => setMobileNav(false)}
             aria-label="Close navigation"
           >
@@ -702,13 +763,13 @@ export function CrmApp({
             </div>
           )}
         </div>
-        <nav aria-label="Main navigation">
+        <nav className="crm-primary-nav" aria-label="Main navigation">
           {visibleNav.map((item, index) => (
-            <div key={item.id}>
+            <div className="crm-nav-item" key={item.id}>
               {item.section &&
               (index === 0 ||
                 visibleNav[index - 1]?.section !== item.section) ? (
-                <p>{item.section}</p>
+                <p className="crm-nav-section">{item.section}</p>
               ) : null}
               <button
                 className={
@@ -725,7 +786,7 @@ export function CrmApp({
                     : undefined
                 }
               >
-                <i>{item.icon}</i>
+                <i aria-hidden="true">{item.icon}</i>
                 <span>{item.label}</span>
                 {item.id === "leads" && (
                   <em>
@@ -751,22 +812,27 @@ export function CrmApp({
           ))}
         </nav>
         <div className="crm-theme-picker">
-          <span>THEME</span>
-          <div>
+          <label htmlFor="crm-theme">Appearance</label>
+          <select
+            id="crm-theme"
+            value={theme}
+            onChange={(event) =>
+              void switchTheme(event.target.value as CrmTheme)
+            }
+          >
             {CRM_THEMES.map((option) => (
-              <button
-                key={option}
-                type="button"
-                aria-pressed={theme === option}
-                onClick={() => void switchTheme(option)}
-              >
-                {option === "cyberpunk" ? "Cyber" : option === "midnight" ? "Midnight" : "Classic"}
-              </button>
+              <option key={option} value={option}>
+                {option === "cyberpunk"
+                  ? "Cyber"
+                  : option === "midnight"
+                    ? "Midnight"
+                    : "Classic"}
+              </option>
             ))}
-          </div>
+          </select>
         </div>
         <div className="crm-sidebar-foot">
-          <div>
+          <div className="crm-user-summary">
             <span className="crm-avatar">{initials(data.viewer.name)}</span>
             <p>
               <strong>{data.viewer.name}</strong>
@@ -774,12 +840,19 @@ export function CrmApp({
             </p>
           </div>
           <div className="crm-sidebar-foot-actions">
-            <button type="button" onClick={() => void changeOwnPassword()}>
-              Change password
+            <button
+              type="button"
+              onClick={() => void changeOwnPassword()}
+              aria-label="Change password"
+              title="Change password"
+            >
+              Key
             </button>
             {/* POST so a prefetch or stray link can never sign someone out. */}
             <form method="post" action={signOutPath}>
-              <button type="submit">Sign out</button>
+              <button type="submit" aria-label="Sign out" title="Sign out">
+                Exit
+              </button>
             </form>
           </div>
         </div>
@@ -792,8 +865,8 @@ export function CrmApp({
         />
       ) : null}
 
-      <main className="crm-main">
-        <header className="crm-topbar">
+      <main className={`crm-main crm-main-${view}`}>
+        <header className={`crm-topbar crm-topbar-${view}`}>
           <div className="crm-topbar-title">
             <button
               onClick={() => setMobileNav(true)}
@@ -802,12 +875,12 @@ export function CrmApp({
               ☰
             </button>
             <div>
-              <span>{workspaceName}</span>
               <h1>{title}</h1>
+              <span>{topbarDetail ?? workspaceName}</span>
             </div>
           </div>
-          <div className="crm-topbar-filters">
-            {["dashboard", "leads", "pipeline", "reports"].includes(view) ? (
+          <div className="crm-topbar-filters crm-topbar-actions">
+            {showRangeFilter ? (
               <select
                 value={range}
                 onChange={(event) => setRange(event.target.value)}
@@ -819,9 +892,105 @@ export function CrmApp({
                 <option value="all">All time</option>
               </select>
             ) : null}
+            {view === "contacts" &&
+            data.viewer.permissions.includes("contacts.import") ? (
+              <button
+                type="button"
+                className="crm-topbar-action"
+                onClick={() => setModal("contact-import")}
+              >
+                Import
+              </button>
+            ) : null}
+            {view === "leads" || view === "pipeline" ? (
+              <button
+                type="button"
+                className="crm-topbar-action crm-topbar-action-primary"
+                onClick={() => setModal("lead")}
+              >
+                + Add lead
+              </button>
+            ) : null}
+            {view === "contacts" ? (
+              <button
+                type="button"
+                className="crm-topbar-action crm-topbar-action-primary"
+                onClick={() => setModal("contact")}
+              >
+                + Add contact
+              </button>
+            ) : null}
+            {view === "companies" ? (
+              <button
+                type="button"
+                className="crm-topbar-action crm-topbar-action-primary"
+                onClick={() => setModal("company")}
+              >
+                + Add company
+              </button>
+            ) : null}
+            {view === "calendar" ? (
+              <button
+                type="button"
+                className="crm-topbar-action crm-topbar-action-primary"
+                onClick={() => setModal("appointment")}
+              >
+                + New appointment
+              </button>
+            ) : null}
+            {view === "tasks" ? (
+              <button
+                type="button"
+                className="crm-topbar-action crm-topbar-action-primary"
+                onClick={() => setModal("task")}
+              >
+                + New task
+              </button>
+            ) : null}
+            {view === "clients" && data.viewer.isAgency ? (
+              <button
+                type="button"
+                className="crm-topbar-action crm-topbar-action-primary"
+                onClick={() => setModal("client")}
+              >
+                + Add sub-account
+              </button>
+            ) : null}
+            {view === "team" &&
+            data.viewer.permissions.includes("team.manage") ? (
+              <button
+                type="button"
+                className="crm-topbar-action crm-topbar-action-primary"
+                onClick={() => setModal("invite")}
+              >
+                + Invite
+              </button>
+            ) : null}
+            {["phone-system", "automations", "payments", "ai"].includes(view) &&
+            visibleNav.some((item) => item.id === "connections") ? (
+              <button
+                type="button"
+                className="crm-topbar-action"
+                onClick={() => navigate("connections")}
+              >
+                Connections
+              </button>
+            ) : null}
+            {view === "reviews" &&
+            visibleNav.some((item) => item.id === "profiles") ? (
+              <button
+                type="button"
+                className="crm-topbar-action"
+                onClick={() => navigate("profiles")}
+              >
+                Google Profiles
+              </button>
+            ) : null}
             <button
               className="crm-command-button"
+              type="button"
               onClick={() => setModal("search")}
+              aria-label="Search workspace"
             >
               <span>⌕ Search</span>
               <kbd>Ctrl K</kbd>
@@ -843,7 +1012,7 @@ export function CrmApp({
               ))}
             </select>
           ) : null}
-          {["dashboard", "leads", "pipeline", "reports"].includes(view) ? (
+          {showRangeFilter ? (
             <select
               value={range}
               onChange={(event) => setRange(event.target.value)}
@@ -865,9 +1034,11 @@ export function CrmApp({
             generatedAt={data.generatedAt}
             viewerName={data.viewer.name}
             workspaceName={workspaceName}
+            range={range}
             onOpenLead={openLead}
             onNavigate={navigate}
             onAddLead={() => setModal("lead")}
+            onRangeChange={setRange}
           />
         )}
         {view === "leads" && (
@@ -1089,15 +1260,15 @@ export function CrmApp({
           className={view === "dashboard" ? "active" : ""}
           onClick={() => navigate("dashboard")}
         >
-          <span aria-hidden="true">O</span>
-          Overview
+          <LayoutDashboard aria-hidden="true" />
+          Dashboard
         </button>
         <button
           type="button"
           className={["leads", "pipeline"].includes(view) ? "active" : ""}
           onClick={() => navigate("leads")}
         >
-          <span aria-hidden="true">L</span>
+          <UserRoundSearch aria-hidden="true" />
           Leads
         </button>
         {visibleNav.some((item) => item.id === "conversations") ? (
@@ -1106,8 +1277,8 @@ export function CrmApp({
             className={view === "conversations" ? "active" : ""}
             onClick={() => navigate("conversations")}
           >
-            <span aria-hidden="true">IN</span>
-            Inbox
+            <MessageSquareText aria-hidden="true" />
+            Conversations
           </button>
         ) : null}
         <button
@@ -1115,7 +1286,7 @@ export function CrmApp({
           className={view === "calendar" ? "active" : ""}
           onClick={() => navigate("calendar")}
         >
-          <span aria-hidden="true">CA</span>
+          <CalendarDays aria-hidden="true" />
           Calendar
         </button>
         <button
@@ -1124,7 +1295,7 @@ export function CrmApp({
           aria-expanded={mobileNav}
           onClick={() => setMobileNav(true)}
         >
-          <span aria-hidden="true">•••</span>
+          <Menu aria-hidden="true" />
           More
         </button>
       </nav>

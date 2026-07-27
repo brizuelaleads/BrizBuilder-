@@ -1,10 +1,96 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CrmAppointment, CrmClient, CrmContact, CrmLead, CrmTask, CrmTeamMember } from "../../db/crm";
 import { Badge, dateTime, EmptyState, money, shortDate } from "./ui";
 
 type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
+
+type CalendarSegment = {
+  appointment: CrmAppointment;
+  startsAt: Date;
+  endsAt: Date;
+  continuesFromPreviousDay: boolean;
+  continuesIntoNextDay: boolean;
+};
+
+function calendarSegmentsForDay(
+  appointments: CrmAppointment[],
+  day: Date,
+): CalendarSegment[] {
+  const dayStart = new Date(day);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(dayStart);
+  dayEnd.setDate(dayEnd.getDate() + 1);
+
+  return appointments.flatMap((appointment) => {
+    const appointmentStart = new Date(appointment.startsAt);
+    const appointmentEnd = new Date(appointment.endsAt);
+    if (
+      appointmentEnd.getTime() <= dayStart.getTime() ||
+      appointmentStart.getTime() >= dayEnd.getTime()
+    ) {
+      return [];
+    }
+    return [
+      {
+        appointment,
+        startsAt: new Date(
+          Math.max(appointmentStart.getTime(), dayStart.getTime()),
+        ),
+        endsAt: new Date(
+          Math.min(appointmentEnd.getTime(), dayEnd.getTime()),
+        ),
+        continuesFromPreviousDay:
+          appointmentStart.getTime() < dayStart.getTime(),
+        continuesIntoNextDay: appointmentEnd.getTime() > dayEnd.getTime(),
+      },
+    ];
+  });
+}
+
+function layoutCalendarDay(segments: CalendarSegment[]) {
+  const sorted = [...segments].sort(
+    (first, second) =>
+      first.startsAt.getTime() - second.startsAt.getTime(),
+  );
+  const groups: CalendarSegment[][] = [];
+  let activeGroup: CalendarSegment[] = [];
+  let activeGroupEnd = 0;
+
+  for (const segment of sorted) {
+    const startsAt = segment.startsAt.getTime();
+    const visualEndsAt = Math.max(
+      segment.endsAt.getTime(),
+      startsAt + 60 * 60 * 1000,
+    );
+    if (activeGroup.length && startsAt >= activeGroupEnd) {
+      groups.push(activeGroup);
+      activeGroup = [];
+      activeGroupEnd = 0;
+    }
+    activeGroup.push(segment);
+    activeGroupEnd = Math.max(activeGroupEnd, visualEndsAt);
+  }
+  if (activeGroup.length) groups.push(activeGroup);
+
+  return groups.flatMap((group) => {
+    const laneEnds: number[] = [];
+    const positioned = group.map((segment) => {
+      const startsAt = segment.startsAt.getTime();
+      const visualEndsAt = Math.max(
+        segment.endsAt.getTime(),
+        startsAt + 60 * 60 * 1000,
+      );
+      let lane = laneEnds.findIndex((laneEnd) => startsAt >= laneEnd);
+      if (lane === -1) lane = laneEnds.length;
+      laneEnds[lane] = visualEndsAt;
+      return { segment, lane };
+    });
+    const laneCount = Math.max(1, laneEnds.length);
+    return positioned.map((item) => ({ ...item, laneCount }));
+  });
+}
 
 export function ContactsView({ contacts, clients, onAddContact }: { contacts: CrmContact[]; clients: CrmClient[]; onAddContact: () => void }) {
   const [query, setQuery] = useState("");
@@ -20,14 +106,202 @@ export function TasksView({ tasks, clients, mutate, onAddTask }: { tasks: CrmTas
 }
 
 export function CalendarView({ appointments, mutate, onAddAppointment }: { appointments: CrmAppointment[]; mutate: Mutate; onAddAppointment: () => void }) {
-  const [mode, setMode] = useState<"upcoming" | "all">("upcoming");
-  const visible = appointments.filter((appointment) => mode === "all" || (!["COMPLETED", "CANCELED"].includes(appointment.status)));
+  const [mode, setMode] = useState<"week" | "agenda">("week");
+  const [agendaFilter, setAgendaFilter] = useState<"upcoming" | "all">("upcoming");
+  const [anchorDate, setAnchorDate] = useState(() => new Date());
+  const calendarScrollRef = useRef<HTMLElement>(null);
+  const today = new Date();
+  const weekStart = new Date(anchorDate);
+  weekStart.setHours(0, 0, 0, 0);
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  const weekDays = Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(weekStart);
+    day.setDate(weekStart.getDate() + index);
+    return day;
+  });
+  const hours = Array.from({ length: 24 }, (_, index) => index);
+  const dayKey = (value: Date) => {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+  const visible = appointments
+    .filter((appointment) =>
+      mode === "week"
+        ? appointment.status !== "CANCELED"
+        : agendaFilter === "all" ||
+          !["COMPLETED", "CANCELED"].includes(appointment.status),
+    )
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+  const weekAppointments = visible.filter(
+    (appointment) =>
+      new Date(appointment.startsAt).getTime() < weekEnd.getTime() &&
+      new Date(appointment.endsAt).getTime() > weekStart.getTime(),
+  );
   const grouped = visible.reduce<Record<string, CrmAppointment[]>>((acc, appointment) => {
-    const key = appointment.startsAt.slice(0, 10);
+    const key = dayKey(new Date(appointment.startsAt));
     (acc[key] ??= []).push(appointment);
     return acc;
   }, {});
-  return <div className="crm-view"><section className="crm-page-heading"><div><p>APPOINTMENTS</p><h2>Calendar</h2><span>Schedule service visits and keep their status current.</span></div><button className="crm-button-primary" onClick={onAddAppointment}>+ Book Appointment</button></section><section className="crm-tabs"><button className={mode === "upcoming" ? "active" : ""} onClick={() => setMode("upcoming")}>Upcoming</button><button className={mode === "all" ? "active" : ""} onClick={() => setMode("all")}>All appointments</button></section><section className="crm-calendar-list">{Object.entries(grouped).map(([day, items]) => <article key={day}><header><strong>{new Date(`${day}T12:00:00`).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</strong><span>{items.length} appointment{items.length === 1 ? "" : "s"}</span></header>{items.map((appointment) => <div key={appointment.id}><time>{new Date(appointment.startsAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</time><span className="crm-avatar">{appointment.contactName.split(/\s+/).map((part) => part[0]).slice(0, 2).join("")}</span><div><strong>{appointment.contactName}</strong><p>{appointment.serviceType} · {appointment.clientName}</p><small>{appointment.address ?? "Address not provided"}</small></div><select value={appointment.status} onChange={(event) => void mutate({ action: "update_appointment_status", appointmentId: appointment.id, status: event.target.value }, "Appointment status updated")} aria-label={`Status for ${appointment.contactName}`}>{["SCHEDULED", "CONFIRMED", "COMPLETED", "CANCELED", "NO_SHOW"].map((status) => <option key={status}>{status}</option>)}</select></div>)}</article>)}{!visible.length ? <EmptyState title="No appointments yet" description="Book an appointment from a qualified lead or contact." /> : null}</section></div>;
+  const isToday = (day: Date) => dayKey(day) === dayKey(today);
+  const shiftWeek = (days: number) => {
+    const next = new Date(anchorDate);
+    next.setDate(next.getDate() + days);
+    setAnchorDate(next);
+  };
+  useEffect(() => {
+    if (mode !== "week") return;
+    const frame = window.requestAnimationFrame(() => {
+      calendarScrollRef.current?.scrollTo({ top: 6 * 64 });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [anchorDate, mode]);
+
+  return (
+    <div className="crm-view crm-calendar-view">
+      <section className="crm-calendar-toolbar">
+        <div className="crm-calendar-nav">
+          <div className="crm-calendar-nav-group">
+            <button type="button" onClick={() => shiftWeek(-7)} aria-label="Previous week">‹</button>
+            <button type="button" onClick={() => setAnchorDate(new Date())}>Today</button>
+            <button type="button" onClick={() => shiftWeek(7)} aria-label="Next week">›</button>
+          </div>
+          <h2>{weekStart.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</h2>
+        </div>
+        <div className="crm-calendar-actions">
+          {mode === "agenda" ? (
+            <select
+              value={agendaFilter}
+              onChange={(event) =>
+                setAgendaFilter(event.target.value as "upcoming" | "all")
+              }
+              aria-label="Filter agenda appointments"
+            >
+              <option value="upcoming">Upcoming</option>
+              <option value="all">All appointments</option>
+            </select>
+          ) : null}
+          <div className="crm-view-switcher crm-calendar-switcher" role="tablist" aria-label="Calendar view">
+            <button type="button" className={mode === "week" ? "active" : ""} onClick={() => setMode("week")} role="tab" aria-selected={mode === "week"}>Week</button>
+            <button type="button" className={mode === "agenda" ? "active" : ""} onClick={() => setMode("agenda")} role="tab" aria-selected={mode === "agenda"}>Agenda</button>
+          </div>
+          <button className="crm-button-primary" onClick={onAddAppointment}>+ Book Appointment</button>
+        </div>
+      </section>
+
+      {mode === "week" ? (
+        <section
+          className="crm-week-calendar"
+          ref={calendarScrollRef}
+          aria-label={`Week of ${weekStart.toLocaleDateString("en-US")}`}
+        >
+          <header className="crm-week-header">
+            <span aria-hidden="true" />
+            {weekDays.map((day) => (
+              <div className={isToday(day) ? "today" : ""} key={dayKey(day)}>
+                <small>{day.toLocaleDateString("en-US", { weekday: "short" })}</small>
+                <strong>{day.getDate()}</strong>
+              </div>
+            ))}
+          </header>
+          <div className="crm-week-body">
+            <div className="crm-week-times" aria-hidden="true">
+              {hours.map((hour) => (
+                <span key={hour} style={{ top: `${(hour - 6) * 64}px` }}>
+                  {new Date(2000, 0, 1, hour).toLocaleTimeString("en-US", { hour: "numeric" })}
+                </span>
+              ))}
+            </div>
+            {weekDays.map((day) => (
+              <div className={`crm-week-day ${isToday(day) ? "today" : ""}`} key={dayKey(day)}>
+                {hours.map((hour) => <i key={hour} aria-hidden="true" />)}
+                {layoutCalendarDay(
+                  calendarSegmentsForDay(weekAppointments, day),
+                ).map(({ segment, lane, laneCount }) => {
+                    const { appointment, startsAt, endsAt } = segment;
+                    const startHour = startsAt.getHours() + startsAt.getMinutes() / 60;
+                    const duration = Math.max(
+                      1,
+                      (endsAt.getTime() - startsAt.getTime()) / 3_600_000,
+                    );
+                    return (
+                      <article
+                        className={`crm-calendar-event status-${appointment.status.toLowerCase()}`}
+                        key={appointment.id}
+                        style={{
+                          top: `${startHour * 64}px`,
+                          height: `${duration * 64 - 2}px`,
+                          right: "auto",
+                          left: `calc(${(lane / laneCount) * 100}% + 4px)`,
+                          width: `calc(${100 / laneCount}% - 8px)`,
+                        }}
+                      >
+                        <time>
+                          {segment.continuesFromPreviousDay
+                            ? "Continued"
+                            : startsAt.toLocaleTimeString("en-US", {
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })}
+                        </time>
+                        <strong>{appointment.contactName}</strong>
+                        <span>
+                          {segment.continuesIntoNextDay
+                            ? `${appointment.serviceType} · continues tomorrow`
+                            : appointment.serviceType}
+                        </span>
+                        <select
+                          value={appointment.status}
+                          onChange={(event) => void mutate({ action: "update_appointment_status", appointmentId: appointment.id, status: event.target.value }, "Appointment status updated")}
+                          aria-label={`Status for ${appointment.contactName}`}
+                        >
+                          {["SCHEDULED", "CONFIRMED", "COMPLETED", "CANCELED", "NO_SHOW"].map((status) => <option key={status}>{status}</option>)}
+                        </select>
+                      </article>
+                    );
+                  })}
+              </div>
+            ))}
+          </div>
+          {!weekAppointments.length ? (
+            <div className="crm-calendar-empty-overlay">
+              <strong>Nothing scheduled this week</strong>
+              <button type="button" onClick={onAddAppointment}>Book an appointment →</button>
+            </div>
+          ) : null}
+        </section>
+      ) : (
+        <section className="crm-calendar-list">
+          {Object.entries(grouped).map(([day, items]) => (
+            <article key={day}>
+              <header>
+                <strong>{new Date(`${day}T12:00:00`).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</strong>
+                <span>{items.length} appointment{items.length === 1 ? "" : "s"}</span>
+              </header>
+              {items.map((appointment) => (
+                <div key={appointment.id}>
+                  <time>{new Date(appointment.startsAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</time>
+                  <span className="crm-avatar">{appointment.contactName.split(/\s+/).map((part) => part[0]).slice(0, 2).join("")}</span>
+                  <div>
+                    <strong>{appointment.contactName}</strong>
+                    <p>{appointment.serviceType} · {appointment.clientName}</p>
+                    <small>{appointment.address ?? "Address not provided"}</small>
+                  </div>
+                  <select value={appointment.status} onChange={(event) => void mutate({ action: "update_appointment_status", appointmentId: appointment.id, status: event.target.value }, "Appointment status updated")} aria-label={`Status for ${appointment.contactName}`}>
+                    {["SCHEDULED", "CONFIRMED", "COMPLETED", "CANCELED", "NO_SHOW"].map((status) => <option key={status}>{status}</option>)}
+                  </select>
+                </div>
+              ))}
+            </article>
+          ))}
+          {!visible.length ? <EmptyState title="No appointments yet" description="Book an appointment from a qualified lead or contact." /> : null}
+        </section>
+      )}
+    </div>
+  );
 }
 
 export function ClientsView({ clients, leads, onAddClient, mutate }: { clients: CrmClient[]; leads: CrmLead[]; onAddClient: () => void; mutate: Mutate }) {
@@ -66,5 +340,117 @@ export function TeamView({ team, onInvite, mutate }: { team: CrmTeamMember[]; on
 }
 
 export function SettingsView({ organizationName, viewerRole, clients }: { organizationName: string; viewerRole: string; clients: CrmClient[] }) {
-  return <div className="crm-view"><section className="crm-page-heading"><div><p>WORKSPACE SETTINGS</p><h2>Settings</h2><span>Production safeguards and configuration readiness for {organizationName}.</span></div></section><section className="crm-settings-grid"><article><h3>Organization</h3><dl><div><dt>Name</dt><dd>{organizationName}</dd></div><div><dt>Your role</dt><dd>{viewerRole.replaceAll("_", " ")}</dd></div><div><dt>Active clients</dt><dd>{clients.length}</dd></div></dl></article><article><h3>Security</h3><ul><li><span>✓</span><div><strong>ChatGPT authentication</strong><p>Hosted passwords and sessions are handled outside Brizuela Leads.</p></div></li><li><span>✓</span><div><strong>Server-side tenant isolation</strong><p>Every read and write is scoped to an authorized organization and client.</p></div></li><li><span>✓</span><div><strong>Audit logging</strong><p>Lead, task, client, appointment, and membership changes are recorded.</p></div></li></ul></article><article><h3>Integrations</h3><div className="crm-unavailable-list"><span><strong>Twilio / CallRail</strong><Badge tone="neutral">Phase 2</Badge></span><span><strong>Meta Ads</strong><Badge tone="neutral">Phase 2</Badge></span><span><strong>Google Ads</strong><Badge tone="neutral">Phase 2</Badge></span><span><strong>OpenAI</strong><Badge tone="neutral">Phase 3</Badge></span><span><strong>Stripe</strong><Badge tone="neutral">Phase 4</Badge></span></div></article><article><h3>Privacy controls</h3><ul><li><span>✓</span><div><strong>Consent status</strong><p>Stored separately for every contact and lead.</p></div></li><li><span>✓</span><div><strong>Soft deletion</strong><p>Archived records remain available for audit and recovery.</p></div></li><li><span>—</span><div><strong>Automated retention</strong><p>Configuration is planned for Phase 3.</p></div></li></ul></article></section></div>;
+  const [section, setSection] = useState<"workspace" | "security" | "integrations" | "privacy">("workspace");
+  const sections = [
+    { id: "workspace" as const, label: "Workspace", icon: "B" },
+    { id: "security" as const, label: "Access & security", icon: "A" },
+    { id: "integrations" as const, label: "Integrations", icon: "I" },
+    { id: "privacy" as const, label: "Privacy", icon: "P" },
+  ];
+
+  return (
+    <div className="crm-view crm-settings-view">
+      <section className="crm-page-heading">
+        <div>
+          <p>ADMINISTRATION</p>
+          <h2>Settings</h2>
+          <span>Manage the workspace foundation for {organizationName}.</span>
+        </div>
+      </section>
+      <section className="crm-settings-workspace">
+        <aside aria-label="Settings sections">
+          <header>
+            <strong>Settings</strong>
+            <small>Workspace configuration</small>
+          </header>
+          <nav>
+            {sections.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={section === item.id ? "active" : ""}
+                onClick={() => setSection(item.id)}
+                aria-current={section === item.id ? "page" : undefined}
+              >
+                <i aria-hidden="true">{item.icon}</i>
+                {item.label}
+              </button>
+            ))}
+          </nav>
+        </aside>
+        <div className="crm-settings-content">
+          {section === "workspace" ? (
+            <>
+              <header>
+                <h3>Workspace profile</h3>
+                <p>Your organization identity and account scope.</p>
+              </header>
+              <article className="crm-settings-section">
+                <h4>Organization</h4>
+                <dl className="crm-settings-facts">
+                  <div><dt>Workspace name</dt><dd>{organizationName}</dd></div>
+                  <div><dt>Your role</dt><dd>{viewerRole.replaceAll("_", " ")}</dd></div>
+                  <div><dt>Active sub-accounts</dt><dd>{clients.length}</dd></div>
+                </dl>
+              </article>
+            </>
+          ) : null}
+          {section === "security" ? (
+            <>
+              <header>
+                <h3>Access & security</h3>
+                <p>Protections applied to every BrizBuilder session.</p>
+              </header>
+              <article className="crm-settings-section">
+                <ul className="crm-settings-checklist">
+                  <li><span>✓</span><div><strong>Verified account sessions</strong><p>Passwords and sessions are validated by BrizBuilder&apos;s authentication provider.</p></div></li>
+                  <li><span>✓</span><div><strong>Server-side tenant isolation</strong><p>Every read and write is scoped to an authorized organization and sub-account.</p></div></li>
+                  <li><span>✓</span><div><strong>Audit logging</strong><p>Important lead, task, client, appointment, and membership changes are recorded.</p></div></li>
+                </ul>
+              </article>
+            </>
+          ) : null}
+          {section === "integrations" ? (
+            <>
+              <header>
+                <h3>Integrations</h3>
+                <p>Providers available across communications, growth, payments, and AI.</p>
+              </header>
+              <article className="crm-settings-section">
+                <div className="crm-settings-provider-list">
+                  {[
+                    ["Twilio", "Phone and text messaging"],
+                    ["Google Business Profile", "Locations and reviews"],
+                    ["Stripe", "Connected payments"],
+                    ["AI Connector", "Permission-scoped CRM access"],
+                  ].map(([name, description]) => (
+                    <div key={name}>
+                      <span>{name.slice(0, 1)}</span>
+                      <div><strong>{name}</strong><small>{description}</small></div>
+                      <Badge tone="neutral">Manage in workspace</Badge>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            </>
+          ) : null}
+          {section === "privacy" ? (
+            <>
+              <header>
+                <h3>Privacy controls</h3>
+                <p>How customer data is retained and protected.</p>
+              </header>
+              <article className="crm-settings-section">
+                <ul className="crm-settings-checklist">
+                  <li><span>✓</span><div><strong>Consent status</strong><p>Consent evidence is stored separately for every contact and lead.</p></div></li>
+                  <li><span>✓</span><div><strong>Recoverable archiving</strong><p>Archived records remain available for authorized audit and recovery.</p></div></li>
+                  <li><span>—</span><div><strong>Automated retention</strong><p>Policy-based retention controls are not enabled yet.</p></div></li>
+                </ul>
+              </article>
+            </>
+          ) : null}
+        </div>
+      </section>
+    </div>
+  );
 }
