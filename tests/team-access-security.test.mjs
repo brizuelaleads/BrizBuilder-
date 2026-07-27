@@ -59,7 +59,7 @@ test("revoking access is scoped to the caller's organization", () => {
   assert.match(revokeBlock, /requirePermission\(context, "team\.manage"\)/);
   const orgScopes = revokeBlock.match(/\.eq\("organization_id", context\.organizationId\)/g) ?? [];
   assert.ok(orgScopes.length >= 2, "both the lookup and the update are org-scoped");
-  assert.match(revokeBlock, /status: "inactive"/, "revoke soft-disables rather than deleting history");
+  assert.match(revokeBlock, /status: "archived"/, "revoke soft-disables with a valid record_status enum value");
 });
 
 test("both access changes are audited", () => {

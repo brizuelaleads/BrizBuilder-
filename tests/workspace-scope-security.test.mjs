@@ -113,6 +113,34 @@ test("every agency-only tab is flagged, and Team stays reachable for client owne
   assert.ok(team, "team nav entry exists");
   assert.doesNotMatch(team, /agencyOnly/, "Team is permission-gated, not agency-only");
   assert.match(team, /permission: "team\.manage"/);
+  assert.match(
+    appSource,
+    /view === "team" && data\.viewer\.permissions\.includes\("team\.manage"\)/,
+    "Team must render for permitted client owners, not only agency users",
+  );
+});
+
+test("client sessions are pinned to their own selected client in the UI", () => {
+  assert.match(
+    appSource,
+    /const effectiveSelectedClientId = data\.viewer\.isAgency[\s\S]*?: data\.viewer\.clientId;/,
+    "client sessions must derive the selected workspace from the authenticated viewer",
+  );
+  assert.match(
+    appSource,
+    /if \(!data\.viewer\.isAgency\) \{[\s\S]*setSelectedClientId\(data\.viewer\.clientId \?\? ""\);[\s\S]*return;/,
+    "client sessions must not keep ?client=all or another selected client",
+  );
+  assert.match(
+    appSource,
+    /initialData\.viewer\.isAgency &&[\s\S]*requestedClient/,
+    "URL client switching must only run for agency users",
+  );
+  assert.match(
+    appSource,
+    /setSelectedClientId\(data\.viewer\.isAgency \? "all" : data\.viewer\.clientId \?\? ""\)/,
+    "client lead creation must not reset the workspace to all clients",
+  );
 });
 
 test("every nav item declares a section so hiding tabs cannot orphan a label", () => {

@@ -272,6 +272,9 @@ export function CrmApp({
   // Workspace switcher: agency users pick which sub-account they are managing.
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const switcherRef = useRef<HTMLDivElement | null>(null);
+  const effectiveSelectedClientId = data.viewer.isAgency
+    ? selectedClientId
+    : data.viewer.clientId;
 
   const visibleNav = nav.filter(
     (item) =>
@@ -279,7 +282,7 @@ export function CrmApp({
       (!item.permission || data.viewer.permissions.includes(item.permission)),
   );
   const scopedClient = data.clients.find(
-    (client) => client.id === selectedClientId,
+    (client) => client.id === effectiveSelectedClientId,
   );
   const workspaceName = scopedClient?.businessName ?? data.organization.name;
   const view = visibleNav.some((item) => item.id === requestedView)
@@ -316,12 +319,17 @@ export function CrmApp({
   }, [switcherOpen]);
 
   useEffect(() => {
+    if (!data.viewer.isAgency) {
+      if (selectedClientId !== data.viewer.clientId)
+        setSelectedClientId(data.viewer.clientId ?? "");
+      return;
+    }
     const url = new URL(window.location.href);
     if (selectedClientId !== "all")
       url.searchParams.set("client", selectedClientId);
     else url.searchParams.delete("client");
     window.history.replaceState({}, "", url);
-  }, [selectedClientId]);
+  }, [data.viewer.clientId, data.viewer.isAgency, selectedClientId]);
 
   useEffect(() => {
     window.dispatchEvent(new Event(viewChangeEvent));
@@ -329,6 +337,7 @@ export function CrmApp({
       const query = new URLSearchParams(window.location.search);
       const requestedClient = query.get("client");
       if (
+        initialData.viewer.isAgency &&
         requestedClient &&
         initialData.clients.some((client) => client.id === requestedClient)
       )
@@ -348,7 +357,7 @@ export function CrmApp({
       }
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [initialData.clients]);
+  }, [initialData.clients, initialData.viewer.isAgency]);
 
   const filteredLeads = useMemo(() => {
     const cutoff =
@@ -359,7 +368,8 @@ export function CrmApp({
           );
     return data.leads.filter(
       (lead) =>
-        (selectedClientId === "all" || lead.clientId === selectedClientId) &&
+        (effectiveSelectedClientId === "all" ||
+          lead.clientId === effectiveSelectedClientId) &&
         (!cutoff ||
           new Date(
             lead.createdAt.includes("T")
@@ -367,46 +377,57 @@ export function CrmApp({
               : `${lead.createdAt.replace(" ", "T")}Z`,
           ) >= cutoff),
     );
-  }, [data.leads, data.generatedAt, selectedClientId, range]);
+  }, [data.leads, data.generatedAt, effectiveSelectedClientId, range]);
   const filteredContacts = data.contacts.filter(
     (contact) =>
-      selectedClientId === "all" || contact.clientId === selectedClientId,
+      effectiveSelectedClientId === "all" ||
+      contact.clientId === effectiveSelectedClientId,
   );
   const filteredCompanies = data.companies.filter(
     (company) =>
-      selectedClientId === "all" || company.clientId === selectedClientId,
+      effectiveSelectedClientId === "all" ||
+      company.clientId === effectiveSelectedClientId,
   );
   const filteredWebsites = data.websites.filter(
     (website) =>
-      selectedClientId === "all" || website.clientId === selectedClientId,
+      effectiveSelectedClientId === "all" ||
+      website.clientId === effectiveSelectedClientId,
   );
   const filteredCustomFields = data.customFields.filter(
     (field) =>
-      selectedClientId === "all" || field.clientId === selectedClientId,
+      effectiveSelectedClientId === "all" ||
+      field.clientId === effectiveSelectedClientId,
   );
   const filteredCustomFieldValues = data.customFieldValues.filter(
     (value) =>
-      selectedClientId === "all" || value.clientId === selectedClientId,
+      effectiveSelectedClientId === "all" ||
+      value.clientId === effectiveSelectedClientId,
   );
   const filteredCustomValues = data.customValues.filter(
     (value) =>
-      selectedClientId === "all" || value.clientId === selectedClientId,
+      effectiveSelectedClientId === "all" ||
+      value.clientId === effectiveSelectedClientId,
   );
   const filteredFeatureFlags = data.featureFlags.filter(
     (flag) =>
-      selectedClientId === "all" ||
+      effectiveSelectedClientId === "all" ||
       flag.clientId === null ||
-      flag.clientId === selectedClientId,
+      flag.clientId === effectiveSelectedClientId,
   );
   const filteredTasks = data.tasks.filter(
-    (task) => selectedClientId === "all" || task.clientId === selectedClientId,
+    (task) =>
+      effectiveSelectedClientId === "all" ||
+      task.clientId === effectiveSelectedClientId,
   );
   const filteredAppointments = data.appointments.filter(
     (appointment) =>
-      selectedClientId === "all" || appointment.clientId === selectedClientId,
+      effectiveSelectedClientId === "all" ||
+      appointment.clientId === effectiveSelectedClientId,
   );
   const filteredClients = data.clients.filter(
-    (client) => selectedClientId === "all" || client.id === selectedClientId,
+    (client) =>
+      effectiveSelectedClientId === "all" ||
+      client.id === effectiveSelectedClientId,
   );
   const selectedLead =
     data.leads.find((lead) => lead.id === selectedLeadId) ?? null;
@@ -918,7 +939,7 @@ export function CrmApp({
           <GoogleProfilesView
             clients={data.clients}
             profiles={data.googleProfiles}
-            selectedClientId={selectedClientId}
+            selectedClientId={effectiveSelectedClientId ?? ""}
             mutate={mutate}
             runtime={data.googleProfileRuntime}
             canManage={data.viewer.permissions.includes("profiles.manage")}
@@ -934,7 +955,7 @@ export function CrmApp({
             reviewRequests={data.reviewRequests}
             reviewSettings={data.reviewSettings}
             connections={data.providerConnections}
-            selectedClientId={selectedClientId}
+            selectedClientId={effectiveSelectedClientId ?? ""}
             mutate={mutate}
             canReply={data.viewer.permissions.includes("reviews.reply")}
             canRequest={data.viewer.permissions.includes("reviews.request")}
@@ -955,7 +976,7 @@ export function CrmApp({
           <PaymentsView
             clients={data.clients}
             connections={data.providerConnections}
-            selectedClientId={selectedClientId}
+            selectedClientId={effectiveSelectedClientId ?? ""}
             viewerRole={data.viewer.role}
             mutate={mutate}
           />
@@ -965,7 +986,7 @@ export function CrmApp({
             clients={data.clients}
             connections={data.providerConnections}
             aiAuthorizations={data.aiAuthorizations}
-            selectedClientId={selectedClientId}
+            selectedClientId={effectiveSelectedClientId ?? ""}
             mutate={mutate}
             canReadSharedBilling={data.viewer.permissions.includes(
               "billing.read_shared",
@@ -978,7 +999,7 @@ export function CrmApp({
             clients={data.clients}
             configs={data.phoneConfigs}
             connections={data.providerConnections}
-            selectedClientId={selectedClientId}
+            selectedClientId={effectiveSelectedClientId ?? ""}
             mutate={mutate}
             canManage={data.viewer.permissions.includes("phone_system.manage")}
             onOpenConnections={openConnections}
@@ -992,7 +1013,7 @@ export function CrmApp({
             conversations={data.conversations}
             messages={data.messages}
             calls={data.phoneCalls}
-            selectedClientId={selectedClientId}
+            selectedClientId={effectiveSelectedClientId ?? ""}
             mutate={mutate}
           />
         )}
@@ -1003,7 +1024,7 @@ export function CrmApp({
             workflows={data.workflows}
             runs={data.workflowRuns}
             stages={data.stages}
-            selectedClientId={selectedClientId}
+            selectedClientId={effectiveSelectedClientId ?? ""}
             mutate={mutate}
             onOpenConnections={openConnections}
           />
@@ -1015,7 +1036,7 @@ export function CrmApp({
               authorizations={data.aiAuthorizations}
               activities={data.aiActivities}
               runtime={data.aiConnectorRuntime}
-              selectedClientId={selectedClientId}
+              selectedClientId={effectiveSelectedClientId ?? ""}
               mutate={mutate}
               canManage={data.viewer.permissions.includes(
                 "ai_connector.manage",
@@ -1044,7 +1065,7 @@ export function CrmApp({
         {view === "audit" && data.viewer.permissions.includes("audit.read") && (
           <AuditLogView logs={data.auditLogs} />
         )}
-        {view === "team" && data.viewer.isAgency && (
+        {view === "team" && data.viewer.permissions.includes("team.manage") && (
           <TeamView team={data.team} onInvite={() => setModal("invite")} mutate={mutate} />
         )}
         {view === "settings" && data.viewer.isAgency && (
@@ -1070,11 +1091,11 @@ export function CrmApp({
       ) : null}
       {modal === "lead" && (
         <AddLeadModal
-          clients={data.clients}
+          clients={filteredClients}
           mutate={async (input, success) => {
             const result = await mutate(input, success);
             // Show the new lead even if it created/used a different business.
-            setSelectedClientId("all");
+            setSelectedClientId(data.viewer.isAgency ? "all" : data.viewer.clientId ?? "");
             return result;
           }}
           onClose={() => setModal(null)}
@@ -1082,21 +1103,21 @@ export function CrmApp({
       )}
       {modal === "contact" && (
         <AddContactModal
-          clients={data.clients}
+          clients={filteredClients}
           mutate={mutate}
           onClose={() => setModal(null)}
         />
       )}
       {modal === "contact-import" && (
         <ContactImportModal
-          clients={data.clients}
+          clients={filteredClients}
           mutate={mutate}
           onClose={() => setModal(null)}
         />
       )}
       {modal === "company" && (
         <AddCompanyModal
-          clients={data.clients}
+          clients={filteredClients}
           mutate={mutate}
           onClose={() => setModal(null)}
         />
@@ -1117,17 +1138,17 @@ export function CrmApp({
       )}
       {modal === "task" && (
         <AddTaskModal
-          clients={data.clients}
-          leads={data.leads}
+          clients={filteredClients}
+          leads={filteredLeads}
           mutate={mutate}
           onClose={() => setModal(null)}
         />
       )}
       {modal === "appointment" && (
         <AddAppointmentModal
-          clients={data.clients}
-          contacts={data.contacts}
-          leads={data.leads}
+          clients={filteredClients}
+          contacts={filteredContacts}
+          leads={filteredLeads}
           mutate={mutate}
           onClose={() => setModal(null)}
         />
@@ -1136,7 +1157,7 @@ export function CrmApp({
         <AddClientModal mutate={mutate} onClose={() => setModal(null)} />
       )}
       {modal === "invite" && (
-        <InviteMemberModal clients={data.clients} isAgency={data.viewer.isAgency} mutate={mutate} onClose={() => setModal(null)} />
+        <InviteMemberModal clients={filteredClients} isAgency={data.viewer.isAgency} mutate={mutate} onClose={() => setModal(null)} />
       )}
       {modal === "search" && (
         <Modal

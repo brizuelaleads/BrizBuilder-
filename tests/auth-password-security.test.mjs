@@ -35,12 +35,19 @@ test("the session is validated with the auth server, never trusted from the cook
   assert.match(block, /normalizedEmail\(data\.user\.email\)/);
 });
 
+test("Supabase identity takes precedence over Cloudflare Access identity", () => {
+  const sessionIndex = authSource.indexOf("const sessionUser = await verifySupabaseSession()");
+  const accessIndex = authSource.indexOf("const accessToken = requestHeaders.get");
+  assert.ok(sessionIndex >= 0 && accessIndex >= 0 && sessionIndex < accessIndex);
+});
+
 test("sign-in never leaks the password and throttles repeated attempts", () => {
   assert.match(loginRoute, /signInWithPassword\(\{ email, password \}\)/);
   assert.doesNotMatch(loginRoute, /console\.(log|error|warn)/, "no password logging");
   // Failures reveal nothing about which half was wrong.
   assert.match(loginRoute, /"invalid"/);
   assert.doesNotMatch(loginRoute, /no such user|unknown email|wrong password/i);
+  assert.match(loginRoute, /await supabase\.auth\.signOut\(\)/);
   assert.match(loginRoute, /MAX_ATTEMPTS_PER_WINDOW/);
   assert.match(loginRoute, /cf-connecting-ip/);
 });

@@ -91,7 +91,12 @@ export async function POST(request: Request) {
   // signInWithPassword writes the session cookies through the SSR cookie
   // bridge. The password itself is never logged or echoed back.
   const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) return redirectTo(request, loginPath(returnTo), "invalid");
+  if (error) {
+    // Do not leave the previous browser user's session active after a failed
+    // attempt. Otherwise the page can look like the wrong account signed in.
+    await supabase.auth.signOut();
+    return redirectTo(request, loginPath(returnTo), "invalid");
+  }
 
   clearThrottle(throttleKey);
   return redirectTo(request, returnTo);

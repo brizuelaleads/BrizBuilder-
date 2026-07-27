@@ -29,15 +29,16 @@ const CALLBACK_PATH = "/callback";
 
 export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
   const requestHeaders = await headers();
-  const accessToken = requestHeaders.get(CLOUDFLARE_ACCESS_JWT_HEADER);
+  // Cloudflare Access is an outer gate, not the BrizBuilder account. A user
+  // can pass Access as the owner while signing into Supabase as a client.
+  const sessionUser = await verifySupabaseSession();
+  if (sessionUser) return sessionUser;
 
+  const accessToken = requestHeaders.get(CLOUDFLARE_ACCESS_JWT_HEADER);
   if (accessToken) {
     const accessUser = await verifyCloudflareAccessIdentity(accessToken);
     if (accessUser) return accessUser;
   }
-
-  const sessionUser = await verifySupabaseSession();
-  if (sessionUser) return sessionUser;
 
   const testUser = await verifySignedTestIdentity(requestHeaders);
   if (testUser) return testUser;

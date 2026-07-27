@@ -5733,7 +5733,7 @@ export async function executeSupabaseCrmAction(
       if (!member) throw new Error("Team member not found.");
       const update = supabase()
         .from("client_members")
-        .update({ status: "inactive" })
+        .update({ status: "archived" })
         .eq("id", memberId)
         .eq("organization_id", context.organizationId);
       await assertOk(
@@ -5762,7 +5762,7 @@ export async function executeSupabaseCrmAction(
     await assertOk(
       supabase()
         .from("organization_members")
-        .update({ status: "inactive" })
+        .update({ status: "archived" })
         .eq("id", memberId)
         .eq("organization_id", context.organizationId),
     );
