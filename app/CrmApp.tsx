@@ -403,6 +403,15 @@ export function CrmApp({
     return () => window.clearTimeout(timer);
   }, [initialData.clients, initialData.viewer.isAgency]);
 
+  const workspaceLeads = useMemo(
+    () =>
+      data.leads.filter(
+        (lead) =>
+          effectiveSelectedClientId === "all" ||
+          lead.clientId === effectiveSelectedClientId,
+      ),
+    [data.leads, effectiveSelectedClientId],
+  );
   const filteredLeads = useMemo(() => {
     const cutoff =
       range === "all"
@@ -410,18 +419,16 @@ export function CrmApp({
         : new Date(
             new Date(data.generatedAt).getTime() - Number(range) * 86400000,
           );
-    return data.leads.filter(
+    return workspaceLeads.filter(
       (lead) =>
-        (effectiveSelectedClientId === "all" ||
-          lead.clientId === effectiveSelectedClientId) &&
-        (!cutoff ||
+        !cutoff ||
           new Date(
             lead.createdAt.includes("T")
               ? lead.createdAt
               : `${lead.createdAt.replace(" ", "T")}Z`,
-          ) >= cutoff),
+          ) >= cutoff,
     );
-  }, [data.leads, data.generatedAt, effectiveSelectedClientId, range]);
+  }, [data.generatedAt, range, workspaceLeads]);
   const filteredContacts = data.contacts.filter(
     (contact) =>
       effectiveSelectedClientId === "all" ||
@@ -467,6 +474,16 @@ export function CrmApp({
     (appointment) =>
       effectiveSelectedClientId === "all" ||
       appointment.clientId === effectiveSelectedClientId,
+  );
+  const filteredConversations = data.conversations.filter(
+    (conversation) =>
+      effectiveSelectedClientId === "all" ||
+      conversation.clientId === effectiveSelectedClientId,
+  );
+  const filteredMessages = data.messages.filter(
+    (message) =>
+      effectiveSelectedClientId === "all" ||
+      message.clientId === effectiveSelectedClientId,
   );
   const filteredClients = data.clients.filter(
     (client) =>
@@ -657,8 +674,10 @@ export function CrmApp({
     (task) => !["COMPLETED", "CANCELED"].includes(task.status),
   ).length;
   const topbarDetail =
-    view === "leads" || view === "pipeline"
+    view === "leads"
       ? `${filteredLeads.length} ${filteredLeads.length === 1 ? "lead" : "leads"}`
+      : view === "pipeline"
+        ? `${workspaceLeads.length} ${workspaceLeads.length === 1 ? "lead" : "leads"}`
       : view === "contacts"
         ? `${filteredContacts.length} ${filteredContacts.length === 1 ? "contact" : "contacts"}`
         : view === "companies"
@@ -672,7 +691,7 @@ export function CrmApp({
                 : view === "team"
                   ? `${data.team.length} ${data.team.length === 1 ? "team member" : "team members"}`
                   : null;
-  const showRangeFilter = ["dashboard", "leads", "pipeline", "reports"].includes(
+  const showRangeFilter = ["dashboard", "leads", "reports"].includes(
     view,
   );
 
@@ -1028,10 +1047,17 @@ export function CrmApp({
         {view === "dashboard" && (
           <DashboardView
             leads={filteredLeads}
+            pipelineLeads={workspaceLeads}
             clients={filteredClients}
             appointments={filteredAppointments}
             tasks={filteredTasks}
+            stages={data.stages}
+            conversations={filteredConversations}
+            messages={filteredMessages}
             generatedAt={data.generatedAt}
+            canViewConversations={data.viewer.permissions.includes(
+              "messages.write",
+            )}
             onOpenLead={openLead}
             onNavigate={navigate}
           />
@@ -1047,7 +1073,7 @@ export function CrmApp({
         )}
         {view === "pipeline" && (
           <PipelineView
-            leads={filteredLeads}
+            leads={workspaceLeads}
             stages={data.stages}
             mutate={mutate}
             onOpenLead={openLead}
