@@ -6648,3 +6648,355 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
     grid-template-columns: 1fr;
   }
 }
+
+/* Requested compact dashboard widgets: reference layout, BrizBuilder data. */
+.crm-dashboard-view .crm-dashboard-widget-grid {
+  margin-top: 16px;
+  display: grid;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.crm-dashboard-view .crm-dashboard-widget-grid.is-top {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.crm-dashboard-view .crm-dashboard-widget-grid.is-bottom {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.crm-dashboard-view .crm-dashboard-widget {
+  min-width: 0;
+  min-height: 286px;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  border-radius: 10px;
+}
+
+.crm-dashboard-view .crm-dashboard-widget-grid.is-bottom .crm-dashboard-widget {
+  min-height: 300px;
+}
+
+.crm-dashboard-view .crm-dashboard-widget > header {
+  min-height: 54px;
+  padding: 0 16px;
+}
+
+.crm-dashboard-view .crm-dashboard-widget-heading {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.crm-dashboard-view .crm-dashboard-widget-heading svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: var(--crm-ink);
+  stroke-width: 1.8;
+}
+
+.crm-dashboard-view .crm-dashboard-widget-heading h3 {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crm-dashboard-view .crm-dashboard-widget > header > strong {
+  color: var(--crm-ink);
+  font-size: 16px;
+  letter-spacing: -0.25px;
+}
+
+.crm-dashboard-view .crm-dashboard-widget-list {
+  min-height: 184px;
+  display: grid;
+  align-content: start;
+}
+
+.crm-dashboard-view .crm-dashboard-widget-list > button {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  padding: 8px 16px;
+  border: 0;
+  color: var(--crm-ink);
+  background: transparent;
+  text-align: left;
+}
+
+.crm-dashboard-view .crm-dashboard-widget-list > button:hover {
+  background: #f5f8f5;
+}
+
+.crm-shell[data-theme]
+  .crm-dashboard-view
+  .crm-dashboard-widget-list
+  > button:hover {
+  background: var(--crm-chrome-hover);
+}
+
+.crm-dashboard-view .crm-dashboard-appointment-list > button {
+  display: grid;
+  grid-template-columns: minmax(88px, 1.12fr) minmax(90px, 1fr) minmax(74px, 0.9fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.crm-dashboard-view .crm-dashboard-appointment-list time,
+.crm-dashboard-view .crm-dashboard-appointment-list strong,
+.crm-dashboard-view .crm-dashboard-appointment-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crm-dashboard-view .crm-dashboard-appointment-list time,
+.crm-dashboard-view .crm-dashboard-appointment-list span {
+  color: var(--crm-muted);
+  font-size: 10px;
+}
+
+.crm-dashboard-view .crm-dashboard-appointment-list strong {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.crm-dashboard-view .crm-dashboard-attention-list > button {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.crm-dashboard-view .crm-dashboard-attention-list i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e3aa25;
+}
+
+.crm-dashboard-view .crm-dashboard-attention-list i.is-critical {
+  background: #d94a42;
+}
+
+.crm-dashboard-view .crm-dashboard-attention-list span {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crm-dashboard-view .crm-dashboard-attention-list strong {
+  font-size: 11px;
+}
+
+.crm-dashboard-view .crm-dashboard-widget > footer {
+  min-height: 46px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+}
+
+.crm-dashboard-view .crm-dashboard-widget > footer button {
+  padding: 0;
+  border: 0;
+  color: var(--crm-accent);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.crm-dashboard-view .crm-dashboard-widget-list .crm-dashboard-placeholder {
+  min-height: 184px;
+  padding: 10px 16px 12px;
+}
+
+.crm-dashboard-view
+  .crm-dashboard-widget-list
+  .crm-dashboard-placeholder-row {
+  min-height: 39px;
+  grid-template-columns: minmax(0, 1fr) 62px;
+}
+
+.crm-dashboard-view
+  .crm-dashboard-widget-list
+  .crm-dashboard-placeholder-row
+  > i {
+  display: none;
+}
+
+.crm-dashboard-view .crm-dashboard-line-chart {
+  min-height: 244px;
+  padding: 18px 16px 14px;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 20px;
+  gap: 6px;
+}
+
+.crm-dashboard-view .crm-dashboard-line-chart svg {
+  width: 100%;
+  height: 100%;
+  min-height: 184px;
+  overflow: visible;
+}
+
+.crm-dashboard-view .crm-dashboard-line-chart svg line {
+  stroke: var(--crm-line);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.crm-dashboard-view .crm-dashboard-line-chart svg polygon {
+  fill: var(--crm-accent-soft);
+}
+
+.crm-dashboard-view .crm-dashboard-line-chart svg polyline {
+  fill: none;
+  stroke: var(--crm-accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.crm-dashboard-view .crm-dashboard-line-chart svg circle {
+  fill: var(--crm-accent);
+  stroke: var(--crm-card);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.crm-dashboard-view .crm-dashboard-line-chart > div {
+  padding: 0 2px;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  color: var(--crm-muted);
+  font-size: 10px;
+  text-align: center;
+}
+
+.crm-dashboard-view .crm-dashboard-source-chart {
+  min-height: 244px;
+  padding: 24px 18px;
+  display: grid;
+  grid-template-columns: minmax(130px, 0.9fr) minmax(150px, 1fr);
+  align-items: center;
+  gap: 28px;
+}
+
+.crm-dashboard-view .crm-dashboard-source-donut {
+  width: min(170px, 100%);
+  aspect-ratio: 1;
+  justify-self: center;
+  position: relative;
+  border-radius: 50%;
+}
+
+.crm-dashboard-view .crm-dashboard-source-donut::after {
+  width: 52%;
+  aspect-ratio: 1;
+  position: absolute;
+  inset: 24%;
+  border-radius: 50%;
+  background: var(--crm-card);
+  content: "";
+}
+
+.crm-dashboard-view .crm-dashboard-source-legend {
+  min-width: 0;
+  display: grid;
+  gap: 13px;
+}
+
+.crm-dashboard-view .crm-dashboard-source-legend > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+}
+
+.crm-dashboard-view .crm-dashboard-source-legend i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.crm-dashboard-view .crm-dashboard-source-legend span,
+.crm-dashboard-view .crm-dashboard-source-legend strong {
+  font-size: 11px;
+}
+
+.crm-dashboard-view .crm-dashboard-source-legend span {
+  overflow: hidden;
+  color: var(--crm-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crm-dashboard-view .crm-dashboard-source-widget > .crm-dashboard-placeholder {
+  min-height: 244px;
+}
+
+.crm-dashboard-view .crm-dashboard-bottom-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 1180px) {
+  .crm-dashboard-view .crm-dashboard-widget-grid.is-top {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .crm-dashboard-view
+    .crm-dashboard-widget-grid.is-top
+    > .crm-dashboard-upcoming-widget {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 900px) {
+  .crm-dashboard-view .crm-dashboard-widget-grid.is-bottom {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .crm-dashboard-view .crm-dashboard-widget-grid.is-top {
+    grid-template-columns: 1fr;
+  }
+
+  .crm-dashboard-view
+    .crm-dashboard-widget-grid.is-top
+    > .crm-dashboard-upcoming-widget {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 520px) {
+  .crm-dashboard-view .crm-dashboard-appointment-list > button {
+    grid-template-columns: minmax(82px, 0.85fr) minmax(0, 1.15fr);
+  }
+
+  .crm-dashboard-view .crm-dashboard-appointment-list > button > span {
+    grid-column: 2;
+  }
+
+  .crm-dashboard-view .crm-dashboard-source-chart {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .crm-dashboard-view .crm-dashboard-source-donut {
+    width: 150px;
+  }
+}
+
+@media print {
+  .crm-dashboard-view .crm-dashboard-widget-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

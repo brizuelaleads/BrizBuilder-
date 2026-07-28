@@ -42,13 +42,18 @@ function displayStatus(value: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function appointmentTone(
-  status: string,
-): "neutral" | "green" | "orange" | "red" | "blue" {
-  if (status === "COMPLETED" || status === "CONFIRMED") return "green";
-  if (status === "CANCELED") return "red";
-  if (status === "PENDING") return "orange";
-  return "blue";
+function dateKey(value: string) {
+  const parsed = timestamp(value);
+  return parsed ? new Date(parsed).toISOString().slice(0, 10) : value.slice(0, 10);
+}
+
+function timeOnly(value: string) {
+  const parsed = timestamp(value);
+  if (!parsed) return value;
+  return new Date(parsed).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 type DashboardSkeletonVariant =
@@ -152,6 +157,28 @@ export function DashboardView({
       if (!second.dueAt) return -1;
       return timestamp(first.dueAt) - timestamp(second.dueAt);
     });
+  const generatedAtTimestamp = timestamp(generatedAt);
+  const currentDateKey = dateKey(generatedAt);
+  const todayAppointments = appointments
+    .filter(
+      (appointment) =>
+        appointment.status !== "CANCELED" &&
+        dateKey(appointment.startsAt) === currentDateKey,
+    )
+    .sort(
+      (first, second) =>
+        timestamp(first.startsAt) - timestamp(second.startsAt),
+    );
+  const upcomingAppointments = appointments
+    .filter(
+      (appointment) =>
+        appointment.status !== "CANCELED" &&
+        dateKey(appointment.startsAt) > currentDateKey,
+    )
+    .sort(
+      (first, second) =>
+        timestamp(first.startsAt) - timestamp(second.startsAt),
+    );
   const futureAppointments = appointments
     .filter(
       (appointment) =>
@@ -169,12 +196,22 @@ export function DashboardView({
     const iso = date.toISOString().slice(0, 10);
     return {
       label: date.toLocaleDateString("en-US", { weekday: "short" }),
-      value: leads.filter((lead) => lead.createdAt.slice(0, 10) === iso)
-        .length,
+      value: pipelineLeads.filter(
+        (lead) => lead.createdAt.slice(0, 10) === iso,
+      ).length,
     };
   });
   const maxDaily = Math.max(1, ...daily.map((item) => item.value));
   const hasDailyLeadActivity = daily.some((item) => item.value > 0);
+  const weeklyLeadTotal = daily.reduce((sum, item) => sum + item.value, 0);
+  const leadChartPoints = daily.map((item, index) => ({
+    x: 18 + (index / Math.max(1, daily.length - 1)) * 564,
+    y: 18 + (1 - item.value / maxDaily) * 122,
+  }));
+  const leadLinePoints = leadChartPoints
+    .map((point) => `${point.x},${point.y}`)
+    .join(" ");
+  const leadAreaPoints = `18,140 ${leadLinePoints} 582,140`;
 
   const sources = Object.entries(
     leads.reduce<Record<string, number>>((acc, lead) => {
@@ -183,7 +220,38 @@ export function DashboardView({
       return acc;
     }, {}),
   ).sort((first, second) => second[1] - first[1]);
-  const maxSource = Math.max(1, ...sources.map(([, count]) => count));
+  const sourceTotal = sources.reduce((sum, [, count]) => sum + count, 0);
+  const explicitOtherCount =
+    sources.find(([source]) => source.toLowerCase() === "other")?.[1] ?? 0;
+  const namedSources = sources.filter(
+    ([source]) => source.toLowerCase() !== "other",
+  );
+  const sourceBreakdown = namedSources.slice(0, 4);
+  const otherSourceCount =
+    explicitOtherCount +
+    namedSources
+      .slice(4)
+      .reduce((sum, [, count]) => sum + count, 0);
+  if (otherSourceCount > 0) {
+    sourceBreakdown.push(["Other", otherSourceCount]);
+  }
+  const sourceColors = [
+    "#2f6f3e",
+    "#5c8a66",
+    "#87a48d",
+    "#aebdaf",
+    "#d8ddd7",
+  ];
+  let sourcePercentageCursor = 0;
+  const sourceDonutBackground = sourceTotal
+    ? `conic-gradient(${sourceBreakdown
+        .map(([, count], index) => {
+          const start = sourcePercentageCursor;
+          sourcePercentageCursor += (count / sourceTotal) * 100;
+          return `${sourceColors[index]} ${start}% ${sourcePercentageCursor}%`;
+        })
+        .join(", ")})`
+    : undefined;
 
   const stageById = new Map(stages.map((stage) => [stage.id, stage]));
   const groupedStages = new Map<
@@ -305,6 +373,50 @@ export function DashboardView({
     (sum, lead) => sum + lead.finalRevenueCents,
     0,
   );
+  const workspaceNewLeads = pipelineLeads.filter(
+    (lead) => lead.status === "NEW",
+  );
+  const pastDueTasks = openTasks.filter(
+    (task) =>
+      task.dueAt && timestamp(task.dueAt) < generatedAtTimestamp,
+  );
+  const followUpsDue = pipelineLeads.filter(
+    (lead) =>
+      !["WON", "LOST", "SPAM", "UNRESPONSIVE"].includes(lead.status) &&
+      lead.nextFollowUpAt &&
+      timestamp(lead.nextFollowUpAt) <= generatedAtTimestamp,
+  );
+  const attentionItems: {
+    label: string;
+    count: number;
+    tone: "warning" | "critical";
+    destination: DashboardDestination;
+  }[] = [
+    {
+      label: "Leads awaiting response",
+      count: workspaceNewLeads.length,
+      tone: "warning",
+      destination: "leads",
+    },
+    {
+      label: "Tasks past due",
+      count: pastDueTasks.length,
+      tone: "critical",
+      destination: "tasks",
+    },
+    {
+      label: "Follow-ups due",
+      count: followUpsDue.length,
+      tone: "critical",
+      destination: "pipeline",
+    },
+    {
+      label: "Quotes awaiting follow-up",
+      count: quotes.length,
+      tone: "warning",
+      destination: "pipeline",
+    },
+  ];
 
   const metrics = [
     {
@@ -392,34 +504,159 @@ export function DashboardView({
         ))}
       </section>
 
-      <section className="crm-dashboard-grid">
-        <article className="crm-panel crm-chart-panel">
+      <section
+        className="crm-dashboard-widget-grid is-top"
+        aria-label="Schedule and attention"
+      >
+        <article className="crm-panel crm-dashboard-widget crm-dashboard-today-widget">
           <header>
-            <div>
-              <p>LEAD VOLUME</p>
-              <h3>New inquiries this week</h3>
+            <div className="crm-dashboard-widget-heading">
+              <CalendarDays aria-hidden="true" />
+              <h3>Today&apos;s Schedule</h3>
             </div>
-            <span>7 days</span>
+          </header>
+          <div className="crm-dashboard-widget-list crm-dashboard-appointment-list">
+            {todayAppointments.length ? (
+              todayAppointments.slice(0, 4).map((appointment) => (
+                <button
+                  key={appointment.id}
+                  type="button"
+                  onClick={() => onNavigate("calendar")}
+                >
+                  <time dateTime={appointment.startsAt}>
+                    {timeOnly(appointment.startsAt)}
+                  </time>
+                  <strong>{appointment.serviceType || "Appointment"}</strong>
+                  <span>
+                    {appointment.clientName || appointment.contactName}
+                  </span>
+                </button>
+              ))
+            ) : (
+              <DashboardSkeleton
+                variant="schedule"
+                rows={4}
+                caption="Today's appointments will appear here."
+              />
+            )}
+          </div>
+          <footer>
+            <button type="button" onClick={() => onNavigate("calendar")}>
+              View full calendar
+            </button>
+          </footer>
+        </article>
+
+        <article className="crm-panel crm-dashboard-widget crm-dashboard-attention-widget">
+          <header>
+            <div className="crm-dashboard-widget-heading">
+              <ListChecks aria-hidden="true" />
+              <h3>Needs Attention</h3>
+            </div>
+          </header>
+          <div className="crm-dashboard-widget-list crm-dashboard-attention-list">
+            {attentionItems.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => onNavigate(item.destination)}
+              >
+                <i className={`is-${item.tone}`} aria-hidden="true" />
+                <span>{item.label}</span>
+                <strong>{item.count}</strong>
+              </button>
+            ))}
+          </div>
+          <footer>
+            <button type="button" onClick={() => onNavigate("tasks")}>
+              Review tasks
+            </button>
+          </footer>
+        </article>
+
+        <article className="crm-panel crm-dashboard-widget crm-dashboard-upcoming-widget">
+          <header>
+            <div className="crm-dashboard-widget-heading">
+              <CalendarDays aria-hidden="true" />
+              <h3>Upcoming Appointments</h3>
+            </div>
+          </header>
+          <div className="crm-dashboard-widget-list crm-dashboard-appointment-list">
+            {upcomingAppointments.length ? (
+              upcomingAppointments.slice(0, 4).map((appointment) => (
+                <button
+                  key={appointment.id}
+                  type="button"
+                  onClick={() => onNavigate("calendar")}
+                >
+                  <time dateTime={appointment.startsAt}>
+                    {dateTime(appointment.startsAt)}
+                  </time>
+                  <strong>{appointment.serviceType || "Appointment"}</strong>
+                  <span>
+                    {appointment.clientName || appointment.contactName}
+                  </span>
+                </button>
+              ))
+            ) : (
+              <DashboardSkeleton
+                variant="schedule"
+                rows={4}
+                caption="Upcoming appointments will appear here."
+              />
+            )}
+          </div>
+          <footer>
+            <button type="button" onClick={() => onNavigate("calendar")}>
+              View all
+            </button>
+          </footer>
+        </article>
+      </section>
+
+      <section
+        className="crm-dashboard-widget-grid is-bottom"
+        aria-label="Lead insights"
+      >
+        <article className="crm-panel crm-dashboard-widget crm-dashboard-leads-week-widget">
+          <header>
+            <div className="crm-dashboard-widget-heading">
+              <h3>Leads This Week</h3>
+            </div>
+            <strong>{weeklyLeadTotal}</strong>
           </header>
           {hasDailyLeadActivity ? (
             <div
-              className="crm-column-chart"
+              className="crm-dashboard-line-chart"
               role="img"
-              aria-label={`Lead volume by day: ${daily
+              aria-label={`Leads this week by day: ${daily
                 .map((item) => `${item.label} ${item.value}`)
                 .join(", ")}`}
             >
-              {daily.map((item) => (
-                <div key={item.label}>
-                  <strong>{item.value}</strong>
-                  <span
-                    style={{
-                      height: `${Math.max(8, (item.value / maxDaily) * 100)}%`,
-                    }}
+              <svg
+                viewBox="0 0 600 158"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+              >
+                {[18, 58, 98, 140].map((y) => (
+                  <line key={y} x1="18" x2="582" y1={y} y2={y} />
+                ))}
+                <polygon points={leadAreaPoints} />
+                <polyline points={leadLinePoints} />
+                {leadChartPoints.map((point, index) => (
+                  <circle
+                    key={daily[index].label}
+                    cx={point.x}
+                    cy={point.y}
+                    r="4"
                   />
-                  <small>{item.label}</small>
-                </div>
-              ))}
+                ))}
+              </svg>
+              <div aria-hidden="true">
+                {daily.map((item) => (
+                  <span key={item.label}>{item.label}</span>
+                ))}
+              </div>
             </div>
           ) : (
             <DashboardSkeleton
@@ -429,36 +666,46 @@ export function DashboardView({
           )}
         </article>
 
-        <article className="crm-panel crm-source-panel">
+        <article className="crm-panel crm-dashboard-widget crm-dashboard-source-widget">
           <header>
-            <div>
-              <p>ATTRIBUTION</p>
-              <h3>Leads by source</h3>
+            <div className="crm-dashboard-widget-heading">
+              <h3>Leads by Source</h3>
             </div>
             <button type="button" onClick={() => onNavigate("reports")}>
               Full report
             </button>
           </header>
-          <div className="crm-bar-list">
-            {sources.length ? (
-              sources.map(([source, count]) => (
-                <div key={source}>
-                  <div>
-                    <span>{source}</span>
-                    <strong>{count}</strong>
-                  </div>
-                  <i>
-                    <span style={{ width: `${(count / maxSource) * 100}%` }} />
-                  </i>
-                </div>
-              ))
-            ) : (
-              <DashboardSkeleton
-                variant="sources"
-                caption="Sources such as Meta and Google will appear here."
+          {sourceTotal ? (
+            <div
+              className="crm-dashboard-source-chart"
+              role="img"
+              aria-label={`Leads by source: ${sourceBreakdown
+                .map(([source, count]) => `${source} ${count}`)
+                .join(", ")}`}
+            >
+              <div
+                className="crm-dashboard-source-donut"
+                style={{ background: sourceDonutBackground }}
+                aria-hidden="true"
               />
-            )}
-          </div>
+              <div className="crm-dashboard-source-legend" aria-hidden="true">
+                {sourceBreakdown.map(([source, count], index) => (
+                  <div key={source}>
+                    <i style={{ background: sourceColors[index] }} />
+                    <span>{source}</span>
+                    <strong>
+                      {Math.round((count / sourceTotal) * 100)}%
+                    </strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <DashboardSkeleton
+              variant="sources"
+              caption="Sources such as Meta and Google will appear here."
+            />
+          )}
         </article>
       </section>
 
@@ -571,52 +818,7 @@ export function DashboardView({
         </article>
       </section>
 
-      <section className="crm-dashboard-bottom-grid crm-dashboard-bottom-primary">
-        <article className="crm-panel crm-upcoming-schedule-panel">
-          <header>
-            <div>
-              <p>UPCOMING SCHEDULE</p>
-              <h3>Appointments ahead</h3>
-            </div>
-            <button type="button" onClick={() => onNavigate("calendar")}>
-              Open calendar
-            </button>
-          </header>
-          <div className="crm-schedule-list">
-            {futureAppointments.slice(0, 4).map((appointment) => (
-              <button
-                key={appointment.id}
-                type="button"
-                onClick={() => onNavigate("calendar")}
-              >
-                <span className="crm-dashboard-row-icon">
-                  <CalendarDays aria-hidden="true" />
-                </span>
-                <span className="crm-dashboard-row-copy">
-                  <strong>{appointment.contactName}</strong>
-                  <small>
-                    {appointment.serviceType}
-                    {" · "}
-                    {appointment.clientName}
-                  </small>
-                </span>
-                <time dateTime={appointment.startsAt}>
-                  {dateTime(appointment.startsAt)}
-                </time>
-                <Badge tone={appointmentTone(appointment.status)}>
-                  {displayStatus(appointment.status)}
-                </Badge>
-              </button>
-            ))}
-            {!futureAppointments.length ? (
-              <DashboardSkeleton
-                variant="schedule"
-                caption="Scheduled appointments will appear here."
-              />
-            ) : null}
-          </div>
-        </article>
-
+      <section className="crm-dashboard-bottom-grid crm-dashboard-bottom-primary crm-dashboard-bottom-single">
         <article className="crm-panel crm-pipeline-snapshot-panel">
           <header>
             <div>
