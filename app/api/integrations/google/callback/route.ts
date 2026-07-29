@@ -1,4 +1,7 @@
-import { finishSupabaseGoogleConnect } from "../../../../../db/supabase-crm";
+import {
+  finishSupabaseGoogleCalendarConnect,
+  finishSupabaseGoogleConnect,
+} from "../../../../../db/supabase-crm";
 
 export const dynamic = "force-dynamic";
 
@@ -15,18 +18,30 @@ function noStoreRedirect(url: URL) {
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
+  const state = requestUrl.searchParams.get("state") ?? "";
+  const calendarConnection = state.startsWith("calendar_");
   const redirect = new URL("/dashboard", request.url);
-  redirect.searchParams.set("view", "profiles");
+  redirect.searchParams.set(
+    "view",
+    calendarConnection ? "calendar" : "profiles",
+  );
   try {
     if (requestUrl.searchParams.get("error")) {
       throw new Error("Google connection was canceled.");
     }
-    const result = await finishSupabaseGoogleConnect(
-      requestUrl.searchParams.get("state") ?? "",
-      requestUrl.searchParams.get("code") ?? "",
-    );
+    const result = calendarConnection
+      ? await finishSupabaseGoogleCalendarConnect(
+          state,
+          requestUrl.searchParams.get("code") ?? "",
+        )
+      : await finishSupabaseGoogleConnect(
+          state,
+          requestUrl.searchParams.get("code") ?? "",
+        );
     redirect.searchParams.set("client", result.clientId);
-    if (result.status === "connected") {
+    if (result.status === "calendar_connected") {
+      redirect.searchParams.set("connected", "google_calendar");
+    } else if (result.status === "connected") {
       redirect.searchParams.set("connected", "google");
     } else if (result.status === "select") {
       redirect.searchParams.set("google_select", "1");

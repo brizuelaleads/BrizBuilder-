@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { CrmAppointment, CrmClient, CrmContact, CrmLead, CrmTask, CrmTeamMember } from "../../db/crm";
+import type {
+  CrmAppointment,
+  CrmClient,
+  CrmContact,
+  CrmLead,
+  CrmProviderConnection,
+  CrmTask,
+  CrmTeamMember,
+} from "../../db/crm";
 import { Badge, dateTime, EmptyState, money, shortDate } from "./ui";
 
 type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
@@ -105,12 +113,33 @@ export function TasksView({ tasks, clients, mutate, onAddTask }: { tasks: CrmTas
   return <div className="crm-view"><section className="crm-page-heading"><div><p>FOLLOW-UP WORK</p><h2>Tasks</h2><span>Keep every callback, estimate follow-up, and reminder accountable.</span></div><button className="crm-button-primary" onClick={onAddTask}>+ New Task</button></section><section className="crm-tabs">{["OPEN", "IN_PROGRESS", "COMPLETED", "ALL"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item.replaceAll("_", " ")}</button>)}</section><section className="crm-task-list">{visible.map((task) => <article key={task.id} className={task.status === "COMPLETED" ? "crm-task-complete" : ""}><button className="crm-task-check" onClick={() => void mutate({ action: "toggle_task", taskId: task.id }, task.status === "COMPLETED" ? "Task reopened" : "Task completed")} aria-label={task.status === "COMPLETED" ? `Reopen ${task.title}` : `Complete ${task.title}`}>{task.status === "COMPLETED" ? "✓" : ""}</button><div><strong>{task.title}</strong><p>{task.description || "No description"}</p><span>{clients.find((client) => client.id === task.clientId)?.businessName} · {task.assignee ?? "Unassigned"}</span></div><div><Badge tone={task.priority === "URGENT" ? "red" : task.priority === "HIGH" ? "orange" : "neutral"}>{task.priority}</Badge><small>{dateTime(task.dueAt)}</small></div></article>)}{!visible.length ? <EmptyState title="No tasks in this view" description="Create a task when a lead needs a clear next step." /> : null}</section></div>;
 }
 
-export function CalendarView({ appointments, mutate, onAddAppointment }: { appointments: CrmAppointment[]; mutate: Mutate; onAddAppointment: () => void }) {
+export function CalendarView({
+  appointments,
+  mutate,
+  onAddAppointment,
+  selectedClientId,
+  googleCalendarConnection,
+  googleCalendarConfigured,
+  canConnectGoogleCalendar,
+}: {
+  appointments: CrmAppointment[];
+  mutate: Mutate;
+  onAddAppointment: () => void;
+  selectedClientId: string | null;
+  googleCalendarConnection: CrmProviderConnection | null;
+  googleCalendarConfigured: boolean;
+  canConnectGoogleCalendar: boolean;
+}) {
   const [mode, setMode] = useState<"week" | "agenda">("week");
   const [agendaFilter, setAgendaFilter] = useState<"upcoming" | "all">("upcoming");
   const [anchorDate, setAnchorDate] = useState(() => new Date());
   const calendarScrollRef = useRef<HTMLElement>(null);
   const today = new Date();
+  const googleCalendarLinked = Boolean(
+    googleCalendarConnection?.isLinked,
+  );
+  const googleCalendarNeedsAttention =
+    googleCalendarLinked && !googleCalendarConnection?.isActive;
   const weekStart = new Date(anchorDate);
   weekStart.setHours(0, 0, 0, 0);
   weekStart.setDate(weekStart.getDate() - weekStart.getDay());
@@ -155,7 +184,7 @@ export function CalendarView({ appointments, mutate, onAddAppointment }: { appoi
   useEffect(() => {
     if (mode !== "week") return;
     const frame = window.requestAnimationFrame(() => {
-      calendarScrollRef.current?.scrollTo({ top: 6 * 64 });
+      calendarScrollRef.current?.scrollTo({ top: 6 * 64 - 24 });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [anchorDate, mode]);
@@ -172,6 +201,43 @@ export function CalendarView({ appointments, mutate, onAddAppointment }: { appoi
           <h2>{weekStart.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</h2>
         </div>
         <div className="crm-calendar-actions">
+          {selectedClientId &&
+          canConnectGoogleCalendar &&
+          googleCalendarConfigured ? (
+            <a
+              className={`crm-google-calendar-link ${
+                googleCalendarNeedsAttention
+                  ? "needs-attention"
+                  : googleCalendarLinked
+                    ? "connected"
+                    : ""
+              }`}
+              href={`/api/integrations/google-calendar/connect?clientId=${encodeURIComponent(selectedClientId)}`}
+            >
+              <span aria-hidden="true">G</span>
+              {googleCalendarNeedsAttention
+                ? "Reconnect Google Calendar"
+                : googleCalendarLinked
+                  ? "Google Calendar linked"
+                  : "Link Google Calendar"}
+            </a>
+          ) : (
+            <button
+              type="button"
+              className="crm-google-calendar-link"
+              disabled
+              title={
+                !selectedClientId
+                  ? "Select one client before linking a calendar."
+                  : !canConnectGoogleCalendar
+                    ? "You do not have permission to connect Google Calendar."
+                    : "Google Calendar connection is not configured."
+              }
+            >
+              <span aria-hidden="true">G</span>
+              Link Google Calendar
+            </button>
+          )}
           {mode === "agenda" ? (
             <select
               value={agendaFilter}
@@ -196,6 +262,7 @@ export function CalendarView({ appointments, mutate, onAddAppointment }: { appoi
         <section
           className="crm-week-calendar"
           ref={calendarScrollRef}
+          tabIndex={0}
           aria-label={`Week of ${weekStart.toLocaleDateString("en-US")}`}
         >
           <header className="crm-week-header">
@@ -210,7 +277,10 @@ export function CalendarView({ appointments, mutate, onAddAppointment }: { appoi
           <div className="crm-week-body">
             <div className="crm-week-times" aria-hidden="true">
               {hours.map((hour) => (
-                <span key={hour} style={{ top: `${(hour - 6) * 64}px` }}>
+                <span
+                  key={hour}
+                  style={{ top: `${hour * 64 + (hour === 0 ? 12 : 0)}px` }}
+                >
                   {new Date(2000, 0, 1, hour).toLocaleTimeString("en-US", { hour: "numeric" })}
                 </span>
               ))}

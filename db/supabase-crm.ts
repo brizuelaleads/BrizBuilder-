@@ -7,6 +7,8 @@ import {
   decryptGoogleSecret,
   encryptGoogleSecret,
   exchangeGoogleAuthorizationCode,
+  GOOGLE_BUSINESS_SCOPE,
+  GOOGLE_CALENDAR_SCOPE,
   getGoogleBusinessRuntimeStatus,
   listGoogleBusinessReviews,
   listGoogleBusinessLocations,
@@ -16,6 +18,10 @@ import {
   updateGoogleBusinessReviewReply,
   type GoogleBusinessLocation,
 } from "../lib/google-business";
+import {
+  syncGoogleCalendarAppointment,
+  verifyGoogleCalendarAccess,
+} from "../lib/google-calendar";
 import {
   buildTwilioConnectUrl,
   checkTwilioConnectedAccount,
@@ -1371,6 +1377,7 @@ export async function handleSupabaseStripeWebhook(event: StripeWebhookEvent) {
 }
 
 const GOOGLE_BUSINESS_PROVIDER = "google_business_profile";
+const GOOGLE_CALENDAR_PROVIDER = "google_calendar";
 
 class GoogleConnectionDisconnectedError extends Error {
   constructor() {
@@ -1399,6 +1406,95 @@ async function googleCredential(
       .eq("client_id", clientId)
       .maybeSingle(),
   );
+}
+
+async function googleCalendarAccessToken(
+  organizationId: string,
+  clientId: string,
+) {
+  const [connection, credential] = await Promise.all([
+    assertOk(
+      supabase()
+        .from("provider_connections")
+        .select("status")
+        .eq("organization_id", organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", GOOGLE_CALENDAR_PROVIDER)
+        .maybeSingle(),
+    ),
+    googleCredential(organizationId, clientId),
+  ]);
+  if (String(connection?.status ?? "") !== "connected" || !credential) {
+    return null;
+  }
+  const scopes = Array.isArray(credential.scopes)
+    ? credential.scopes.map(String)
+    : [];
+  if (!scopes.includes(GOOGLE_CALENDAR_SCOPE)) return null;
+  const refreshToken = await decryptGoogleSecret(
+    {
+      ciphertext: String(credential.refresh_token_ciphertext),
+      iv: String(credential.refresh_token_iv),
+    },
+    organizationId,
+    clientId,
+  );
+  return (await refreshGoogleAccessToken(refreshToken)).accessToken;
+}
+
+async function syncAppointmentToGoogleCalendar(
+  organizationId: string,
+  clientId: string,
+  appointment: {
+    id: string;
+    contactName: string;
+    serviceType: string;
+    startsAt: string;
+    endsAt: string;
+    notes: string;
+    status: string;
+  },
+) {
+  try {
+    const accessToken = await googleCalendarAccessToken(
+      organizationId,
+      clientId,
+    );
+    if (!accessToken) return;
+    await syncGoogleCalendarAppointment(accessToken, appointment);
+    const now = new Date().toISOString();
+    await assertOk(
+      supabase()
+        .from("provider_connections")
+        .update({
+          status: "connected",
+          last_error: null,
+          last_health_check_at: now,
+          updated_at: now,
+        })
+        .eq("organization_id", organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", GOOGLE_CALENDAR_PROVIDER),
+    );
+  } catch (error) {
+    const now = new Date().toISOString();
+    await assertOk(
+      supabase()
+        .from("provider_connections")
+        .update({
+          status: "attention",
+          last_error:
+            error instanceof Error
+              ? error.message.slice(0, 500)
+              : "Google Calendar sync failed.",
+          last_health_check_at: now,
+          updated_at: now,
+        })
+        .eq("organization_id", organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", GOOGLE_CALENDAR_PROVIDER),
+    );
+  }
 }
 
 async function authorizedGoogleLocations(
@@ -1743,6 +1839,58 @@ export async function beginSupabaseGoogleConnect(
   return buildGoogleAuthorizationUrl(state);
 }
 
+export async function beginSupabaseGoogleCalendarConnect(
+  user: ChatGPTUser,
+  clientId: string,
+) {
+  const context = await getTenantContext(user);
+  requirePermission(context, "profiles.connect");
+  await requireClient(context, clientId);
+  if (!getGoogleBusinessRuntimeStatus().ready) {
+    throw new Error(
+      "BrizBuilder's Google Calendar connection needs to be configured first.",
+    );
+  }
+  const state =
+    `calendar_${crypto.randomUUID()}${crypto.randomUUID()}`.replaceAll(
+      "-",
+      "",
+    );
+  const now = new Date();
+  await assertOk(
+    supabase()
+      .from("provider_authorization_states")
+      .delete()
+      .eq("provider", GOOGLE_CALENDAR_PROVIDER)
+      .lt("expires_at", now.toISOString()),
+  );
+  await assertOk(
+    supabase()
+      .from("provider_authorization_states")
+      .insert({
+        organization_id: context.organizationId,
+        client_id: clientId,
+        provider: GOOGLE_CALENDAR_PROVIDER,
+        state_hash: await stateHash(state),
+        requested_by_email: context.email,
+        expires_at: new Date(now.getTime() + 15 * 60_000).toISOString(),
+      }),
+  );
+  const existingCredential = await googleCredential(
+    context.organizationId,
+    clientId,
+  );
+  const existingScopes = Array.isArray(existingCredential?.scopes)
+    ? existingCredential.scopes.map(String)
+    : [];
+  return buildGoogleAuthorizationUrl(state, [
+    ...(existingScopes.includes(GOOGLE_BUSINESS_SCOPE)
+      ? [GOOGLE_BUSINESS_SCOPE]
+      : []),
+    GOOGLE_CALENDAR_SCOPE,
+  ]);
+}
+
 export async function finishSupabaseGoogleConnect(
   state: string,
   code: string,
@@ -1859,6 +2007,173 @@ export async function finishSupabaseGoogleConnect(
       status:
         locations.length === 1 ? ("connected" as const) : ("select" as const),
       message: null,
+    };
+  } finally {
+    await assertOk(
+      supabase()
+        .from("provider_authorization_states")
+        .delete()
+        .eq("id", authorization.id),
+    );
+  }
+}
+
+export async function finishSupabaseGoogleCalendarConnect(
+  state: string,
+  code: string,
+) {
+  if (!state.startsWith("calendar_") || state.length < 48 || !code) {
+    throw new Error("Google did not return a valid Calendar connection.");
+  }
+  const now = new Date().toISOString();
+  const authorization = await assertOk(
+    supabase()
+      .from("provider_authorization_states")
+      .select("*")
+      .eq("provider", GOOGLE_CALENDAR_PROVIDER)
+      .eq("state_hash", await stateHash(state))
+      .is("used_at", null)
+      .gt("expires_at", now)
+      .maybeSingle(),
+  );
+  if (!authorization) {
+    throw new Error(
+      "This Google Calendar connection expired. Start again from BrizBuilder.",
+    );
+  }
+  try {
+    const callbackContext = await revalidateGoogleCallbackAuthorization(
+      authorization,
+    );
+    const consumed = await assertOk(
+      supabase()
+        .from("provider_authorization_states")
+        .update({ used_at: now })
+        .eq("id", authorization.id)
+        .is("used_at", null)
+        .select("id")
+        .maybeSingle(),
+    );
+    if (!consumed) {
+      throw new Error(
+        "This Google Calendar connection was already used. Start again from BrizBuilder.",
+      );
+    }
+
+    const tokens = await exchangeGoogleAuthorizationCode(code, state);
+    const refreshToken = tokens.refreshToken;
+    if (!refreshToken) {
+      throw new Error(
+        "Google did not grant fresh offline access. Remove BrizBuilder from your Google Account permissions, then connect again.",
+      );
+    }
+    if (!tokens.scopes.includes(GOOGLE_CALENDAR_SCOPE)) {
+      throw new Error("Google Calendar permission was not granted.");
+    }
+    await verifyGoogleCalendarAccess(tokens.accessToken);
+
+    const organizationId = String(authorization.organization_id);
+    const clientId = String(authorization.client_id);
+    const encrypted = await encryptGoogleSecret(
+      refreshToken,
+      organizationId,
+      clientId,
+    );
+    await assertOk(
+      supabase()
+        .from("google_business_credentials")
+        .upsert(
+          {
+            organization_id: authorization.organization_id,
+            client_id: authorization.client_id,
+            refresh_token_ciphertext: encrypted.ciphertext,
+            refresh_token_iv: encrypted.iv,
+            scopes: tokens.scopes,
+            connected_by_email: callbackContext.email,
+            updated_at: now,
+          },
+          { onConflict: "organization_id,client_id" },
+        ),
+    );
+
+    const upcomingAppointments = await assertOk(
+      supabase()
+        .from("appointments")
+        .select(
+          "id,service_type,starts_at,ends_at,notes,status,contacts(first_name,last_name)",
+        )
+        .eq("organization_id", organizationId)
+        .eq("client_id", clientId)
+        .neq("status", "CANCELED")
+        .gte("ends_at", now)
+        .order("starts_at", { ascending: true })
+        .limit(10),
+    );
+    const syncResults = await Promise.allSettled(
+      ((upcomingAppointments ?? []) as AnyRecord[]).map((appointment) => {
+        const contact = nestedOne(appointment.contacts) ?? {};
+        const contactName =
+          `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() ||
+          "Customer";
+        return syncGoogleCalendarAppointment(tokens.accessToken, {
+          id: String(appointment.id),
+          contactName,
+          serviceType: String(appointment.service_type),
+          startsAt: String(appointment.starts_at),
+          endsAt: String(appointment.ends_at),
+          notes: String(appointment.notes ?? ""),
+          status: String(appointment.status),
+        });
+      }),
+    );
+    const failedSyncs = syncResults.filter(
+      (result) => result.status === "rejected",
+    ).length;
+    await assertOk(
+      supabase()
+        .from("provider_connections")
+        .upsert(
+          {
+            organization_id: organizationId,
+            client_id: clientId,
+            provider: GOOGLE_CALENDAR_PROVIDER,
+            status: failedSyncs ? "attention" : "connected",
+            billing_owner: "customer",
+            external_account_name: "Primary Google Calendar",
+            scopes: tokens.scopes,
+            public_config: {
+              calendarId: "primary",
+              syncDirection: "brizbuilder_to_google",
+            },
+            connected_by_email: callbackContext.email,
+            connected_at: now,
+            disconnected_at: null,
+            last_health_check_at: now,
+            last_error: failedSyncs
+              ? `${failedSyncs} existing appointment${failedSyncs === 1 ? "" : "s"} could not be synced.`
+              : null,
+            updated_at: now,
+          },
+          { onConflict: "organization_id,client_id,provider" },
+        ),
+    );
+    await audit(
+      callbackContext,
+      "google_calendar.authorized",
+      "provider_connection",
+      clientId,
+      {
+        backfilledAppointments: syncResults.length - failedSyncs,
+        failedSyncs,
+      },
+      clientId,
+    );
+    return {
+      clientId,
+      status: "calendar_connected" as const,
+      message: failedSyncs
+        ? "Google Calendar connected, but some existing appointments need attention."
+        : null,
     };
   } finally {
     await assertOk(
@@ -5360,7 +5675,7 @@ export async function executeSupabaseCrmAction(
     const contact = await assertOk(
       supabase()
         .from("contacts")
-        .select("id")
+        .select("id,first_name,last_name")
         .eq("id", contactId)
         .eq("client_id", clientId)
         .eq("organization_id", context.organizationId)
@@ -5401,6 +5716,21 @@ export async function executeSupabaseCrmAction(
       {},
       clientId,
     );
+    await syncAppointmentToGoogleCalendar(
+      context.organizationId,
+      clientId,
+      {
+        id: String(createdAppointment.id),
+        contactName:
+          `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() ||
+          "Customer",
+        serviceType: requireText(input.serviceType, "Service", 160),
+        startsAt,
+        endsAt,
+        notes: optionalText(input.notes, 1000) ?? "",
+        status: "SCHEDULED",
+      },
+    );
     return { id: createdAppointment.id };
   }
 
@@ -5417,7 +5747,9 @@ export async function executeSupabaseCrmAction(
     const appointment = await assertOk(
       supabase()
         .from("appointments")
-        .select("client_id")
+        .select(
+          "id,client_id,service_type,starts_at,ends_at,notes,contacts(first_name,last_name)",
+        )
         .eq("id", appointmentId)
         .eq("organization_id", context.organizationId)
         .maybeSingle(),
@@ -5438,6 +5770,25 @@ export async function executeSupabaseCrmAction(
       appointmentId,
       { status },
       appointment.client_id,
+    );
+    const appointmentContact =
+      nestedOne(
+        appointment.contacts as AnyRecord | AnyRecord[] | null,
+      ) ?? {};
+    await syncAppointmentToGoogleCalendar(
+      context.organizationId,
+      String(appointment.client_id),
+      {
+        id: appointmentId,
+        contactName:
+          `${appointmentContact.first_name ?? ""} ${appointmentContact.last_name ?? ""}`.trim() ||
+          "Customer",
+        serviceType: String(appointment.service_type),
+        startsAt: String(appointment.starts_at),
+        endsAt: String(appointment.ends_at),
+        notes: String(appointment.notes ?? ""),
+        status,
+      },
     );
     return { id: appointmentId, status };
   }

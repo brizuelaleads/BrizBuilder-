@@ -1,6 +1,9 @@
 import { readRuntimeValue } from "./supabase/env";
 
-const GOOGLE_SCOPE = "https://www.googleapis.com/auth/business.manage";
+export const GOOGLE_BUSINESS_SCOPE =
+  "https://www.googleapis.com/auth/business.manage";
+export const GOOGLE_CALENDAR_SCOPE =
+  "https://www.googleapis.com/auth/calendar.events";
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke";
@@ -257,7 +260,10 @@ async function pkceVerifier(state: string): Promise<string> {
   return bytesToBase64Url(new Uint8Array(signature));
 }
 
-export async function buildGoogleAuthorizationUrl(state: string) {
+export async function buildGoogleAuthorizationUrl(
+  state: string,
+  scopes = [GOOGLE_BUSINESS_SCOPE],
+) {
   const config = googleConfig();
   const verifier = await pkceVerifier(state);
   const challenge = await crypto.subtle.digest(
@@ -268,7 +274,7 @@ export async function buildGoogleAuthorizationUrl(state: string) {
   url.searchParams.set("client_id", config.clientId);
   url.searchParams.set("redirect_uri", config.redirectUri);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", GOOGLE_SCOPE);
+  url.searchParams.set("scope", scopes.join(" "));
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("prompt", "consent");
   url.searchParams.set("include_granted_scopes", "true");
@@ -300,7 +306,9 @@ async function tokenRequest(body: URLSearchParams): Promise<GoogleTokenSet> {
     accessToken,
     refreshToken: asString(payload.refresh_token),
     expiresIn: Number(payload.expires_in ?? 3600),
-    scopes: (asString(payload.scope) ?? GOOGLE_SCOPE).split(/\s+/).filter(Boolean),
+    scopes: (asString(payload.scope) ?? GOOGLE_BUSINESS_SCOPE)
+      .split(/\s+/)
+      .filter(Boolean),
   };
 }
 

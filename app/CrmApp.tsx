@@ -398,6 +398,11 @@ export function CrmApp({
           "Stripe connected. The business keeps ownership, billing, and payouts.",
         );
         window.setTimeout(() => setToast(""), 5000);
+      } else if (query.get("connected") === "google_calendar") {
+        setToast(
+          "Google Calendar linked. BrizBuilder appointments will sync automatically.",
+        );
+        window.setTimeout(() => setToast(""), 5000);
       }
     }, 0);
     return () => window.clearTimeout(timer);
@@ -1103,6 +1108,24 @@ export function CrmApp({
             appointments={filteredAppointments}
             mutate={mutate}
             onAddAppointment={() => setModal("appointment")}
+            selectedClientId={
+              effectiveSelectedClientId === "all"
+                ? null
+                : effectiveSelectedClientId
+            }
+            googleCalendarConnection={
+              data.providerConnections.find(
+                (connection) =>
+                  connection.clientId === effectiveSelectedClientId &&
+                  connection.provider === "google_calendar",
+              ) ?? null
+            }
+            googleCalendarConfigured={
+              data.googleProfileRuntime.configured
+            }
+            canConnectGoogleCalendar={data.viewer.permissions.includes(
+              "profiles.connect",
+            )}
           />
         )}
         {view === "tasks" && (
