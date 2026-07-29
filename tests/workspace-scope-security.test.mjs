@@ -89,6 +89,7 @@ test("client roles keep exactly the capabilities their own tabs need", () => {
     "opportunities.write",
     "tasks.write",
     "appointments.write",
+    "calendar.connect",
     "websites.manage",
     "messages.write",
     "reviews.read",
@@ -99,6 +100,8 @@ test("client roles keep exactly the capabilities their own tabs need", () => {
   assert.ok(owner.includes("team.manage"));
   assert.ok(!rolePermissions(supabaseSource, "CLIENT_MANAGER").includes("team.manage"));
   assert.ok(!rolePermissions(supabaseSource, "CLIENT_EMPLOYEE").includes("team.manage"));
+  assert.ok(rolePermissions(supabaseSource, "CLIENT_MANAGER").includes("calendar.connect"));
+  assert.ok(!rolePermissions(supabaseSource, "CLIENT_EMPLOYEE").includes("calendar.connect"));
 });
 
 test("every agency-only tab is flagged, and Team stays reachable for client owners", () => {

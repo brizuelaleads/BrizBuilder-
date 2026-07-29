@@ -189,6 +189,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "opportunities.write",
     "tasks.write",
     "appointments.write",
+    "calendar.connect",
     "websites.manage",
     "profiles.manage",
     "profiles.connect",
@@ -215,6 +216,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "opportunities.write",
     "tasks.write",
     "appointments.write",
+    "calendar.connect",
     "websites.manage",
     "profiles.manage",
     "profiles.connect",
@@ -241,6 +243,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "opportunities.write",
     "tasks.write",
     "appointments.write",
+    "calendar.connect",
     "websites.manage",
     "profiles.manage",
     "profiles.connect",
@@ -273,10 +276,9 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "reviews.request",
     "messages.write",
   ],
-  // Client roles are scoped to their own sub-account and deliberately exclude
-  // provider setup (Twilio/Stripe/Google), automations, AI, custom data, and
-  // agency administration. Those stay with the agency, so the hidden tabs are
-  // genuinely unreachable on the server, not merely hidden in the UI.
+  // Client roles are scoped to their own sub-account. Business-profile,
+  // Twilio, and Stripe setup stay with the agency; owners and managers may
+  // link their own Google Calendar without gaining access to provider setup.
   // Must stay identical to the map in db/crm.ts (asserted by tests).
   CLIENT_OWNER: [
     "contacts.write",
@@ -285,6 +287,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "opportunities.write",
     "tasks.write",
     "appointments.write",
+    "calendar.connect",
     "websites.manage",
     "reviews.read",
     "reviews.reply",
@@ -300,6 +303,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "opportunities.write",
     "tasks.write",
     "appointments.write",
+    "calendar.connect",
     "websites.manage",
     "reviews.read",
     "reviews.reply",
@@ -1688,6 +1692,10 @@ async function revalidateGoogleCallbackAuthorization(
       "This Google connection request is invalid. Start again from BrizBuilder.",
     );
   }
+  const requiredPermission: CrmPermission =
+    String(authorization.provider ?? "") === GOOGLE_CALENDAR_PROVIDER
+      ? "calendar.connect"
+      : "profiles.connect";
 
   const [organization, client] = await Promise.all([
     assertOk(
@@ -1725,7 +1733,7 @@ async function revalidateGoogleCallbackAuthorization(
       role: "AGENCY_OWNER",
       clientId: null,
     };
-    requirePermission(context, "profiles.connect");
+    requirePermission(context, requiredPermission);
     return context;
   }
 
@@ -1776,7 +1784,7 @@ async function revalidateGoogleCallbackAuthorization(
       role: agencyRole,
       clientId: null,
     };
-    requirePermission(context, "profiles.connect");
+    requirePermission(context, requiredPermission);
     return context;
   }
 
@@ -1793,7 +1801,7 @@ async function revalidateGoogleCallbackAuthorization(
       role: clientRole,
       clientId,
     };
-    requirePermission(context, "profiles.connect");
+    requirePermission(context, requiredPermission);
     return context;
   }
 
@@ -1844,7 +1852,7 @@ export async function beginSupabaseGoogleCalendarConnect(
   clientId: string,
 ) {
   const context = await getTenantContext(user);
-  requirePermission(context, "profiles.connect");
+  requirePermission(context, "calendar.connect");
   await requireClient(context, clientId);
   if (!getGoogleBusinessRuntimeStatus().ready) {
     throw new Error(

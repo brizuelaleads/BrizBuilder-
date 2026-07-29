@@ -1113,18 +1113,15 @@ export function CrmApp({
                 ? null
                 : effectiveSelectedClientId
             }
-            googleCalendarConnection={
-              data.providerConnections.find(
-                (connection) =>
-                  connection.clientId === effectiveSelectedClientId &&
-                  connection.provider === "google_calendar",
-              ) ?? null
-            }
+            clients={data.clients}
+            googleCalendarConnections={data.providerConnections.filter(
+              (connection) => connection.provider === "google_calendar",
+            )}
             googleCalendarConfigured={
               data.googleProfileRuntime.configured
             }
             canConnectGoogleCalendar={data.viewer.permissions.includes(
-              "profiles.connect",
+              "calendar.connect",
             )}
           />
         )}

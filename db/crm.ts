@@ -20,6 +20,7 @@ export type CrmPermission =
   | "opportunities.write"
   | "tasks.write"
   | "appointments.write"
+  | "calendar.connect"
   | "websites.manage"
   | "profiles.manage"
   | "profiles.connect"
@@ -39,16 +40,15 @@ export type CrmPermission =
   | "feature_flags.manage";
 
 const rolePermissions: Record<CrmRole, CrmPermission[]> = {
-  SUPER_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "payments.manage", "messages.write", "automations.manage", "ai_connector.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "payments.manage", "messages.write", "automations.manage", "ai_connector.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "payments.manage", "messages.write", "automations.manage", "ai_connector.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  SUPER_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "payments.manage", "messages.write", "automations.manage", "ai_connector.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "payments.manage", "messages.write", "automations.manage", "ai_connector.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
+  AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "payments.manage", "messages.write", "automations.manage", "ai_connector.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
   AGENCY_MEMBER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "reviews.read", "reviews.reply", "reviews.request", "messages.write"],
-  // Client roles are scoped to their own sub-account and deliberately exclude
-  // provider setup (Twilio/Stripe/Google), automations, AI, custom data, and
-  // agency administration. Those stay with the agency, so the hidden tabs are
-  // genuinely unreachable on the server, not merely hidden in the UI.
-  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "messages.write", "team.manage"],
-  CLIENT_MANAGER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "messages.write"],
+  // Client roles are scoped to their own sub-account. Business-profile,
+  // Twilio, and Stripe setup stay with the agency; owners and managers may
+  // link their own Google Calendar without gaining access to provider setup.
+  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "messages.write", "team.manage"],
+  CLIENT_MANAGER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "messages.write"],
   CLIENT_EMPLOYEE: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "reviews.read", "messages.write"],
 };
 

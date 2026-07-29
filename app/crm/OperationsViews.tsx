@@ -118,7 +118,8 @@ export function CalendarView({
   mutate,
   onAddAppointment,
   selectedClientId,
-  googleCalendarConnection,
+  clients,
+  googleCalendarConnections,
   googleCalendarConfigured,
   canConnectGoogleCalendar,
 }: {
@@ -126,15 +127,24 @@ export function CalendarView({
   mutate: Mutate;
   onAddAppointment: () => void;
   selectedClientId: string | null;
-  googleCalendarConnection: CrmProviderConnection | null;
+  clients: CrmClient[];
+  googleCalendarConnections: CrmProviderConnection[];
   googleCalendarConfigured: boolean;
   canConnectGoogleCalendar: boolean;
 }) {
   const [mode, setMode] = useState<"week" | "agenda">("week");
   const [agendaFilter, setAgendaFilter] = useState<"upcoming" | "all">("upcoming");
   const [anchorDate, setAnchorDate] = useState(() => new Date());
+  const [connectionClientId, setConnectionClientId] = useState("");
   const calendarScrollRef = useRef<HTMLElement>(null);
   const today = new Date();
+  const googleCalendarClientId =
+    selectedClientId ??
+    (clients.length === 1 ? clients[0].id : connectionClientId || null);
+  const googleCalendarConnection =
+    googleCalendarConnections.find(
+      (connection) => connection.clientId === googleCalendarClientId,
+    ) ?? null;
   const googleCalendarLinked = Boolean(
     googleCalendarConnection?.isLinked,
   );
@@ -201,7 +211,22 @@ export function CalendarView({
           <h2>{weekStart.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</h2>
         </div>
         <div className="crm-calendar-actions">
-          {selectedClientId &&
+          {!selectedClientId && clients.length > 1 ? (
+            <select
+              className="crm-google-calendar-client-select"
+              value={connectionClientId}
+              onChange={(event) => setConnectionClientId(event.target.value)}
+              aria-label="Client calendar to connect"
+            >
+              <option value="">Choose client</option>
+              {clients.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.businessName}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          {googleCalendarClientId &&
           canConnectGoogleCalendar &&
           googleCalendarConfigured ? (
             <a
@@ -212,7 +237,7 @@ export function CalendarView({
                     ? "connected"
                     : ""
               }`}
-              href={`/api/integrations/google-calendar/connect?clientId=${encodeURIComponent(selectedClientId)}`}
+              href={`/api/integrations/google-calendar/connect?clientId=${encodeURIComponent(googleCalendarClientId)}`}
             >
               <span aria-hidden="true">G</span>
               {googleCalendarNeedsAttention
@@ -227,8 +252,8 @@ export function CalendarView({
               className="crm-google-calendar-link"
               disabled
               title={
-                !selectedClientId
-                  ? "Select one client before linking a calendar."
+                !googleCalendarClientId
+                  ? "Choose a client before linking a calendar."
                   : !canConnectGoogleCalendar
                     ? "You do not have permission to connect Google Calendar."
                     : "Google Calendar connection is not configured."

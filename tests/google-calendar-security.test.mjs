@@ -38,7 +38,7 @@ test("Google Calendar connect is authenticated, tenant-scoped, and state-bound",
   assert.match(connectRoute, /beginSupabaseGoogleCalendarConnect\(user,\s*clientId\)/);
   assert.match(
     supabaseCrm,
-    /beginSupabaseGoogleCalendarConnect[\s\S]*requirePermission\(context,\s*"profiles\.connect"\)/,
+    /beginSupabaseGoogleCalendarConnect[\s\S]*requirePermission\(context,\s*"calendar\.connect"\)/,
   );
   assert.match(
     supabaseCrm,
@@ -53,6 +53,12 @@ test("Google Calendar connect is authenticated, tenant-scoped, and state-bound",
     supabaseCrm,
     /finishSupabaseGoogleCalendarConnect[\s\S]*\.eq\("state_hash",\s*await stateHash\(state\)\)/,
   );
+});
+
+test("calendar connection stays actionable in all-client workspaces", () => {
+  assert.match(operationsView, /clients\.length === 1/);
+  assert.match(operationsView, /crm-google-calendar-client-select/);
+  assert.match(operationsView, /googleCalendarClientId/);
 });
 
 test("Google refresh tokens stay encrypted and server-only", () => {
@@ -90,4 +96,3 @@ test("week calendar exposes the full 24-hour grid and owns its viewport scroll",
   assert.match(styles, /\.crm-week-calendar\s*\{[\s\S]*overflow:\s*auto/);
   assert.match(operationsView, /className="crm-week-calendar"[\s\S]*tabIndex=\{0\}/);
 });
-
