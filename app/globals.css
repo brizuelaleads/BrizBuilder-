@@ -7048,6 +7048,244 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   }
 }
 
+/* AI connector — simplified fieldbook layout */
+.crm-ai-connector-view {
+  max-width: 1180px;
+  gap: 14px;
+}
+
+.crm-ai-connector-heading {
+  margin-bottom: 4px;
+}
+
+.crm-ai-connector-heading > .crm-badge {
+  flex: 0 0 auto;
+}
+
+.crm-ai-connector-simple-connect,
+.crm-ai-connector-simple-grants,
+.crm-ai-connector-simple-activity {
+  overflow: hidden;
+  border-color: var(--crm-line);
+  border-radius: 10px;
+  background: var(--crm-card);
+}
+
+.crm-ai-connector-simple-connect > header,
+.crm-ai-connector-simple-grants > header,
+.crm-ai-connector-simple-activity > header {
+  min-height: 64px;
+  padding: 0 18px;
+  border-color: var(--crm-line);
+}
+
+.crm-ai-connector-simple-connect > header h3,
+.crm-ai-connector-simple-grants > header h3,
+.crm-ai-connector-simple-activity > header h3 {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.crm-ai-connector-simple-body {
+  padding: 20px 18px 18px;
+}
+
+.crm-ai-connector-simple-body .crm-ai-connector-endpoint {
+  margin: 0;
+  gap: 7px;
+}
+
+.crm-ai-connector-simple-body .crm-ai-connector-endpoint > span {
+  color: var(--crm-ink);
+  font-size: 11px;
+}
+
+.crm-ai-connector-simple-body .crm-ai-connector-endpoint input {
+  min-height: 40px;
+  border-color: var(--crm-line-strong);
+  border-radius: 7px;
+  color: #4f5550;
+  background: #fafbf9;
+  font-size: 10px;
+}
+
+.crm-ai-connector-simple-body .crm-ai-connector-copy-status {
+  min-height: 18px;
+  margin: 5px 0 0;
+  color: var(--crm-accent);
+  font-size: 10px;
+}
+
+.crm-ai-connector-simple-steps {
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  list-style: none;
+}
+
+.crm-ai-connector-simple-steps li {
+  min-height: 62px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--crm-line);
+  border-radius: 8px;
+  background: #fafaf8;
+}
+
+.crm-ai-connector-simple-steps li > span {
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  color: var(--crm-accent);
+  background: var(--crm-accent-soft);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.crm-ai-connector-simple-steps strong {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.crm-ai-connector-simple-body .crm-ai-connector-setup-actions {
+  padding: 16px 0 0;
+  gap: 10px;
+}
+
+.crm-ai-connector-simple-body .crm-ai-connector-setup-actions small {
+  color: var(--crm-muted);
+  font-size: 10px;
+}
+
+.crm-ai-connector-simple-body .crm-ai-connector-setup-actions .disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.crm-ai-connector-simple-apps {
+  padding: 0 18px;
+}
+
+.crm-ai-connector-simple-apps > article {
+  min-height: 76px;
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) auto auto auto;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid var(--crm-line);
+}
+
+.crm-ai-connector-simple-apps > article:last-child {
+  border-bottom: 0;
+}
+
+.crm-ai-connector-simple-apps .crm-ai-connector-app-identity > span {
+  color: var(--crm-accent);
+  background: var(--crm-accent-soft);
+}
+
+.crm-ai-connector-simple-apps .crm-ai-connector-app-identity strong {
+  font-size: 12px;
+}
+
+.crm-ai-connector-simple-apps .crm-ai-connector-app-identity small,
+.crm-ai-connector-simple-apps time {
+  color: var(--crm-muted);
+  font-size: 10px;
+}
+
+.crm-ai-connector-simple-apps > article > p {
+  grid-column: 1 / -1;
+  margin: -6px 0 12px;
+  padding: 9px 10px;
+  border-radius: 7px;
+  color: #9b3d4f;
+  background: #fff4f6;
+  font-size: 10px;
+}
+
+.crm-ai-connector-simple-apps .crm-button-danger {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid #e5c9cf;
+  border-radius: 7px;
+  color: #a33e51;
+  background: #fff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.crm-ai-connector-empty {
+  min-height: 118px;
+  padding: 24px;
+  display: grid;
+  place-content: center;
+  gap: 5px;
+  text-align: center;
+}
+
+.crm-ai-connector-empty strong {
+  font-size: 13px;
+}
+
+.crm-ai-connector-empty span {
+  color: var(--crm-muted);
+  font-size: 11px;
+}
+
+.crm-ai-connector-simple-activity .crm-ai-connector-activity-list {
+  padding: 0 18px;
+}
+
+.crm-ai-connector-simple-activity .crm-ai-connector-activity-list article {
+  min-height: 58px;
+}
+
+.crm-ai-connector-simple-note {
+  margin: 0;
+  padding: 4px 2px;
+  color: var(--crm-muted);
+  font-size: 10px;
+  text-align: center;
+}
+
+@media (max-width: 800px) {
+  .crm-ai-connector-simple-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .crm-ai-connector-simple-apps > article {
+    padding: 14px 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .crm-ai-connector-simple-apps > article > time {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 560px) {
+  .crm-ai-connector-simple-body .crm-ai-connector-endpoint > div {
+    grid-template-columns: 1fr;
+  }
+
+  .crm-ai-connector-simple-body .crm-ai-connector-setup-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .crm-ai-connector-simple-body .crm-ai-connector-setup-actions a {
+    justify-content: center;
+  }
+}
+
 @media (max-width: 520px) {
   .crm-dashboard-view .crm-dashboard-appointment-list > button {
     grid-template-columns: minmax(82px, 0.85fr) minmax(0, 1.15fr);

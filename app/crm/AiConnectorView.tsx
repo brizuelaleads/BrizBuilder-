@@ -6,7 +6,7 @@ import type {
   CrmAiAuthorization,
   CrmClient,
 } from "../../db/crm";
-import { Badge, EmptyState, dateTime } from "./ui";
+import { Badge, dateTime } from "./ui";
 
 type Mutate = (
   input: Record<string, unknown>,
@@ -19,27 +19,6 @@ type Runtime = {
 };
 
 const CHATGPT_CONNECTORS_URL = "https://chatgpt.com/plugins";
-
-const scopeLabels: Record<string, string> = {
-  "crm:read": "View CRM records",
-  "crm:tasks.write": "Create follow-up tasks",
-  "crm:opportunities.write": "Update opportunities and add notes",
-  "crm.read": "Read CRM records",
-  "crm.contacts.read": "Find contacts",
-  "crm.leads.read": "View leads",
-  "crm.tasks.read": "View tasks",
-  "crm.appointments.read": "View appointments",
-  "crm.tasks.write": "Create follow-up tasks",
-  "crm.notes.write": "Add internal notes",
-  "crm.opportunities.write": "Update opportunity stages",
-  "contacts.read": "Find contacts",
-  "leads.read": "View leads",
-  "tasks.read": "View tasks",
-  "appointments.read": "View appointments",
-  "tasks.write": "Create follow-up tasks",
-  "notes.write": "Add internal notes",
-  "opportunities.write": "Update opportunity stages",
-};
 
 const actionLabels: Record<string, string> = {
   "ai.oauth.authorized": "Connected the AI app",
@@ -64,48 +43,6 @@ const actionLabels: Record<string, string> = {
   oauth_authorized: "Connected the AI app",
   oauth_revoked: "Disconnected the AI app",
 };
-
-const safeCapabilities = [
-  {
-    eyebrow: "LOOK UP",
-    title: "Find CRM information",
-    description:
-      "Search contacts, leads, tasks, and appointments only inside approved businesses.",
-    badge: "Read only",
-    tone: "blue" as const,
-  },
-  {
-    eyebrow: "FOLLOW UP",
-    title: "Create tasks",
-    description:
-      "Turn a conversation into a clear follow-up task without sending anything to a customer.",
-    badge: "Logged action",
-    tone: "purple" as const,
-  },
-  {
-    eyebrow: "ORGANIZE",
-    title: "Add internal notes",
-    description:
-      "Save useful context to the correct CRM record. Notes remain inside BrizBuilder.",
-    badge: "Logged action",
-    tone: "purple" as const,
-  },
-  {
-    eyebrow: "PIPELINE",
-    title: "Update opportunity stages",
-    description:
-      "Move an approved opportunity to a new stage while preserving a complete audit trail.",
-    badge: "Controlled update",
-    tone: "orange" as const,
-  },
-];
-
-const blockedActions = [
-  "Delete CRM records or erase activity history",
-  "Send texts or emails, or place phone calls",
-  "Open businesses that were not approved during connection",
-  "Charge cards, move money, or reveal passwords and secret keys",
-];
 
 function isActive(status: string) {
   return ["active", "connected", "authorized"].includes(
@@ -245,7 +182,7 @@ export function AiConnectorView({
             new Date(right.createdAt).getTime() -
             new Date(left.createdAt).getTime(),
         )
-        .slice(0, 20),
+        .slice(0, 8),
     [activities, selectedClientId],
   );
 
@@ -304,82 +241,55 @@ export function AiConnectorView({
       <section className="crm-page-heading crm-ai-connector-heading">
         <div>
           <p>AI CONNECTOR</p>
-          <h2>Use the AI account you already have</h2>
+          <h2>Connect your AI assistant</h2>
           <span>
-            Give a compatible AI app limited access to help organize your CRM.
-            You keep control of every business and permission.
+            Use BrizBuilder securely from a compatible AI app.
           </span>
         </div>
-        <div className="crm-ai-connector-heading-status" aria-live="polite">
-          <Badge
-            tone={
-              connectionState === "connected"
-                ? "green"
-                : connectionState === "setup"
-                  ? "orange"
-                  : "blue"
-            }
-          >
-            {connectionState === "connected"
-              ? "Connected"
+        <Badge
+          tone={
+            connectionState === "connected"
+              ? "green"
               : connectionState === "setup"
-                ? "Setup needed"
-                : "Ready to connect"}
+                ? "orange"
+                : "neutral"
+          }
+        >
+          {connectionState === "connected"
+            ? `${activeAuthorizations.length} connected`
+            : connectionState === "setup"
+              ? "Setup needed"
+              : "Not connected"}
+        </Badge>
+      </section>
+
+      <section className="crm-panel crm-ai-connector-simple-connect">
+        <header>
+          <div>
+            <p>CONNECT</p>
+            <h3>Add BrizBuilder to ChatGPT</h3>
+          </div>
+          <Badge tone={runtime.configured ? "green" : "orange"}>
+            {runtime.configured ? "Ready" : "Unavailable"}
           </Badge>
-          <strong>{workspaceName}</strong>
-          <small>
-            {activeAuthorizations.length
-              ? `${activeAuthorizations.length} active AI connection${activeAuthorizations.length === 1 ? "" : "s"}`
-              : "No AI app currently has access"}
-          </small>
-        </div>
-      </section>
+        </header>
 
-      <section className="crm-ai-connector-cost-note" role="note">
-        <span className="crm-ai-connector-cost-icon" aria-hidden="true">
-          $0
-        </span>
-        <div>
-          <strong>No BrizBuilder AI usage bill</strong>
-          <p>
-            BrizBuilder does not call a paid model API or add per-message AI
-            charges. You use your own AI account under that provider&apos;s plan
-            limits and connector availability.
-          </p>
-        </div>
-        <Badge tone="green">Bring your own AI account</Badge>
-      </section>
+        {!runtime.configured ? (
+          <div className="crm-ai-connector-runtime-warning" role="alert">
+            <strong>The connector is not available yet.</strong>
+            <p>Ask a BrizBuilder administrator to finish setup.</p>
+          </div>
+        ) : null}
 
-      <section className="crm-ai-connector-setup-grid">
-        <article className="crm-panel crm-ai-connector-setup-card">
-          <header>
-            <div>
-              <p>CONNECT IN MINUTES</p>
-              <h3>Add BrizBuilder to your AI app</h3>
-            </div>
-            <Badge tone={runtime.configured ? "green" : "orange"}>
-              {runtime.configured ? "Connector online" : "Server setup needed"}
-            </Badge>
-          </header>
-
-          {!runtime.configured ? (
-            <div className="crm-ai-connector-runtime-warning" role="alert">
-              <strong>The secure connector is not online yet.</strong>
-              <p>
-                A BrizBuilder administrator needs to finish the server setup
-                before an AI app can connect. No CRM access has been opened.
-              </p>
-            </div>
-          ) : null}
-
+        <div className="crm-ai-connector-simple-body">
           <label className="crm-ai-connector-endpoint">
-            <span>Secure connector address</span>
+            <span>Connector address</span>
             <div>
               <input
                 value={runtime.endpoint}
                 readOnly
                 aria-label="Secure AI connector address"
-                placeholder="Connector address will appear after setup"
+                placeholder="Connector address unavailable"
               />
               <button
                 className="crm-button-secondary"
@@ -387,7 +297,7 @@ export function AiConnectorView({
                 onClick={() => void handleCopy()}
                 disabled={!runtime.endpoint}
               >
-                Copy address
+                Copy
               </button>
             </div>
           </label>
@@ -399,44 +309,10 @@ export function AiConnectorView({
             {copyStatus}
           </span>
 
-          <ol className="crm-ai-connector-steps">
-            <li>
-              <span>1</span>
-              <div>
-                <strong>Choose the business</strong>
-                <p>
-                  Use the business switcher above. The AI can never move beyond
-                  the businesses you approve.
-                </p>
-              </div>
-            </li>
-            <li>
-              <span>2</span>
-              <div>
-                <strong>Copy the connector address</strong>
-                <p>This is the secure address your AI app needs.</p>
-              </div>
-            </li>
-            <li>
-              <span>3</span>
-              <div>
-                <strong>Add it in your AI app</strong>
-                <p>
-                  Open Settings &rarr; Plugins, choose the plus button, and
-                  paste the address as the MCP server URL.
-                </p>
-              </div>
-            </li>
-            <li>
-              <span>4</span>
-              <div>
-                <strong>Review and approve access</strong>
-                <p>
-                  BrizBuilder shows the exact businesses and actions before the
-                  connection is approved.
-                </p>
-              </div>
-            </li>
+          <ol className="crm-ai-connector-simple-steps">
+            <li><span>1</span><strong>Select the business above</strong></li>
+            <li><span>2</span><strong>Copy the connector address</strong></li>
+            <li><span>3</span><strong>Add it in ChatGPT and approve access</strong></li>
           </ol>
 
           <div className="crm-ai-connector-setup-actions">
@@ -452,269 +328,85 @@ export function AiConnectorView({
             >
               Open ChatGPT Plugins
             </a>
-            <small>
-              Chat happens inside your AI app, not inside BrizBuilder.
-            </small>
+            <small>Access is limited to the business and permissions you approve.</small>
           </div>
-        </article>
-
-        <aside className="crm-panel crm-ai-connector-safety-card">
-          <header>
-            <div>
-              <p>CURRENT ACCESS</p>
-              <h3>{workspaceName}</h3>
-            </div>
-          </header>
-          <div className="crm-ai-connector-access-summary">
-            <span
-              className={`crm-ai-connector-access-light ${activeAuthorizations.length ? "active" : ""}`}
-              aria-hidden="true"
-            />
-            <div>
-              <strong>
-                {activeAuthorizations.length
-                  ? "AI access is active"
-                  : "AI access is off"}
-              </strong>
-              <p>
-                {activeAuthorizations.length
-                  ? "Only the permissions shown below are available."
-                  : "No AI app can read or change CRM data for this view."}
-              </p>
-            </div>
-          </div>
-          <dl className="crm-ai-connector-access-facts">
-            <div>
-              <dt>AI apps</dt>
-              <dd>{activeAuthorizations.length}</dd>
-            </div>
-            <div>
-              <dt>Business view</dt>
-              <dd>{workspaceName}</dd>
-            </div>
-            <div>
-              <dt>Every action logged</dt>
-              <dd>Yes</dd>
-            </div>
-            <div>
-              <dt>Customer messages</dt>
-              <dd>Blocked</dd>
-            </div>
-          </dl>
-          <div className="crm-ai-connector-safety-note">
-            <strong>You are always in control</strong>
-            <p>
-              Disconnecting an app stops future access immediately. It does not
-              delete your CRM records or change your AI subscription.
-            </p>
-          </div>
-        </aside>
-      </section>
-
-      <section className="crm-ai-connector-capabilities">
-        <header>
-          <div>
-            <p>SAFE CRM TOOLS</p>
-            <h3>What a connected AI can help with</h3>
-            <span>
-              The connector offers a small, approved set of tools instead of
-              broad access to your database.
-            </span>
-          </div>
-        </header>
-        <div className="crm-ai-connector-capability-grid">
-          {safeCapabilities.map((capability) => (
-            <article key={capability.title}>
-              <p>{capability.eyebrow}</p>
-              <h4>{capability.title}</h4>
-              <span>{capability.description}</span>
-              <Badge tone={capability.tone}>{capability.badge}</Badge>
-            </article>
-          ))}
         </div>
       </section>
 
-      <section className="crm-panel crm-ai-connector-grants">
+      <section className="crm-panel crm-ai-connector-grants crm-ai-connector-simple-grants">
         <header>
           <div>
-            <p>AUTHORIZED AI APPS</p>
-            <h3>Connections for {workspaceName}</h3>
-            <span>
-              Review exactly which businesses and CRM actions each app can use.
-            </span>
+            <p>CONNECTED APPS</p>
+            <h3>{workspaceName}</h3>
           </div>
           <Badge tone={activeAuthorizations.length ? "green" : "neutral"}>
             {activeAuthorizations.length} active
           </Badge>
         </header>
 
-        {actionError ? (
-          <div className="crm-inline-error" role="alert">
-            {actionError}
-          </div>
-        ) : null}
+        {actionError ? <div className="crm-inline-error" role="alert">{actionError}</div> : null}
 
         {visibleAuthorizations.length ? (
-          <div className="crm-ai-connector-grant-list">
+          <div className="crm-ai-connector-simple-apps">
             {visibleAuthorizations.map((authorization) => {
               const active = isActive(authorization.status);
-              const businessNames = authorization.clientIds
-                .map((clientId) => clientById.get(clientId)?.businessName)
-                .filter((name): name is string => Boolean(name));
               const lastError = safeMessage(authorization.lastError);
               return (
                 <article key={authorization.id}>
-                  <header>
-                    <div className="crm-ai-connector-app-identity">
-                      <span aria-hidden="true">
-                        {(authorization.appName.trim()[0] || "A").toUpperCase()}
-                      </span>
-                      <div>
-                        <strong>{authorization.appName || "AI app"}</strong>
-                        <small>
-                          Connected by {authorization.connectedByEmail || "an authorized user"}
-                        </small>
-                      </div>
+                  <div className="crm-ai-connector-app-identity">
+                    <span aria-hidden="true">
+                      {(authorization.appName.trim()[0] || "A").toUpperCase()}
+                    </span>
+                    <div>
+                      <strong>{authorization.appName || "AI app"}</strong>
+                      <small>
+                        {authorization.clientIds.length} business{authorization.clientIds.length === 1 ? "" : "es"} · {authorization.scopes.length} permission{authorization.scopes.length === 1 ? "" : "s"}
+                      </small>
                     </div>
-                    <Badge tone={statusTone(authorization.status)}>
-                      {humanize(authorization.status, "Unknown")}
-                    </Badge>
-                  </header>
-
-                  <div className="crm-ai-connector-grant-details">
-                    <section>
-                      <p>BUSINESS ACCESS</p>
-                      <div className="crm-ai-connector-chip-list">
-                        {businessNames.length ? (
-                          businessNames.map((name) => (
-                            <span key={name}>{name}</span>
-                          ))
-                        ) : (
-                          <span>No business access</span>
-                        )}
-                      </div>
-                    </section>
-                    <section>
-                      <p>ALLOWED ACTIONS</p>
-                      <div className="crm-ai-connector-chip-list">
-                        {authorization.scopes.length ? (
-                          authorization.scopes.map((scope) => (
-                            <span key={scope}>
-                              {scopeLabels[scope] ?? humanize(scope, "Limited CRM access")}
-                            </span>
-                          ))
-                        ) : (
-                          <span>No actions approved</span>
-                        )}
-                      </div>
-                    </section>
                   </div>
-
-                  <dl className="crm-ai-connector-grant-meta">
-                    <div>
-                      <dt>Connected</dt>
-                      <dd>{dateTime(authorization.connectedAt)}</dd>
-                    </div>
-                    <div>
-                      <dt>Last used</dt>
-                      <dd>
-                        {authorization.lastUsedAt
-                          ? dateTime(authorization.lastUsedAt)
-                          : "Not used yet"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Last successful action</dt>
-                      <dd>
-                        {authorization.lastSuccessAt
-                          ? dateTime(authorization.lastSuccessAt)
-                          : "None yet"}
-                      </dd>
-                    </div>
-                  </dl>
-
-                  {lastError ? (
-                    <div className="crm-ai-connector-grant-error" role="alert">
-                      <strong>Connection needs attention</strong>
-                      <p>{lastError}</p>
-                    </div>
+                  <Badge tone={statusTone(authorization.status)}>
+                    {humanize(authorization.status, "Unknown")}
+                  </Badge>
+                  <time dateTime={authorization.connectedAt}>
+                    Connected {dateTime(authorization.connectedAt)}
+                  </time>
+                  {canManage && active ? (
+                    <button
+                      className="crm-button-danger"
+                      type="button"
+                      disabled={revokingId === authorization.id}
+                      onClick={() => void revoke(authorization)}
+                    >
+                      {revokingId === authorization.id ? "Disconnecting..." : "Disconnect"}
+                    </button>
                   ) : null}
-
-                  <footer>
-                    <small>
-                      {active
-                        ? "Disconnecting stops future access immediately."
-                        : "This authorization no longer has CRM access."}
-                    </small>
-                    {canManage && active ? (
-                      <button
-                        className="crm-button-danger"
-                        type="button"
-                        disabled={revokingId === authorization.id}
-                        onClick={() => void revoke(authorization)}
-                      >
-                        {revokingId === authorization.id
-                          ? "Disconnecting..."
-                          : "Disconnect"}
-                      </button>
-                    ) : null}
-                  </footer>
+                  {lastError ? <p role="alert">{lastError}</p> : null}
                 </article>
               );
             })}
           </div>
         ) : (
-          <EmptyState
-            title={`No AI app connected to ${workspaceName}`}
-            description={
-              runtime.configured
-                ? "Copy the connector address above and add it in your AI app when you are ready. Nothing can access this CRM view until you approve it."
-                : "Finish the secure connector setup first. No AI app currently has access to this CRM view."
-            }
-          />
+          <div className="crm-ai-connector-empty">
+            <strong>No AI apps connected</strong>
+            <span>Use the steps above when you are ready.</span>
+          </div>
         )}
 
         {!canManage ? (
           <p className="crm-ai-connector-view-only">
-            You can review AI activity, but only an account owner or manager can
-            connect or disconnect an AI app.
+            Only an account owner or manager can change connections.
           </p>
         ) : null}
       </section>
 
-      <section className="crm-ai-connector-guardrails">
-        <div>
-          <p>PERMANENT GUARDRAILS</p>
-          <h3>Actions this connector will not perform</h3>
-          <span>
-            These limits protect customer information even if an AI response is
-            wrong or misleading.
-          </span>
-        </div>
-        <ul>
-          {blockedActions.map((action) => (
-            <li key={action}>
-              <span aria-hidden="true">×</span>
-              <strong>{action}</strong>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="crm-panel crm-ai-connector-activity">
-        <header>
-          <div>
-            <p>AI ACTIVITY</p>
-            <h3>Recent connector history</h3>
-            <span>
-              Only the app, action, business, result, and time are shown here.
-              Prompts and customer record contents are not displayed.
-            </span>
-          </div>
-          <Badge tone="neutral">Sanitized log</Badge>
-        </header>
-
-        {recentActivities.length ? (
+      {recentActivities.length ? (
+        <section className="crm-panel crm-ai-connector-activity crm-ai-connector-simple-activity">
+          <header>
+            <div>
+              <p>RECENT ACTIVITY</p>
+              <h3>AI connector history</h3>
+            </div>
+          </header>
           <div className="crm-ai-connector-activity-list">
             {recentActivities.map((activity) => {
               const clientName = activity.clientId
@@ -746,13 +438,12 @@ export function AiConnectorView({
               );
             })}
           </div>
-        ) : (
-          <EmptyState
-            title="No AI activity yet"
-            description="After you connect an AI app, each allowed request and result will appear here without exposing prompts or customer record contents."
-          />
-        )}
-      </section>
+        </section>
+      ) : null}
+
+      <p className="crm-ai-connector-simple-note">
+        BrizBuilder limits access to approved businesses and records every AI action.
+      </p>
     </div>
   );
 }
