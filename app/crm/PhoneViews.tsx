@@ -238,7 +238,7 @@ export function PhoneSystemView({
   }
 
   return (
-    <div className="crm-view crm-phone-view">
+    <div className="crm-view crm-phone-view crm-phone-system-simple">
       <section className="crm-page-heading">
         <div>
           <p>PHONE & TEXTING</p>
@@ -342,14 +342,6 @@ export function PhoneSystemView({
                 </div>
               ) : null}
             </section>
-            <p className="crm-porting-note">
-              <strong>Keeping a number from another phone company?</strong> It
-              may need to be transferred into Twilio before BrizBuilder can
-              manage it.
-            </p>
-            <div className="crm-number-divider">
-              <span>or buy a new number</span>
-            </div>
             <div className="crm-number-search">
               <label>
                 <span>Preferred area code</span>
@@ -395,124 +387,18 @@ export function PhoneSystemView({
                 ))}
               </div>
             ) : (
-              <p className="crm-number-empty">
-                Search by area code. BrizBuilder always asks for confirmation
-                before creating a real charge in the business&apos;s Twilio
-                account.
-              </p>
+              <p className="crm-number-empty">Search by area code to find a new number.</p>
             )}
             {numberError ? (
               <p className="crm-inline-error">{numberError}</p>
             ) : null}
           </article>
-          <section className="crm-phone-status-grid">
-            <article>
-              <span>1</span>
-              <div>
-                <strong>Twilio account</strong>
-                <p>The business&apos;s Twilio connection is ready to use.</p>
-              </div>
-              <Badge tone="green">Active</Badge>
-            </article>
-            <article>
-              <span>2</span>
-              <div>
-                <strong>Business phone number</strong>
-                <p>
-                  {config?.phoneNumber ??
-                    "Assign a Twilio number to this client."}
-                </p>
-              </div>
-              <Badge tone={config?.phoneNumber ? "green" : "orange"}>
-                {config?.phoneNumber ? "Ready" : "Needed"}
-              </Badge>
-            </article>
-            <article>
-              <span>3</span>
-              <div>
-                <strong>Texting registration</strong>
-                <p>US business texting requires approved registration.</p>
-              </div>
-              <Badge tone={statusTone(config?.a2pStatus ?? "not_started")}>
-                {(config?.a2pStatus ?? "not_started").replaceAll("_", " ")}
-              </Badge>
-            </article>
-            <article>
-              <span>4</span>
-              <div>
-                <strong>Missed-call automation</strong>
-                <p>
-                  {config?.missedCallTextEnabled
-                    ? "Customers receive one safe follow-up text after a missed call."
-                    : "No automatic texts will be sent."}
-                </p>
-              </div>
-              <Badge tone={config?.missedCallTextEnabled ? "green" : "neutral"}>
-                {config?.missedCallTextEnabled ? "On" : "Off"}
-              </Badge>
-            </article>
+          <section className="crm-phone-registration-bar">
+            <div><strong>Text registration</strong><span>{a2pGuidance(config?.a2pStatus ?? "not_started")}</span></div>
+            <Badge tone={statusTone(config?.a2pStatus ?? "not_started")}>{(config?.a2pStatus ?? "not_started").replaceAll("_", " ")}</Badge>
+            <a href={TWILIO_A2P_ONBOARDING_URL} target="_blank" rel="noreferrer">Register in Twilio</a>
+            <a href={TWILIO_TRUST_HUB_URL} target="_blank" rel="noreferrer">Trust Hub</a>
           </section>
-          <article className="crm-a2p-card">
-            <header>
-              <div>
-                <p>TEXT MESSAGE REGISTRATION</p>
-                <h3>A2P 10DLC status</h3>
-              </div>
-              <Badge tone={statusTone(config?.a2pStatus ?? "not_started")}>
-                {(config?.a2pStatus ?? "not_started").replaceAll("_", " ")}
-              </Badge>
-            </header>
-            <p className="crm-a2p-guidance">
-              {a2pGuidance(config?.a2pStatus ?? "not_started")}
-            </p>
-            <div className="crm-a2p-steps">
-              <article>
-                <b>1</b>
-                <div>
-                  <strong>Verify the business (Trust Hub)</strong>
-                  <p>
-                    Twilio confirms the business&apos;s legal identity. This is
-                    required before buying a number or registering to text.
-                  </p>
-                </div>
-              </article>
-              <article>
-                <b>2</b>
-                <div>
-                  <strong>Register for A2P 10DLC</strong>
-                  <p>
-                    Register the business and its texting use case so US
-                    carriers allow the messages through.
-                  </p>
-                </div>
-              </article>
-            </div>
-            <div className="crm-a2p-actions">
-              <a
-                className="crm-button-primary"
-                href={TWILIO_A2P_ONBOARDING_URL}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Register for A2P in Twilio
-              </a>
-              <a
-                className="crm-a2p-secondary"
-                href={TWILIO_TRUST_HUB_URL}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Business verification (Trust Hub)
-              </a>
-            </div>
-            <p className="crm-a2p-note">
-              Registration and verification happen in {client.businessName}
-              &apos;s own Twilio account — BrizBuilder can&apos;t submit it for
-              them. Once Twilio marks it approved, set the status to{" "}
-              <strong>Approved</strong> in the settings below to turn on
-              texting.
-            </p>
-          </article>
           <div className="crm-phone-layout">
             <form
               className="crm-phone-settings"
@@ -643,55 +529,6 @@ export function PhoneSystemView({
                 Save phone setup
               </button>
             </form>
-            <aside className="crm-phone-help">
-              <p>WHAT THE BUSINESS OWNER DOES</p>
-              <h3>Simple setup checklist</h3>
-              <ol>
-                <li>
-                  <span>1</span>
-                  <div>
-                    <strong>Choose the business number</strong>
-                    <p>
-                      Use an existing Twilio number or buy a new one with the
-                      phone number manager above.
-                    </p>
-                  </div>
-                </li>
-                <li>
-                  <span>2</span>
-                  <div>
-                    <strong>Tell us where calls should ring</strong>
-                    <p>
-                      Enter the owner or office phone in “Forward calls to.”
-                    </p>
-                  </div>
-                </li>
-                <li>
-                  <span>3</span>
-                  <div>
-                    <strong>Complete texting registration</strong>
-                    <p>
-                      Provide the legal business details and approve the exact
-                      opt-in wording.
-                    </p>
-                  </div>
-                </li>
-                <li>
-                  <span>4</span>
-                  <div>
-                    <strong>Test one call and one text</strong>
-                    <p>Turn automation on only after both tests pass.</p>
-                  </div>
-                </li>
-              </ol>
-              <div className="crm-webhook-box">
-                <strong>Handled automatically</strong>
-                <p>
-                  BrizBuilder configures the Twilio call and message webhooks
-                  when a number is selected above.
-                </p>
-              </div>
-            </aside>
           </div>
         </>
       )}
@@ -705,7 +542,6 @@ export function ConversationsView({
   connections,
   conversations,
   messages,
-  calls,
   selectedClientId,
   mutate,
 }: {
@@ -734,6 +570,7 @@ export function ConversationsView({
       (selectedClientId === "all" || contact.clientId === selectedClientId),
   );
   const [composeError, setComposeError] = useState("");
+  const [showComposer, setShowComposer] = useState(false);
   async function sendNewMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setComposeError("");
@@ -756,6 +593,7 @@ export function ConversationsView({
         "Text message sent.",
       );
       formEl.reset();
+      setShowComposer(false);
     } catch (caught) {
       setComposeError(
         caught instanceof Error ? caught.message : "Could not send the message.",
@@ -770,14 +608,6 @@ export function ConversationsView({
   const thread = messages.filter(
     (item) => item.conversationId === effectiveActiveId,
   );
-  const missedCalls = calls
-    .filter(
-      (call) =>
-        selectedClientId === "all" || call.clientId === selectedClientId,
-    )
-    .filter((call) =>
-      ["no-answer", "busy", "failed", "canceled"].includes(call.status),
-    );
   async function send(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!active) return;
@@ -796,40 +626,17 @@ export function ConversationsView({
   return (
     <div className="crm-view crm-phone-view">
       <section className="crm-page-heading">
-        <div>
-          <p>SHARED INBOX</p>
-          <h2>Conversations</h2>
-          <span>
-            Real calls and texts are separated by client, so one business never
-            sees another business’s customers.
-          </span>
-        </div>
-        <Badge tone="green">Live data only</Badge>
+        <div><p>INBOX</p><h2>Conversations</h2><span>Calls and text messages in one place.</span></div>
+        {textableContacts.length ? <button className="crm-button-primary" type="button" onClick={() => setShowComposer((value) => !value)}>{showComposer ? "Close" : "+ New message"}</button> : null}
       </section>
-      <section className="crm-conversation-metrics">
-        <article>
-          <span>Open conversations</span>
-          <strong>{visible.length}</strong>
-        </article>
-        <article>
-          <span>Unread messages</span>
-          <strong>
-            {visible.reduce((sum, item) => sum + item.unreadCount, 0)}
-          </strong>
-        </article>
-        <article>
-          <span>Missed calls</span>
-          <strong>{missedCalls.length}</strong>
-        </article>
-      </section>
-      {textableContacts.length ? (
+      {showComposer && textableContacts.length ? (
         <section className="crm-message-compose">
           <header>
             <div>
               <p>SEND A MESSAGE</p>
               <h3>New text message</h3>
             </div>
-            <Badge tone="purple">Twilio</Badge>
+            <button type="button" onClick={() => setShowComposer(false)} aria-label="Close new message">x</button>
           </header>
           <form onSubmit={sendNewMessage}>
             <label>
@@ -857,15 +664,7 @@ export function ConversationsView({
             {composeError ? (
               <p className="crm-inline-error">{composeError}</p>
             ) : null}
-            <div className="crm-message-compose-actions">
-              <button className="crm-button-primary" type="submit">
-                Send message
-              </button>
-              <span>
-                Requires an approved A2P registration. Recipients can reply STOP
-                to opt out.
-              </span>
-            </div>
+            <div className="crm-message-compose-actions"><button className="crm-button-primary" type="submit">Send message</button></div>
           </form>
         </section>
       ) : null}

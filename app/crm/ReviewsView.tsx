@@ -415,9 +415,6 @@ export function ReviewsView({
               ))}
             </select>
           </label>
-          <span>
-            Review data and messages stay inside the selected client workspace.
-          </span>
         </section>
       ) : null}
 
@@ -445,16 +442,7 @@ export function ReviewsView({
                       "Google location connected"
                     : "Connect a Google Business Profile"}
               </strong>
-              <p>
-                {reviewLoadStatus === "ready"
-                  ? "Real reviews are loaded directly from Google for this session. BrizBuilder does not keep a permanent copy."
-                  : googleConnected
-                    ? reviewLoadStatus === "loading"
-                      ? "Checking Google for this business's latest reviews."
-                      : reviewLoadError ||
-                        "The location is ready. Live reviews will activate when Google grants BrizBuilder API access."
-                    : "You can prepare the official review link, QR code, and request settings now. The inbox needs a connected Google location."}
-              </p>
+              <p>{reviewLoadStatus === "ready" ? "Reviews are synced." : googleConnected ? "Google is connected." : "Connect Google to load reviews."}</p>
             </div>
             <Badge tone={reviewLoadStatus === "ready" ? "green" : "orange"}>
               {reviewLoadStatus === "ready"
@@ -508,22 +496,11 @@ export function ReviewsView({
           {tab === "overview" ? (
             <OverviewPanel
               client={client}
-              profile={profile}
               requests={clientRequests}
-              googleConnected={googleConnected}
-              reviewUrl={reviewUrl}
-              smsReady={smsReady}
-              smsReadinessMessage={smsReadinessMessage}
               googleReviews={googleReviews}
               reviewLoadStatus={reviewLoadStatus}
               reviewLoadError={reviewLoadError}
               onOpenInbox={() => chooseTab("inbox")}
-              onOpenRequests={() => chooseTab("requests")}
-              onOpenSettings={() => chooseTab("settings")}
-              onOpenGoogleProfiles={() => onOpenGoogleProfiles(client.id)}
-              onOpenConnections={() => onOpenConnections(client.id)}
-              canManageGoogle={canManageGoogle}
-              canManageConnections={canManageConnections}
             />
           ) : null}
 
@@ -589,218 +566,13 @@ export function ReviewsView({
   );
 }
 
-function OverviewPanel({
-  client,
-  profile,
-  requests,
-  googleConnected,
-  reviewUrl,
-  smsReady,
-  smsReadinessMessage,
-  googleReviews,
-  reviewLoadStatus,
-  reviewLoadError,
-  onOpenInbox,
-  onOpenRequests,
-  onOpenSettings,
-  onOpenGoogleProfiles,
-  onOpenConnections,
-  canManageGoogle,
-  canManageConnections,
-}: {
-  client: CrmClient;
-  profile: CrmGoogleProfile | null;
-  requests: CrmReviewRequest[];
-  googleConnected: boolean;
-  reviewUrl: string;
-  smsReady: boolean;
-  smsReadinessMessage: string;
-  googleReviews: GoogleBusinessReviewsPage | null;
-  reviewLoadStatus: ReviewLoadStatus;
-  reviewLoadError: string;
-  onOpenInbox: () => void;
-  onOpenRequests: () => void;
-  onOpenSettings: () => void;
-  onOpenGoogleProfiles: () => void;
-  onOpenConnections: () => void;
-  canManageGoogle: boolean;
-  canManageConnections: boolean;
-}) {
-  const sent = requests.filter((request) =>
-    ["sent", "delivered"].includes(request.status),
-  ).length;
-  const delivered = requests.filter(
-    (request) => request.status === "delivered",
-  ).length;
-  const failed = requests.filter((request) => request.status === "failed").length;
+function OverviewPanel({ client, requests, googleReviews, reviewLoadStatus, reviewLoadError, onOpenInbox }: { client: CrmClient; requests: CrmReviewRequest[]; googleReviews: GoogleBusinessReviewsPage | null; reviewLoadStatus: ReviewLoadStatus; reviewLoadError: string; onOpenInbox: () => void; }) {
+  const sent = requests.filter((request) => ["sent", "delivered"].includes(request.status)).length;
   const liveReviews = googleReviews?.reviews ?? [];
-  const ratingValue =
-    reviewLoadStatus === "ready" && googleReviews?.averageRating !== null
-      ? googleReviews?.averageRating?.toFixed(1) ?? "—"
-      : "—";
-  const reviewCountValue =
-    reviewLoadStatus === "ready"
-      ? String(googleReviews?.totalReviewCount ?? 0)
-      : "—";
-  const checklist = [
-    {
-      title: "Connect the Google location",
-      description: googleConnected
-        ? profile?.locationName || profile?.businessName || "Location connected"
-        : "Authorize the verified Google Business Profile.",
-      ready: googleConnected,
-      action: onOpenGoogleProfiles,
-      actionLabel: "Google setup",
-      canAct: canManageGoogle,
-    },
-    {
-      title: "Save the official review link",
-      description: reviewUrl
-        ? "The review link is ready to share."
-        : "Add the link customers use to write a Google review.",
-      ready: Boolean(reviewUrl),
-      action: onOpenGoogleProfiles,
-      actionLabel: "Add review link",
-      canAct: canManageGoogle,
-    },
-    {
-      title: "Connect business texting",
-      description: smsReadinessMessage,
-      ready: smsReady,
-      action: onOpenConnections,
-      actionLabel: "Connections",
-      canAct: canManageConnections,
-    },
-    {
-      title: "Send the first request",
-      description: requests.length
-        ? `${requests.length} real ${requests.length === 1 ? "request has" : "requests have"} been created.`
-        : "No review requests have been sent yet.",
-      ready: requests.length > 0,
-      action: onOpenRequests,
-      actionLabel: "Review requests",
-      canAct: true,
-    },
-  ];
-
-  return (
-    <section
-      id="crm-review-panel-overview"
-      className="crm-review-panel"
-      role="tabpanel"
-      aria-labelledby="crm-review-tab-overview"
-    >
-      <div className="crm-review-metrics" aria-label="Review summary">
-        <Metric
-          label="Average Google rating"
-          value={ratingValue}
-          note={
-            reviewLoadStatus === "ready"
-              ? "Current value returned by Google"
-              : "Available after the first live load"
-          }
-        />
-        <Metric
-          label="Google reviews"
-          value={reviewCountValue}
-          note={
-            reviewLoadStatus === "ready"
-              ? `${liveReviews.length} loaded in this session`
-              : "Google has not returned review data yet"
-          }
-        />
-        <Metric label="Requests sent" value={String(sent)} note={`${requests.length} total request records`} />
-        <Metric label="Delivered" value={String(delivered)} note={failed ? `${failed} failed` : "No failed requests"} />
-      </div>
-
-      <div className="crm-review-overview-grid">
-        <section className="crm-review-card crm-review-recent-card">
-          <header>
-            <div>
-              <p>REVIEW INBOX</p>
-              <h3>Recent Google reviews</h3>
-            </div>
-            <button type="button" onClick={onOpenInbox}>
-              Open inbox
-            </button>
-          </header>
-          {reviewLoadStatus === "loading" ? (
-            <div className="crm-review-honest-empty" aria-live="polite">
-              <span aria-hidden="true">G</span>
-              <h4>Loading real Google reviews</h4>
-              <p>BrizBuilder is checking Google for the latest customer feedback.</p>
-            </div>
-          ) : liveReviews.length ? (
-            <ul className="crm-review-recent-list">
-              {liveReviews.slice(0, 3).map((review) => (
-                <li key={review.reviewId}>
-                  <div>
-                    <strong>{review.reviewerName}</strong>
-                    <span aria-label={`${review.starRating} out of 5 stars`}>
-                      {"★".repeat(review.starRating)}
-                      <i>{"★".repeat(5 - review.starRating)}</i>
-                    </span>
-                  </div>
-                  <p>{reviewExcerpt(review)}</p>
-                  <small>{readableReviewDate(review.createTime)}</small>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="crm-review-honest-empty">
-              <span aria-hidden="true">★</span>
-              <h4>
-                {reviewLoadStatus === "ready"
-                  ? "No Google reviews yet"
-                  : "No Google reviews loaded"}
-              </h4>
-              <p>
-                {reviewLoadStatus === "error"
-                  ? reviewLoadError
-                  : `BrizBuilder will show real reviews here after Google approves API access and ${client.businessName}'s location is synchronized.`}
-              </p>
-            </div>
-          )}
-        </section>
-
-        <section className="crm-review-card crm-review-checklist">
-          <header>
-            <div>
-              <p>SETUP CHECKLIST</p>
-              <h3>Get review requests ready</h3>
-            </div>
-            <button type="button" onClick={onOpenSettings}>
-              Settings
-            </button>
-          </header>
-          <ol>
-            {checklist.map((item) => (
-              <li key={item.title}>
-                <span className={item.ready ? "ready" : ""} aria-hidden="true">
-                  {item.ready ? "✓" : ""}
-                </span>
-                <div>
-                  <strong>{item.title}</strong>
-                  <p>{item.description}</p>
-                </div>
-                {!item.ready && item.canAct ? (
-                  <button type="button" onClick={item.action}>
-                    {item.actionLabel}
-                  </button>
-                ) : item.ready ? (
-                  <Badge tone="green">Ready</Badge>
-                ) : (
-                  <Badge tone="neutral">Owner action</Badge>
-                )}
-              </li>
-            ))}
-          </ol>
-        </section>
-      </div>
-    </section>
-  );
+  const ratingValue = reviewLoadStatus === "ready" && googleReviews?.averageRating !== null ? googleReviews?.averageRating?.toFixed(1) ?? "—" : "—";
+  const reviewCountValue = reviewLoadStatus === "ready" ? String(googleReviews?.totalReviewCount ?? 0) : "—";
+  return <section id="crm-review-panel-overview" className="crm-review-panel" role="tabpanel" aria-labelledby="crm-review-tab-overview"><div className="crm-review-metrics crm-review-metrics-simple" aria-label="Review summary"><Metric label="Average rating" value={ratingValue} note="Google rating" /><Metric label="Google reviews" value={reviewCountValue} note="Total reviews" /><Metric label="Requests sent" value={String(sent)} note="Customer requests" /></div><section className="crm-review-card crm-review-recent-card crm-review-recent-simple"><header><div><p>REVIEW INBOX</p><h3>Recent Google reviews</h3></div><button type="button" onClick={onOpenInbox}>Open inbox</button></header>{reviewLoadStatus === "loading" ? <div className="crm-review-honest-empty" aria-live="polite"><span aria-hidden="true">G</span><h4>Loading reviews</h4></div> : liveReviews.length ? <ul className="crm-review-recent-list">{liveReviews.slice(0, 3).map((review) => <li key={review.reviewId}><div><strong>{review.reviewerName}</strong><span aria-label={`${review.starRating} out of 5 stars`}>{"★".repeat(review.starRating)}<i>{"★".repeat(5 - review.starRating)}</i></span></div><p>{reviewExcerpt(review)}</p><small>{readableReviewDate(review.createTime)}</small></li>)}</ul> : <div className="crm-review-honest-empty"><span aria-hidden="true">★</span><h4>No Google reviews loaded</h4><p>{reviewLoadStatus === "error" ? reviewLoadError : `Reviews for ${client.businessName} will appear here after Google is connected.`}</p></div>}</section></section>;
 }
-
 function Metric({ label, value, note }: { label: string; value: string; note: string }) {
   return (
     <article>
@@ -1019,13 +791,7 @@ function InboxPanel({
                     ? "Waiting for Google review access"
                     : "Connect a Google location first"}
               </h3>
-              <p>
-                {reviewLoadStatus === "ready"
-                  ? "Select a real review from the list to read it and prepare a reply."
-                  : googleConnected
-                    ? "Google is still reviewing BrizBuilder's API access. The inbox and manual reply tools are already prepared and will activate when access is granted."
-                    : "Choose the business's verified Google location before loading and replying to reviews."}
-              </p>
+              <p>{reviewLoadStatus === "ready" ? "Reviews are synced." : googleConnected ? "Google is connected." : "Connect Google to load reviews."}</p>
               <div>
                 <button
                   className="crm-button-primary"

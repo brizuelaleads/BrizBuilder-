@@ -353,20 +353,8 @@ export function GoogleProfilesView({
         <div>
           <p>LOCAL MARKETING</p>
           <h2>Google Business Profiles</h2>
-          <span>
-            Connect each client&apos;s verified Google profile, keep its details in one
-            place, and prepare review management without sharing anyone&apos;s Google
-            password.
-          </span>
+          <span>Manage the Google profile and review link for this business.</span>
         </div>
-        <a
-          className="crm-button-secondary"
-          href="https://business.google.com/locations"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Open Google Business Profile
-        </a>
       </section>
 
       {clients.length > 1 ? (
@@ -385,9 +373,7 @@ export function GoogleProfilesView({
               ))}
             </select>
           </label>
-          <span className="crm-profile-client-help">
-            Each business is isolated. A client can only see its own profile.
-          </span>
+
         </section>
       ) : null}
 
@@ -437,16 +423,8 @@ export function GoogleProfilesView({
                   <dd>{profile?.primaryCategory ?? "Not reported"}</dd>
                 </div>
                 <div>
-                  <dt>Website</dt>
-                  <dd>{profile?.website ?? "Not reported"}</dd>
-                </div>
-                <div>
                   <dt>Last sync</dt>
                   <dd>{shortDate(profile?.lastSyncedAt ?? null)}</dd>
-                </div>
-                <div>
-                  <dt>Profile access</dt>
-                  <dd>Authorized by the business</dd>
                 </div>
               </dl>
               <footer className="crm-profile-actions">
@@ -543,11 +521,7 @@ export function GoogleProfilesView({
                   ? "Choose a Google Business Profile location"
                   : `Connect ${client.businessName}'s Google Business Profile`}
               </h3>
-              <span>
-                The business owner or manager authorizes access from their own
-                Google account. BrizBuilder never asks for or stores a Google
-                password.
-              </span>
+              <span>Sign in with the Google account that manages this business.</span>
               {profile?.lastError ? (
                 <div className="crm-inline-error" role="alert">
                   <strong>Google needs attention: </strong>
@@ -559,36 +533,6 @@ export function GoogleProfilesView({
                   {activeActionError}
                 </div>
               ) : null}
-              <div className="crm-profile-steps">
-                <article>
-                  <b>1</b>
-                  <span>
-                    <strong>Confirm access</strong>
-                    <small>
-                      The client must be an owner or manager of the verified
-                      profile.
-                    </small>
-                  </span>
-                </article>
-                <article>
-                  <b>2</b>
-                  <span>
-                    <strong>Authorize Google</strong>
-                    <small>
-                      They sign in to Google and approve access to their business.
-                    </small>
-                  </span>
-                </article>
-                <article>
-                  <b>3</b>
-                  <span>
-                    <strong>Choose the location</strong>
-                    <small>
-                      Select the correct business location, then manage it here.
-                    </small>
-                  </span>
-                </article>
-              </div>
               <div className="crm-profile-setup-actions">
                 {profile?.status === "disconnected" &&
                 profile.revocationRetryAvailable &&
@@ -661,12 +605,9 @@ export function GoogleProfilesView({
             </div>
             <div className="crm-profile-review-fallback">
               <div>
-                <p>YOU CAN PREPARE REVIEWS NOW</p>
-                <h4>Save the official review link</h4>
-                <span>
-                  Google&apos;s review link can be used for manual or SMS requests
-                  while the full profile connection is being configured.
-                </span>
+                <p>OPTIONAL</p>
+                <h4>Add the official review link</h4>
+                <span>Use this link when requesting a Google review.</span>
               </div>
               <ReviewLinkForm
                 key={`setup-${client.id}`}

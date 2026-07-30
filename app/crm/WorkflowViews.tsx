@@ -197,100 +197,11 @@ export function ConnectionsView({
                 {isLinked ? "Connected" : "Not connected"}
               </Badge>
             </header>
-            <div className="crm-connection-details">
-              <div className="crm-twilio-balance">
-                <span>
-                  {displayedBalanceStatus === "parent"
-                    ? "Main Twilio account balance"
-                    : "Available balance"}
-                </span>
-                <strong>
-                  {connection?.balanceStatus === "restricted"
-                    ? "Restricted"
-                    : balanceLoading
-                    ? "Loading..."
-                    : balanceError
-                    ? "Not available"
-                    : displayedBalanceStatus === "shared"
-                    ? "Shared balance"
-                    : money(displayedBalance, displayedCurrency)}
-                </strong>
-                <small>
-                  {connection?.balanceStatus === "restricted"
-                    ? "Only account owners and agency admins can view this balance"
-                    : balanceLoading
-                    ? "Loading securely from Twilio"
-                    : balanceError
-                    ? balanceError
-                    : displayedBalanceStatus === "parent"
-                    ? `${displayedCurrency || "Twilio"} · Shared across this account's subaccounts`
-                    : displayedBalanceStatus === "shared"
-                    ? "Managed by the main Twilio account"
-                    : displayedBalance != null
-                      ? displayedCurrency || "Twilio balance"
-                      : isLinked
-                        ? "Not available from Twilio"
-                        : "Connect Twilio to load account details"}
-                </small>
-              </div>
-              <div>
-                <span>Account plan</span>
-                <strong>{connection?.accountType || "Not reported"}</strong>
-              </div>
-              <div>
-                <span>Spent today</span>
-                <strong>{money(connection?.todaySpend)}</strong>
-              </div>
-              <div>
-                <span>Spent this month</span>
-                <strong>{money(connection?.monthSpend)}</strong>
-              </div>
-              <div>
-                <span>Calls this month</span>
-                <strong>
-                  {connection?.monthCalls ??
-                    (isLinked ? "Not available" : "Not loaded")}
-                </strong>
-              </div>
-              <div>
-                <span>Texts this month</span>
-                <strong>
-                  {connection?.monthMessages ??
-                    (isLinked ? "Not available" : "Not loaded")}
-                </strong>
-              </div>
-              <div>
-                <span>Integration status</span>
-                <strong>
-                  <Badge tone={isActive ? "green" : "red"}>
-                    {isActive ? "Active" : "Not active"}
-                  </Badge>
-                </strong>
-              </div>
-              <div>
-                <span>Account</span>
-                <strong>
-                  {isLinked
-                    ? connection?.accountLabel ?? "Connected Twilio account"
-                    : "Not connected"}
-                </strong>
-              </div>
-              <div>
-                <span>Twilio account status</span>
-                <strong>
-                  {isLinked && connection?.accountStatus
-                    ? connection.accountStatus.replaceAll("_", " ")
-                    : "Not reported"}
-                </strong>
-              </div>
-              <div>
-                <span>Last checked</span>
-                <strong>
-                  {connection?.lastHealthCheckAt
-                    ? new Date(connection.lastHealthCheckAt).toLocaleString()
-                    : "Not checked"}
-                </strong>
-              </div>
+            <div className="crm-connection-details crm-connection-details-simple">
+              <div className="crm-twilio-balance"><span>Available balance</span><strong>{connection?.balanceStatus === "restricted" ? "Restricted" : balanceLoading ? "Loading..." : balanceError ? "Not available" : displayedBalanceStatus === "shared" ? "Shared balance" : money(displayedBalance, displayedCurrency)}</strong></div>
+              <div><span>Calls this month</span><strong>{connection?.monthCalls ?? (isLinked ? "—" : "Not connected")}</strong></div>
+              <div><span>Texts this month</span><strong>{connection?.monthMessages ?? (isLinked ? "—" : "Not connected")}</strong></div>
+              <div><span>Status</span><strong>{isActive ? "Active" : isLinked ? "Needs attention" : "Not connected"}</strong></div>
             </div>
             {lowBalance ? (
               <p className="crm-balance-warning">
@@ -352,27 +263,9 @@ export function ConnectionsView({
                 {aiConnected ? "Connected" : "Not connected"}
               </Badge>
             </header>
-            <div className="crm-connection-details compact">
-              <div>
-                <span>Integration status</span>
-                <strong>
-                  <Badge tone={aiConnected ? "green" : "red"}>
-                    {aiConnected ? "Active" : "Not active"}
-                  </Badge>
-                </strong>
-              </div>
-              <div>
-                <span>Connected AI apps</span>
-                <strong>{activeAiAuthorizations.length}</strong>
-              </div>
-              <div>
-                <span>Business</span>
-                <strong>{client.businessName}</strong>
-              </div>
-              <div>
-                <span>Billing</span>
-                <strong>Uses customer&apos;s AI plan</strong>
-              </div>
+            <div className="crm-connection-details compact crm-connection-details-simple">
+              <div><span>Status</span><strong>{aiConnected ? "Active" : "Not connected"}</strong></div>
+              <div><span>Connected apps</span><strong>{activeAiAuthorizations.length}</strong></div>
             </div>
             <div className="crm-connection-actions">
               <button
@@ -1135,26 +1028,12 @@ export function VisualAutomationsView({
         />
       ) : (
         <>
-          <section className="crm-conversation-metrics">
-            <article>
-              <span>Active workflows</span>
-              <strong>{stats.active}</strong>
-            </article>
-            <article>
-              <span>Total runs</span>
-              <strong>{stats.runs}</strong>
-            </article>
-            <article>
-              <span>Failed runs</span>
-              <strong>{stats.failed}</strong>
-            </article>
-          </section>
           <div className="crm-workflow-home-grid">
             <section className="crm-workflow-list">
               <header>
                 <div>
                   <h3>Workflows</h3>
-                  <p>Draft, test and publish automations for this business.</p>
+                  <p>{visible.length} total · {stats.active} active</p>
                 </div>
               </header>
               {visible.map((workflow) => (

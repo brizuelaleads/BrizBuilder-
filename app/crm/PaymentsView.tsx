@@ -131,49 +131,14 @@ export function PaymentsView({
           </p>
         </section>
       ) : !isLinked ? (
-        <section className="crm-stripe-connect-card">
+        <section className="crm-stripe-connect-card crm-simple-connect-card">
           <div className="crm-stripe-connect-copy">
             <span className="crm-provider-logo stripe">S</span>
             <div>
-              <p>SECURE STRIPE CONNECTION</p>
+              <p>STRIPE</p>
               <h3>Connect {client.businessName}&apos;s Stripe account</h3>
-              <span>
-                One button works for businesses that already use Stripe and
-                businesses that need to create an account.
-              </span>
+              <span>Accept payments and manage payouts from BrizBuilder.</span>
             </div>
-          </div>
-          <div className="crm-stripe-trust-grid">
-            <article>
-              <b>1</b>
-              <div>
-                <strong>Sign in on Stripe</strong>
-                <p>
-                  Stripe handles the password and may ask the owner to confirm
-                  their identity.
-                </p>
-              </div>
-            </article>
-            <article>
-              <b>2</b>
-              <div>
-                <strong>Keep ownership and billing</strong>
-                <p>
-                  The business pays its own Stripe fees and receives money in
-                  its own bank account.
-                </p>
-              </div>
-            </article>
-            <article>
-              <b>3</b>
-              <div>
-                <strong>Manage it here</strong>
-                <p>
-                  Payments, disputes, balances, payouts, and setup appear in
-                  BrizBuilder.
-                </p>
-              </div>
-            </article>
           </div>
           <div className="crm-stripe-connect-actions">
             <a
@@ -182,16 +147,8 @@ export function PaymentsView({
             >
               Connect with Stripe
             </a>
-            <span>
-              BrizBuilder never sees the Stripe password, card numbers, bank
-              login, or customer secret key.
-            </span>
+            <span>Secure sign-in is handled by Stripe.</span>
           </div>
-          <p className="crm-stripe-platform-note">
-            If this business&apos;s existing Stripe account is controlled by
-            another software platform, Stripe may ask the owner to choose or
-            create a separate account.
-          </p>
         </section>
       ) : (
         <>
@@ -338,17 +295,6 @@ export function PaymentsView({
         </>
       )}
 
-      <div className="crm-preview-notice" role="note">
-        <span>i</span>
-        <div>
-          <strong>Invoices and payment links are the next payment step</strong>
-          <p>
-            This workspace manages Stripe activity that already exists.
-            Creating and sending a BrizBuilder invoice or checkout link is not
-            built yet, so the screen never shows fake invoices.
-          </p>
-        </div>
-      </div>
     </div>
   );
 }
