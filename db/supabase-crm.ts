@@ -5216,21 +5216,6 @@ export async function executeSupabaseCrmAction(
     return { id: websiteId };
   }
 
-  if (action === "archive_client") {
-    requirePermission(context, "clients.manage");
-    const clientId = requireText(input.clientId, "Client", 100);
-    await requireClient(context, clientId);
-    await assertOk(
-      supabase()
-        .from("clients")
-        .update({ status: "archived", archived_at: new Date().toISOString() })
-        .eq("id", clientId)
-        .eq("organization_id", context.organizationId),
-    );
-    await audit(context, "client.archived", "client", clientId);
-    return { id: clientId };
-  }
-
   if (action === "delete_client") {
     requireAgencyAdministrator(context);
     const clientId = requireText(input.clientId, "Client", 100);

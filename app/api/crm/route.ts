@@ -27,7 +27,13 @@ function errorResponse(error: unknown) {
   return Response.json({ error: message }, { status });
 }
 
-async function verifyCurrentPassword(email: string, password: unknown) {
+async function verifyDeleteCredentials(email: string, submittedEmail: unknown, password: unknown) {
+  if (
+    typeof submittedEmail !== "string" ||
+    submittedEmail.trim().toLowerCase() !== email.trim().toLowerCase()
+  ) {
+    throw new Error("Enter the email address you used to sign in.");
+  }
   if (typeof password !== "string" || !password || password.length > 200) {
     throw new Error("Enter your current password.");
   }
@@ -78,11 +84,13 @@ export async function POST(request: Request) {
 
   try {
     const input = (await request.json()) as CrmAction;
+    let safeInput = input;
     if (input.action === "delete_client") {
-      await verifyCurrentPassword(user.email, input.password);
+      await verifyDeleteCredentials(user.email, input.email, input.password);
+      safeInput = { ...input };
+      delete safeInput.email;
+      delete safeInput.password;
     }
-    const safeInput = { ...input };
-    delete safeInput.password;
     const result = await executeCrmAction(user, safeInput);
     return Response.json({ result });
   } catch (error) {

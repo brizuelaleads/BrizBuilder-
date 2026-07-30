@@ -1141,6 +1141,7 @@ export function CrmApp({
             onDeleted={() => setSelectedClientId("all")}
             mutate={mutate}
             canDelete={["SUPER_ADMIN", "AGENCY_OWNER", "AGENCY_ADMIN"].includes(data.viewer.role)}
+            adminEmail={data.viewer.email}
           />
         )}
         {view === "reports" && (

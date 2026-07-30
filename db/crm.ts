@@ -1468,15 +1468,6 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
     return { id: websiteId };
   }
 
-  if (action === "archive_client") {
-    requirePermission(context, "clients.manage");
-    const clientId = requireText(input.clientId, "Client", 100);
-    await requireClient(context, clientId);
-    await db.prepare("UPDATE crm_clients SET status = 'archived', archived_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?").bind(clientId, context.organizationId).run();
-    await audit(context, "client.archived", "client", clientId);
-    return { id: clientId };
-  }
-
   if (action === "delete_client") {
     requireAgencyAdministrator(context);
     const clientId = requireText(input.clientId, "Client", 100);

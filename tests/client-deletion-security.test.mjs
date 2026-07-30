@@ -49,25 +49,32 @@ test("sub-account deletion is tenant-scoped, cascading, and audited", () => {
   assert.match(supabaseBlock, /, null\);/);
 });
 
-test("the delete control is admin-only and requires the exact sub-account name and password", () => {
+test("the delete control is admin-only, has no Archive action, and accepts administrator credentials", () => {
   assert.match(appSource, /canDelete=\{\["SUPER_ADMIN", "AGENCY_OWNER", "AGENCY_ADMIN"\]\.includes\(data\.viewer\.role\)\}/);
+  assert.match(appSource, /adminEmail=\{data\.viewer\.email\}/);
   assert.match(operationsSource, /canDelete \? <button className="danger"/);
+  assert.doesNotMatch(operationsSource, /archive_client|>Archive<|function archive\(/);
+  assert.doesNotMatch(d1Source, /action === "archive_client"/);
+  assert.doesNotMatch(supabaseSource, /action === "archive_client"/);
+  assert.match(operationsSource, /type="email"/);
   assert.match(operationsSource, /type="password"/);
   assert.match(operationsSource, /autoComplete="current-password"/);
-  assert.match(operationsSource, /deleteName\.trim\(\) !== deleteTarget\.businessName/);
-  assert.match(operationsSource, /password: deletePassword/);
+  assert.match(operationsSource, /email: deleteEmail, password: deletePassword/);
+  assert.match(operationsSource, /disabled=\{!deleteEmail\.trim\(\) \|\| !deletePassword\}/);
   assert.match(operationsSource, /action: "delete_client"/);
 });
 
-test("the server verifies the current password and strips it before CRM execution", () => {
+test("the server verifies the signed-in email and current password only for deletion", () => {
   assert.match(routeSource, /if \(input\.action === "delete_client"\)/);
-  assert.match(routeSource, /verifyCurrentPassword\(user\.email, input\.password\)/);
+  assert.match(routeSource, /verifyDeleteCredentials\(user\.email, input\.email, input\.password\)/);
   assert.match(routeSource, /signInWithPassword\(\{\s*email,\s*password,/);
   assert.match(routeSource, /persistSession: false/);
+  assert.match(routeSource, /delete safeInput\.email/);
   assert.match(routeSource, /delete safeInput\.password/);
+  assert.match(routeSource, /let safeInput = input/);
   assert.match(routeSource, /executeCrmAction\(user, safeInput\)/);
   assert.ok(
-    routeSource.indexOf("verifyCurrentPassword(user.email, input.password)") <
+    routeSource.indexOf("verifyDeleteCredentials(user.email, input.email, input.password)") <
       routeSource.indexOf("executeCrmAction(user, safeInput)"),
     "password verification runs before CRM execution",
   );
