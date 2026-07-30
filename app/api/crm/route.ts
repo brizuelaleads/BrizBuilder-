@@ -1,5 +1,7 @@
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { executeCrmAction, getCrmBootstrap, type CrmAction } from "../../../db/runtime-crm";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseRuntimeEnv } from "../../../lib/supabase/env";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +27,32 @@ function errorResponse(error: unknown) {
   return Response.json({ error: message }, { status });
 }
 
+async function verifyCurrentPassword(email: string, password: unknown) {
+  if (typeof password !== "string" || !password || password.length > 200) {
+    throw new Error("Enter your current password.");
+  }
+  const { url, anonKey } = getSupabaseRuntimeEnv();
+  if (!url || !anonKey) {
+    throw new Error("Password confirmation is unavailable. Try again later.");
+  }
+  const verifier = createSupabaseClient(url, anonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+  const { data, error } = await verifier.auth.signInWithPassword({
+    email,
+    password,
+  });
+  if (
+    error ||
+    data.user?.email?.trim().toLowerCase() !== email.trim().toLowerCase()
+  ) {
+    throw new Error("Your current password is incorrect.");
+  }
+}
 export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -50,7 +78,12 @@ export async function POST(request: Request) {
 
   try {
     const input = (await request.json()) as CrmAction;
-    const result = await executeCrmAction(user, input);
+    if (input.action === "delete_client") {
+      await verifyCurrentPassword(user.email, input.password);
+    }
+    const safeInput = { ...input };
+    delete safeInput.password;
+    const result = await executeCrmAction(user, safeInput);
     return Response.json({ result });
   } catch (error) {
     return errorResponse(error);

@@ -10,6 +10,7 @@ const d1Source = read("db/crm.ts");
 const supabaseSource = read("db/supabase-crm.ts");
 const appSource = read("app/CrmApp.tsx");
 const operationsSource = read("app/crm/OperationsViews.tsx");
+const routeSource = read("app/api/crm/route.ts");
 
 function deletionBlock(source) {
   const block = source.match(/if \(action === "delete_client"\) \{[\s\S]*?\n {2}\}\n/)?.[0];
@@ -48,10 +49,26 @@ test("sub-account deletion is tenant-scoped, cascading, and audited", () => {
   assert.match(supabaseBlock, /, null\);/);
 });
 
-test("the delete control is admin-only and requires the exact sub-account name", () => {
+test("the delete control is admin-only and requires the exact sub-account name and password", () => {
   assert.match(appSource, /canDelete=\{\["SUPER_ADMIN", "AGENCY_OWNER", "AGENCY_ADMIN"\]\.includes\(data\.viewer\.role\)\}/);
   assert.match(operationsSource, /canDelete \? <button className="danger"/);
-  assert.match(operationsSource, /window\.prompt\([\s\S]*?Type the sub-account name to continue/);
-  assert.match(operationsSource, /confirmation\.trim\(\) !== client\.businessName/);
+  assert.match(operationsSource, /type="password"/);
+  assert.match(operationsSource, /autoComplete="current-password"/);
+  assert.match(operationsSource, /deleteName\.trim\(\) !== deleteTarget\.businessName/);
+  assert.match(operationsSource, /password: deletePassword/);
   assert.match(operationsSource, /action: "delete_client"/);
+});
+
+test("the server verifies the current password and strips it before CRM execution", () => {
+  assert.match(routeSource, /if \(input\.action === "delete_client"\)/);
+  assert.match(routeSource, /verifyCurrentPassword\(user\.email, input\.password\)/);
+  assert.match(routeSource, /signInWithPassword\(\{\s*email,\s*password,/);
+  assert.match(routeSource, /persistSession: false/);
+  assert.match(routeSource, /delete safeInput\.password/);
+  assert.match(routeSource, /executeCrmAction\(user, safeInput\)/);
+  assert.ok(
+    routeSource.indexOf("verifyCurrentPassword(user.email, input.password)") <
+      routeSource.indexOf("executeCrmAction(user, safeInput)"),
+    "password verification runs before CRM execution",
+  );
 });

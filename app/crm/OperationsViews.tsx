@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import type {
   CrmAppointment,
   CrmClient,
@@ -10,7 +10,7 @@ import type {
   CrmTask,
   CrmTeamMember,
 } from "../../db/crm";
-import { Badge, dateTime, EmptyState, money, shortDate } from "./ui";
+import { Badge, dateTime, EmptyState, Modal, money, shortDate } from "./ui";
 
 type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
 
@@ -418,23 +418,58 @@ export function CalendarView({
 }
 
 export function ClientsView({ clients, leads, onAddClient, onDeleted, mutate, canDelete }: { clients: CrmClient[]; leads: CrmLead[]; onAddClient: () => void; onDeleted: () => void; mutate: Mutate; canDelete: boolean }) {
+  const [deleteTarget, setDeleteTarget] = useState<CrmClient | null>(null);
+  const [deleteName, setDeleteName] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
+
   async function archive(client: CrmClient) {
     if (!window.confirm(`Archive ${client.businessName}? Its records will be retained but hidden from active agency views.`)) return;
     await mutate({ action: "archive_client", clientId: client.id }, "Client archived");
   }
-  async function deleteClient(client: CrmClient) {
-    if (!canDelete) return;
-    const confirmation = window.prompt(`Permanently delete ${client.businessName} and all of its CRM data? This cannot be undone.\n\nType the sub-account name to continue:`);
-    if (confirmation === null) return;
-    if (confirmation.trim() !== client.businessName) {
+
+  function closeDeleteDialog() {
+    setDeleteTarget(null);
+    setDeleteName("");
+    setDeletePassword("");
+  }
+
+  async function deleteClient(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canDelete || !deleteTarget) return;
+    if (deleteName.trim() !== deleteTarget.businessName) {
       window.alert("The sub-account name did not match. Nothing was deleted.");
       return;
     }
-    await mutate({ action: "delete_client", clientId: client.id }, `${client.businessName} deleted`);
-    onDeleted();
+    try {
+      await mutate(
+        { action: "delete_client", clientId: deleteTarget.id, password: deletePassword },
+        `${deleteTarget.businessName} deleted`,
+      );
+      onDeleted();
+      closeDeleteDialog();
+    } catch {
+      setDeletePassword("");
+    }
   }
-  return <div className="crm-view"><section className="crm-page-heading"><div><p>AGENCY · SUB-ACCOUNTS</p><h2>Agency</h2><span>Manage every sub-account under this agency: business profiles, budgets, service areas, and ownership.</span></div><button className="crm-button-primary" onClick={onAddClient}>+ Add Sub-Account</button></section><section className="crm-client-grid">{clients.map((client) => { const clientLeads = leads.filter((lead) => lead.clientId === client.id); const revenue = clientLeads.reduce((sum, lead) => sum + lead.finalRevenueCents, 0); return <article key={client.id}><header><span className="crm-client-logo">{client.businessName.split(/\s+/).map((part) => part[0]).slice(0, 2).join("")}</span><div><strong>{client.businessName}</strong><small>{client.industry} · {client.city}, {client.state}</small></div><Badge tone="green">{client.status}</Badge></header><section><div><span>Leads</span><strong>{clientLeads.length}</strong></div><div><span>Revenue</span><strong>{money(revenue)}</strong></div><div><span>Ad budget</span><strong>{money(client.monthlyAdBudgetCents)}</strong></div></section><dl><div><dt>Account manager</dt><dd>{client.assignedAccountManager ?? "Unassigned"}</dd></div><div><dt>Service areas</dt><dd>{client.serviceAreas.join(", ") || "Not set"}</dd></div><div><dt>Website</dt><dd>{client.website ?? "Not connected"}</dd></div></dl><footer><span>Created {shortDate(client.createdAt)}</span><div className="crm-client-card-actions"><button onClick={() => void archive(client)}>Archive</button>{canDelete ? <button className="danger" onClick={() => void deleteClient(client)}>Delete</button> : null}</div></footer></article>; })}</section></div>;
+
+  return <div className="crm-view">
+    <section className="crm-page-heading"><div><p>AGENCY · SUB-ACCOUNTS</p><h2>Agency</h2><span>Manage every sub-account under this agency: business profiles, budgets, service areas, and ownership.</span></div><button className="crm-button-primary" onClick={onAddClient}>+ Add Sub-Account</button></section>
+    <section className="crm-client-grid">{clients.map((client) => {
+      const clientLeads = leads.filter((lead) => lead.clientId === client.id);
+      const revenue = clientLeads.reduce((sum, lead) => sum + lead.finalRevenueCents, 0);
+      return <article key={client.id}><header><span className="crm-client-logo">{client.businessName.split(/\s+/).map((part) => part[0]).slice(0, 2).join("")}</span><div><strong>{client.businessName}</strong><small>{client.industry} · {client.city}, {client.state}</small></div><Badge tone="green">{client.status}</Badge></header><section><div><span>Leads</span><strong>{clientLeads.length}</strong></div><div><span>Revenue</span><strong>{money(revenue)}</strong></div><div><span>Ad budget</span><strong>{money(client.monthlyAdBudgetCents)}</strong></div></section><dl><div><dt>Account manager</dt><dd>{client.assignedAccountManager ?? "Unassigned"}</dd></div><div><dt>Service areas</dt><dd>{client.serviceAreas.join(", ") || "Not set"}</dd></div><div><dt>Website</dt><dd>{client.website ?? "Not connected"}</dd></div></dl><footer><span>Created {shortDate(client.createdAt)}</span><div className="crm-client-card-actions"><button onClick={() => void archive(client)}>Archive</button>{canDelete ? <button className="danger" onClick={() => setDeleteTarget(client)}>Delete</button> : null}</div></footer></article>;
+    })}</section>
+    {deleteTarget ? <Modal title={`Delete ${deleteTarget.businessName}?`} eyebrow="ADMIN CONFIRMATION" onClose={closeDeleteDialog}>
+      <form className="crm-form crm-delete-client-form" onSubmit={(event) => void deleteClient(event)}>
+        <p className="crm-delete-warning">This permanently deletes the sub-account and all of its CRM data. This cannot be undone.</p>
+        <label className="crm-field-span"><span>Type the sub-account name</span><input value={deleteName} onChange={(event) => setDeleteName(event.target.value)} autoComplete="off" required /></label>
+        <label className="crm-field-span"><span>Your current password</span><input type="password" value={deletePassword} onChange={(event) => setDeletePassword(event.target.value)} autoComplete="current-password" required /></label>
+        <footer><button type="button" onClick={closeDeleteDialog}>Cancel</button><button type="submit" className="crm-button-danger" disabled={deleteName.trim() !== deleteTarget.businessName || !deletePassword}>Permanently delete</button></footer>
+      </form>
+    </Modal> : null}
+  </div>;
 }
+
 export function ReportsView({ leads, clients }: { leads: CrmLead[]; clients: CrmClient[] }) {
   const stages = ["NEW", "CONTACTED", "QUALIFIED", "APPOINTMENT_BOOKED", "ESTIMATE_SENT", "WON"];
   const funnel = stages.map((status) => ({ status, count: leads.filter((lead) => lead.status === status).length }));
