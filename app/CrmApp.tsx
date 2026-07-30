@@ -1138,7 +1138,9 @@ export function CrmApp({
             clients={data.clients}
             leads={data.leads}
             onAddClient={() => setModal("client")}
+            onDeleted={() => setSelectedClientId("all")}
             mutate={mutate}
+            canDelete={["SUPER_ADMIN", "AGENCY_OWNER", "AGENCY_ADMIN"].includes(data.viewer.role)}
           />
         )}
         {view === "reports" && (

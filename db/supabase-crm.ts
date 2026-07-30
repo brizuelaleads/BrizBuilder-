@@ -555,6 +555,11 @@ function requirePermission(context: TenantContext, permission: CrmPermission) {
     throw new Error("Forbidden");
 }
 
+function requireAgencyAdministrator(context: TenantContext) {
+  if (!["SUPER_ADMIN", "AGENCY_OWNER", "AGENCY_ADMIN"].includes(context.role))
+    throw new Error("Forbidden");
+}
+
 function serviceAreas(value: unknown): string[] {
   if (Array.isArray(value))
     return value.filter((item): item is string => typeof item === "string");
@@ -5223,6 +5228,29 @@ export async function executeSupabaseCrmAction(
         .eq("organization_id", context.organizationId),
     );
     await audit(context, "client.archived", "client", clientId);
+    return { id: clientId };
+  }
+
+  if (action === "delete_client") {
+    requireAgencyAdministrator(context);
+    const clientId = requireText(input.clientId, "Client", 100);
+    const client = await assertOk(
+      supabase()
+        .from("clients")
+        .select("id,business_name")
+        .eq("id", clientId)
+        .eq("organization_id", context.organizationId)
+        .maybeSingle(),
+    );
+    if (!client) throw new Error("Client not found.");
+    await assertOk(
+      supabase()
+        .from("clients")
+        .delete()
+        .eq("id", clientId)
+        .eq("organization_id", context.organizationId),
+    );
+    await audit(context, "client.deleted", "client", clientId, { businessName: String(client.business_name) }, null);
     return { id: clientId };
   }
 

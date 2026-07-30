@@ -865,6 +865,10 @@ function requirePermission(context: TenantContext, permission: CrmPermission) {
   if (!rolePermissions[context.role].includes(permission)) throw new Error("Forbidden");
 }
 
+function requireAgencyAdministrator(context: TenantContext) {
+  if (!["SUPER_ADMIN", "AGENCY_OWNER", "AGENCY_ADMIN"].includes(context.role)) throw new Error("Forbidden");
+}
+
 export function renderCrmTemplate(template: string, values: Record<string, string | number | boolean | null | undefined>): string {
   const safeTemplate = template.slice(0, 100_000);
   return safeTemplate.replace(/\{\{\s*([a-z][a-z0-9_.]{0,79})\s*\}\}/gi, (_match, rawKey: string) => {
@@ -1470,6 +1474,23 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
     await requireClient(context, clientId);
     await db.prepare("UPDATE crm_clients SET status = 'archived', archived_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?").bind(clientId, context.organizationId).run();
     await audit(context, "client.archived", "client", clientId);
+    return { id: clientId };
+  }
+
+  if (action === "delete_client") {
+    requireAgencyAdministrator(context);
+    const clientId = requireText(input.clientId, "Client", 100);
+    const client = await db.prepare("SELECT id, business_name, legacy_client_id FROM crm_clients WHERE id = ? AND organization_id = ? LIMIT 1")
+      .bind(clientId, context.organizationId)
+      .first<{ id: string; business_name: string; legacy_client_id: string | null }>();
+    if (!client) throw new Error("Client not found.");
+    await db.batch([
+      db.prepare("DELETE FROM appointments WHERE client_id = ? AND organization_id = ?").bind(clientId, context.organizationId),
+      db.prepare("DELETE FROM crm_leads WHERE client_id = ? AND organization_id = ?").bind(clientId, context.organizationId),
+      db.prepare("DELETE FROM crm_clients WHERE id = ? AND organization_id = ?").bind(clientId, context.organizationId),
+      ...(client.legacy_client_id ? [db.prepare("DELETE FROM clients WHERE id = ?").bind(client.legacy_client_id)] : []),
+    ]);
+    await audit(context, "client.deleted", "client", clientId, { businessName: client.business_name }, null);
     return { id: clientId };
   }
 
