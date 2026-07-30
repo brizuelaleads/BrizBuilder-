@@ -7169,6 +7169,16 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   cursor: not-allowed;
 }
 
+.crm-ai-connector-compatibility {
+  margin: 14px 0 0;
+  padding: 11px 12px;
+  border-radius: 7px;
+  color: #59635d;
+  background: #f2f6f3;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
 .crm-ai-connector-simple-apps {
   padding: 0 18px;
 }

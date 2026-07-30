@@ -18,8 +18,6 @@ type Runtime = {
   endpoint: string;
 };
 
-const CHATGPT_CONNECTORS_URL = "https://chatgpt.com/plugins";
-
 const actionLabels: Record<string, string> = {
   "ai.oauth.authorized": "Connected the AI app",
   "ai.oauth.revoked": "Disconnected the AI app",
@@ -241,7 +239,7 @@ export function AiConnectorView({
       <section className="crm-page-heading crm-ai-connector-heading">
         <div>
           <p>AI CONNECTOR</p>
-          <h2>Connect your AI assistant</h2>
+          <h2>Connect your AI apps</h2>
           <span>
             Use BrizBuilder securely from a compatible AI app.
           </span>
@@ -267,7 +265,7 @@ export function AiConnectorView({
         <header>
           <div>
             <p>CONNECT</p>
-            <h3>Add BrizBuilder to ChatGPT</h3>
+            <h3>Add BrizBuilder to your AI app</h3>
           </div>
           <Badge tone={runtime.configured ? "green" : "orange"}>
             {runtime.configured ? "Ready" : "Unavailable"}
@@ -312,24 +310,13 @@ export function AiConnectorView({
           <ol className="crm-ai-connector-simple-steps">
             <li><span>1</span><strong>Select the business above</strong></li>
             <li><span>2</span><strong>Copy the connector address</strong></li>
-            <li><span>3</span><strong>Add it in ChatGPT and approve access</strong></li>
+            <li><span>3</span><strong>Add it to your AI app and approve access</strong></li>
           </ol>
 
-          <div className="crm-ai-connector-setup-actions">
-            <a
-              className={`crm-button-primary ${!runtime.configured ? "disabled" : ""}`}
-              href={runtime.configured ? CHATGPT_CONNECTORS_URL : undefined}
-              target="_blank"
-              rel="noreferrer"
-              aria-disabled={!runtime.configured}
-              onClick={(event) => {
-                if (!runtime.configured) event.preventDefault();
-              }}
-            >
-              Open ChatGPT Plugins
-            </a>
-            <small>Access is limited to the business and permissions you approve.</small>
-          </div>
+          <p className="crm-ai-connector-compatibility">
+            Works with AI apps that support custom MCP connectors. Access is
+            limited to the businesses and permissions you approve.
+          </p>
         </div>
       </section>
 
