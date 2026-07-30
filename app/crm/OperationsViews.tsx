@@ -191,6 +191,13 @@ export function CalendarView({
     next.setDate(next.getDate() + days);
     setAnchorDate(next);
   };
+  const deleteAppointment = async (appointment: CrmAppointment) => {
+    if (!window.confirm(`Delete the ${appointment.serviceType} appointment for ${appointment.contactName}? This cannot be undone.`)) return;
+    await mutate(
+      { action: "delete_appointment", appointmentId: appointment.id },
+      "Appointment deleted",
+    );
+  };
   useEffect(() => {
     if (mode !== "week") return;
     const frame = window.requestAnimationFrame(() => {
@@ -355,6 +362,15 @@ export function CalendarView({
                         >
                           {["SCHEDULED", "CONFIRMED", "COMPLETED", "CANCELED", "NO_SHOW"].map((status) => <option key={status}>{status}</option>)}
                         </select>
+                        <button
+                          type="button"
+                          className="crm-calendar-delete"
+                          onClick={() => void deleteAppointment(appointment)}
+                          aria-label={`Delete appointment for ${appointment.contactName}`}
+                          title="Delete appointment"
+                        >
+                          ×
+                        </button>
                       </article>
                     );
                   })}
@@ -385,9 +401,12 @@ export function CalendarView({
                     <p>{appointment.serviceType} · {appointment.clientName}</p>
                     <small>{appointment.address ?? "Address not provided"}</small>
                   </div>
-                  <select value={appointment.status} onChange={(event) => void mutate({ action: "update_appointment_status", appointmentId: appointment.id, status: event.target.value }, "Appointment status updated")} aria-label={`Status for ${appointment.contactName}`}>
-                    {["SCHEDULED", "CONFIRMED", "COMPLETED", "CANCELED", "NO_SHOW"].map((status) => <option key={status}>{status}</option>)}
-                  </select>
+                  <div className="crm-calendar-list-actions">
+                    <select value={appointment.status} onChange={(event) => void mutate({ action: "update_appointment_status", appointmentId: appointment.id, status: event.target.value }, "Appointment status updated")} aria-label={`Status for ${appointment.contactName}`}>
+                      {["SCHEDULED", "CONFIRMED", "COMPLETED", "CANCELED", "NO_SHOW"].map((status) => <option key={status}>{status}</option>)}
+                    </select>
+                    <button type="button" onClick={() => void deleteAppointment(appointment)} aria-label={`Delete appointment for ${appointment.contactName}`}>Delete</button>
+                  </div>
                 </div>
               ))}
             </article>

@@ -5179,6 +5179,38 @@ export async function executeSupabaseCrmAction(
     return { id: websiteId };
   }
 
+  if (action === "delete_website") {
+    requirePermission(context, "websites.manage");
+    const websiteId = requireText(input.websiteId, "Website", 100);
+    const website = await assertOk(
+      supabase()
+        .from("websites")
+        .select("client_id")
+        .eq("id", websiteId)
+        .eq("organization_id", context.organizationId)
+        .maybeSingle(),
+    );
+    if (!website) throw new Error("Website connection not found.");
+    const clientId = String(website.client_id);
+    await requireClient(context, clientId);
+    await assertOk(
+      supabase()
+        .from("websites")
+        .delete()
+        .eq("id", websiteId)
+        .eq("organization_id", context.organizationId),
+    );
+    await audit(
+      context,
+      "website.deleted",
+      "website",
+      websiteId,
+      {},
+      clientId,
+    );
+    return { id: websiteId };
+  }
+
   if (action === "archive_client") {
     requirePermission(context, "clients.manage");
     const clientId = requireText(input.clientId, "Client", 100);
@@ -5799,6 +5831,59 @@ export async function executeSupabaseCrmAction(
       },
     );
     return { id: appointmentId, status };
+  }
+
+  if (action === "delete_appointment") {
+    requirePermission(context, "appointments.write");
+    const appointmentId = requireText(input.appointmentId, "Appointment", 100);
+    const appointment = await assertOk(
+      supabase()
+        .from("appointments")
+        .select(
+          "id,client_id,service_type,starts_at,ends_at,notes,contacts(first_name,last_name)",
+        )
+        .eq("id", appointmentId)
+        .eq("organization_id", context.organizationId)
+        .maybeSingle(),
+    );
+    if (!appointment) throw new Error("Appointment not found.");
+    const clientId = String(appointment.client_id);
+    await requireClient(context, clientId);
+    const appointmentContact =
+      nestedOne(
+        appointment.contacts as AnyRecord | AnyRecord[] | null,
+      ) ?? {};
+    await syncAppointmentToGoogleCalendar(
+      context.organizationId,
+      clientId,
+      {
+        id: appointmentId,
+        contactName:
+          `${appointmentContact.first_name ?? ""} ${appointmentContact.last_name ?? ""}`.trim() ||
+          "Customer",
+        serviceType: String(appointment.service_type),
+        startsAt: String(appointment.starts_at),
+        endsAt: String(appointment.ends_at),
+        notes: String(appointment.notes ?? ""),
+        status: "CANCELED",
+      },
+    );
+    await assertOk(
+      supabase()
+        .from("appointments")
+        .delete()
+        .eq("id", appointmentId)
+        .eq("organization_id", context.organizationId),
+    );
+    await audit(
+      context,
+      "appointment.deleted",
+      "appointment",
+      appointmentId,
+      {},
+      clientId,
+    );
+    return { id: appointmentId };
   }
 
   if (action === "create_company") {

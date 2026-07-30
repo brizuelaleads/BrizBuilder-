@@ -7678,3 +7678,85 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
     justify-content: center;
   }
 }
+
+/* Destructive record actions */
+.crm-website-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.crm-website-detail > footer .crm-website-footer-actions button {
+  color: #656a66;
+}
+
+.crm-website-detail > footer .crm-website-footer-actions button.danger {
+  color: #a33f52;
+}
+
+.crm-website-detail > footer .crm-website-footer-actions button:hover {
+  text-decoration: underline;
+}
+
+.crm-calendar-event {
+  padding-right: 25px;
+}
+
+.crm-calendar-delete {
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  color: #6d776f;
+  background: rgb(255 255 255 / 68%);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.crm-calendar-delete:hover {
+  color: #a33f52;
+  background: #fff;
+}
+
+.crm-calendar-list-actions {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px !important;
+}
+
+.crm-calendar-list-actions button {
+  height: 31px;
+  padding: 0 10px;
+  border: 1px solid #e3c7cd;
+  border-radius: 7px;
+  color: #a33f52;
+  background: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.crm-calendar-list-actions button:hover {
+  background: #fff5f7;
+}
+
+@media (max-width: 700px) {
+  .crm-website-detail > footer {
+    padding-block: 12px;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .crm-calendar-list-actions {
+    grid-column: 2 / -1;
+    justify-content: flex-start;
+  }
+}

@@ -1169,6 +1169,17 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
     return { id: appointmentId, status };
   }
 
+  if (action === "delete_appointment") {
+    requirePermission(context, "appointments.write");
+    const appointmentId = requireText(input.appointmentId, "Appointment", 100);
+    const appointment = await db.prepare("SELECT client_id FROM appointments WHERE id = ? AND organization_id = ? LIMIT 1").bind(appointmentId, context.organizationId).first<{ client_id: string }>();
+    if (!appointment) throw new Error("Appointment not found.");
+    await requireClient(context, appointment.client_id);
+    await db.prepare("DELETE FROM appointments WHERE id = ? AND organization_id = ?").bind(appointmentId, context.organizationId).run();
+    await audit(context, "appointment.deleted", "appointment", appointmentId, {}, appointment.client_id);
+    return { id: appointmentId };
+  }
+
   if (action === "import_contacts") {
     requirePermission(context, "contacts.import");
     const clientId = requireText(input.clientId, "Client", 80);
@@ -1439,6 +1450,17 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
     await requireClient(context, website.client_id);
     await db.prepare("UPDATE websites SET status = 'disconnected', lead_capture_enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?").bind(websiteId, context.organizationId).run();
     await audit(context, "website.disconnected", "website", websiteId, {}, website.client_id);
+    return { id: websiteId };
+  }
+
+  if (action === "delete_website") {
+    requirePermission(context, "websites.manage");
+    const websiteId = requireText(input.websiteId, "Website", 100);
+    const website = await db.prepare("SELECT client_id FROM websites WHERE id = ? AND organization_id = ? LIMIT 1").bind(websiteId, context.organizationId).first<{ client_id: string }>();
+    if (!website) throw new Error("Website connection not found.");
+    await requireClient(context, website.client_id);
+    await db.prepare("DELETE FROM websites WHERE id = ? AND organization_id = ?").bind(websiteId, context.organizationId).run();
+    await audit(context, "website.deleted", "website", websiteId, {}, website.client_id);
     return { id: websiteId };
   }
 

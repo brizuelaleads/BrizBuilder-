@@ -110,6 +110,12 @@ export function WebsitesView({ websites, clients, leads, mutate, canManage }: { 
     await mutate({ action: "disconnect_website", websiteId: website.id }, "Website disconnected");
   }
 
+  async function remove(website: CrmWebsite) {
+    if (!window.confirm(`Delete ${website.name}? This permanently removes the website connection and setup. Existing CRM leads will stay in BrizBuilder.`)) return;
+    await mutate({ action: "delete_website", websiteId: website.id }, "Website deleted");
+    setSelectedId(websites.find((item) => item.id !== website.id)?.id ?? null);
+  }
+
   return <div className="crm-view crm-websites-view">
     <section className="crm-page-heading"><div><p>WEBSITE CONNECTIONS</p><h2>Send website leads into the CRM</h2><span>Add a website, then send the provided instructions to whoever manages that website. New form requests will appear as CRM leads.</span></div>{canManage ? <button className="crm-button-primary" onClick={() => setEditing(null)}>+ Add a Website</button> : null}</section>
 
@@ -152,7 +158,7 @@ export function WebsitesView({ websites, clients, leads, mutate, canManage }: { 
           <div className="crm-help-note"><span>?</span><p><strong>Not sure who manages the website?</strong> Ask the person or company you pay for website updates, hosting, or online marketing. Send them the copied message.</p></div>
           <details><summary>For website professionals only</summary><p>Lead-capture URL:</p><div className="crm-copy-row"><code>{endpointFor(selected.id)}</code><button onClick={() => void copyText(endpointFor(selected.id), () => markCopied("url"))}>{copied === "url" ? "Copied" : "Copy URL"}</button></div><p>Send a JSON POST request with at least a phone number or email. Supported fields: firstName, lastName, name, phone, email, service, message, address, city, state, zip, campaign, and consent.</p><pre>{captureSnippet(selected.id)}</pre><button className="crm-button-secondary" onClick={() => void copyText(captureSnippet(selected.id), () => markCopied("code"))}>{copied === "code" ? "Code copied" : "Copy example code"}</button></details>
         </section>
-        <footer><span>Connected {shortDate(selected.createdAt)}</span>{canManage && selected.status === "connected" ? <button onClick={() => void disconnect(selected)}>Disconnect website</button> : null}</footer>
+        <footer><span>Connected {shortDate(selected.createdAt)}</span>{canManage ? <div className="crm-website-footer-actions">{selected.status === "connected" ? <button onClick={() => void disconnect(selected)}>Disconnect</button> : null}<button className="danger" onClick={() => void remove(selected)}>Delete website</button></div> : null}</footer>
       </section> : null}
     </div>}
 
