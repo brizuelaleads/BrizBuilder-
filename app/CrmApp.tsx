@@ -34,7 +34,7 @@ import {
   UsersRound,
   Workflow,
 } from "lucide-react";
-import type { CrmBootstrap, CrmLead, CrmPermission } from "../db/crm";
+import type { CrmBootstrap, CrmLead, CrmPermission, CrmRole } from "../db/crm";
 import type { CrmTheme } from "../db/theme";
 import { CRM_THEMES } from "../db/theme";
 import { DashboardView } from "./crm/DashboardView";
@@ -207,7 +207,7 @@ const nav: Array<{
     agencyOnly: true,
     preview: true,
   },
-  { id: "reports", label: "Reports", icon: <ChartNoAxesCombined />, section: "BUSINESS" },
+  { id: "reports", label: "Reports", icon: <ChartNoAxesCombined />, section: "BUSINESS", permission: "reports.read" },
   {
     id: "payments",
     label: "Payments",
@@ -222,6 +222,7 @@ const nav: Array<{
     icon: <BriefcaseBusiness />,
     section: "BUSINESS",
     agencyOnly: true,
+    permission: "clients.manage",
   },
   // Client owners manage their own staff here; the server restricts them to
   // client roles inside their own sub-account.
@@ -250,11 +251,27 @@ const nav: Array<{
     agencyOnly: true,
     permission: "audit.read",
   },
-  { id: "settings", label: "Settings", icon: <SettingsIcon />, section: "TOOLS", agencyOnly: true },
+  { id: "settings", label: "Settings", icon: <SettingsIcon />, section: "TOOLS", agencyOnly: true, permission: "feature_flags.manage" },
 ];
 
 const viewChangeEvent = "brizuela:crm-view-change";
 const nestedViews: View[] = ["pipeline"];
+
+function roleLabel(role: CrmRole) {
+  const labels: Record<CrmRole, string> = {
+    LB_OWNER: "LB Owner",
+    LB_ADMIN: "LB Admin",
+    LB_TEAM_MEMBER: "LB Team Member",
+    SUPER_ADMIN: "LB Owner",
+    AGENCY_OWNER: "LB Owner",
+    AGENCY_ADMIN: "LB Admin",
+    AGENCY_MEMBER: "LB Team Member",
+    CLIENT_OWNER: "Client Owner",
+    CLIENT_MANAGER: "Client Manager",
+    CLIENT_EMPLOYEE: "Client Employee",
+  };
+  return labels[role] ?? role.replaceAll("_", " ");
+}
 
 function readViewFromLocation(): View {
   const requested = new URLSearchParams(window.location.search).get(
@@ -290,7 +307,10 @@ export function CrmApp({
     () => "dashboard",
   );
   const [selectedClientId, setSelectedClientId] = useState(
-    initialData.viewer.clientId ?? "all",
+    initialData.viewer.clientId ??
+      (initialData.viewer.canViewAllClients
+        ? "all"
+        : initialData.clients[0]?.id ?? ""),
   );
   const [range, setRange] = useState("30");
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
@@ -307,8 +327,13 @@ export function CrmApp({
   // Workspace switcher: agency users pick which sub-account they are managing.
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const switcherRef = useRef<HTMLDivElement | null>(null);
+  const firstVisibleClientId = data.clients[0]?.id ?? "";
   const effectiveSelectedClientId = data.viewer.isAgency
-    ? selectedClientId
+    ? data.viewer.canViewAllClients
+      ? selectedClientId
+      : data.clients.some((client) => client.id === selectedClientId)
+        ? selectedClientId
+        : firstVisibleClientId
     : data.viewer.clientId;
 
   const visibleNav = nav.filter(
@@ -368,12 +393,36 @@ export function CrmApp({
       }
       return;
     }
+
+    if (!data.viewer.canViewAllClients) {
+      const nextClientId = data.clients.some(
+        (client) => client.id === selectedClientId,
+      )
+        ? selectedClientId
+        : data.clients[0]?.id ?? "";
+      if (selectedClientId !== nextClientId) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setSelectedClientId(nextClientId);
+      }
+      const url = new URL(window.location.href);
+      if (nextClientId) url.searchParams.set("client", nextClientId);
+      else url.searchParams.delete("client");
+      window.history.replaceState({}, "", url);
+      return;
+    }
+
     const url = new URL(window.location.href);
     if (selectedClientId !== "all")
       url.searchParams.set("client", selectedClientId);
     else url.searchParams.delete("client");
     window.history.replaceState({}, "", url);
-  }, [data.viewer.clientId, data.viewer.isAgency, selectedClientId]);
+  }, [
+    data.clients,
+    data.viewer.canViewAllClients,
+    data.viewer.clientId,
+    data.viewer.isAgency,
+    selectedClientId,
+  ]);
 
   useEffect(() => {
     window.dispatchEvent(new Event(viewChangeEvent));
@@ -735,26 +784,28 @@ export function CrmApp({
                 <div>
                   <strong>{workspaceName}</strong>
                   <small>
-                    {scopedClient ? "Managing sub-account" : "Agency workspace"}
+                    {scopedClient ? "Managing sub-account" : "LB Marketing"}
                   </small>
                 </div>
                 <b aria-hidden="true">⌄</b>
               </button>
               {switcherOpen ? (
                 <div className="crm-org-menu" role="listbox" aria-label="Choose workspace">
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={selectedClientId === "all"}
-                    className={selectedClientId === "all" ? "active" : ""}
-                    onClick={() => {
-                      setSelectedClientId("all");
-                      setSwitcherOpen(false);
-                    }}
-                  >
-                    <strong>Whole agency</strong>
-                    <small>Every sub-account</small>
-                  </button>
+                  {data.viewer.canViewAllClients ? (
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={selectedClientId === "all"}
+                      className={selectedClientId === "all" ? "active" : ""}
+                      onClick={() => {
+                        setSelectedClientId("all");
+                        setSwitcherOpen(false);
+                      }}
+                    >
+                      <strong>All sub-accounts</strong>
+                      <small>Every sub-account</small>
+                    </button>
+                  ) : null}
                   {data.clients.map((client) => (
                     <button
                       key={client.id}
@@ -860,7 +911,7 @@ export function CrmApp({
             <span className="crm-avatar">{initials(data.viewer.name)}</span>
             <p>
               <strong>{data.viewer.name}</strong>
-              <small>{data.viewer.role.replaceAll("_", " ")}</small>
+              <small>{roleLabel(data.viewer.role)}</small>
             </p>
           </div>
           <div className="crm-sidebar-foot-actions">
@@ -1140,7 +1191,7 @@ export function CrmApp({
             onAddClient={() => setModal("client")}
             onDeleted={() => setSelectedClientId("all")}
             mutate={mutate}
-            canDelete={["SUPER_ADMIN", "AGENCY_OWNER", "AGENCY_ADMIN"].includes(data.viewer.role)}
+            canDelete={data.viewer.permissions.includes("clients.delete")}
             adminEmail={data.viewer.email}
           />
         )}
@@ -1424,7 +1475,7 @@ export function CrmApp({
         <AddClientModal mutate={mutate} onClose={() => setModal(null)} />
       )}
       {modal === "invite" && (
-        <InviteMemberModal clients={filteredClients} isAgency={data.viewer.isAgency} mutate={mutate} onClose={() => setModal(null)} />
+        <InviteMemberModal clients={filteredClients} isAgency={data.viewer.isAgency} viewerRole={data.viewer.role} mutate={mutate} onClose={() => setModal(null)} />
       )}
       {modal === "search" && (
         <Modal

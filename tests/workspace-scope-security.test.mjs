@@ -24,8 +24,10 @@ const AGENCY_ONLY_PERMISSIONS = [
   "profiles.connect",
   "billing.read_shared",
   "clients.manage",
+  "clients.delete",
   "audit.read",
   "feature_flags.manage",
+  "reports.read",
 ];
 
 // Tabs a client user must never see in the sidebar.
@@ -44,14 +46,25 @@ const AGENCY_ONLY_TABS = [
   "settings",
 ];
 
+function permissionArray(source, name) {
+  const block = source.match(new RegExp(`const ${name}: CrmPermission\\[] = \\[([\\s\\S]*?)\\]`));
+  assert.ok(block, `${name} permission array exists`);
+  return (block[1].match(/"[a-z_.]+"/g) ?? []).map((item) => item.replaceAll('"', ""));
+}
+
 function rolePermissions(source, role) {
-  const block = source.match(new RegExp(`${role}: \\[([\\s\\S]*?)\\]`));
-  assert.ok(block, `${role} exists in the role map`);
-  return (block[1].match(/"[a-z_.]+"/g) ?? []).map((item) => item.replaceAll('"', "")).sort();
+  const direct = source.match(new RegExp(`${role}: \\[([\\s\\S]*?)\\]`));
+  if (direct) return (direct[1].match(/"[a-z_.]+"/g) ?? []).map((item) => item.replaceAll('"', "")).sort();
+  const mapped = source.match(new RegExp(`${role}:\\s*([a-zA-Z]+Permissions)`));
+  assert.ok(mapped, `${role} exists in the role map`);
+  return permissionArray(source, mapped[1]).sort();
 }
 
 const CLIENT_ROLES = ["CLIENT_OWNER", "CLIENT_MANAGER", "CLIENT_EMPLOYEE"];
 const ALL_ROLES = [
+  "LB_OWNER",
+  "LB_ADMIN",
+  "LB_TEAM_MEMBER",
   "SUPER_ADMIN",
   "AGENCY_OWNER",
   "AGENCY_ADMIN",
@@ -66,6 +79,26 @@ test("the two role maps cannot drift apart", () => {
       rolePermissions(supabaseSource, role),
       `${role} must be identical in db/crm.ts and db/supabase-crm.ts`,
     );
+  }
+});
+
+test("LB Marketing agency roles follow owner/admin/team boundaries", () => {
+  const owner = rolePermissions(supabaseSource, "LB_OWNER");
+  assert.ok(owner.includes("clients.delete"));
+  assert.ok(owner.includes("payments.manage"));
+  assert.ok(owner.includes("audit.read"));
+  const admin = rolePermissions(supabaseSource, "LB_ADMIN");
+  assert.ok(admin.includes("clients.manage"));
+  assert.ok(admin.includes("reports.read"));
+  assert.ok(!admin.includes("clients.delete"));
+  assert.ok(!admin.includes("payments.manage"));
+  assert.ok(!admin.includes("audit.read"));
+  const team = rolePermissions(supabaseSource, "LB_TEAM_MEMBER");
+  for (const permission of ["contacts.write", "opportunities.write", "tasks.write", "appointments.write", "messages.write"]) {
+    assert.ok(team.includes(permission), `LB_TEAM_MEMBER needs ${permission}`);
+  }
+  for (const permission of AGENCY_ONLY_PERMISSIONS) {
+    assert.ok(!team.includes(permission), `LB_TEAM_MEMBER must not hold ${permission}`);
   }
 });
 
@@ -164,7 +197,7 @@ test("a client owner cannot invite an agency role or reach another sub-account",
   // Their session decides the sub-account; a supplied clientId is ignored.
   assert.match(
     block,
-    /if \(context\.clientId\) \{[\s\S]*?if \(!isClientRole\)[\s\S]*?clientId = context\.clientId;/,
+    /if \(context\.clientId\) \{[\s\S]*?if \(!targetIsClientUser\)[\s\S]*?clientId = context\.clientId;/,
   );
   const clientBranch = block.match(/if \(context\.clientId\) \{[\s\S]*?\n {4}\}/)?.[0];
   assert.ok(clientBranch, "client-scoped branch exists");
@@ -195,6 +228,6 @@ test("the team roster is scoped to the viewer's own sub-account", () => {
 });
 
 test("the invite form hides agency roles from client owners", () => {
-  assert.match(formsSource, /isAgency \? <optgroup label="Agency/);
-  assert.match(formsSource, /const needsSubAccount = isAgency && isClientRole/);
+  assert.match(formsSource, /canInviteLbRoles \? <optgroup label="LB Marketing"/);
+  assert.match(formsSource, /const needsSubAccount = isAgency && \(isClientRole \|\| isLbTeamMember\)/);
 });

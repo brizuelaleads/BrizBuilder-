@@ -22,10 +22,8 @@ test("only agency administrators can permanently delete a sub-account", () => {
   for (const source of [d1Source, supabaseSource]) {
     const helper = source.match(/function requireAgencyAdministrator\([\s\S]*?\n\}/)?.[0];
     assert.ok(helper, "agency administrator guard exists");
-    assert.match(helper, /"SUPER_ADMIN"/);
-    assert.match(helper, /"AGENCY_OWNER"/);
-    assert.match(helper, /"AGENCY_ADMIN"/);
-    assert.doesNotMatch(helper, /"AGENCY_MEMBER"|"CLIENT_OWNER"|"CLIENT_MANAGER"|"CLIENT_EMPLOYEE"/);
+    assert.match(helper, /"clients\.delete"/);
+    assert.doesNotMatch(helper, /"LB_ADMIN"|"LB_TEAM_MEMBER"|"CLIENT_OWNER"|"CLIENT_MANAGER"|"CLIENT_EMPLOYEE"/);
     const block = deletionBlock(source);
     const destructiveIndex = block.search(/DELETE|\.delete\(\)/);
     assert.ok(destructiveIndex >= 0, "destructive query exists");
@@ -50,7 +48,7 @@ test("sub-account deletion is tenant-scoped, cascading, and audited", () => {
 });
 
 test("the delete control is admin-only, has no Archive action, and accepts administrator credentials", () => {
-  assert.match(appSource, /canDelete=\{\["SUPER_ADMIN", "AGENCY_OWNER", "AGENCY_ADMIN"\]\.includes\(data\.viewer\.role\)\}/);
+  assert.match(appSource, /canDelete=\{data\.viewer\.permissions\.includes\("clients\.delete"\)\}/);
   assert.match(appSource, /adminEmail=\{data\.viewer\.email\}/);
   assert.match(operationsSource, /canDelete \? <button className="danger"/);
   assert.doesNotMatch(operationsSource, /archive_client|>Archive<|function archive\(/);

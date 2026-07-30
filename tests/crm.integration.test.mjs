@@ -206,8 +206,9 @@ test("AI Connector stores only hashed OAuth credentials and exposes bounded CRM 
     assert.match(mcpSource, new RegExp(`\\b${safeTool}\\b`));
   }
   assert.doesNotMatch(mcpSource, /send_(?:sms|email)|delete_(?:contact|lead)|charge_(?:card|payment)/i);
-  assert.match(connectorUi, /No BrizBuilder AI usage bill/);
-  assert.match(connectorUi, /Customer messages[\s\S]*Blocked/);
+  assert.match(connectorUi, /Connect your AI apps/);
+  assert.match(connectorUi, /Works with AI apps that support custom MCP connectors/);
+  assert.match(connectorUi, /limited to the businesses and permissions you approve/);
   assert.doesNotMatch(futureUi, /AI PLAYGROUND PREVIEW/);
   assert.match(
     mcpSource,
@@ -381,14 +382,14 @@ test("Phase 1 CRM authentication, tenant isolation, imports, custom data, compan
     const adminResponse = await mf.dispatchFetch("http://crm.test/api/crm", { headers: authHeaders() });
     assert.equal(adminResponse.status, 200);
     const adminBody = await adminResponse.json();
-    assert.equal(adminBody.data.organization.name, "Brizuela Leads");
-    assert.equal(adminBody.data.viewer.role, "AGENCY_OWNER");
+    assert.equal(adminBody.data.organization.name, "LB Marketing");
+    assert.equal(adminBody.data.viewer.role, "LB_OWNER");
     assert.equal(adminBody.data.demoData, false, "production bootstrap does not inject demo customer data");
     assert.ok(adminBody.data.featureFlags.some((flag) => flag.moduleKey === "crm" && flag.enabled));
     assert.ok(adminBody.data.featureFlags.some((flag) => flag.moduleKey === "communications" && !flag.enabled));
     assert.ok(adminBody.data.viewer.permissions.includes("audit.read"));
     for (const permission of ["reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage"]) {
-      assert.ok(adminBody.data.viewer.permissions.includes(permission), `agency owner has ${permission}`);
+      assert.ok(adminBody.data.viewer.permissions.includes(permission), `LB Owner has ${permission}`);
     }
     assert.deepEqual(adminBody.data.reviewRequests, [], "a new account has no fabricated review-request history");
     assert.deepEqual(adminBody.data.reviewSettings, [], "a new account has no fabricated review settings");

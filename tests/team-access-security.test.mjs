@@ -35,11 +35,13 @@ test("invites cannot escalate past the inviter", () => {
   const roles = allowlist.match(/"([A-Z_]+)"/g).map((item) => item.replaceAll('"', ""));
   assert.deepEqual(
     roles.sort(),
-    ["AGENCY_ADMIN", "AGENCY_MEMBER", "CLIENT_EMPLOYEE", "CLIENT_MANAGER", "CLIENT_OWNER"],
-    "SUPER_ADMIN and AGENCY_OWNER must never be grantable through an invite",
+    ["CLIENT_EMPLOYEE", "CLIENT_MANAGER", "CLIENT_OWNER", "LB_ADMIN", "LB_TEAM_MEMBER"],
+    "LB_OWNER and legacy owner roles must never be grantable through an invite",
   );
-  assert.ok(inviteBlock.includes("INVITABLE_ROLES.includes(role as CrmRole)"));
-  assert.doesNotMatch(inviteBlock, /"SUPER_ADMIN"/);
+  assert.ok(inviteBlock.includes("INVITABLE_ROLES.includes(role)"));
+  assert.doesNotMatch(allowlist, /"SUPER_ADMIN"/);
+  assert.doesNotMatch(allowlist, /"LB_OWNER"/);
+  assert.doesNotMatch(allowlist, /"AGENCY_OWNER"/);
 });
 
 test("a client-scoped invite is pinned to a sub-account the inviter owns", () => {
@@ -51,6 +53,8 @@ test("a client-scoped invite is pinned to a sub-account the inviter owns", () =>
   assert.ok(writeIndex > requireClientIndex, "membership written only after verification");
   // Tenant columns always come from the authenticated context, not the request.
   assert.match(inviteBlock, /organization_id: context\.organizationId/);
+  assert.match(inviteBlock, /Only the LB Owner can grant LB agency roles/);
+  assert.match(inviteBlock, /targetIsLbTeamMember/);
   assert.doesNotMatch(inviteBlock, /input\.organizationId/);
 });
 
@@ -97,6 +101,8 @@ test("an invited person of either kind actually resolves to access", () => {
 
 test("the invite UI requires a sub-account for client roles and explains the Access step", () => {
   assert.match(formsSource, /clientId: needsSubAccount \? getFormValue\(form, "clientId"\) : ""/);
+  assert.match(formsSource, /canInviteLbRoles \? <optgroup label="LB Marketing"/);
+  assert.match(formsSource, /const needsSubAccount = isAgency && \(isClientRole \|\| isLbTeamMember\)/);
   // The Cloudflare Access caveat lives on the Team view (it applies to every
   // grant, not just new invites) until Access is removed at launch.
   assert.match(opsSource, /Cloudflare Access policy/);

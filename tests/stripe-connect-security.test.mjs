@@ -54,10 +54,18 @@ const migrationSource = read(
   "20260723180000_stripe_embedded_security.sql",
 );
 
-function rolePermissionBlock(source, role) {
-  const match = source.match(new RegExp(`${role}:\\s*\\[([\\s\\S]*?)\\]`));
-  assert.ok(match, `${role} permission array exists`);
+function permissionArrayBlock(source, name) {
+  const match = source.match(new RegExp(`const ${name}: CrmPermission\\[] = \\[([\\s\\S]*?)\\]`));
+  assert.ok(match, `${name} permission array exists`);
   return match[1];
+}
+
+function rolePermissionBlock(source, role) {
+  const direct = source.match(new RegExp(`${role}:\\s*\\[([\\s\\S]*?)\\]`));
+  if (direct) return direct[1];
+  const mapped = source.match(new RegExp(`${role}:\\s*([a-zA-Z]+Permissions)`));
+  assert.ok(mapped, `${role} permission array exists`);
+  return permissionArrayBlock(source, mapped[1]);
 }
 
 test("Stripe OAuth stores an account id and mode but never returns customer bearer tokens", () => {
@@ -167,11 +175,14 @@ test("payments.manage remains owner tier and Account Sessions narrow it to finan
     d1CrmSource,
     /"billing\.read_shared"\s*\n\s*\|\s*"payments\.manage"/,
   );
-  // Payments is an agency-only tab: no client role may hold payments.manage,
-  // so a client user cannot reach Stripe setup even by crafting a request.
-  for (const role of ["SUPER_ADMIN", "AGENCY_OWNER", "AGENCY_ADMIN"])
+  // Payments is an LB Owner-only agency capability: no admin, team, or client
+  // role may hold payments.manage even by crafting a request.
+  for (const role of ["LB_OWNER", "SUPER_ADMIN", "AGENCY_OWNER"])
     assert.match(rolePermissionBlock(supabaseCrmSource, role), /"payments\.manage"/);
   for (const role of [
+    "LB_ADMIN",
+    "LB_TEAM_MEMBER",
+    "AGENCY_ADMIN",
     "AGENCY_MEMBER",
     "CLIENT_OWNER",
     "CLIENT_MANAGER",
@@ -183,7 +194,7 @@ test("payments.manage remains owner tier and Account Sessions narrow it to finan
     );
   assert.match(
     supabaseCrmSource,
-    /function isStripeFinancialOwner\([\s\S]*?"SUPER_ADMIN"[\s\S]*?"AGENCY_OWNER"[\s\S]*?"CLIENT_OWNER"/,
+    /function isStripeFinancialOwner\([\s\S]*?"LB_OWNER"[\s\S]*?"SUPER_ADMIN"[\s\S]*?"AGENCY_OWNER"[\s\S]*?"CLIENT_OWNER"/,
   );
   assert.match(
     supabaseCrmSource,

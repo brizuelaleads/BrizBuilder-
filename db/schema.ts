@@ -67,7 +67,7 @@ export const organizationMembers = sqliteTable(
     id: text("id").primaryKey(),
     organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
     accountId: text("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
-    role: text("role", { enum: ["SUPER_ADMIN", "AGENCY_OWNER", "AGENCY_ADMIN", "AGENCY_MEMBER"] }).notNull(),
+    role: text("role", { enum: ["LB_OWNER", "LB_ADMIN", "LB_TEAM_MEMBER", "SUPER_ADMIN", "AGENCY_OWNER", "AGENCY_ADMIN", "AGENCY_MEMBER"] }).notNull(),
     status: text("status", { enum: ["active", "disabled"] }).notNull().default("active"),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },

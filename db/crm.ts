@@ -4,6 +4,9 @@ import { MAIN_ADMIN_EMAIL } from "../app/auth-config";
 import { ensureAccessSchema, getAccountAccess } from "./access";
 
 export type CrmRole =
+  | "LB_OWNER"
+  | "LB_ADMIN"
+  | "LB_TEAM_MEMBER"
   | "SUPER_ADMIN"
   | "AGENCY_OWNER"
   | "AGENCY_ADMIN"
@@ -14,6 +17,7 @@ export type CrmRole =
 
 export type CrmPermission =
   | "clients.manage"
+  | "clients.delete"
   | "contacts.write"
   | "contacts.import"
   | "companies.write"
@@ -37,16 +41,21 @@ export type CrmPermission =
   | "custom_data.manage"
   | "team.manage"
   | "audit.read"
-  | "feature_flags.manage";
+  | "feature_flags.manage"
+  | "reports.read";
+
+const fullAccessPermissions: CrmPermission[] = ["clients.manage", "clients.delete", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "payments.manage", "messages.write", "automations.manage", "ai_connector.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage", "reports.read"];
+const lbAdminPermissions: CrmPermission[] = ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "messages.write", "automations.manage", "team.manage", "reports.read"];
+const lbTeamMemberPermissions: CrmPermission[] = ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "messages.write"];
 
 const rolePermissions: Record<CrmRole, CrmPermission[]> = {
-  SUPER_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "payments.manage", "messages.write", "automations.manage", "ai_connector.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_OWNER: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "payments.manage", "messages.write", "automations.manage", "ai_connector.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_ADMIN: ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "payments.manage", "messages.write", "automations.manage", "ai_connector.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage"],
-  AGENCY_MEMBER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "websites.manage", "profiles.manage", "reviews.read", "reviews.reply", "reviews.request", "messages.write"],
-  // Client roles are scoped to their own sub-account. Business-profile,
-  // Twilio, and Stripe setup stay with the agency; owners and managers may
-  // link their own Google Calendar without gaining access to provider setup.
+  LB_OWNER: fullAccessPermissions,
+  LB_ADMIN: lbAdminPermissions,
+  LB_TEAM_MEMBER: lbTeamMemberPermissions,
+  SUPER_ADMIN: fullAccessPermissions,
+  AGENCY_OWNER: fullAccessPermissions,
+  AGENCY_ADMIN: lbAdminPermissions,
+  AGENCY_MEMBER: lbTeamMemberPermissions,
   CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "messages.write", "team.manage"],
   CLIENT_MANAGER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "messages.write"],
   CLIENT_EMPLOYEE: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "reviews.read", "messages.write"],
@@ -516,6 +525,7 @@ export type CrmBootstrap = {
     role: CrmRole;
     clientId: string | null;
     isAgency: boolean;
+    canViewAllClients: boolean;
     permissions: CrmPermission[];
     theme: CrmTheme;
   };
@@ -564,6 +574,7 @@ type TenantContext = {
   name: string;
   role: CrmRole;
   clientId: string | null;
+  accessibleClientIds: string[] | null;
 };
 
 const ORGANIZATION_ID = "org_brizuela_leads";
@@ -672,7 +683,7 @@ async function removeOldDemoRecords(db: D1Database) {
 
 async function ensureAgencyBaseline(db: D1Database) {
   await db.prepare(`INSERT OR IGNORE INTO organizations (id, name, slug, status) VALUES (?, ?, ?, 'active')`)
-    .bind(ORGANIZATION_ID, "Brizuela Leads", "brizuela-leads")
+    .bind(ORGANIZATION_ID, "LB Marketing", "lb-marketing")
     .run();
   await db.prepare(`INSERT OR IGNORE INTO pipelines (id, organization_id, name, is_default) VALUES (?, ?, 'Default sales pipeline', 1)`)
     .bind(PIPELINE_ID, ORGANIZATION_ID)
@@ -720,11 +731,36 @@ async function ensureAgencyBaseline(db: D1Database) {
 
   const baselineAccount = await db.prepare("SELECT id FROM accounts WHERE lower(email) = ? LIMIT 1").bind(MAIN_ADMIN_EMAIL).first<{ id: string }>();
   if (baselineAccount?.id) {
-    await db.prepare(`INSERT OR IGNORE INTO organization_members (id, organization_id, account_id, role, status) VALUES ('org_member_owner', ?, ?, 'AGENCY_OWNER', 'active')`)
+    await db.prepare(`INSERT OR IGNORE INTO organization_members (id, organization_id, account_id, role, status) VALUES ('org_member_owner', ?, ?, 'LB_OWNER', 'active')`)
       .bind(ORGANIZATION_ID, baselineAccount.id)
       .run();
   }
 
+}
+
+function normalizeCrmRole(value: unknown): CrmRole {
+  if (value === "SUPER_ADMIN" || value === "AGENCY_OWNER") return "LB_OWNER";
+  if (value === "AGENCY_ADMIN") return "LB_ADMIN";
+  if (value === "AGENCY_MEMBER") return "LB_TEAM_MEMBER";
+  return Object.prototype.hasOwnProperty.call(rolePermissions, String(value))
+    ? (String(value) as CrmRole)
+    : "CLIENT_OWNER";
+}
+
+function isLbOwner(role: CrmRole) {
+  return role === "LB_OWNER" || role === "SUPER_ADMIN" || role === "AGENCY_OWNER";
+}
+
+async function assignedClientIdsForAccount(accountId: string, organizationId: string) {
+  const rows = await database()
+    .prepare("SELECT client_id FROM client_members WHERE account_id = ? AND organization_id = ? AND status = 'active'")
+    .bind(accountId, organizationId)
+    .all<{ client_id: string }>();
+  return [...new Set((rows.results ?? []).map((row) => row.client_id))];
+}
+
+function clientAccessList(context: TenantContext) {
+  return context.clientId ? [context.clientId] : context.accessibleClientIds;
 }
 
 async function getTenantContext(user: ChatGPTUser): Promise<TenantContext> {
@@ -733,7 +769,7 @@ async function getTenantContext(user: ChatGPTUser): Promise<TenantContext> {
   await ensureCrmSchema();
   const db = database();
   const account = await db.prepare("SELECT id FROM accounts WHERE lower(email) = ? AND status = 'active' LIMIT 1")
-    .bind(user.email.toLowerCase())
+    .bind(access.email.toLowerCase())
     .first<{ id: string }>();
   if (!account) throw new Error("Forbidden");
 
@@ -742,20 +778,42 @@ async function getTenantContext(user: ChatGPTUser): Promise<TenantContext> {
       .bind(account.id)
       .first<{ role: CrmRole; organization_id: string; organization_name: string }>();
     if (!membership) throw new Error("Forbidden");
-    return { organizationId: membership.organization_id, organizationName: membership.organization_name, accountId: account.id, email: access.email, name: access.displayName, role: membership.role, clientId: null };
+    const role = normalizeCrmRole(membership.role);
+    const assignedClientIds = await assignedClientIdsForAccount(account.id, membership.organization_id);
+    const accessibleClientIds = isLbOwner(role) || (role === "LB_ADMIN" && !assignedClientIds.length)
+      ? null
+      : assignedClientIds;
+    if (role === "LB_TEAM_MEMBER" && !assignedClientIds.length) throw new Error("Forbidden");
+    return { organizationId: membership.organization_id, organizationName: "LB Marketing", accountId: account.id, email: access.email, name: access.displayName, role, clientId: null, accessibleClientIds };
   }
 
   const client = await db.prepare(`SELECT cc.id, cc.organization_id, o.name AS organization_name, cm.role FROM crm_clients cc JOIN organizations o ON o.id = cc.organization_id LEFT JOIN client_members cm ON cm.client_id = cc.id AND cm.account_id = ? AND cm.status = 'active' WHERE cc.legacy_client_id = ? AND cc.status = 'active' LIMIT 1`)
     .bind(account.id, access.client?.id ?? "")
     .first<{ id: string; organization_id: string; organization_name: string; role: CrmRole | null }>();
   if (!client) throw new Error("Forbidden");
-  return { organizationId: client.organization_id, organizationName: client.organization_name, accountId: account.id, email: access.email, name: access.displayName, role: client.role ?? "CLIENT_OWNER", clientId: client.id };
+  return { organizationId: client.organization_id, organizationName: "LB Marketing", accountId: account.id, email: access.email, name: access.displayName, role: normalizeCrmRole(client.role ?? "CLIENT_OWNER"), clientId: client.id, accessibleClientIds: [client.id] };
 }
 
 function clientClause(context: TenantContext, alias: string) {
-  return context.clientId ? { sql: ` AND ${alias}.client_id = ?`, values: [context.clientId] } : { sql: "", values: [] as string[] };
+  const clientIds = clientAccessList(context);
+  if (!clientIds) return { sql: "", values: [] as string[] };
+  if (!clientIds.length) return { sql: " AND 1 = 0", values: [] as string[] };
+  return { sql: ` AND ${alias}.client_id IN (${clientIds.map(() => "?").join(",")})`, values: clientIds };
 }
 
+function clientListClause(context: TenantContext, alias: string) {
+  const clientIds = clientAccessList(context);
+  if (!clientIds) return { sql: "", values: [] as string[] };
+  if (!clientIds.length) return { sql: " AND 1 = 0", values: [] as string[] };
+  return { sql: ` AND ${alias}.id IN (${clientIds.map(() => "?").join(",")})`, values: clientIds };
+}
+
+function featureFlagClause(context: TenantContext, alias: string) {
+  const clientIds = clientAccessList(context);
+  if (!clientIds) return { sql: "", values: [] as string[] };
+  if (!clientIds.length) return { sql: ` AND ${alias}.client_id IS NULL`, values: [] as string[] };
+  return { sql: ` AND (${alias}.client_id IS NULL OR ${alias}.client_id IN (${clientIds.map(() => "?").join(",")}))`, values: clientIds };
+}
 function parseStringArray(value: unknown): string[] {
   if (typeof value !== "string") return [];
   try {
@@ -781,7 +839,8 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
   const context = await getTenantContext(user);
   const db = database();
   const scope = clientClause(context, "x");
-  const clientListScope = context.clientId ? { sql: " AND x.id = ?", values: [context.clientId] } : { sql: "", values: [] as string[] };
+  const clientListScope = clientListClause(context, "x");
+  const featureScope = featureFlagClause(context, "x");
 
   const [clientRows, leadRows, contactRows, companyRows, websiteRows, googleProfileRows, customFieldRows, customFieldValueRows, customValueRows, featureFlagRows, stageRows, taskRows, appointmentRows, activityRows, noteRows, teamRows, auditRows] = await Promise.all([
     db.prepare(`SELECT * FROM crm_clients x WHERE x.organization_id = ? AND x.status != 'archived'${clientListScope.sql} ORDER BY x.business_name`).bind(context.organizationId, ...clientListScope.values).all<Record<string, unknown>>(),
@@ -793,20 +852,18 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
     db.prepare(`SELECT x.* FROM custom_field_definitions x WHERE x.organization_id = ? AND x.is_active = 1${scope.sql} ORDER BY x.entity_type, x.position, x.label`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.* FROM custom_field_values x WHERE x.organization_id = ?${scope.sql} ORDER BY x.updated_at DESC`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.* FROM custom_values x WHERE x.organization_id = ?${scope.sql} ORDER BY x.label`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
-    context.clientId
-      ? db.prepare(`SELECT x.* FROM feature_flags x WHERE x.organization_id = ? AND (x.client_id IS NULL OR x.client_id = ?) ORDER BY x.module_key`).bind(context.organizationId, context.clientId).all<Record<string, unknown>>()
-      : db.prepare(`SELECT x.* FROM feature_flags x WHERE x.organization_id = ? ORDER BY x.client_id, x.module_key`).bind(context.organizationId).all<Record<string, unknown>>(),
+    db.prepare(`SELECT x.* FROM feature_flags x WHERE x.organization_id = ?${featureScope.sql} ORDER BY x.client_id, x.module_key`).bind(context.organizationId, ...featureScope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT id, name, slug, color, position, is_won, is_lost FROM pipeline_stages WHERE organization_id = ? ORDER BY position`).bind(context.organizationId).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.* FROM tasks x WHERE x.organization_id = ?${scope.sql} ORDER BY CASE x.status WHEN 'COMPLETED' THEN 1 ELSE 0 END, x.due_at`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.*, c.first_name || ' ' || c.last_name AS contact_name, cc.business_name AS client_name FROM appointments x JOIN contacts c ON c.id = x.contact_id JOIN crm_clients cc ON cc.id = x.client_id WHERE x.organization_id = ?${scope.sql} ORDER BY x.starts_at`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.* FROM activities x WHERE x.organization_id = ?${scope.sql} ORDER BY x.occurred_at DESC LIMIT 200`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.* FROM crm_notes x WHERE x.organization_id = ?${scope.sql} ORDER BY x.created_at DESC LIMIT 200`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
-    context.clientId ? Promise.resolve({ results: [] as Record<string, unknown>[] }) : db.prepare(`SELECT om.id, a.email, a.display_name, om.role, om.status, a.last_login_at FROM organization_members om JOIN accounts a ON a.id = om.account_id WHERE om.organization_id = ? ORDER BY CASE om.role WHEN 'AGENCY_OWNER' THEN 0 WHEN 'AGENCY_ADMIN' THEN 1 ELSE 2 END, a.display_name`).bind(context.organizationId).all<Record<string, unknown>>(),
+    context.clientId ? Promise.resolve({ results: [] as Record<string, unknown>[] }) : db.prepare(`SELECT om.id, a.email, a.display_name, om.role, om.status, a.last_login_at FROM organization_members om JOIN accounts a ON a.id = om.account_id WHERE om.organization_id = ? ORDER BY CASE om.role WHEN 'LB_OWNER' THEN 0 WHEN 'SUPER_ADMIN' THEN 0 WHEN 'AGENCY_OWNER' THEN 0 WHEN 'LB_ADMIN' THEN 1 WHEN 'AGENCY_ADMIN' THEN 1 ELSE 2 END, a.display_name`).bind(context.organizationId).all<Record<string, unknown>>(),
     rolePermissions[context.role].includes("audit.read") ? db.prepare(`SELECT id, actor_email, action, record_type, record_id, metadata_json, created_at FROM audit_logs WHERE organization_id = ? ORDER BY created_at DESC LIMIT 150`).bind(context.organizationId).all<Record<string, unknown>>() : Promise.resolve({ results: [] as Record<string, unknown>[] }),
   ]);
 
   return {
-    viewer: { name: context.name, email: context.email, role: context.role, clientId: context.clientId, isAgency: !context.clientId, permissions: rolePermissions[context.role], theme: "classic" },
+    viewer: { name: context.name, email: context.email, role: context.role, clientId: context.clientId, isAgency: !context.clientId, canViewAllClients: clientAccessList(context) === null, permissions: rolePermissions[context.role], theme: "classic" },
     organization: { id: context.organizationId, name: context.organizationName },
     clients: clientRows.results.map(mapClient),
     leads: leadRows.results.map(mapLead),
@@ -866,7 +923,7 @@ function requirePermission(context: TenantContext, permission: CrmPermission) {
 }
 
 function requireAgencyAdministrator(context: TenantContext) {
-  if (!["SUPER_ADMIN", "AGENCY_OWNER", "AGENCY_ADMIN"].includes(context.role)) throw new Error("Forbidden");
+  requirePermission(context, "clients.delete");
 }
 
 export function renderCrmTemplate(template: string, values: Record<string, string | number | boolean | null | undefined>): string {
@@ -955,7 +1012,8 @@ function cents(value: unknown): number {
 }
 
 async function requireClient(context: TenantContext, clientId: string) {
-  if (context.clientId && context.clientId !== clientId) throw new Error("Forbidden");
+  const clientIds = clientAccessList(context);
+  if (clientIds && !clientIds.includes(clientId)) throw new Error("Forbidden");
   const client = await database().prepare("SELECT id FROM crm_clients WHERE id = ? AND organization_id = ? AND status != 'archived' LIMIT 1").bind(clientId, context.organizationId).first();
   if (!client) throw new Error("Client not found.");
 }
@@ -1490,18 +1548,43 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
     const email = requireText(input.email, "Email", 160).toLowerCase();
     if (!email.includes("@")) throw new Error("Enter a valid email address.");
     const displayName = requireText(input.displayName, "Name", 120);
-    const role = String(input.role) as CrmRole;
-    if (!["AGENCY_ADMIN", "AGENCY_MEMBER"].includes(role)) throw new Error("Select a valid agency role.");
+    const role = normalizeCrmRole(String(input.role) as CrmRole);
+    if (!["LB_ADMIN", "LB_TEAM_MEMBER", "CLIENT_OWNER", "CLIENT_MANAGER", "CLIENT_EMPLOYEE"].includes(role)) throw new Error("Select a valid role.");
+    const targetIsClientUser = role.startsWith("CLIENT_");
+    const targetIsLbTeamMember = role === "LB_TEAM_MEMBER";
+    const targetIsAgencySide = role === "LB_ADMIN" || targetIsLbTeamMember;
+    if (targetIsAgencySide && !isLbOwner(context.role)) throw new Error("Only the LB Owner can grant LB agency roles.");
+    let clientId: string | null = null;
+    if (context.clientId) {
+      if (!targetIsClientUser) throw new Error("You can only invite people to your own business.");
+      clientId = context.clientId;
+    } else if (targetIsClientUser || targetIsLbTeamMember) {
+      clientId = requireText(input.clientId, "Sub-account", 100);
+      await requireClient(context, clientId);
+    }
     const existing = await db.prepare("SELECT id FROM accounts WHERE lower(email) = ? LIMIT 1").bind(email).first<{ id: string }>();
     const accountId = existing?.id ?? `account_${crypto.randomUUID()}`;
+    const existingOrgMember = await db.prepare("SELECT role FROM organization_members WHERE organization_id = ? AND account_id = ? AND status = 'active' LIMIT 1").bind(context.organizationId, accountId).first<{ role: CrmRole }>();
+    if (existingOrgMember?.role && isLbOwner(normalizeCrmRole(existingOrgMember.role)) && role !== "LB_OWNER") throw new Error("The LB Owner cannot be downgraded.");
     await db.prepare(`INSERT INTO accounts (id, email, display_name, role, status) VALUES (?, ?, ?, 'admin', 'active') ON CONFLICT(email) DO UPDATE SET display_name = excluded.display_name, role = 'admin', status = 'active'`)
       .bind(accountId, email, displayName)
       .run();
-    await db.prepare(`INSERT INTO organization_members (id, organization_id, account_id, role, status) VALUES (?, ?, ?, ?, 'active') ON CONFLICT(organization_id, account_id) DO UPDATE SET role = excluded.role, status = 'active'`)
-      .bind(`org_member_${crypto.randomUUID()}`, context.organizationId, accountId, role)
-      .run();
-    await audit(context, "member.invited", "account", accountId, { role });
-    return { id: accountId };
+    if (targetIsClientUser && clientId) {
+      await db.prepare(`INSERT INTO client_members (id, organization_id, client_id, account_id, role, status) VALUES (?, ?, ?, ?, ?, 'active') ON CONFLICT(client_id, account_id) DO UPDATE SET role = excluded.role, status = 'active'`)
+        .bind(`client_member_${crypto.randomUUID()}`, context.organizationId, clientId, accountId, role)
+        .run();
+    } else {
+      await db.prepare(`INSERT INTO organization_members (id, organization_id, account_id, role, status) VALUES (?, ?, ?, ?, 'active') ON CONFLICT(organization_id, account_id) DO UPDATE SET role = excluded.role, status = 'active'`)
+        .bind(`org_member_${crypto.randomUUID()}`, context.organizationId, accountId, role)
+        .run();
+      if (targetIsLbTeamMember && clientId) {
+        await db.prepare(`INSERT INTO client_members (id, organization_id, client_id, account_id, role, status) VALUES (?, ?, ?, ?, ?, 'active') ON CONFLICT(client_id, account_id) DO UPDATE SET role = excluded.role, status = 'active'`)
+          .bind(`client_member_${crypto.randomUUID()}`, context.organizationId, clientId, accountId, role)
+          .run();
+      }
+    }
+    await audit(context, "member.invited", "account", accountId, { role, clientId }, clientId);
+    return { id: accountId, role, clientId };
   }
 
   throw new Error("Unsupported action.");

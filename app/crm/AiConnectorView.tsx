@@ -149,7 +149,7 @@ export function AiConnectorView({
     selectedClientId === "all"
       ? null
       : clientById.get(selectedClientId) ?? null;
-  const workspaceName = selectedClient?.businessName ?? "Agency workspace";
+  const workspaceName = selectedClient?.businessName ?? "LB Marketing";
 
   const visibleAuthorizations = useMemo(
     () =>

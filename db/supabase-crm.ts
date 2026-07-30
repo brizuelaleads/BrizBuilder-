@@ -94,6 +94,7 @@ type TenantContext = {
   name: string;
   role: CrmRole;
   clientId: string | null;
+  accessibleClientIds: string[] | null;
 };
 
 export type SupabaseTenantContext = TenantContext;
@@ -103,6 +104,7 @@ export type SupabaseTenantContext = TenantContext;
 type AnyRecord = Record<string, any>;
 
 const ORGANIZATION_ID = "00000000-0000-4000-8000-000000000001";
+const ORGANIZATION_NAME = "LB Marketing";
 const PIPELINE_ID = "00000000-0000-4000-8000-000000000101";
 
 const STAGES = [
@@ -180,106 +182,74 @@ const STAGES = [
   },
 ];
 
+const fullAccessPermissions: CrmPermission[] = [
+  "clients.manage",
+  "clients.delete",
+  "contacts.write",
+  "contacts.import",
+  "companies.write",
+  "opportunities.write",
+  "tasks.write",
+  "appointments.write",
+  "calendar.connect",
+  "websites.manage",
+  "profiles.manage",
+  "profiles.connect",
+  "reviews.read",
+  "reviews.reply",
+  "reviews.request",
+  "reviews.settings.manage",
+  "phone_system.manage",
+  "billing.read_shared",
+  "payments.manage",
+  "messages.write",
+  "automations.manage",
+  "ai_connector.manage",
+  "custom_data.manage",
+  "team.manage",
+  "audit.read",
+  "feature_flags.manage",
+  "reports.read",
+];
+
+const lbAdminPermissions: CrmPermission[] = [
+  "clients.manage",
+  "contacts.write",
+  "contacts.import",
+  "companies.write",
+  "opportunities.write",
+  "tasks.write",
+  "appointments.write",
+  "calendar.connect",
+  "websites.manage",
+  "reviews.read",
+  "reviews.reply",
+  "reviews.request",
+  "reviews.settings.manage",
+  "messages.write",
+  "automations.manage",
+  "team.manage",
+  "reports.read",
+];
+
+const lbTeamMemberPermissions: CrmPermission[] = [
+  "contacts.write",
+  "contacts.import",
+  "companies.write",
+  "opportunities.write",
+  "tasks.write",
+  "appointments.write",
+  "messages.write",
+];
+
 const rolePermissions: Record<CrmRole, CrmPermission[]> = {
-  SUPER_ADMIN: [
-    "clients.manage",
-    "contacts.write",
-    "contacts.import",
-    "companies.write",
-    "opportunities.write",
-    "tasks.write",
-    "appointments.write",
-    "calendar.connect",
-    "websites.manage",
-    "profiles.manage",
-    "profiles.connect",
-    "reviews.read",
-    "reviews.reply",
-    "reviews.request",
-    "reviews.settings.manage",
-    "phone_system.manage",
-    "billing.read_shared",
-    "payments.manage",
-    "messages.write",
-    "automations.manage",
-    "ai_connector.manage",
-    "custom_data.manage",
-    "team.manage",
-    "audit.read",
-    "feature_flags.manage",
-  ],
-  AGENCY_OWNER: [
-    "clients.manage",
-    "contacts.write",
-    "contacts.import",
-    "companies.write",
-    "opportunities.write",
-    "tasks.write",
-    "appointments.write",
-    "calendar.connect",
-    "websites.manage",
-    "profiles.manage",
-    "profiles.connect",
-    "reviews.read",
-    "reviews.reply",
-    "reviews.request",
-    "reviews.settings.manage",
-    "phone_system.manage",
-    "billing.read_shared",
-    "payments.manage",
-    "messages.write",
-    "automations.manage",
-    "ai_connector.manage",
-    "custom_data.manage",
-    "team.manage",
-    "audit.read",
-    "feature_flags.manage",
-  ],
-  AGENCY_ADMIN: [
-    "clients.manage",
-    "contacts.write",
-    "contacts.import",
-    "companies.write",
-    "opportunities.write",
-    "tasks.write",
-    "appointments.write",
-    "calendar.connect",
-    "websites.manage",
-    "profiles.manage",
-    "profiles.connect",
-    "reviews.read",
-    "reviews.reply",
-    "reviews.request",
-    "reviews.settings.manage",
-    "phone_system.manage",
-    "billing.read_shared",
-    "payments.manage",
-    "messages.write",
-    "automations.manage",
-    "ai_connector.manage",
-    "custom_data.manage",
-    "team.manage",
-    "audit.read",
-    "feature_flags.manage",
-  ],
-  AGENCY_MEMBER: [
-    "contacts.write",
-    "contacts.import",
-    "companies.write",
-    "opportunities.write",
-    "tasks.write",
-    "appointments.write",
-    "websites.manage",
-    "profiles.manage",
-    "reviews.read",
-    "reviews.reply",
-    "reviews.request",
-    "messages.write",
-  ],
-  // Client roles are scoped to their own sub-account. Business-profile,
-  // Twilio, and Stripe setup stay with the agency; owners and managers may
-  // link their own Google Calendar without gaining access to provider setup.
-  // Must stay identical to the map in db/crm.ts (asserted by tests).
+  LB_OWNER: fullAccessPermissions,
+  LB_ADMIN: lbAdminPermissions,
+  LB_TEAM_MEMBER: lbTeamMemberPermissions,
+  SUPER_ADMIN: fullAccessPermissions,
+  AGENCY_OWNER: fullAccessPermissions,
+  AGENCY_ADMIN: lbAdminPermissions,
+  AGENCY_MEMBER: lbTeamMemberPermissions,
   CLIENT_OWNER: [
     "contacts.write",
     "contacts.import",
@@ -340,8 +310,8 @@ function assertUsablePassword(password: string) {
 // AGENCY_OWNER are deliberately excluded so an invite can never escalate
 // someone past the person sending it.
 const INVITABLE_ROLES: readonly CrmRole[] = [
-  "AGENCY_ADMIN",
-  "AGENCY_MEMBER",
+  "LB_ADMIN",
+  "LB_TEAM_MEMBER",
   "CLIENT_OWNER",
   "CLIENT_MANAGER",
   "CLIENT_EMPLOYEE",
@@ -556,8 +526,7 @@ function requirePermission(context: TenantContext, permission: CrmPermission) {
 }
 
 function requireAgencyAdministrator(context: TenantContext) {
-  if (!["SUPER_ADMIN", "AGENCY_OWNER", "AGENCY_ADMIN"].includes(context.role))
-    throw new Error("Forbidden");
+  requirePermission(context, "clients.delete");
 }
 
 function serviceAreas(value: unknown): string[] {
@@ -626,8 +595,8 @@ async function ensureSupabaseBaseline() {
     supabase().from("organizations").upsert(
       {
         id: ORGANIZATION_ID,
-        name: "Brizuela Leads",
-        slug: "brizuela-leads",
+        name: ORGANIZATION_NAME,
+        slug: "lb-marketing",
         status: "active",
       },
       { onConflict: "id" },
@@ -661,6 +630,49 @@ async function ensureSupabaseBaseline() {
   );
 }
 
+function normalizeCrmRole(value: unknown): CrmRole {
+  if (value === "SUPER_ADMIN" || value === "AGENCY_OWNER") return "LB_OWNER";
+  if (value === "AGENCY_ADMIN") return "LB_ADMIN";
+  if (value === "AGENCY_MEMBER") return "LB_TEAM_MEMBER";
+  return Object.prototype.hasOwnProperty.call(rolePermissions, String(value))
+    ? (String(value) as CrmRole)
+    : "CLIENT_OWNER";
+}
+
+function isLbOwner(role: CrmRole) {
+  return role === "LB_OWNER" || role === "SUPER_ADMIN" || role === "AGENCY_OWNER";
+}
+
+function isClientRole(role: CrmRole) {
+  return role === "CLIENT_OWNER" || role === "CLIENT_MANAGER" || role === "CLIENT_EMPLOYEE";
+}
+
+async function assignedClientIdsForProfile(profileId: string, organizationId: string) {
+  const rows = await assertOk(
+    supabase()
+      .from("client_members")
+      .select("client_id")
+      .eq("organization_id", organizationId)
+      .eq("profile_id", profileId)
+      .eq("status", "active"),
+  );
+  return [...new Set(((rows ?? []) as AnyRecord[]).map((row) => String(row.client_id)))];
+}
+
+function clientAccessList(context: TenantContext) {
+  return context.clientId ? [context.clientId] : context.accessibleClientIds;
+}
+
+function applyClientScope<T extends { eq: (column: string, value: string) => T; in: (column: string, values: string[]) => T }>(
+  context: TenantContext,
+  builder: T,
+  column = "client_id",
+): T {
+  const clientIds = clientAccessList(context);
+  if (!clientIds) return builder;
+  if (clientIds.length === 1) return builder.eq(column, clientIds[0]);
+  return builder.in(column, clientIds.length ? clientIds : ["__no_client_access__"]);
+}
 async function getTenantContext(user: ChatGPTUser): Promise<TenantContext> {
   await ensureSupabaseBaseline();
   const email = user.email.trim().toLowerCase();
@@ -668,11 +680,12 @@ async function getTenantContext(user: ChatGPTUser): Promise<TenantContext> {
   if (email === MAIN_ADMIN_EMAIL.trim().toLowerCase()) {
     return {
       organizationId: ORGANIZATION_ID,
-      organizationName: "Brizuela Leads",
+      organizationName: ORGANIZATION_NAME,
       email,
       name: user.displayName,
-      role: "AGENCY_OWNER",
+      role: "LB_OWNER",
       clientId: null,
+      accessibleClientIds: null,
     };
   }
 
@@ -697,13 +710,22 @@ async function getTenantContext(user: ChatGPTUser): Promise<TenantContext> {
   );
   if (agencyMembership?.role) {
     const organization = nestedOne(agencyMembership.organizations);
+    const organizationId = String(organization?.id ?? ORGANIZATION_ID);
+    const role = normalizeCrmRole(agencyMembership.role);
+    const assignedClientIds = await assignedClientIdsForProfile(String(profile.id), organizationId);
+    const accessibleClientIds = isLbOwner(role) || (role === "LB_ADMIN" && !assignedClientIds.length)
+      ? null
+      : assignedClientIds;
+    if (role === "LB_TEAM_MEMBER" && !assignedClientIds.length)
+      throw new Error("Forbidden");
     return {
-      organizationId: String(organization?.id ?? ORGANIZATION_ID),
-      organizationName: String(organization?.name ?? "Brizuela Leads"),
+      organizationId,
+      organizationName: ORGANIZATION_NAME,
       email,
       name: String(profile.display_name ?? user.displayName),
-      role: String(agencyMembership.role) as CrmRole,
+      role,
       clientId: null,
+      accessibleClientIds,
     };
   }
 
@@ -720,22 +742,21 @@ async function getTenantContext(user: ChatGPTUser): Promise<TenantContext> {
   );
   const client = nestedOne(clientMembership?.clients);
   if (!client?.id) throw new Error("Forbidden");
-  const organization = nestedOne(client.organizations);
 
   return {
-    organizationId: String(
-      organization?.id ?? client.organization_id ?? ORGANIZATION_ID,
-    ),
-    organizationName: String(organization?.name ?? "Brizuela Leads"),
+    organizationId: String(client.organization_id ?? ORGANIZATION_ID),
+    organizationName: ORGANIZATION_NAME,
     email,
     name: String(profile.display_name ?? user.displayName),
-    role: String(clientMembership?.role ?? "CLIENT_OWNER") as CrmRole,
+    role: normalizeCrmRole(clientMembership?.role ?? "CLIENT_OWNER"),
     clientId: String(client.id),
+    accessibleClientIds: [String(client.id)],
   };
 }
 
 async function requireClient(context: TenantContext, clientId: string) {
-  if (context.clientId && context.clientId !== clientId)
+  const clientIds = clientAccessList(context);
+  if (clientIds && !clientIds.includes(clientId))
     throw new Error("Forbidden");
   const client = await assertOk(
     supabase()
@@ -826,6 +847,7 @@ function stripeFriendlyStatus(account: StripeAccountSummary) {
 
 function isStripeFinancialOwner(context: TenantContext) {
   return (
+    context.role === "LB_OWNER" ||
     context.role === "SUPER_ADMIN" ||
     context.role === "AGENCY_OWNER" ||
     context.role === "CLIENT_OWNER"
@@ -1681,7 +1703,7 @@ function knownCrmRole(value: unknown): CrmRole | null {
   ) {
     return null;
   }
-  return value as CrmRole;
+  return normalizeCrmRole(value);
 }
 
 async function revalidateGoogleCallbackAuthorization(
@@ -1732,11 +1754,12 @@ async function revalidateGoogleCallbackAuthorization(
     if (organizationId !== ORGANIZATION_ID) throw new Error("Forbidden");
     const context: TenantContext = {
       organizationId,
-      organizationName: String(organization.name ?? "Brizuela Leads"),
+      organizationName: String(organization.name ?? ORGANIZATION_NAME),
       email,
       name: email,
-      role: "AGENCY_OWNER",
+      role: "LB_OWNER",
       clientId: null,
+      accessibleClientIds: null,
     };
     requirePermission(context, requiredPermission);
     return context;
@@ -1775,20 +1798,25 @@ async function revalidateGoogleCallbackAuthorization(
   ]);
 
   const agencyRole = knownCrmRole(organizationMembership?.role);
-  if (
-    agencyRole &&
-    ["SUPER_ADMIN", "AGENCY_OWNER", "AGENCY_ADMIN", "AGENCY_MEMBER"].includes(
-      agencyRole,
-    )
-  ) {
+  if (agencyRole && ["LB_OWNER", "LB_ADMIN", "LB_TEAM_MEMBER"].includes(agencyRole)) {
+    const assignedClientIds = await assignedClientIdsForProfile(
+      String(profile.id),
+      organizationId,
+    );
+    const accessibleClientIds =
+      isLbOwner(agencyRole) || (agencyRole === "LB_ADMIN" && !assignedClientIds.length)
+        ? null
+        : assignedClientIds;
     const context: TenantContext = {
       organizationId,
-      organizationName: String(organization.name ?? "BrizBuilder agency"),
+      organizationName: String(organization.name ?? ORGANIZATION_NAME),
       email,
       name: String(profile.display_name ?? email),
       role: agencyRole,
       clientId: null,
+      accessibleClientIds,
     };
+    await requireClient(context, clientId);
     requirePermission(context, requiredPermission);
     return context;
   }
@@ -1800,11 +1828,12 @@ async function revalidateGoogleCallbackAuthorization(
   ) {
     const context: TenantContext = {
       organizationId,
-      organizationName: String(organization.name ?? "BrizBuilder agency"),
+      organizationName: String(organization.name ?? ORGANIZATION_NAME),
       email,
       name: String(profile.display_name ?? email),
       role: clientRole,
       clientId,
+      accessibleClientIds: [clientId],
     };
     requirePermission(context, requiredPermission);
     return context;
@@ -2841,9 +2870,6 @@ export async function getSupabaseCrmBootstrap(
   user: ChatGPTUser,
 ): Promise<CrmBootstrap> {
   const context = await getTenantContext(user);
-  const clientFilter = context.clientId
-    ? { column: "client_id", value: context.clientId }
-    : null;
 
   // The generic documents the expected row shape until generated Supabase types are available.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -2852,8 +2878,7 @@ export async function getSupabaseCrmBootstrap(
       .from(table)
       .select(select)
       .eq("organization_id", context.organizationId);
-    if (clientFilter)
-      builder = builder.eq(clientFilter.column, clientFilter.value);
+    builder = applyClientScope(context, builder);
     return builder;
   };
 
@@ -2889,7 +2914,7 @@ export async function getSupabaseCrmBootstrap(
       let builder = query<AnyRecord>("clients")
         .neq("status", "archived")
         .order("business_name");
-      if (context.clientId) builder = builder.eq("id", context.clientId);
+      builder = applyClientScope(context, builder, "id");
       return assertOk(builder);
     })(),
     assertOk(
@@ -3195,12 +3220,13 @@ export async function getSupabaseCrmBootstrap(
       role: context.role,
       clientId: context.clientId,
       isAgency: !context.clientId,
+      canViewAllClients: clientAccessList(context) === null,
       permissions: rolePermissions[context.role],
       theme: viewerTheme,
     },
     organization: {
       id: context.organizationId,
-      name: context.organizationName,
+      name: ORGANIZATION_NAME,
     },
     clients: clientRows.map(mapClient),
     leads: leadRows.map(mapLead),
@@ -5980,21 +6006,20 @@ export async function executeSupabaseCrmAction(
     const email = requireText(input.email, "Email", 160).toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       throw new Error("Enter a valid email address.");
-    const role = requireText(input.role, "Role", 40);
-    // SUPER_ADMIN and AGENCY_OWNER are never grantable through the UI, so an
-    // invite can't be used to escalate past the inviter.
-    if (!INVITABLE_ROLES.includes(role as CrmRole))
+    const role = normalizeCrmRole(requireText(input.role, "Role", 40));
+    if (!INVITABLE_ROLES.includes(role))
       throw new Error("That role cannot be assigned here.");
-    const isClientRole = role.startsWith("CLIENT_");
+    const targetIsClientUser = isClientRole(role);
+    const targetIsLbTeamMember = role === "LB_TEAM_MEMBER";
+    const targetIsAgencySide = role === "LB_ADMIN" || targetIsLbTeamMember;
+    if (targetIsAgencySide && !isLbOwner(context.role))
+      throw new Error("Only the LB Owner can grant LB agency roles.");
     let clientId: string | null = null;
     if (context.clientId) {
-      // A client owner may only add their own staff: agency roles are refused
-      // outright and the sub-account is taken from their session, never from
-      // the request, so a supplied clientId cannot reach another tenant.
-      if (!isClientRole)
+      if (!targetIsClientUser)
         throw new Error("You can only invite people to your own business.");
       clientId = context.clientId;
-    } else if (isClientRole) {
+    } else if (targetIsClientUser || targetIsLbTeamMember) {
       clientId = requireText(input.clientId, "Sub-account", 100);
       await requireClient(context, clientId);
     }
@@ -6048,7 +6073,20 @@ export async function executeSupabaseCrmAction(
     }
 
     const now = new Date().toISOString();
-    if (isClientRole && clientId) {
+    const existingOrganizationMembership = await assertOk(
+      supabase()
+        .from("organization_members")
+        .select("role")
+        .eq("organization_id", context.organizationId)
+        .eq("profile_id", profile.id)
+        .eq("status", "active")
+        .maybeSingle(),
+    );
+    if (existingOrganizationMembership?.role && isLbOwner(normalizeCrmRole(existingOrganizationMembership.role)) && role !== "LB_OWNER") {
+      throw new Error("The LB Owner cannot be downgraded.");
+    }
+
+    if (targetIsClientUser && clientId) {
       await assertOk(
         supabase()
           .from("client_members")
@@ -6077,6 +6115,22 @@ export async function executeSupabaseCrmAction(
             { onConflict: "organization_id,profile_id" },
           ),
       );
+      if (targetIsLbTeamMember && clientId) {
+        await assertOk(
+          supabase()
+            .from("client_members")
+            .upsert(
+              {
+                organization_id: context.organizationId,
+                client_id: clientId,
+                profile_id: profile.id,
+                role,
+                status: "active",
+              },
+              { onConflict: "client_id,profile_id" },
+            ),
+        );
+      }
     }
     await audit(
       context,
@@ -6210,12 +6264,14 @@ export async function executeSupabaseCrmAction(
     const member = await assertOk(
       supabase()
         .from("organization_members")
-        .select("id,profile_id")
+        .select("id,profile_id,role")
         .eq("id", memberId)
         .eq("organization_id", context.organizationId)
         .maybeSingle(),
     );
     if (!member) throw new Error("Team member not found.");
+    if (isLbOwner(normalizeCrmRole(member.role)))
+      throw new Error("The LB Owner cannot be removed.");
     await assertOk(
       supabase()
         .from("organization_members")

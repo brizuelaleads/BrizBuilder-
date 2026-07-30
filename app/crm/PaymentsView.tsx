@@ -75,6 +75,7 @@ export function PaymentsView({
     "revoked",
   ].includes(connection?.status.toLowerCase() ?? "");
   const canOpenSecureTools = [
+    "LB_OWNER",
     "SUPER_ADMIN",
     "AGENCY_OWNER",
     "CLIENT_OWNER",

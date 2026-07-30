@@ -14,6 +14,26 @@ import { Badge, dateTime, EmptyState, Modal, money, shortDate } from "./ui";
 
 type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
 
+function roleLabel(role: string) {
+  const labels: Record<string, string> = {
+    LB_OWNER: "LB Owner",
+    LB_ADMIN: "LB Admin",
+    LB_TEAM_MEMBER: "LB Team Member",
+    SUPER_ADMIN: "LB Owner",
+    AGENCY_OWNER: "LB Owner",
+    AGENCY_ADMIN: "LB Admin",
+    AGENCY_MEMBER: "LB Team Member",
+    CLIENT_OWNER: "Client Owner",
+    CLIENT_MANAGER: "Client Manager",
+    CLIENT_EMPLOYEE: "Client Employee",
+  };
+  return labels[role] ?? role.replaceAll("_", " ");
+}
+
+function isProtectedOwnerRole(role: string) {
+  return ["LB_OWNER", "SUPER_ADMIN", "AGENCY_OWNER"].includes(role);
+}
+
 type CalendarSegment = {
   appointment: CrmAppointment;
   startsAt: Date;
@@ -477,7 +497,7 @@ export function ReportsView({ leads, clients }: { leads: CrmLead[]; clients: Crm
   const sourceRows = Object.entries(leads.reduce<Record<string, { leads: number; revenue: number }>>((acc, lead) => { const row = acc[lead.source] ?? { leads: 0, revenue: 0 }; row.leads += 1; row.revenue += lead.status === "WON" ? lead.finalRevenueCents : 0; acc[lead.source] = row; return acc; }, {})).sort((a, b) => b[1].leads - a[1].leads);
   const spend = clients.reduce((sum, client) => sum + client.monthlyAdBudgetCents, 0);
   const revenue = leads.reduce((sum, lead) => sum + (lead.status === "WON" ? lead.finalRevenueCents : 0), 0);
-  return <div className="crm-view crm-report-view"><section className="crm-page-heading"><div><p>PERFORMANCE REPORT</p><h2>Agency report</h2><span>Executive summary for the current client and date filters.</span></div><button className="crm-button-secondary" onClick={() => window.print()}>Print / Save PDF</button></section><div className="crm-report-note"><Badge tone="green">Live workspace</Badge><p>Ad-platform and call data are not connected yet. This report uses only real CRM records currently stored in Brizuela Leads.</p></div><section className="crm-report-summary"><article><span>Leads</span><strong>{leads.length}</strong></article><article><span>Revenue</span><strong>{money(revenue)}</strong></article><article><span>Ad spend</span><strong>{money(spend)}</strong></article><article><span>ROAS</span><strong>{spend ? `${(revenue / spend).toFixed(2)}x` : "0x"}</strong></article></section><section className="crm-dashboard-grid"><article className="crm-panel"><header><div><p>SALES FUNNEL</p><h3>Lead progression</h3></div></header><div className="crm-funnel">{funnel.map((item) => <div key={item.status}><span>{item.status.replaceAll("_", " ")}</span><i><b style={{ width: `${Math.max(5, (item.count / max) * 100)}%` }} /></i><strong>{item.count}</strong></div>)}</div></article><article className="crm-panel"><header><div><p>LEAD SOURCES</p><h3>Volume and revenue</h3></div></header><table className="crm-mini-table"><thead><tr><th>Source</th><th>Leads</th><th>Revenue</th></tr></thead><tbody>{sourceRows.map(([source, row]) => <tr key={source}><td>{source}</td><td>{row.leads}</td><td>{money(row.revenue)}</td></tr>)}</tbody></table></article></section><section className="crm-panel crm-report-recommendations"><header><div><p>RECOMMENDATIONS</p><h3>What to do next</h3></div></header><ol><li><strong>Respond to new leads first.</strong><span>{leads.filter((lead) => lead.status === "NEW").length} leads still need a first response.</span></li><li><strong>Follow up on open estimates.</strong><span>{leads.filter((lead) => lead.status === "ESTIMATE_SENT").length} estimate-stage opportunities can be closed.</span></li><li><strong>Connect live marketing data.</strong><span>Meta Ads, Google Ads, and call tracking remain Phase 2 integrations.</span></li></ol></section></div>;
+  return <div className="crm-view crm-report-view"><section className="crm-page-heading"><div><p>PERFORMANCE REPORT</p><h2>Agency report</h2><span>Executive summary for the current client and date filters.</span></div><button className="crm-button-secondary" onClick={() => window.print()}>Print / Save PDF</button></section><div className="crm-report-note"><Badge tone="green">Live workspace</Badge><p>Ad-platform and call data are not connected yet. This report uses only real CRM records currently stored in LB Marketing.</p></div><section className="crm-report-summary"><article><span>Leads</span><strong>{leads.length}</strong></article><article><span>Revenue</span><strong>{money(revenue)}</strong></article><article><span>Ad spend</span><strong>{money(spend)}</strong></article><article><span>ROAS</span><strong>{spend ? `${(revenue / spend).toFixed(2)}x` : "0x"}</strong></article></section><section className="crm-dashboard-grid"><article className="crm-panel"><header><div><p>SALES FUNNEL</p><h3>Lead progression</h3></div></header><div className="crm-funnel">{funnel.map((item) => <div key={item.status}><span>{item.status.replaceAll("_", " ")}</span><i><b style={{ width: `${Math.max(5, (item.count / max) * 100)}%` }} /></i><strong>{item.count}</strong></div>)}</div></article><article className="crm-panel"><header><div><p>LEAD SOURCES</p><h3>Volume and revenue</h3></div></header><table className="crm-mini-table"><thead><tr><th>Source</th><th>Leads</th><th>Revenue</th></tr></thead><tbody>{sourceRows.map(([source, row]) => <tr key={source}><td>{source}</td><td>{row.leads}</td><td>{money(row.revenue)}</td></tr>)}</tbody></table></article></section><section className="crm-panel crm-report-recommendations"><header><div><p>RECOMMENDATIONS</p><h3>What to do next</h3></div></header><ol><li><strong>Respond to new leads first.</strong><span>{leads.filter((lead) => lead.status === "NEW").length} leads still need a first response.</span></li><li><strong>Follow up on open estimates.</strong><span>{leads.filter((lead) => lead.status === "ESTIMATE_SENT").length} estimate-stage opportunities can be closed.</span></li><li><strong>Connect live marketing data.</strong><span>Meta Ads, Google Ads, and call tracking remain Phase 2 integrations.</span></li></ol></section></div>;
 }
 
 export function TeamView({ team, onInvite, mutate }: { team: CrmTeamMember[]; onInvite: () => void; mutate: Mutate }) {
@@ -491,8 +511,8 @@ export function TeamView({ team, onInvite, mutate }: { team: CrmTeamMember[]; on
     await mutate({ action: "set_member_password", memberId: member.id, scope: member.clientId ? "client" : "agency", password }, `Password updated for ${member.displayName}`);
   }
   const active = team.filter((member) => member.status === "active");
-  return <div className="crm-view"><section className="crm-page-heading"><div><p>ACCESS CONTROL</p><h2>Team</h2><span>Agency roles see every sub-account. Client roles only ever see the one they are assigned to, enforced on the server.</span></div><button className="crm-button-primary" onClick={onInvite}>+ Give Access</button></section>
-    {active.length ? <section className="crm-table-panel"><table className="crm-table"><thead><tr><th>Person</th><th>Access</th><th>Role</th><th>Status</th><th aria-label="Actions" /></tr></thead><tbody>{team.map((member) => <tr key={member.id}><td><span className="crm-table-person"><i>{member.displayName.split(/\s+/).map((part) => part[0]).slice(0, 2).join("")}</i><span><strong>{member.displayName}</strong><small>{member.email}</small></span></span></td><td>{member.clientName ?? "Whole agency"}</td><td>{member.role.replaceAll("_", " ")}</td><td><Badge tone={member.status === "active" ? "green" : "red"}>{member.status}</Badge></td><td className="crm-lead-actions">{member.status === "active" ? <><button type="button" onClick={() => void setPassword(member)}>Set password</button><button type="button" className="crm-danger-link" onClick={() => void revoke(member)}>Remove</button></> : null}</td></tr>)}</tbody></table></section> : <EmptyState title="No one else has access yet" description="Give a client access to their own sub-account, or add an agency teammate who can see everything." action={<button className="crm-button-primary" onClick={onInvite}>Give Access</button>} />}
+  return <div className="crm-view"><section className="crm-page-heading"><div><p>ACCESS CONTROL</p><h2>Team</h2><span>LB Marketing users work from assigned access. Client users only ever see their own sub-account, enforced on the server.</span></div><button className="crm-button-primary" onClick={onInvite}>+ Give Access</button></section>
+    {active.length ? <section className="crm-table-panel"><table className="crm-table"><thead><tr><th>Person</th><th>Access</th><th>Role</th><th>Status</th><th aria-label="Actions" /></tr></thead><tbody>{team.map((member) => <tr key={member.id}><td><span className="crm-table-person"><i>{member.displayName.split(/\s+/).map((part) => part[0]).slice(0, 2).join("")}</i><span><strong>{member.displayName}</strong><small>{member.email}</small></span></span></td><td>{member.clientName ?? "All sub-accounts"}</td><td>{roleLabel(member.role)}</td><td><Badge tone={member.status === "active" ? "green" : "red"}>{member.status}</Badge></td><td className="crm-lead-actions">{member.status === "active" ? <><button type="button" onClick={() => void setPassword(member)}>Set password</button>{isProtectedOwnerRole(member.role) ? null : <button type="button" className="crm-danger-link" onClick={() => void revoke(member)}>Remove</button>}</> : null}</td></tr>)}</tbody></table></section> : <EmptyState title="No one else has access yet" description="Give a client access to their own sub-account, or add an LB teammate to assigned workspaces." action={<button className="crm-button-primary" onClick={onInvite}>Give Access</button>} />}
     <div className="crm-form-note" style={{ marginTop: 16 }}>After granting access here, add the person&apos;s email to your Cloudflare Access policy in Zero Trust — otherwise they cannot reach the sign-in page.</div>
   </div>;
 }
@@ -547,7 +567,7 @@ export function SettingsView({ organizationName, viewerRole, clients }: { organi
                 <h4>Organization</h4>
                 <dl className="crm-settings-facts">
                   <div><dt>Workspace name</dt><dd>{organizationName}</dd></div>
-                  <div><dt>Your role</dt><dd>{viewerRole.replaceAll("_", " ")}</dd></div>
+                  <div><dt>Your role</dt><dd>{roleLabel(viewerRole)}</dd></div>
                   <div><dt>Active sub-accounts</dt><dd>{clients.length}</dd></div>
                 </dl>
               </article>
