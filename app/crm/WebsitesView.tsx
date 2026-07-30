@@ -144,7 +144,7 @@ export function WebsitesView({ websites, clients, leads, mutate, canManage }: { 
         <section className="crm-capture-setup">
           <div><p>STEP 2 OF 2</p><h4>Ask your website person to connect the form</h4><span>You do not need to understand code. Follow these three steps.</span></div>
           <div className="crm-owner-steps">
-            <article><b>1</b><span><strong>Copy the setup message</strong><small>Click the purple button below.</small></span></article>
+            <article><b>1</b><span><strong>Copy the setup message</strong><small>Use the copy button below.</small></span></article>
             <article><b>2</b><span><strong>Send it to your website person</strong><small>Email or text it to whoever built or manages the website.</small></span></article>
             <article><b>3</b><span><strong>Submit one test form</strong><small>When the test lead appears in the CRM, the status changes to Working.</small></span></article>
           </div>
