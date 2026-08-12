@@ -12,20 +12,31 @@ const accessSource = read("db/supabase-access.ts");
 const formsSource = read("app/crm/ActionForms.tsx");
 const opsSource = read("app/crm/OperationsViews.tsx");
 
-const inviteBlock = crmSource.match(
-  /if \(action === "invite_member"\) \{[\s\S]*?\n {2}\}\n/,
-)?.[0];
-const revokeBlock = crmSource.match(
-  /if \(action === "revoke_member"\) \{[\s\S]*?\n {2}\}\n/,
-)?.[0];
+function extractBlock(source, needle) {
+  const start = source.indexOf(needle);
+  if (start < 0) return undefined;
+  let depth = 0;
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  return undefined;
+}
+
+const inviteBlock = extractBlock(crmSource, 'if (action === "invite_member") {');
+const revokeBlock = extractBlock(crmSource, 'if (action === "revoke_member") {');
 
 test("granting access requires team.manage before anything is written", () => {
   assert.ok(inviteBlock, "invite_member handler exists");
   const permissionIndex = inviteBlock.indexOf('requirePermission(context, "team.manage")');
-  const authUserIndex = inviteBlock.indexOf("auth.admin.createUser");
+  const authUserIndex = inviteBlock.indexOf("ensureSupabaseInviteProfile");
   const membershipIndex = inviteBlock.search(/\.from\("(?:client|organization)_members"\)/);
   assert.ok(permissionIndex >= 0, "permission gate present");
-  assert.ok(authUserIndex > permissionIndex, "auth user created only after the gate");
+  assert.ok(authUserIndex > permissionIndex, "auth profile prepared only after the gate");
   assert.ok(membershipIndex > permissionIndex, "membership written only after the gate");
 });
 
@@ -46,7 +57,7 @@ test("invites cannot escalate past the inviter", () => {
 
 test("a client-scoped invite is pinned to a sub-account the inviter owns", () => {
   const clientIdIndex = inviteBlock.indexOf('requireText(input.clientId, "Sub-account"');
-  const requireClientIndex = inviteBlock.indexOf("requireClient(context, clientId)");
+  const requireClientIndex = inviteBlock.indexOf("requireClient(context, clientId)", clientIdIndex);
   const writeIndex = inviteBlock.indexOf('.from("client_members")');
   assert.ok(clientIdIndex >= 0, "client role requires a sub-account");
   assert.ok(requireClientIndex > clientIdIndex, "sub-account ownership verified");
@@ -103,6 +114,8 @@ test("the invite UI requires a sub-account for client roles and explains the Acc
   assert.match(formsSource, /clientId: needsSubAccount \? getFormValue\(form, "clientId"\) : ""/);
   assert.match(formsSource, /canInviteLbRoles \? <optgroup label="LB Marketing"/);
   assert.match(formsSource, /const needsSubAccount = isAgency && \(isClientRole \|\| isLbTeamMember\)/);
+  assert.match(formsSource, /secure invite link/);
+  assert.doesNotMatch(formsSource, /Starting password|cannot email it yet/);
   // The Cloudflare Access caveat lives on the Team view (it applies to every
   // grant, not just new invites) until Access is removed at launch.
   assert.match(opsSource, /Cloudflare Access policy/);

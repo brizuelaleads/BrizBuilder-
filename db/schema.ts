@@ -125,6 +125,58 @@ export const clientMembers = sqliteTable(
   ],
 );
 
+export const inviteTokens = sqliteTable(
+  "invite_tokens",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    clientId: text("client_id").references(() => crmClients.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    role: text("role").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    expiresAt: text("expires_at").notNull(),
+    usedAt: text("used_at"),
+    createdByEmail: text("created_by_email").notNull(),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index("invite_tokens_account_active_idx").on(table.accountId, table.expiresAt),
+  ],
+);
+
+export const passwordResetTokens = sqliteTable(
+  "password_reset_tokens",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    expiresAt: text("expires_at").notNull(),
+    usedAt: text("used_at"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index("password_reset_tokens_account_active_idx").on(table.accountId, table.expiresAt),
+  ],
+);
+
+export const emailVerificationTokens = sqliteTable(
+  "email_verification_tokens",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    expiresAt: text("expires_at").notNull(),
+    usedAt: text("used_at"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index("email_verification_tokens_account_active_idx").on(table.accountId, table.expiresAt),
+  ],
+);
+
 export const companies = sqliteTable(
   "companies",
   {

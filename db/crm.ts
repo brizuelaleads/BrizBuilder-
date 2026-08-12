@@ -585,6 +585,9 @@ const schemaStatements = [
   `CREATE TABLE IF NOT EXISTS organization_members (id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, role TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(organization_id, account_id))`,
   `CREATE TABLE IF NOT EXISTS crm_clients (id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, legacy_client_id TEXT UNIQUE REFERENCES clients(id) ON DELETE SET NULL, business_name TEXT NOT NULL, logo_url TEXT, industry TEXT NOT NULL, website TEXT, phone TEXT, email TEXT, address TEXT, city TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT '', zip TEXT NOT NULL DEFAULT '', time_zone TEXT NOT NULL DEFAULT 'America/Chicago', status TEXT NOT NULL DEFAULT 'active', monthly_ad_budget_cents INTEGER NOT NULL DEFAULT 0, assigned_account_manager TEXT, service_areas_json TEXT NOT NULL DEFAULT '[]', notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, archived_at TEXT)`,
   `CREATE TABLE IF NOT EXISTS client_members (id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, client_id TEXT NOT NULL REFERENCES crm_clients(id) ON DELETE CASCADE, account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, role TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(client_id, account_id))`,
+  `CREATE TABLE IF NOT EXISTS invite_tokens (id TEXT PRIMARY KEY NOT NULL, account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, client_id TEXT REFERENCES crm_clients(id) ON DELETE CASCADE, email TEXT NOT NULL, role TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, expires_at TEXT NOT NULL, used_at TEXT, created_by_email TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+  `CREATE TABLE IF NOT EXISTS password_reset_tokens (id TEXT PRIMARY KEY NOT NULL, account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, email TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, expires_at TEXT NOT NULL, used_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+  `CREATE TABLE IF NOT EXISTS email_verification_tokens (id TEXT PRIMARY KEY NOT NULL, account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, email TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, expires_at TEXT NOT NULL, used_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
   `CREATE TABLE IF NOT EXISTS companies (id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, client_id TEXT NOT NULL REFERENCES crm_clients(id) ON DELETE CASCADE, name TEXT NOT NULL, industry TEXT, website TEXT, phone TEXT, email TEXT, address TEXT, city TEXT, state TEXT, zip TEXT, tags_json TEXT NOT NULL DEFAULT '[]', notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, archived_at TEXT)`,
   `CREATE TABLE IF NOT EXISTS contacts (id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, client_id TEXT NOT NULL REFERENCES crm_clients(id) ON DELETE CASCADE, first_name TEXT NOT NULL, last_name TEXT NOT NULL, phone TEXT, email TEXT, address TEXT, city TEXT, state TEXT, zip TEXT, company TEXT, tags_json TEXT NOT NULL DEFAULT '[]', notes TEXT NOT NULL DEFAULT '', marketing_consent TEXT NOT NULL DEFAULT 'unknown', last_interaction_at TEXT, lifetime_value_cents INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, archived_at TEXT)`,
   `CREATE TABLE IF NOT EXISTS contact_company_links (id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, client_id TEXT NOT NULL REFERENCES crm_clients(id) ON DELETE CASCADE, contact_id TEXT NOT NULL REFERENCES contacts(id) ON DELETE CASCADE, company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE, relationship TEXT NOT NULL DEFAULT 'employee', is_primary INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(contact_id, company_id))`,
@@ -607,6 +610,9 @@ const schemaStatements = [
   "CREATE INDEX IF NOT EXISTS organization_members_account_idx ON organization_members(account_id)",
   "CREATE INDEX IF NOT EXISTS crm_clients_org_status_idx ON crm_clients(organization_id, status)",
   "CREATE INDEX IF NOT EXISTS client_members_account_idx ON client_members(account_id)",
+  "CREATE INDEX IF NOT EXISTS invite_tokens_account_active_idx ON invite_tokens(account_id, expires_at) WHERE used_at IS NULL",
+  "CREATE INDEX IF NOT EXISTS password_reset_tokens_account_active_idx ON password_reset_tokens(account_id, expires_at) WHERE used_at IS NULL",
+  "CREATE INDEX IF NOT EXISTS email_verification_tokens_account_active_idx ON email_verification_tokens(account_id, expires_at) WHERE used_at IS NULL",
   "CREATE INDEX IF NOT EXISTS companies_org_client_name_idx ON companies(organization_id, client_id, name)",
   "CREATE INDEX IF NOT EXISTS companies_email_idx ON companies(email)",
   "CREATE INDEX IF NOT EXISTS contacts_org_client_idx ON contacts(organization_id, client_id)",
@@ -1541,6 +1547,52 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
     ]);
     await audit(context, "client.deleted", "client", clientId, { businessName: client.business_name }, null);
     return { id: clientId };
+  }
+
+  if (action === "send_member_password_reset") {
+    requirePermission(context, "team.manage");
+    const memberId = requireText(input.memberId, "Member", 100);
+    const scope = context.clientId
+      ? "client"
+      : optionalText(input.scope, 20) === "client"
+        ? "client"
+        : "agency";
+    const row = scope === "client"
+      ? await db
+        .prepare(
+          `SELECT a.id, a.email
+           FROM client_members cm
+           JOIN accounts a ON a.id = cm.account_id
+           WHERE cm.id = ? AND cm.organization_id = ?
+           ${context.clientId ? "AND cm.client_id = ?" : ""}
+           LIMIT 1`,
+        )
+        .bind(
+          memberId,
+          context.organizationId,
+          ...(context.clientId ? [context.clientId] : []),
+        )
+        .first<{ id: string; email: string }>()
+      : await db
+        .prepare(
+          `SELECT a.id, a.email
+           FROM organization_members om
+           JOIN accounts a ON a.id = om.account_id
+           WHERE om.id = ? AND om.organization_id = ?
+           LIMIT 1`,
+        )
+        .bind(memberId, context.organizationId)
+        .first<{ id: string; email: string }>();
+    if (!row) throw new Error("Team member not found.");
+    await audit(
+      context,
+      "member.password_reset_requested",
+      "account",
+      row.id,
+      { scope },
+      context.clientId,
+    );
+    return { sent: true };
   }
 
   if (action === "invite_member") {

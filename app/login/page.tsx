@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -72,6 +73,9 @@ export default async function LoginPage({
                 required
               />
             </label>
+            <p className="auth-form-link">
+              <Link href="/forgot-password">Forgot password?</Link>
+            </p>
             {error ? (
               <div className="local-login-error" role="alert">
                 {ERROR_COPY[error] ?? ERROR_COPY.invalid}
@@ -86,7 +90,7 @@ export default async function LoginPage({
             <p>
               <strong>Change your password</strong>
               <small>
-                After signing in you can set your own password from the sidebar.
+                Password resets are sent by secure email link.
               </small>
             </p>
           </div>

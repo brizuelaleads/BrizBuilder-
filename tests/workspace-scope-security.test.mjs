@@ -60,6 +60,21 @@ function rolePermissions(source, role) {
   return permissionArray(source, mapped[1]).sort();
 }
 
+function extractBlock(source, needle) {
+  const start = source.indexOf(needle);
+  if (start < 0) return undefined;
+  let depth = 0;
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  return undefined;
+}
+
 const CLIENT_ROLES = ["CLIENT_OWNER", "CLIENT_MANAGER", "CLIENT_EMPLOYEE"];
 const ALL_ROLES = [
   "LB_OWNER",
@@ -190,9 +205,7 @@ test("every nav item declares a section so hiding tabs cannot orphan a label", (
 });
 
 test("a client owner cannot invite an agency role or reach another sub-account", () => {
-  const block = supabaseSource.match(
-    /if \(action === "invite_member"\) \{[\s\S]*?\n {2}\}\n/,
-  )?.[0];
+  const block = extractBlock(supabaseSource, 'if (action === "invite_member") {');
   assert.ok(block, "invite_member handler exists");
   // Their session decides the sub-account; a supplied clientId is ignored.
   assert.match(
@@ -205,9 +218,7 @@ test("a client owner cannot invite an agency role or reach another sub-account",
 });
 
 test("a client owner can never revoke an agency membership", () => {
-  const block = supabaseSource.match(
-    /if \(action === "revoke_member"\) \{[\s\S]*?\n {2}\}\n/,
-  )?.[0];
+  const block = extractBlock(supabaseSource, 'if (action === "revoke_member") {');
   assert.ok(block, "revoke_member handler exists");
   // Client users are pinned to the client branch regardless of requested scope.
   assert.match(block, /const scope = context\.clientId\s*\?\s*"client"/);

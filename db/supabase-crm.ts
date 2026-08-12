@@ -1,6 +1,13 @@
 import type { ChatGPTUser } from "../app/chatgpt-auth";
 import { MAIN_ADMIN_EMAIL } from "../app/auth-config";
 import { getSupabaseAdminClient } from "../lib/supabase/server";
+import {
+  createInviteTokenAndSendEmail,
+  ensureSupabaseInviteProfile,
+  requestPasswordResetEmail,
+  sendNewTeamMemberAlertIfPractical,
+  sendPasswordChangedAlert,
+} from "../lib/system-auth";
 import { getAiConnectorRuntime } from "../lib/ai-connector/config";
 import {
   buildGoogleAuthorizationUrl,
@@ -2544,6 +2551,40 @@ export async function writeSupabaseAuditEvent(
   clientId: string | null = context.clientId,
 ): Promise<void> {
   await audit(context, action, recordType, recordId, metadata, clientId);
+}
+
+async function passwordActionMember(
+  context: TenantContext,
+  memberId: string,
+  scope: "client" | "agency",
+): Promise<{ profileId: string; email: string }> {
+  let member: AnyRecord | null = null;
+  if (scope === "client") {
+    const lookup = supabase()
+      .from("client_members")
+      .select("profile_id,profiles(email)")
+      .eq("id", memberId)
+      .eq("organization_id", context.organizationId);
+    member = await assertOk(
+      context.clientId
+        ? lookup.eq("client_id", context.clientId).maybeSingle()
+        : lookup.maybeSingle(),
+    );
+  } else {
+    member = await assertOk(
+      supabase()
+        .from("organization_members")
+        .select("profile_id,profiles(email)")
+        .eq("id", memberId)
+        .eq("organization_id", context.organizationId)
+        .maybeSingle(),
+    );
+  }
+  const profile = nestedOne(member?.profiles) ?? {};
+  const email = String(profile.email ?? "").trim().toLowerCase();
+  const profileId = member?.profile_id ? String(member.profile_id) : "";
+  if (!profileId || !email) throw new Error("Team member not found.");
+  return { profileId, email };
 }
 
 function mapClient(row: AnyRecord): CrmClient {
@@ -6015,62 +6056,22 @@ export async function executeSupabaseCrmAction(
     if (targetIsAgencySide && !isLbOwner(context.role))
       throw new Error("Only the LB Owner can grant LB agency roles.");
     let clientId: string | null = null;
+    let clientName: string | null = null;
     if (context.clientId) {
       if (!targetIsClientUser)
         throw new Error("You can only invite people to your own business.");
       clientId = context.clientId;
+      const client = await requireClient(context, clientId);
+      clientName = String(client.business_name ?? "");
     } else if (targetIsClientUser || targetIsLbTeamMember) {
       clientId = requireText(input.clientId, "Sub-account", 100);
-      await requireClient(context, clientId);
+      const client = await requireClient(context, clientId);
+      clientName = String(client.business_name ?? "");
     }
 
-    // Optional starting password. The agency shares it with the person
-    // directly; the app cannot send email yet. Never logged or returned.
-    const password = optionalText(input.password, 200);
-    if (password) assertUsablePassword(password);
-
-    // A profile requires an auth user (profiles.id references auth.users), so
-    // create the auth user first when this email is new.
-    let profile = await assertOk(
-      supabase()
-        .from("profiles")
-        .select("id")
-        .eq("email", email)
-        .maybeSingle(),
-    );
-    if (!profile?.id) {
-      const created = await supabase().auth.admin.createUser({
-        email,
-        email_confirm: true,
-        ...(password ? { password } : {}),
-        user_metadata: { display_name: displayName },
-      });
-      if (created.error && !/already/i.test(created.error.message))
-        throw new Error(
-          `The sign-in account could not be created: ${created.error.message}`,
-        );
-      profile = await assertOk(
-        supabase()
-          .from("profiles")
-          .select("id")
-          .eq("email", email)
-          .maybeSingle(),
-      );
-      if (!profile?.id)
-        throw new Error(
-          "The sign-in account was not created. Check the Supabase project and try again.",
-        );
-    } else if (password) {
-      // Re-inviting someone who already has an account: set the new password.
-      const updated = await supabase().auth.admin.updateUserById(
-        String(profile.id),
-        { password },
-      );
-      if (updated.error)
-        throw new Error(
-          `The password could not be set: ${updated.error.message}`,
-        );
-    }
+    // A profile requires an auth user, but invites no longer create a shared
+    // starting password. The emailed token lets the recipient set their own.
+    const profileId = await ensureSupabaseInviteProfile({ email, displayName });
 
     const now = new Date().toISOString();
     const existingOrganizationMembership = await assertOk(
@@ -6078,7 +6079,7 @@ export async function executeSupabaseCrmAction(
         .from("organization_members")
         .select("role")
         .eq("organization_id", context.organizationId)
-        .eq("profile_id", profile.id)
+        .eq("profile_id", profileId)
         .eq("status", "active")
         .maybeSingle(),
     );
@@ -6094,7 +6095,7 @@ export async function executeSupabaseCrmAction(
             {
               organization_id: context.organizationId,
               client_id: clientId,
-              profile_id: profile.id,
+              profile_id: profileId,
               role,
               status: "active",
             },
@@ -6108,7 +6109,7 @@ export async function executeSupabaseCrmAction(
           .upsert(
             {
               organization_id: context.organizationId,
-              profile_id: profile.id,
+              profile_id: profileId,
               role,
               status: "active",
             },
@@ -6123,7 +6124,7 @@ export async function executeSupabaseCrmAction(
               {
                 organization_id: context.organizationId,
                 client_id: clientId,
-                profile_id: profile.id,
+                profile_id: profileId,
                 role,
                 status: "active",
               },
@@ -6136,10 +6137,34 @@ export async function executeSupabaseCrmAction(
       context,
       "team.access_granted",
       "profile",
-      String(profile.id),
+      profileId,
       { role, clientId },
       clientId,
     );
+    await createInviteTokenAndSendEmail({
+      profileId,
+      email,
+      displayName,
+      role,
+      organizationId: context.organizationId,
+      organizationName: context.organizationName,
+      clientId,
+      clientName,
+      inviterEmail: context.email,
+      inviterName: context.name,
+    });
+    try {
+      await sendNewTeamMemberAlertIfPractical({
+        adminEmail: context.email,
+        displayName,
+        email,
+        role,
+        clientName,
+      });
+    } catch {
+      // Invitation delivery is the required path; this secondary security alert
+      // should not strand an otherwise valid invite.
+    }
     return { invited: true, email, role, clientId, grantedAt: now };
   }
 
@@ -6159,8 +6184,35 @@ export async function executeSupabaseCrmAction(
     const { error } = await sessionClient.auth.updateUser({ password });
     if (error)
       throw new Error(`The password could not be changed: ${error.message}`);
+    try {
+      await sendPasswordChangedAlert(context.email);
+    } catch {
+      // Password updates must not be rolled back just because a secondary
+      // security notification provider is temporarily unavailable.
+    }
     await audit(context, "team.password_changed", "profile", null, {}, context.clientId);
     return { updated: true };
+  }
+
+  if (action === "send_member_password_reset") {
+    requirePermission(context, "team.manage");
+    const memberId = requireText(input.memberId, "Member", 100);
+    const scope = context.clientId
+      ? "client"
+      : optionalText(input.scope, 20) === "client"
+        ? "client"
+        : "agency";
+    const member = await passwordActionMember(context, memberId, scope);
+    await requestPasswordResetEmail(member.email);
+    await audit(
+      context,
+      "team.password_reset_sent",
+      "profile",
+      member.profileId,
+      { scope },
+      context.clientId,
+    );
+    return { sent: true };
   }
 
   if (action === "set_member_password") {
@@ -6176,43 +6228,25 @@ export async function executeSupabaseCrmAction(
         ? "client"
         : "agency";
 
-    let profileId: string | null = null;
-    if (scope === "client") {
-      const lookup = supabase()
-        .from("client_members")
-        .select("profile_id")
-        .eq("id", memberId)
-        .eq("organization_id", context.organizationId);
-      const member = await assertOk(
-        context.clientId
-          ? lookup.eq("client_id", context.clientId).maybeSingle()
-          : lookup.maybeSingle(),
-      );
-      profileId = member ? String(member.profile_id) : null;
-    } else {
-      const member = await assertOk(
-        supabase()
-          .from("organization_members")
-          .select("profile_id")
-          .eq("id", memberId)
-          .eq("organization_id", context.organizationId)
-          .maybeSingle(),
-      );
-      profileId = member ? String(member.profile_id) : null;
-    }
-    if (!profileId) throw new Error("Team member not found.");
+    const member = await passwordActionMember(context, memberId, scope);
 
-    const updated = await supabase().auth.admin.updateUserById(profileId, {
+    const updated = await supabase().auth.admin.updateUserById(member.profileId, {
       password,
     });
     if (updated.error)
       throw new Error(`The password could not be set: ${updated.error.message}`);
+    try {
+      await sendPasswordChangedAlert(member.email);
+    } catch {
+      // Password updates must not be rolled back just because a secondary
+      // security notification provider is temporarily unavailable.
+    }
     // The password itself is never written to the audit trail.
     await audit(
       context,
       "team.password_set",
       "profile",
-      profileId,
+      member.profileId,
       { scope },
       context.clientId,
     );

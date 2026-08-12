@@ -26,10 +26,23 @@ function themesFromSql() {
   return match[1].match(/'([a-z]+)'/g).map((item) => item.replaceAll("'", ""));
 }
 
+function extractBlock(source, needle) {
+  const start = source.indexOf(needle);
+  if (start < 0) return undefined;
+  let depth = 0;
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  return undefined;
+}
+
 test("set_theme validates against the shared allowlist before writing", () => {
-  const block = supabaseSource.match(
-    /if \(action === "set_theme"\) \{[\s\S]*?\n {2}\}\n/,
-  )?.[0];
+  const block = extractBlock(supabaseSource, 'if (action === "set_theme") {');
   assert.ok(block, "set_theme handler exists in db/supabase-crm.ts");
   const validateIndex = block.indexOf("CRM_THEMES.includes(theme)");
   const writeIndex = block.indexOf('.from("user_preferences")');
@@ -38,9 +51,7 @@ test("set_theme validates against the shared allowlist before writing", () => {
 });
 
 test("set_theme identity comes only from the authenticated context", () => {
-  const block = supabaseSource.match(
-    /if \(action === "set_theme"\) \{[\s\S]*?\n {2}\}\n/,
-  )?.[0];
+  const block = extractBlock(supabaseSource, 'if (action === "set_theme") {');
   assert.ok(block, "set_theme handler exists");
   assert.match(block, /email: context\.email/);
   assert.doesNotMatch(block, /input\.email/, "must never trust a client-supplied email");
@@ -64,7 +75,7 @@ test("SQL check constraint and CRM_THEMES cannot drift apart", () => {
 
 test("D1 fallback has viewer theme parity and a validated set_theme branch", () => {
   assert.match(d1Source, /theme: "classic"/, "D1 viewer supplies a default theme");
-  const block = d1Source.match(/if \(action === "set_theme"\) \{[\s\S]*?\n {2}\}\n/)?.[0];
+  const block = extractBlock(d1Source, 'if (action === "set_theme") {');
   assert.ok(block, "D1 set_theme branch exists");
   assert.match(block, /CRM_THEMES\.includes\(theme\)/);
   assert.match(block, /persisted: false/, "D1 branch is an honest validated no-op");

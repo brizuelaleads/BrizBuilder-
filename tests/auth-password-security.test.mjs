@@ -20,6 +20,32 @@ const statusRoute = read("app/api/supabase/status/route.ts");
 const accountsRoute = read("app/api/access/accounts/route.ts");
 const authConfigSource = read("app/auth-config.ts");
 
+function extractBlock(source, needle) {
+  const start = source.indexOf(needle);
+  if (start < 0) return undefined;
+  let depth = 0;
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  return undefined;
+}
+
+function actionBlock(action) {
+  return extractBlock(crmSource, `if (action === "${action}") {`);
+}
+
+function functionBlock(name, nextName) {
+  const start = crmSource.indexOf(`async function ${name}(`);
+  if (start < 0) return undefined;
+  const end = crmSource.indexOf(`\nfunction ${nextName}`, start);
+  return crmSource.slice(start, end >= 0 ? end : undefined);
+}
+
 test("the session is validated with the auth server, never trusted from the cookie", () => {
   const block = authSource.match(
     /async function verifySupabaseSession\([\s\S]*?\n\}/,
@@ -67,19 +93,19 @@ test("passwords must clear a real length bar before they are accepted", () => {
   const guard = crmSource.match(/function assertUsablePassword\([\s\S]*?\n\}/)?.[0];
   assert.ok(guard, "assertUsablePassword exists");
   assert.match(guard, /password\.length < MIN_PASSWORD_LENGTH/);
-  for (const action of ["invite_member", "set_member_password", "change_own_password"]) {
-    const block = crmSource.match(
-      new RegExp(`if \\(action === "${action}"\\) \\{[\\s\\S]*?\\n {2}\\}\\n`),
-    )?.[0];
+  for (const action of ["set_member_password", "change_own_password"]) {
+    const block = actionBlock(action);
     assert.ok(block, `${action} exists`);
     assert.match(block, /assertUsablePassword\(password\)/, `${action} validates strength`);
   }
+  const inviteBlock = actionBlock("invite_member");
+  assert.ok(inviteBlock, "invite_member exists");
+  assert.match(inviteBlock, /createInviteTokenAndSendEmail/);
+  assert.doesNotMatch(inviteBlock, /input\.password|assertUsablePassword\(password\)/);
 });
 
 test("changing your own password cannot target anyone else", () => {
-  const block = crmSource.match(
-    /if \(action === "change_own_password"\) \{[\s\S]*?\n {2}\}\n/,
-  )?.[0];
+  const block = actionBlock("change_own_password");
   assert.ok(block, "change_own_password exists");
   // The session client is scoped to the caller; the admin client is not used.
   assert.match(block, /sessionClient\.auth\.updateUser\(\{ password \}\)/);
@@ -88,24 +114,24 @@ test("changing your own password cannot target anyone else", () => {
 });
 
 test("setting someone else's password keeps the tenant guards", () => {
-  const block = crmSource.match(
-    /if \(action === "set_member_password"\) \{[\s\S]*?\n {2}\}\n/,
-  )?.[0];
+  const block = actionBlock("set_member_password");
   assert.ok(block, "set_member_password exists");
+  const helper = functionBlock("passwordActionMember", "mapClient");
+  assert.ok(helper, "shared password action lookup exists");
   const permissionIndex = block.indexOf('requirePermission(context, "team.manage")');
   const updateIndex = block.indexOf("auth.admin.updateUserById");
   assert.ok(permissionIndex >= 0 && updateIndex > permissionIndex);
   // A client owner is pinned to the client branch and to their own sub-account.
   assert.match(block, /const scope = context\.clientId\s*\?\s*"client"/);
-  assert.match(block, /\.eq\("client_id", context\.clientId\)/);
-  assert.match(block, /\.eq\("organization_id", context\.organizationId\)/);
+  assert.match(block, /passwordActionMember\(context, memberId, scope\)/);
+  assert.match(helper, /\.eq\("client_id", context\.clientId\)/);
+  assert.match(helper, /\.eq\("organization_id", context\.organizationId\)/);
 });
 
 test("no password is ever written to the audit trail", () => {
-  for (const action of ["set_member_password", "change_own_password", "invite_member"]) {
-    const block = crmSource.match(
-      new RegExp(`if \\(action === "${action}"\\) \\{[\\s\\S]*?\\n {2}\\}\\n`),
-    )?.[0];
+  for (const action of ["set_member_password", "change_own_password", "invite_member", "send_member_password_reset"]) {
+    const block = actionBlock(action);
+    assert.ok(block, `${action} exists`);
     const auditCall = block.match(/await audit\([\s\S]*?\);/)?.[0] ?? "";
     // Strip quoted strings first: action names like "team.password_set"
     // legitimately contain the word. What must never appear is the password

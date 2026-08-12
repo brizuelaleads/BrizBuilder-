@@ -59,7 +59,7 @@ export function InviteMemberModal({ clients, isAgency, viewerRole, mutate, onClo
   // Client owners only ever add their own staff; the server takes the
   // sub-account from their session and refuses agency roles outright.
   const needsSubAccount = isAgency && (isClientRole || isLbTeamMember);
-  function save(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); void submit.run({ action: "invite_member", displayName: getFormValue(form, "displayName"), email: getFormValue(form, "email"), role, clientId: needsSubAccount ? getFormValue(form, "clientId") : "", password: getFormValue(form, "password") }, "Access granted"); }
+  function save(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); void submit.run({ action: "invite_member", displayName: getFormValue(form, "displayName"), email: getFormValue(form, "email"), role, clientId: needsSubAccount ? getFormValue(form, "clientId") : "" }, "Invite email sent"); }
   return <Modal title="Give someone access" eyebrow="TEAM ACCESS" onClose={onClose}><form className="crm-form" onSubmit={save}>
     <Field label="Full name" span><input name="displayName" required autoFocus /></Field>
     <Field label="Email" span><input name="email" type="email" required /></Field>
@@ -78,8 +78,7 @@ export function InviteMemberModal({ clients, isAgency, viewerRole, mutate, onClo
       <option value="" disabled>Choose the business they can see</option>
       {clients.map((client) => <option key={client.id} value={client.id}>{client.businessName}</option>)}
     </select></Field> : null}
-    <Field label="Starting password" span><input name="password" type="password" autoComplete="new-password" minLength={12} required placeholder="At least 12 characters" /></Field>
-    <div className="crm-form-note crm-field-span">{!isAgency ? "This person joins your business only. " : isClientRole ? "This person will only see the selected client sub-account. " : isLbTeamMember ? "LB Team Members only see the assigned client sub-account. " : "LB Admins can work across LB Marketing sub-accounts, with server-side permission checks. "}Give them this password directly &mdash; BrizBuilder cannot email it yet. They can change it themselves after signing in, and you can reset it here any time.</div>
-    <footer><button className="crm-button-secondary" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={submit.busy}>Grant Access</SubmitButton></footer>
+    <div className="crm-form-note crm-field-span">{!isAgency ? "This person joins your business only. " : isClientRole ? "This person will only see the selected client sub-account. " : isLbTeamMember ? "LB Team Members only see the assigned client sub-account. " : "LB Admins can work across LB Marketing sub-accounts, with server-side permission checks. "}BrizBuilder will email a secure invite link so they can choose their own password.</div>
+    <footer><button className="crm-button-secondary" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={submit.busy}>Send Invite</SubmitButton></footer>
   </form></Modal>;
 }
