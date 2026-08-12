@@ -20,12 +20,15 @@ import {
   Funnel,
   Globe2,
   History,
+  KeyRound,
   LayoutDashboard,
   ListChecks,
+  LogOut,
   MapPin,
   Menu,
   MessageSquareText,
   PhoneCall,
+  Plus,
   Plug,
   Settings as SettingsIcon,
   Sparkles,
@@ -33,6 +36,7 @@ import {
   UserRoundSearch,
   UsersRound,
   Workflow,
+  X,
 } from "lucide-react";
 import type { CrmBootstrap, CrmLead, CrmPermission, CrmRole } from "../db/crm";
 import type { CrmTheme } from "../db/theme";
@@ -767,7 +771,7 @@ export function CrmApp({
             onClick={() => setMobileNav(false)}
             aria-label="Close navigation"
           >
-            ×
+            <X aria-hidden="true" />
           </button>
         </div>
         <div className="crm-org-switcher" ref={switcherRef}>
@@ -921,12 +925,12 @@ export function CrmApp({
               aria-label="Change password"
               title="Change password"
             >
-              Key
+              <KeyRound aria-hidden="true" />
             </button>
             {/* POST so a prefetch or stray link can never sign someone out. */}
             <form method="post" action={signOutPath}>
               <button type="submit" aria-label="Sign out" title="Sign out">
-                Exit
+                <LogOut aria-hidden="true" />
               </button>
             </form>
           </div>
@@ -947,7 +951,7 @@ export function CrmApp({
               onClick={() => setMobileNav(true)}
               aria-label="Open navigation"
             >
-              ☰
+              <Menu aria-hidden="true" />
             </button>
             <div>
               <h1>{title}</h1>
@@ -983,7 +987,8 @@ export function CrmApp({
                 className="crm-topbar-action crm-topbar-action-primary"
                 onClick={() => setModal("lead")}
               >
-                + Add lead
+                <Plus aria-hidden="true" />
+                <span>Add lead</span>
               </button>
             ) : null}
             {view === "contacts" ? (
@@ -992,7 +997,8 @@ export function CrmApp({
                 className="crm-topbar-action crm-topbar-action-primary"
                 onClick={() => setModal("contact")}
               >
-                + Add contact
+                <Plus aria-hidden="true" />
+                <span>Add contact</span>
               </button>
             ) : null}
             {view === "companies" ? (
@@ -1001,7 +1007,8 @@ export function CrmApp({
                 className="crm-topbar-action crm-topbar-action-primary"
                 onClick={() => setModal("company")}
               >
-                + Add company
+                <Plus aria-hidden="true" />
+                <span>Add company</span>
               </button>
             ) : null}
             {view === "calendar" ? (
@@ -1010,7 +1017,8 @@ export function CrmApp({
                 className="crm-topbar-action crm-topbar-action-primary"
                 onClick={() => setModal("appointment")}
               >
-                + New appointment
+                <Plus aria-hidden="true" />
+                <span>New appointment</span>
               </button>
             ) : null}
             {view === "tasks" ? (
@@ -1019,7 +1027,8 @@ export function CrmApp({
                 className="crm-topbar-action crm-topbar-action-primary"
                 onClick={() => setModal("task")}
               >
-                + New task
+                <Plus aria-hidden="true" />
+                <span>New task</span>
               </button>
             ) : null}
             {view === "clients" && data.viewer.isAgency ? (
@@ -1028,7 +1037,8 @@ export function CrmApp({
                 className="crm-topbar-action crm-topbar-action-primary"
                 onClick={() => setModal("client")}
               >
-                + Add sub-account
+                <Plus aria-hidden="true" />
+                <span>Add sub-account</span>
               </button>
             ) : null}
             {view === "team" &&
@@ -1038,7 +1048,8 @@ export function CrmApp({
                 className="crm-topbar-action crm-topbar-action-primary"
                 onClick={() => setModal("invite")}
               >
-                + Invite
+                <Plus aria-hidden="true" />
+                <span>Invite</span>
               </button>
             ) : null}
             {["phone-system", "automations", "payments", "ai"].includes(view) &&
