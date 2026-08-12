@@ -11,6 +11,7 @@ import {
   prepareAiOAuthConsent,
   publicAiOAuthError,
 } from "../../../lib/ai-connector/oauth";
+import { BrandLogo } from "../../components/BrandLogo";
 
 export const dynamic = "force-dynamic";
 
@@ -73,18 +74,7 @@ const styles: Record<string, CSSProperties> = {
     color: "#fff",
     background: "linear-gradient(135deg, #5e50e8, #7c68ff)",
   },
-  brand: { display: "flex", alignItems: "center", gap: 11 },
-  brandMark: {
-    width: 38,
-    height: 38,
-    display: "grid",
-    placeItems: "center",
-    borderRadius: 11,
-    color: "#171b33",
-    background: "#c8ff4d",
-    fontSize: 12,
-    fontWeight: 900,
-  },
+  brand: { display: "flex", alignItems: "center" },
   eyebrow: {
     margin: "18px 0 5px",
     color: "rgba(255,255,255,.72)",
@@ -217,8 +207,7 @@ function ConsentError({ error }: { error: unknown }) {
       <section style={styles.card}>
         <header style={styles.header}>
           <div style={styles.brand}>
-            <span style={styles.brandMark}>BB</span>
-            <strong>BrizBuilder</strong>
+            <BrandLogo className="oauth-brand-logo" tone="light" decorative priority />
           </div>
           <p style={styles.eyebrow}>SECURE AI CONNECTION</p>
           <h1 style={styles.title}>This connection cannot be approved.</h1>
@@ -264,8 +253,7 @@ export default async function OAuthAuthorizePage({
       <section className="oauth-consent-card" style={styles.card}>
         <header style={styles.header}>
           <div style={styles.brand}>
-            <span style={styles.brandMark}>BB</span>
-            <strong>BrizBuilder</strong>
+            <BrandLogo className="oauth-brand-logo" tone="light" decorative priority />
           </div>
           <p style={styles.eyebrow}>SECURE AI CONNECTION</p>
           <h1 style={styles.title}>Allow an external AI app to use your CRM?</h1>

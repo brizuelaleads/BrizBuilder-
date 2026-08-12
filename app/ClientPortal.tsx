@@ -1,4 +1,5 @@
 import type { ClientIdentity, ClientPortalData } from "../db/access";
+import { BrandLogo } from "./components/BrandLogo";
 type ClientPortalProps = {
   session: { name: string; email: string; role: "client" };
   signOutPath: string;
@@ -17,8 +18,7 @@ export function ClientPortal({ session, signOutPath, client, data }: ClientPorta
     <div className="client-portal">
       <header className="client-portal-header">
         <div className="client-portal-brand">
-          <span>✦</span>
-          <strong>Brizuela Leads</strong>
+          <BrandLogo className="client-portal-logo" decorative priority />
           <small>Client portal</small>
         </div>
         <div className="client-portal-account">

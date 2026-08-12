@@ -38,6 +38,7 @@ import {
   Workflow,
   X,
 } from "lucide-react";
+import { BrandLogo } from "./components/BrandLogo";
 import type { CrmBootstrap, CrmLead, CrmPermission, CrmRole } from "../db/crm";
 import type { CrmTheme } from "../db/theme";
 import { CRM_THEMES } from "../db/theme";
@@ -763,7 +764,7 @@ export function CrmApp({
             onClick={() => navigate("dashboard")}
             aria-label="Open BrizBuilder dashboard"
           >
-            <strong>BrizBuilder</strong>
+            <BrandLogo className="crm-brand-logo" decorative priority />
           </button>
           <button
             type="button"

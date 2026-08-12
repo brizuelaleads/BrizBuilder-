@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Check, ShieldCheck } from "lucide-react";
+import { BrandLogo } from "../components/BrandLogo";
 
 export function AuthShell({
   eyebrow,
@@ -20,8 +21,7 @@ export function AuthShell({
     <main className="auth-page">
       <section className="auth-story">
         <Link className="auth-brand" href="/" aria-label="BrizBuilder home">
-          <span>BB</span>
-          <strong>BrizBuilder</strong>
+          <BrandLogo className="auth-brand-logo" decorative priority />
         </Link>
         <div className="auth-story-content">
           <div className="auth-story-copy">
@@ -51,7 +51,7 @@ export function AuthShell({
       <section className="auth-panel">
         <div className="auth-card">
           <span className="auth-card-icon" aria-hidden="true">
-            BB
+            <BrandLogo compact tone="light" decorative />
           </span>
           {children}
         </div>

@@ -7,6 +7,7 @@ import {
   PanelsTopLeft,
   UsersRound,
 } from "lucide-react";
+import { BrandLogo } from "./components/BrandLogo";
 
 export const metadata: Metadata = {
   description:
@@ -53,8 +54,7 @@ export default function MarketingHome() {
     <main className="site-home">
       <header className="site-nav">
         <Link className="site-logo" href="/">
-          <span className="site-logo-mark">BB</span>
-          <strong>BrizBuilder</strong>
+          <BrandLogo className="site-logo-image" tone="light" priority />
         </Link>
         <nav aria-label="Public website navigation">
           <a href="#features">Features</a>

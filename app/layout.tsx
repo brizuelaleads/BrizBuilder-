@@ -32,6 +32,10 @@ const cyberMono = Share_Tech_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://brizbuilder.com"),
+  icons: {
+    icon: [{ url: "/brand/brizbuilder-icon.png", type: "image/png", sizes: "512x512" }],
+    apple: [{ url: "/brand/brizbuilder-icon.png", type: "image/png", sizes: "512x512" }],
+  },
   title: {
     default: "BrizBuilder | Websites for service businesses",
     template: "%s | BrizBuilder",

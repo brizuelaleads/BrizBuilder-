@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { BrandLogo } from "../components/BrandLogo";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
@@ -29,10 +30,7 @@ export default function PrivacyPage() {
     <main className="site-home terms-page">
       <header className="site-nav terms-nav">
         <Link className="site-logo" href="/" aria-label="BrizBuilder home">
-          <span className="site-logo-mark" aria-hidden="true">
-            BB
-          </span>
-          <strong>BrizBuilder</strong>
+          <BrandLogo className="site-logo-image" tone="light" decorative priority />
         </Link>
         <div className="site-actions">
           <Link className="site-link" href="/terms">
