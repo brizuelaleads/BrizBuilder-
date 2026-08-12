@@ -71,8 +71,8 @@ export default function MarketingHome() {
 
       <section className="site-hero-public">
         <div className="site-hero-copy">
-          <div className="site-kicker"><span />For agencies and service businesses</div>
-          <h1>Launch client websites and manage leads from one workspace.</h1>
+          <div className="site-kicker"><span />The workspace for service-business agencies</div>
+          <h1>Build client websites. Manage every lead.</h1>
           <p>
             BrizBuilder helps an agency collect business details, generate a
             service-business website, publish it, and manage the client after
@@ -84,14 +84,6 @@ export default function MarketingHome() {
             </Link>
             <a className="site-button" href="#workflow">See workflow</a>
           </div>
-          <section className="site-stats" aria-label="BrizBuilder highlights">
-            {stats.map(([value, label]) => (
-              <article key={label}>
-                <strong>{value}</strong>
-                <span>{label}</span>
-              </article>
-            ))}
-          </section>
         </div>
         <figure className="site-product-shot">
           <Image
@@ -107,6 +99,18 @@ export default function MarketingHome() {
             Websites, leads, and client work together
           </figcaption>
         </figure>
+      </section>
+
+      <section className="site-proof-band">
+        <p>One private workspace for the websites, leads, and client work that move your agency forward.</p>
+        <div className="site-stats" aria-label="BrizBuilder highlights">
+          {stats.map(([value, label]) => (
+            <article key={label}>
+              <strong>{value}</strong>
+              <span>{label}</span>
+            </article>
+          ))}
+        </div>
       </section>
 
       <section className="site-section" id="features">
