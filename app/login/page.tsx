@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
+import { AuthNote, AuthShell } from "../auth/AuthShell";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Sign in | BrizBuilder",
+  title: "Sign in",
   description: "Sign in to your BrizBuilder workspace.",
 };
 
@@ -24,79 +26,55 @@ export default async function LoginPage({
   const returnTo = safeLoginReturnTo(rawReturnTo);
 
   return (
-    <main className="auth-page">
-      <section className="auth-story">
-        <div className="auth-brand">
-          <span>BB</span>
-          <strong>BrizBuilder</strong>
-        </div>
-        <div className="auth-story-copy">
-          <p>SECURE WORKSPACE</p>
-          <h1>Sign in to BrizBuilder.</h1>
-          <span>
-            Accounts are created by your agency. If you do not have one yet, ask
-            them to send you an invite.
-          </span>
-        </div>
-        <div className="auth-trust-row">
-          <span>Invite only</span>
-          <span>Server checked</span>
-          <span>Your own workspace</span>
-        </div>
-      </section>
-      <section className="auth-panel">
-        <div className="auth-card">
-          <span className="auth-card-icon">BB</span>
-          <p>BRIZBUILDER</p>
-          <h2>Sign in</h2>
-          <span className="auth-card-copy">
-            Enter the email and password your agency gave you.
-          </span>
-          <form className="local-login-form" action="/api/auth/login" method="post">
-            <input type="hidden" name="return_to" value={returnTo} />
-            <label>
-              <span>Email</span>
-              <input
-                name="email"
-                type="email"
-                autoComplete="username"
-                required
-                autoFocus
-              />
-            </label>
-            <label>
-              <span>Password</span>
-              <input
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-              />
-            </label>
-            <p className="auth-form-link">
-              <Link href="/forgot-password">Forgot password?</Link>
-            </p>
-            {error ? (
-              <div className="local-login-error" role="alert">
-                {ERROR_COPY[error] ?? ERROR_COPY.invalid}
-              </div>
-            ) : null}
-            <button className="auth-signin" type="submit">
-              Sign in <span>-&gt;</span>
-            </button>
-          </form>
-          <div className="auth-role-note">
-            <span>O</span>
-            <p>
-              <strong>Change your password</strong>
-              <small>
-                Password resets are sent by secure email link.
-              </small>
-            </p>
+    <AuthShell
+      eyebrow="Secure workspace"
+      title="Sign in to BrizBuilder."
+      description="Accounts are created by your agency. If you do not have one yet, ask them to send you an invite."
+      trustItems={["Invite only", "Server checked", "Private workspace"]}
+    >
+      <p>BRIZBUILDER</p>
+      <h2>Sign in</h2>
+      <span className="auth-card-copy">
+        Enter the email and password for your workspace.
+      </span>
+      <form className="local-login-form" action="/api/auth/login" method="post">
+        <input type="hidden" name="return_to" value={returnTo} />
+        <label>
+          <span>Email</span>
+          <input
+            name="email"
+            type="email"
+            autoComplete="username"
+            required
+            autoFocus
+          />
+        </label>
+        <label>
+          <span>Password</span>
+          <input
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            required
+          />
+        </label>
+        <p className="auth-form-link">
+          <Link href="/forgot-password">Forgot password?</Link>
+        </p>
+        {error ? (
+          <div className="local-login-error" role="alert">
+            {ERROR_COPY[error] ?? ERROR_COPY.invalid}
           </div>
-        </div>
-      </section>
-    </main>
+        ) : null}
+        <button className="auth-signin" type="submit">
+          <span>Sign in</span>
+          <ArrowRight aria-hidden="true" />
+        </button>
+      </form>
+      <AuthNote title="Secure password recovery">
+        Password resets are sent by a single-use email link.
+      </AuthNote>
+    </AuthShell>
   );
 }
 

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ArrowRight } from "lucide-react";
 import {
   getChatGPTUser,
   signInPathForCurrentRequest,
@@ -8,60 +9,36 @@ import { CrmApp } from "../CrmApp";
 import { ClientPortal } from "../ClientPortal";
 import { getAccountAccess, getClientPortalData } from "../../db/runtime-access";
 import { getCrmBootstrap } from "../../db/runtime-crm";
+import { AuthNote, AuthShell } from "../auth/AuthShell";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Dashboard | BrizBuilder",
+  title: "Dashboard",
   description: "Protected BrizBuilder agency and client dashboard.",
 };
 
 function SignInScreen({ signInPath }: { signInPath: string }) {
   return (
-    <main className="auth-page">
-      <section className="auth-story">
-        <div className="auth-brand">
-          <span>BB</span>
-          <strong>BrizBuilder</strong>
-        </div>
-        <div className="auth-story-copy">
-          <p>SECURE AGENCY WORKSPACE</p>
-          <h1>Every lead. Every client. Every website.</h1>
-          <span>
-            Admins manage the agency. Clients see only their own leads,
-            contacts, appointments, tasks, and performance.
-          </span>
-        </div>
-        <div className="auth-trust-row">
-          <span>Identity verified</span>
-          <span>Role protected</span>
-          <span>Client data isolated</span>
-        </div>
-      </section>
-      <section className="auth-panel">
-        <div className="auth-card">
-          <span className="auth-card-icon">BB</span>
-          <p>WELCOME TO BRIZBUILDER</p>
-          <h2>Sign in to continue</h2>
-          <span className="auth-card-copy">
-            Use your authorized account. BrizBuilder never receives or stores
-            your password.
-          </span>
-          <a className="auth-signin" href={signInPath}>
-            Continue to dashboard <span>-&gt;</span>
-          </a>
-          <div className="auth-role-note">
-            <span>O</span>
-            <p>
-              <strong>Private by default</strong>
-              <small>
-                Access and permissions are checked on the server every time.
-              </small>
-            </p>
-          </div>
-        </div>
-      </section>
-    </main>
+    <AuthShell
+      eyebrow="Secure agency workspace"
+      title="Every lead. Every client. Every website."
+      description="Admins manage the agency while each client sees only their own leads, contacts, appointments, and performance."
+      trustItems={["Identity verified", "Role protected", "Client data isolated"]}
+    >
+      <p>WELCOME TO BRIZBUILDER</p>
+      <h2>Sign in to continue</h2>
+      <span className="auth-card-copy">
+        Continue with your authorized account to open the dashboard.
+      </span>
+      <a className="auth-signin" href={signInPath}>
+        <span>Continue to dashboard</span>
+        <ArrowRight aria-hidden="true" />
+      </a>
+      <AuthNote title="Private by default">
+        Access and permissions are checked on the server every time.
+      </AuthNote>
+    </AuthShell>
   );
 }
 
