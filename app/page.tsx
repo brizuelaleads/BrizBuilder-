@@ -120,7 +120,7 @@ export default function MarketingHome() {
 
           <div className={styles.heroGrid}>
             <h1 id="landing-title">
-              Every lead, next step,
+              Every lead, next step,{" "}
               <span>and dollar in one view.</span>
             </h1>
 
