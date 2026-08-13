@@ -109,9 +109,7 @@ export default function MarketingHome() {
           <p className={styles.eyebrow}>Private business platform · Built by LB Marketing</p>
           <h1 id="landing-title">
             <span className={styles.heroLine}>Every lead, next step,</span>{" "}
-            <span className={`${styles.heroLine} ${styles.heroLineMuted}`}>
-              and dollar in one view.
-            </span>
+            <span className={styles.heroLine}>and dollar in one view.</span>
           </h1>
           <p className={styles.heroCopy}>
             BrizBuilder brings your leads, conversations, appointments,
@@ -149,7 +147,7 @@ export default function MarketingHome() {
         <div className={styles.container}>
           <p className={styles.sectionKicker}>The platform</p>
           <h2 className={styles.sectionTitle} id="platform-title">
-            Built around the way agencies and service businesses actually operate.
+            Everything your team needs to keep work moving.
           </h2>
           <p className={styles.sectionCopy}>
             Less switching between apps. Less wondering who needs a follow-up.

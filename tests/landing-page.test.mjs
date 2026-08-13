@@ -42,28 +42,21 @@ test("landing page keeps the official shared BrizBuilder wordmark", () => {
   assert.doesNotMatch(source, /site-logo-mark|>BB<|logo-mark/);
 });
 
-test("landing typography uses licensed open-source display families", () => {
+test("landing typography stays restrained and uses the shared Geist family", () => {
   const layout = read("app/layout.tsx");
   const styles = read("app/landing.module.css");
   const packageJson = read("package.json");
 
-  assert.match(layout, /@fontsource-variable\/archivo\/wdth\.css/);
-  assert.match(layout, /@fontsource-variable\/anybody\/wdth\.css/);
-  assert.match(layout, /@fontsource-variable\/big-shoulders\/wght\.css/);
-  assert.match(packageJson, /@fontsource-variable\/archivo/);
-  assert.match(packageJson, /@fontsource-variable\/anybody/);
-  assert.match(packageJson, /@fontsource-variable\/big-shoulders/);
-  assert.match(styles, /--font-landing-display: "Archivo Variable"/);
-  assert.match(styles, /--font-landing-condensed: "Big Shoulders Variable"/);
-  assert.match(styles, /--font-landing-hero: "Anybody Variable"/);
-  assert.match(styles, /var\(--font-landing-display\)/);
-  assert.match(styles, /var\(--font-landing-condensed\)/);
-  assert.match(styles, /\.hero h1\s*{[^}]*font-family: var\(--font-landing-hero\)/s);
-  assert.match(styles, /\.hero h1\s*{[^}]*font-stretch: 150%/s);
-  assert.match(styles, /\.hero h1\s*{[^}]*font-variation-settings: "wdth" 150, "wght" 900/s);
-  assert.match(styles, /\.hero h1\s*{[^}]*text-transform: uppercase/s);
-  assert.match(styles, /\.hero\s*{[^}]*padding: 68px 0 44px/s);
-  assert.match(styles, /\.dashboardFrame\s*{[^}]*margin-top: 46px/s);
+  assert.match(layout, /Geist/);
+  assert.doesNotMatch(layout, /@fontsource/);
+  assert.doesNotMatch(packageJson, /@fontsource/);
+  assert.match(styles, /\.hero h1\s*{[^}]*font-family: var\(--font-sans\)/s);
+  assert.match(styles, /\.hero h1\s*{[^}]*max-width: 850px/s);
+  assert.match(styles, /\.hero h1\s*{[^}]*font-weight: 560/s);
+  assert.match(styles, /\.hero h1\s*{[^}]*letter-spacing: 0/s);
+  assert.doesNotMatch(styles, /\.hero h1\s*{[^}]*text-transform: uppercase/s);
+  assert.match(styles, /\.hero\s*{[^}]*padding: 96px 0 42px/s);
+  assert.match(styles, /\.dashboardFrame\s*{[^}]*margin: var\(--landing-space-4\) auto 0/s);
 });
 
 test("landing page uses a black noir palette without purple lighting", () => {
@@ -72,6 +65,6 @@ test("landing page uses a black noir palette without purple lighting", () => {
   assert.match(styles, /--landing-bg: #030303/);
   assert.match(styles, /--landing-panel: #0a0a0a/);
   assert.match(styles, /\.ambientLight\s*{\s*display: none/);
-  assert.match(styles, /\.pageShell \.primaryButton\s*{[^}]*color: #090909[^}]*background: #f2f2ee/s);
+  assert.match(styles, /\.pageShell \.primaryButton\s*{[^}]*background: #7862ad/s);
   assert.doesNotMatch(styles, /#b995ff|#c8aaff|#a47bff|#9a84d8|153 113 255|185 149 255/);
 });
