@@ -3,167 +3,213 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
-  LayoutDashboard,
-  PanelsTopLeft,
-  UsersRound,
+  CalendarDays,
+  CircleDot,
+  ListChecks,
+  MessageSquareText,
+  ShieldCheck,
+  TrendingUp,
 } from "lucide-react";
 import { BrandLogo } from "./components/BrandLogo";
+import styles from "./landing.module.css";
 
 export const metadata: Metadata = {
+  title: "Agency Command Center",
   description:
-    "Launch service-business websites, landing pages, forms, and client portals from one agency workspace.",
+    "BrizBuilder is a private command center for leads, conversations, appointments, and growth.",
+  openGraph: {
+    title: "BrizBuilder | Agency Command Center",
+    description:
+      "Bring leads, conversations, appointments, follow-ups, and reporting into one private workspace.",
+    images: [
+      {
+        url: "/landing-dashboard-dark.webp",
+        width: 1672,
+        height: 941,
+        alt: "BrizBuilder agency command center",
+      },
+    ],
+  },
 };
-
-const stats = [
-  ["10 min", "site draft from intake"],
-  ["24/7", "lead capture and routing"],
-  ["1 place", "clients, forms, tasks, reports"],
-];
 
 const features = [
   {
-    icon: PanelsTopLeft,
-    title: "Website launch system",
-    copy: "Turn a business profile into a polished service website with pages, metadata, service areas, offers, and conversion sections.",
+    label: "01 / Leads",
+    title: "One lead command center",
+    description:
+      "Capture, organize, and move opportunities through your process without losing track of the next step.",
+    icon: CircleDot,
   },
   {
-    icon: LayoutDashboard,
-    title: "Agency CRM",
-    copy: "Track clients, leads, appointments, tasks, reports, and future marketing modules without exposing one client to another.",
+    label: "02 / Conversations",
+    title: "Communication in context",
+    description:
+      "Keep conversations, connections, phone, and texting activity tied to the right customer and workflow.",
+    icon: MessageSquareText,
   },
   {
-    icon: UsersRound,
-    title: "Client-ready portals",
-    copy: "Give each client a clean dashboard for their own leads and performance while your team keeps the full agency view.",
+    label: "03 / Reporting",
+    title: "Know what drives results",
+    description:
+      "See what is happening across your workspace with source visibility, appointments, and operational reporting.",
+    icon: TrendingUp,
   },
-];
-
-const websiteParts = [
-  "Homepage",
-  "Service pages",
-  "Contact forms",
-  "FAQ",
-  "SEO metadata",
-  "Schema markup",
-  "Privacy and terms",
-  "Mobile layout",
-];
+  {
+    label: "04 / Scheduling",
+    title: "Appointments without chaos",
+    description:
+      "Keep today's schedule, upcoming appointments, and follow-up activity visible from one central dashboard.",
+    icon: CalendarDays,
+  },
+  {
+    label: "05 / Follow-up",
+    title: "Stay ahead of what needs action",
+    description:
+      "Highlight leads awaiting response, overdue tasks, and the items your team needs to handle right now.",
+    icon: ListChecks,
+  },
+  {
+    label: "06 / Control",
+    title: "Private access by design",
+    description:
+      "BrizBuilder is built for approved clients and team members, with a cleaner and more controlled business experience.",
+    icon: ShieldCheck,
+  },
+] as const;
 
 export default function MarketingHome() {
   return (
-    <main className="site-home">
-      <header className="site-nav">
-        <Link className="site-logo" href="/">
-          <BrandLogo className="site-logo-image" tone="light" priority />
-        </Link>
-        <nav aria-label="Public website navigation">
-          <a href="#features">Features</a>
-          <a href="#workflow">Workflow</a>
-          <a href="#contact">Contact</a>
-        </nav>
-        <div className="site-actions">
-          <Link className="site-link" href="/login">Sign in</Link>
-          <Link className="site-button primary" href="/dashboard">
-            Open dashboard <ArrowRight aria-hidden="true" />
-          </Link>
-        </div>
-      </header>
+    <main className={styles.pageShell}>
+      <div className={styles.gridBackground} aria-hidden="true" />
+      <div className={styles.ambientLight} aria-hidden="true" />
 
-      <section className="site-hero-public">
-        <div className="site-hero-copy">
-          <div className="site-kicker"><span />The workspace for service-business agencies</div>
-          <h1>Build client websites. Manage every lead.</h1>
-          <p>
-            BrizBuilder helps an agency collect business details, generate a
-            service-business website, publish it, and manage the client after
-            the site goes live.
-          </p>
-          <div className="site-hero-actions">
-            <Link className="site-button primary" href="/dashboard">
-              Open dashboard <ArrowRight aria-hidden="true" />
+      <div className={styles.container}>
+        <header className={styles.navigation}>
+          <Link className={styles.brand} href="/" aria-label="BrizBuilder home">
+            <BrandLogo className={styles.brandLogo} tone="light" priority />
+          </Link>
+
+          <nav className={styles.navLinks} aria-label="Landing page navigation">
+            <a href="#platform">Platform</a>
+            <a href="#why">Why BrizBuilder</a>
+            <a href="#access">Access</a>
+          </nav>
+
+          <div className={styles.navActions}>
+            <a className={`${styles.button} ${styles.secondaryButton}`} href="#access">
+              Learn more
+            </a>
+            <Link className={`${styles.button} ${styles.primaryButton}`} href="/login">
+              Log in <ArrowRight aria-hidden="true" />
             </Link>
-            <a className="site-button" href="#workflow">See workflow</a>
           </div>
-        </div>
-        <figure className="site-product-shot">
-          <Image
-            src="/og-calm.png"
-            alt="BrizBuilder dashboard with websites, leads, tasks, and appointments"
-            fill
-            priority
-            unoptimized
-            sizes="(max-width: 980px) calc(100vw - 32px), 52vw"
-          />
-          <figcaption>
-            <span>Live workspace</span>
-            Websites, leads, and client work together
-          </figcaption>
-        </figure>
-      </section>
+        </header>
 
-      <section className="site-proof-band">
-        <p>One private workspace for the websites, leads, and client work that move your agency forward.</p>
-        <div className="site-stats" aria-label="BrizBuilder highlights">
-          {stats.map(([value, label]) => (
-            <article key={label}>
-              <strong>{value}</strong>
-              <span>{label}</span>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="site-section" id="features">
-        <div className="site-section-heading">
-          <span>What it does</span>
-          <h2>Built like a website platform, managed like an agency CRM.</h2>
-        </div>
-        <div className="site-feature-grid">
-          {features.map(({ icon: Icon, title, copy }) => (
-            <article key={title}>
-              <span><Icon aria-hidden="true" /></span>
-              <h3>{title}</h3>
-              <p>{copy}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="site-workflow-band" id="workflow">
-        <div className="site-section site-split">
-          <div>
-            <span className="site-section-label">Client website output</span>
-            <h2>Everything a home-service website needs before launch.</h2>
-            <p>
-              Enter the business, services, offers, photos, contact details, and
-              service areas. BrizBuilder turns them into a publish-ready draft.
-            </p>
+        <section className={styles.hero} aria-labelledby="landing-title">
+          <p className={styles.eyebrow}>Private business platform · Built by LB Marketing</p>
+          <h1 id="landing-title">
+            Every lead, next step,
+            <span>and dollar in one view.</span>
+          </h1>
+          <p className={styles.heroCopy}>
+            BrizBuilder brings your leads, conversations, appointments,
+            follow-ups, reporting, and customer activity into one powerful
+            workspace so your team always knows what needs attention next.
+          </p>
+          <div className={styles.heroActions}>
+            <Link className={`${styles.button} ${styles.primaryButton}`} href="/login">
+              Log in to BrizBuilder <ArrowRight aria-hidden="true" />
+            </Link>
+            <a className={`${styles.button} ${styles.secondaryButton}`} href="#platform">
+              Explore the platform
+            </a>
           </div>
-          <ul>
-            {websiteParts.map((part) => (
-              <li key={part}>{part}</li>
+          <p className={styles.privateNote}>
+            BrizBuilder is currently available to approved LB Marketing clients and team members.
+          </p>
+
+          <div className={styles.dashboardFrame}>
+            <Image
+              className={styles.dashboardImage}
+              src="/landing-dashboard-dark.webp"
+              alt="BrizBuilder dark-mode dashboard showing leads, tasks, appointments, and reporting"
+              width={1672}
+              height={941}
+              sizes="(max-width: 620px) calc(100vw - 48px), (max-width: 1200px) calc(100vw - 80px), 1140px"
+              priority
+              unoptimized
+            />
+          </div>
+        </section>
+      </div>
+
+      <section className={styles.platformSection} id="platform" aria-labelledby="platform-title">
+        <div className={styles.container}>
+          <p className={styles.sectionKicker}>The platform</p>
+          <h2 className={styles.sectionTitle} id="platform-title">
+            Built around the way agencies and service businesses actually operate.
+          </h2>
+          <p className={styles.sectionCopy}>
+            Less switching between apps. Less wondering who needs a follow-up.
+            More visibility from first contact to closed opportunity.
+          </p>
+
+          <div className={styles.featureGrid}>
+            {features.map(({ label, title, description, icon: Icon }) => (
+              <article className={styles.feature} key={label}>
+                <p className={styles.featureNumber}>{label}</p>
+                <span className={styles.featureIcon} aria-hidden="true">
+                  <Icon />
+                </span>
+                <h3>{title}</h3>
+                <p>{description}</p>
+              </article>
             ))}
-          </ul>
+          </div>
         </div>
       </section>
 
-      <section className="site-cta" id="contact">
-        <div className="site-cta-inner">
-          <span className="site-section-label">Ready to build</span>
-          <h2>Launch the website. Keep the client work organized.</h2>
-          <p>Open your private workspace to start managing clients and leads.</p>
-          <Link className="site-button" href="/dashboard">
-            Go to dashboard <ArrowRight aria-hidden="true" />
-          </Link>
+      <section className={styles.statementSection} id="why" aria-labelledby="why-title">
+        <div className={styles.container}>
+          <p className={styles.sectionKicker}>Why BrizBuilder</p>
+          <h2 className={styles.sectionTitle} id="why-title">
+            Your CRM should help the work move forward, not create more of it.
+          </h2>
+          <p className={styles.sectionCopy}>
+            BrizBuilder is designed to make the important things obvious: who
+            reached out, what needs attention, what is scheduled next, and where
+            growth is coming from.
+          </p>
         </div>
       </section>
 
-      <footer className="site-public-footer">
-        <span>© 2026 BrizBuilder</span>
-        <nav aria-label="Legal links">
-          <Link href="/privacy">Privacy Policy</Link>
-          <Link href="/terms">Terms of Service</Link>
-        </nav>
+      <section className={styles.accessSection} id="access" aria-labelledby="access-title">
+        <div className={styles.container}>
+          <div className={styles.accessPanel}>
+            <div>
+              <p className={styles.sectionKicker}>Private access</p>
+              <h2 id="access-title">Already part of BrizBuilder?</h2>
+              <p>
+                Sign in to access your workspace. New accounts are created by
+                invitation for approved clients and team members.
+              </p>
+            </div>
+            <Link className={`${styles.button} ${styles.primaryButton}`} href="/login">
+              Continue to login <ArrowRight aria-hidden="true" />
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <footer className={styles.footer}>
+        <div className={`${styles.container} ${styles.footerRow}`}>
+          <p>© 2026 BrizBuilder. Built by LB Marketing.</p>
+          <nav className={styles.footerLinks} aria-label="Legal and support links">
+            <Link href="/privacy">Privacy</Link>
+            <Link href="/terms">Terms</Link>
+            <a href="mailto:brizuelaleads@gmail.com">Support</a>
+          </nav>
+        </div>
       </footer>
     </main>
   );
