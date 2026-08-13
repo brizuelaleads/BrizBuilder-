@@ -9237,30 +9237,30 @@ canvas {
 }
 
 .site-logo-image {
-  width: 154px;
+  width: 116px;
 }
 
 .auth-brand-logo {
-  width: 174px;
+  width: 136px;
 }
 
 .auth-card-icon .brand-logo-image {
-  width: 30px;
-  height: 30px;
+  width: 24px;
+  height: 24px;
 }
 
 .crm-brand-home .crm-brand-logo {
-  width: 166px;
+  width: 126px;
   height: auto;
 }
 
 .oauth-brand-logo {
-  width: 180px;
+  width: 136px;
   height: auto;
 }
 
 .client-portal-brand .client-portal-logo {
-  width: 158px;
+  width: 124px;
   height: auto;
 }
 
@@ -9270,7 +9270,7 @@ canvas {
   }
 
   .site-logo-image {
-    width: 132px;
+    width: 106px;
   }
 
   .site-home .site-hero-public {

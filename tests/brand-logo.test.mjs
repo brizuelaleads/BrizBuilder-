@@ -26,6 +26,8 @@ test("shared brand component replaces legacy BB placeholders", () => {
   const component = read("app/components/BrandLogo.tsx");
   assert.match(component, /brizbuilder-\$\{variant\}-\$\{color\}\.png/);
   assert.match(component, /tone === "light" \? "white" : "dark"/);
+  assert.match(component, /style=\{\{/);
+  assert.match(component, /width: displayWidth/);
 
   for (const rel of [
     "app/page.tsx",

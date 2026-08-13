@@ -18,7 +18,7 @@ export function ClientPortal({ session, signOutPath, client, data }: ClientPorta
     <div className="client-portal">
       <header className="client-portal-header">
         <div className="client-portal-brand">
-          <BrandLogo className="client-portal-logo" decorative priority />
+          <BrandLogo className="client-portal-logo" size={124} decorative priority />
           <small>Client portal</small>
         </div>
         <div className="client-portal-account">

@@ -86,7 +86,7 @@ export default function MarketingHome() {
       <div className={styles.container}>
         <header className={styles.navigation}>
           <Link className={styles.brand} href="/" aria-label="BrizBuilder home">
-            <BrandLogo className={styles.brandLogo} tone="light" priority />
+            <BrandLogo className={styles.brandLogo} tone="light" size={112} priority />
           </Link>
 
           <nav className={styles.navLinks} aria-label="Landing page navigation">

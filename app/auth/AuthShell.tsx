@@ -21,7 +21,7 @@ export function AuthShell({
     <main className="auth-page">
       <section className="auth-story">
         <Link className="auth-brand" href="/" aria-label="BrizBuilder home">
-          <BrandLogo className="auth-brand-logo" decorative priority />
+          <BrandLogo className="auth-brand-logo" size={136} decorative priority />
         </Link>
         <div className="auth-story-content">
           <div className="auth-story-copy">
@@ -51,7 +51,7 @@ export function AuthShell({
       <section className="auth-panel">
         <div className="auth-card">
           <span className="auth-card-icon" aria-hidden="true">
-            <BrandLogo compact tone="light" decorative />
+            <BrandLogo compact tone="light" size={24} decorative />
           </span>
           {children}
         </div>

@@ -207,7 +207,7 @@ function ConsentError({ error }: { error: unknown }) {
       <section style={styles.card}>
         <header style={styles.header}>
           <div style={styles.brand}>
-            <BrandLogo className="oauth-brand-logo" tone="light" decorative priority />
+            <BrandLogo className="oauth-brand-logo" tone="light" size={136} decorative priority />
           </div>
           <p style={styles.eyebrow}>SECURE AI CONNECTION</p>
           <h1 style={styles.title}>This connection cannot be approved.</h1>
@@ -253,7 +253,7 @@ export default async function OAuthAuthorizePage({
       <section className="oauth-consent-card" style={styles.card}>
         <header style={styles.header}>
           <div style={styles.brand}>
-            <BrandLogo className="oauth-brand-logo" tone="light" decorative priority />
+            <BrandLogo className="oauth-brand-logo" tone="light" size={136} decorative priority />
           </div>
           <p style={styles.eyebrow}>SECURE AI CONNECTION</p>
           <h1 style={styles.title}>Allow an external AI app to use your CRM?</h1>

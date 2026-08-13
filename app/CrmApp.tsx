@@ -764,7 +764,7 @@ export function CrmApp({
             onClick={() => navigate("dashboard")}
             aria-label="Open BrizBuilder dashboard"
           >
-            <BrandLogo className="crm-brand-logo" decorative priority />
+            <BrandLogo className="crm-brand-logo" size={126} decorative priority />
           </button>
           <button
             type="button"

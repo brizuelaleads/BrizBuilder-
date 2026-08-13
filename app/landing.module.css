@@ -72,8 +72,8 @@
   align-items: center;
 }
 
-.brandLogo {
-  width: 154px;
+.brand .brandLogo {
+  width: 112px;
   height: auto;
 }
 
@@ -421,8 +421,8 @@
     gap: 12px;
   }
 
-  .brandLogo {
-    width: 126px;
+  .brand .brandLogo {
+    width: 104px;
   }
 
   .navActions .secondaryButton {
@@ -483,8 +483,8 @@
 }
 
 @media (max-width: 360px) {
-  .brandLogo {
-    width: 112px;
+  .brand .brandLogo {
+    width: 96px;
   }
 
   .navActions .button {
