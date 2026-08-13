@@ -158,8 +158,63 @@
 }
 
 .hero {
-  padding: 96px 0 42px;
+  min-height: min(720px, calc(100svh - 140px));
+  padding: 88px 0 64px;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   text-align: center;
+  border-bottom: 1px solid var(--landing-line);
+}
+
+.heroBackdrop {
+  width: min(1500px, 110vw);
+  max-width: none;
+  height: auto;
+  position: absolute;
+  z-index: -3;
+  top: 250px;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0.86;
+  filter: saturate(0.78) contrast(1.06);
+  pointer-events: none;
+}
+
+.heroVeil,
+.heroPattern {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.heroVeil {
+  z-index: -2;
+  background:
+    linear-gradient(to bottom, #030303 0%, rgb(3 3 3 / 96%) 13%, rgb(3 3 3 / 78%) 42%, rgb(3 3 3 / 24%) 67%, #030303 100%),
+    linear-gradient(to right, #030303 0%, transparent 18%, transparent 82%, #030303 100%);
+}
+
+.heroPattern {
+  z-index: -1;
+  background-image:
+    linear-gradient(rgb(255 255 255 / 2.2%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 2.2%) 1px, transparent 1px);
+  background-size: 60px 60px;
+  mask-image: linear-gradient(to bottom, #000 0%, rgb(0 0 0 / 82%) 72%, transparent 100%);
+}
+
+.heroInner,
+.heroContent {
+  position: relative;
+}
+
+.heroInner {
+  z-index: 1;
+}
+
+.heroContent {
+  margin-inline: auto;
 }
 
 .eyebrow {
@@ -174,18 +229,24 @@
 }
 
 .hero h1 {
-  max-width: 850px;
+  max-width: 980px;
   margin: 0 auto;
   color: var(--landing-text);
-  font-family: var(--font-sans), Inter, system-ui, sans-serif;
-  font-size: 70px;
-  font-weight: 560;
-  line-height: 1;
+  font-family: "Anybody Variable", var(--font-sans), Arial, sans-serif;
+  font-size: 68px;
+  font-stretch: 112%;
+  font-weight: 720;
+  font-variation-settings: "wdth" 112, "wght" 720;
+  line-height: 0.96;
   letter-spacing: 0;
 }
 
 .heroLine {
   display: block;
+}
+
+.heroLine:last-child {
+  color: #aaa8af;
 }
 
 .heroCopy {
@@ -205,28 +266,12 @@
 }
 
 .privateNote {
-  margin: var(--landing-space-2) 0 0;
-  color: #66666f;
+  max-width: 620px;
+  margin: var(--landing-space-2) auto 0;
+  color: #898990;
   font-size: 11px;
-}
-
-.dashboardFrame {
-  width: min(1140px, 100%);
-  margin: var(--landing-space-4) auto 0;
-  padding: 12px;
-  overflow: hidden;
-  border: 1px solid var(--landing-line);
-  border-radius: 11px;
-  background: rgb(255 255 255 / 2%);
-  box-shadow: 0 24px 64px rgb(0 0 0 / 32%);
-}
-
-.dashboardImage {
-  width: 100%;
-  height: auto;
-  display: block;
-  border: 1px solid rgb(255 255 255 / 5%);
-  border-radius: 7px;
+  line-height: 1.45;
+  text-shadow: 0 2px 12px #000;
 }
 
 .platformSection,
@@ -234,6 +279,10 @@
 .accessSection {
   padding: 104px 0;
   scroll-margin-top: 24px;
+}
+
+.platformSection {
+  padding-top: 72px;
 }
 
 .sectionKicker,
@@ -399,8 +448,8 @@
 
 @media (max-width: 1024px) {
   .hero h1 {
-    max-width: 780px;
-    font-size: 62px;
+    max-width: 840px;
+    font-size: 60px;
   }
 
   .sectionTitle {
@@ -418,7 +467,7 @@
   }
 
   .hero h1 {
-    font-size: 56px;
+    font-size: 53px;
   }
 
   .accessPanel {
@@ -451,12 +500,28 @@
   }
 
   .hero {
-    padding: 64px 0 36px;
+    min-height: min(700px, calc(100svh - 140px));
+    padding: 58px 0 42px;
+  }
+
+  .heroBackdrop {
+    width: 850px;
+    top: 420px;
+    left: 54%;
+    opacity: 0.8;
+  }
+
+  .heroVeil {
+    background:
+      linear-gradient(to bottom, #030303 0%, rgb(3 3 3 / 97%) 22%, rgb(3 3 3 / 78%) 52%, rgb(3 3 3 / 28%) 75%, #030303 100%),
+      linear-gradient(to right, #030303 0%, transparent 12%, transparent 88%, #030303 100%);
   }
 
   .hero h1 {
-    font-size: 43px;
-    line-height: 1.02;
+    font-size: 44px;
+    font-stretch: 108%;
+    font-variation-settings: "wdth" 108, "wght" 720;
+    line-height: 0.98;
   }
 
   .heroLine {
@@ -474,15 +539,14 @@
     flex-direction: column;
   }
 
-  .dashboardFrame {
-    margin-top: 42px;
-    padding: 8px;
-  }
-
   .platformSection,
   .statementSection,
   .accessSection {
     padding: 80px 0;
+  }
+
+  .platformSection {
+    padding-top: 60px;
   }
 
   .sectionTitle {
@@ -521,7 +585,7 @@
   }
 
   .hero h1 {
-    font-size: 39px;
+    font-size: 38px;
   }
 
   .sectionTitle {

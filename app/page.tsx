@@ -105,43 +105,48 @@ export default function MarketingHome() {
           </div>
         </header>
 
-        <section className={styles.hero} aria-labelledby="landing-title">
-          <p className={styles.eyebrow}>Private business platform · Built by LB Marketing</p>
-          <h1 id="landing-title">
-            <span className={styles.heroLine}>Every lead, next step,</span>{" "}
-            <span className={styles.heroLine}>and dollar in one view.</span>
-          </h1>
-          <p className={styles.heroCopy}>
-            BrizBuilder brings your leads, conversations, appointments,
-            follow-ups, reporting, and customer activity into one powerful
-            workspace so your team always knows what needs attention next.
-          </p>
-          <div className={styles.heroActions}>
-            <Link className={`${styles.button} ${styles.primaryButton}`} href="/login">
-              Log in to BrizBuilder <ArrowRight aria-hidden="true" />
-            </Link>
-            <a className={`${styles.button} ${styles.secondaryButton}`} href="#platform">
-              Explore the platform
-            </a>
-          </div>
-          <p className={styles.privateNote}>
-            BrizBuilder is currently available to approved LB Marketing clients and team members.
-          </p>
-
-          <div className={styles.dashboardFrame}>
-            <Image
-              className={styles.dashboardImage}
-              src="/landing-dashboard-dark.webp"
-              alt="BrizBuilder dark-mode dashboard showing leads, tasks, appointments, and reporting"
-              width={1672}
-              height={941}
-              sizes="(max-width: 620px) calc(100vw - 48px), (max-width: 1200px) calc(100vw - 80px), 1140px"
-              priority
-              unoptimized
-            />
-          </div>
-        </section>
       </div>
+
+      <section className={styles.hero} aria-labelledby="landing-title">
+        <Image
+          className={styles.heroBackdrop}
+          src="/landing-dashboard-dark.webp"
+          alt="BrizBuilder dark-mode dashboard showing leads, tasks, appointments, and reporting"
+          width={1672}
+          height={941}
+          sizes="(max-width: 620px) 850px, (max-width: 1200px) 112vw, 1500px"
+          priority
+          unoptimized
+        />
+        <div className={styles.heroVeil} aria-hidden="true" />
+        <div className={styles.heroPattern} aria-hidden="true" />
+
+        <div className={`${styles.container} ${styles.heroInner}`}>
+          <div className={styles.heroContent}>
+            <p className={styles.eyebrow}>Private business platform &middot; Built by LB Marketing</p>
+            <h1 id="landing-title">
+              <span className={styles.heroLine}>Every lead, next step,</span>{" "}
+              <span className={styles.heroLine}>and dollar in one view.</span>
+            </h1>
+            <p className={styles.heroCopy}>
+              BrizBuilder brings your leads, conversations, appointments,
+              follow-ups, reporting, and customer activity into one powerful
+              workspace so your team always knows what needs attention next.
+            </p>
+            <div className={styles.heroActions}>
+              <Link className={`${styles.button} ${styles.primaryButton}`} href="/login">
+                Log in to BrizBuilder <ArrowRight aria-hidden="true" />
+              </Link>
+              <a className={`${styles.button} ${styles.secondaryButton}`} href="#platform">
+                Explore the platform
+              </a>
+            </div>
+            <p className={styles.privateNote}>
+              BrizBuilder is currently available to approved LB Marketing clients and team members.
+            </p>
+          </div>
+        </div>
+      </section>
 
       <section className={styles.platformSection} id="platform" aria-labelledby="platform-title">
         <div className={styles.container}>
