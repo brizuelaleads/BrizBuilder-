@@ -1,6 +1,7 @@
 .pageShell {
   --font-landing-display: "Archivo Variable";
   --font-landing-condensed: "Big Shoulders Variable";
+  --font-landing-hero: "Archivo Black";
   --landing-bg: #030303;
   --landing-panel: #0a0a0a;
   --landing-text: #f2f2ee;
@@ -170,9 +171,8 @@
   max-width: 1120px;
   margin: 0 auto;
   color: var(--landing-text);
-  font-family: var(--font-landing-display), Arial, sans-serif;
+  font-family: var(--font-landing-hero), Arial Black, sans-serif;
   font-size: 78px;
-  font-stretch: 112%;
   font-weight: 900;
   line-height: 0.94;
   letter-spacing: 0;

@@ -49,12 +49,16 @@ test("landing typography uses licensed open-source display families", () => {
 
   assert.match(layout, /@fontsource-variable\/archivo\/wdth\.css/);
   assert.match(layout, /@fontsource-variable\/big-shoulders\/wght\.css/);
+  assert.match(layout, /@fontsource\/archivo-black/);
   assert.match(packageJson, /@fontsource-variable\/archivo/);
   assert.match(packageJson, /@fontsource-variable\/big-shoulders/);
+  assert.match(packageJson, /@fontsource\/archivo-black/);
   assert.match(styles, /--font-landing-display: "Archivo Variable"/);
   assert.match(styles, /--font-landing-condensed: "Big Shoulders Variable"/);
+  assert.match(styles, /--font-landing-hero: "Archivo Black"/);
   assert.match(styles, /var\(--font-landing-display\)/);
   assert.match(styles, /var\(--font-landing-condensed\)/);
+  assert.match(styles, /\.hero h1\s*{[^}]*font-family: var\(--font-landing-hero\)/s);
 });
 
 test("landing page uses a black noir palette without purple lighting", () => {
