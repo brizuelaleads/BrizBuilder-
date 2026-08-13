@@ -1,18 +1,18 @@
 .pageShell {
   --font-landing-display: "Archivo Variable";
   --font-landing-condensed: "Big Shoulders Variable";
-  --landing-bg: #070914;
-  --landing-panel: #0e1321;
-  --landing-text: #f6f8ff;
-  --landing-muted: #95a0b7;
-  --landing-line: rgb(255 255 255 / 8%);
-  --landing-accent: #b995ff;
+  --landing-bg: #030303;
+  --landing-panel: #0a0a0a;
+  --landing-text: #f2f2ee;
+  --landing-muted: #9a9a96;
+  --landing-line: rgb(255 255 255 / 10%);
+  --landing-accent: #edede8;
   min-height: 100vh;
   position: relative;
   isolation: isolate;
   overflow: hidden;
   color: var(--landing-text);
-  background: #070914;
+  background: var(--landing-bg);
   font-family: var(--font-sans), Inter, system-ui, sans-serif;
   line-height: 1.5;
 }
@@ -34,25 +34,15 @@
   z-index: -2;
   height: 1320px;
   background-image:
-    linear-gradient(rgb(255 255 255 / 2.2%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(255 255 255 / 2.2%) 1px, transparent 1px);
+    linear-gradient(rgb(255 255 255 / 1.6%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 1.6%) 1px, transparent 1px);
   background-size: 60px 60px;
   mask-image: linear-gradient(to bottom, #000 0%, transparent 72%);
   pointer-events: none;
 }
 
 .ambientLight {
-  width: 680px;
-  height: 680px;
-  position: absolute;
-  top: -120px;
-  left: 50%;
-  z-index: -1;
-  border-radius: 50%;
-  background: rgb(153 113 255 / 15%);
-  filter: blur(140px);
-  transform: translateX(-50%);
-  pointer-events: none;
+  display: none;
 }
 
 .container {
@@ -89,7 +79,7 @@
 
 .navLinks {
   gap: 30px;
-  color: #b1bad0;
+  color: #aaa9a4;
   font-family: var(--font-landing-display), Arial, sans-serif;
   font-size: 14px;
   font-weight: 700;
@@ -135,7 +125,7 @@
 }
 
 .secondaryButton {
-  color: #eef2ff;
+  color: #eeeeea;
   background: rgb(255 255 255 / 3%);
 }
 
@@ -144,15 +134,16 @@
   background: rgb(255 255 255 / 6%);
 }
 
-.primaryButton {
-  color: #120d20;
-  border-color: transparent;
-  background: linear-gradient(180deg, #c8aaff 0%, #a47bff 100%);
-  box-shadow: 0 10px 28px rgb(148 103 255 / 26%);
+.pageShell .primaryButton {
+  color: #090909;
+  border-color: #f2f2ee;
+  background: #f2f2ee;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 38%);
 }
 
-.primaryButton:hover {
-  background: #cdb2ff;
+.pageShell .primaryButton:hover {
+  border-color: #fff;
+  background: #fff;
 }
 
 .hero {
@@ -165,10 +156,10 @@
   max-width: 100%;
   margin: 0 auto 25px;
   padding: 8px 12px;
-  border: 1px solid rgb(185 149 255 / 18%);
+  border: 1px solid rgb(255 255 255 / 13%);
   border-radius: 999px;
-  color: #d7c7ff;
-  background: rgb(185 149 255 / 8%);
+  color: #d6d5cf;
+  background: rgb(255 255 255 / 4%);
   font-family: var(--font-landing-condensed), Impact, sans-serif;
   font-size: 12px;
   font-weight: 800;
@@ -192,13 +183,13 @@
 }
 
 .heroLineMuted {
-  color: #7e88a2;
+  color: #777773;
 }
 
 .heroCopy {
   max-width: 690px;
   margin: 28px auto 0;
-  color: #9ca6bd;
+  color: #a1a19c;
   font-size: 18px;
   line-height: 1.7;
 }
@@ -217,7 +208,7 @@
 
 .privateNote {
   margin: 17px 0 0;
-  color: #798399;
+  color: #777773;
   font-size: 12px;
 }
 
@@ -250,7 +241,7 @@
 .sectionKicker,
 .featureNumber {
   margin: 0;
-  color: #9a84d8;
+  color: #a4a39d;
   font-family: var(--font-landing-condensed), Impact, sans-serif;
   font-size: 10px;
   font-weight: 800;
@@ -277,7 +268,7 @@
 .sectionCopy {
   max-width: 650px;
   margin: 18px 0 0;
-  color: #92a0b6;
+  color: #999994;
   font-size: 16px;
 }
 
@@ -295,12 +286,12 @@
   overflow: hidden;
   border: 1px solid var(--landing-line);
   border-radius: 8px;
-  background: #0c101c;
-  box-shadow: 0 24px 80px rgb(0 0 0 / 28%);
+  background: #090909;
+  box-shadow: 0 24px 80px rgb(0 0 0 / 45%);
 }
 
 .featureNumber {
-  color: #8874c5;
+  color: #777772;
 }
 
 .featureIcon {
@@ -311,8 +302,8 @@
   place-items: center;
   border: 1px solid rgb(255 255 255 / 9%);
   border-radius: 8px;
-  color: #dccfff;
-  background: rgb(185 149 255 / 8%);
+  color: #deded9;
+  background: rgb(255 255 255 / 4%);
 }
 
 .featureIcon svg {
@@ -332,7 +323,7 @@
 
 .feature > p:last-child {
   margin: 9px 0 0;
-  color: #8f9aaf;
+  color: #92928e;
   font-size: 13px;
   line-height: 1.6;
 }
@@ -364,8 +355,8 @@
   gap: 35px;
   border: 1px solid var(--landing-line);
   border-radius: 8px;
-  background: #111626;
-  box-shadow: 0 24px 80px rgb(0 0 0 / 35%);
+  background: #0a0a0a;
+  box-shadow: 0 24px 80px rgb(0 0 0 / 48%);
 }
 
 .accessPanel > div {
@@ -386,7 +377,7 @@
 .accessPanel > div > p:last-child {
   max-width: 550px;
   margin: 15px 0 0;
-  color: #96a0b4;
+  color: #999994;
 }
 
 .accessPanel > .button {
@@ -396,7 +387,7 @@
 .footer {
   padding: 35px 0 45px;
   border-top: 1px solid var(--landing-line);
-  color: #6f7c93;
+  color: #777772;
   font-size: 12px;
 }
 

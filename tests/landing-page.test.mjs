@@ -56,3 +56,13 @@ test("landing typography uses licensed open-source display families", () => {
   assert.match(styles, /var\(--font-landing-display\)/);
   assert.match(styles, /var\(--font-landing-condensed\)/);
 });
+
+test("landing page uses a black noir palette without purple lighting", () => {
+  const styles = read("app/landing.module.css");
+
+  assert.match(styles, /--landing-bg: #030303/);
+  assert.match(styles, /--landing-panel: #0a0a0a/);
+  assert.match(styles, /\.ambientLight\s*{\s*display: none/);
+  assert.match(styles, /\.pageShell \.primaryButton\s*{[^}]*color: #090909[^}]*background: #f2f2ee/s);
+  assert.doesNotMatch(styles, /#b995ff|#c8aaff|#a47bff|#9a84d8|153 113 255|185 149 255/);
+});
