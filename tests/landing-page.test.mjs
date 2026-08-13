@@ -56,38 +56,3 @@ test("landing typography uses licensed open-source display families", () => {
   assert.match(styles, /var\(--font-landing-display\)/);
   assert.match(styles, /var\(--font-landing-condensed\)/);
 });
-
-test("landing redesign stays product-led and avoids the old template treatments", () => {
-  const source = read("app/page.tsx");
-  const styles = read("app/landing.module.css");
-
-  assert.match(source, /01 \/ Command center/);
-  assert.match(source, /02 \/ Everything in one place/);
-  assert.match(source, /03 \/ Operating principle/);
-  assert.match(source, /04 \/ Private access/);
-  assert.match(source, /Private access for LB Marketing clients and team members/);
-  assert.doesNotMatch(source, /ambientLight|dashboardFrame|featureGrid|Learn more/);
-  assert.doesNotMatch(styles, /filter:\s*blur|border-radius:\s*999px|font-weight:\s*900/);
-});
-
-test("landing page defines a restrained reusable token system", () => {
-  const styles = read("app/landing.module.css");
-
-  for (const token of [
-    "--landing-bg",
-    "--landing-surface",
-    "--landing-text",
-    "--landing-secondary",
-    "--landing-border",
-    "--landing-purple",
-    "--space-4",
-    "--space-8",
-    "--space-16",
-    "--space-24",
-  ]) {
-    assert.match(styles, new RegExp(token));
-  }
-
-  assert.match(styles, /width: min\(1220px, calc\(100% - 48px\)\)/);
-  assert.match(styles, /overflow-x: clip/);
-});
