@@ -150,14 +150,29 @@ export default function MarketingHome() {
 
       <section className={styles.platformSection} id="platform" aria-labelledby="platform-title">
         <div className={styles.container}>
-          <p className={styles.sectionKicker}>The platform</p>
-          <h2 className={styles.sectionTitle} id="platform-title">
-            Everything your team needs to keep work moving.
-          </h2>
-          <p className={styles.sectionCopy}>
-            Less switching between apps. Less wondering who needs a follow-up.
-            More visibility from first contact to closed opportunity.
-          </p>
+          <div className={styles.platformIntro}>
+            <div>
+              <p className={styles.sectionKicker}>The platform</p>
+              <h2 className={styles.sectionTitle} id="platform-title">
+                Everything your team needs to keep work moving.
+              </h2>
+              <p className={styles.sectionCopy}>
+                Less switching between apps. Less wondering who needs a follow-up.
+                More visibility from first contact to closed opportunity.
+              </p>
+            </div>
+            <div className={styles.platformPicture}>
+              <Image
+                className={styles.platformImage}
+                src="/landing-dashboard-dark.webp"
+                alt="BrizBuilder dashboard preview for the platform overview"
+                width={1672}
+                height={941}
+                sizes="(max-width: 900px) calc(100vw - 32px), 520px"
+                unoptimized
+              />
+            </div>
+          </div>
 
           <div className={styles.featureGrid}>
             {features.map(({ label, title, description, icon: Icon }) => (
