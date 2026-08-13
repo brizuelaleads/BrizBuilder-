@@ -6,6 +6,8 @@ import {
   Rajdhani,
   Share_Tech_Mono,
 } from "next/font/google";
+import "@fontsource-variable/archivo/wdth.css";
+import "@fontsource-variable/big-shoulders/wght.css";
 import "./globals.css";
 
 const geist = Geist({ variable: "--font-sans", subsets: ["latin"] });
