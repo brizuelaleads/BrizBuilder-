@@ -108,8 +108,10 @@ export default function MarketingHome() {
         <section className={styles.hero} aria-labelledby="landing-title">
           <p className={styles.eyebrow}>Private business platform · Built by LB Marketing</p>
           <h1 id="landing-title">
-            Every lead, next step,
-            <span>and dollar in one view.</span>
+            <span className={styles.heroLine}>Every lead, next step,</span>{" "}
+            <span className={`${styles.heroLine} ${styles.heroLineMuted}`}>
+              and dollar in one view.
+            </span>
           </h1>
           <p className={styles.heroCopy}>
             BrizBuilder brings your leads, conversations, appointments,

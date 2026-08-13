@@ -1,4 +1,6 @@
 .pageShell {
+  --font-landing-display: "Archivo Variable";
+  --font-landing-condensed: "Big Shoulders Variable";
   --landing-bg: #070914;
   --landing-panel: #0e1321;
   --landing-text: #f6f8ff;
@@ -88,7 +90,9 @@
 .navLinks {
   gap: 30px;
   color: #b1bad0;
+  font-family: var(--font-landing-display), Arial, sans-serif;
   font-size: 14px;
+  font-weight: 700;
 }
 
 .navLinks a,
@@ -114,6 +118,7 @@
   gap: 8px;
   border: 1px solid var(--landing-line);
   border-radius: 8px;
+  font-family: var(--font-landing-display), Arial, sans-serif;
   font-size: 14px;
   font-weight: 700;
   transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
@@ -164,22 +169,29 @@
   border-radius: 999px;
   color: #d7c7ff;
   background: rgb(185 149 255 / 8%);
+  font-family: var(--font-landing-condensed), Impact, sans-serif;
   font-size: 12px;
-  font-weight: 700;
-}
-
-.hero h1 {
-  max-width: 960px;
-  margin: 0 auto;
-  color: var(--landing-text);
-  font-size: clamp(48px, 6vw, 78px);
   font-weight: 800;
-  line-height: 0.97;
   letter-spacing: 0;
 }
 
-.hero h1 span {
+.hero h1 {
+  max-width: 1120px;
+  margin: 0 auto;
+  color: var(--landing-text);
+  font-family: var(--font-landing-display), Arial, sans-serif;
+  font-size: 78px;
+  font-stretch: 112%;
+  font-weight: 900;
+  line-height: 0.94;
+  letter-spacing: 0;
+}
+
+.heroLine {
   display: block;
+}
+
+.heroLineMuted {
   color: #7e88a2;
 }
 
@@ -187,7 +199,7 @@
   max-width: 690px;
   margin: 28px auto 0;
   color: #9ca6bd;
-  font-size: clamp(16px, 2vw, 18px);
+  font-size: 18px;
   line-height: 1.7;
 }
 
@@ -239,23 +251,26 @@
 .featureNumber {
   margin: 0;
   color: #9a84d8;
+  font-family: var(--font-landing-condensed), Impact, sans-serif;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
 .sectionKicker {
   margin-bottom: 13px;
-  letter-spacing: 0.16em;
 }
 
 .sectionTitle {
   max-width: 700px;
   margin: 0;
   color: var(--landing-text);
-  font-size: clamp(34px, 5vw, 54px);
-  font-weight: 800;
-  line-height: 1.05;
+  font-family: var(--font-landing-display), Arial, sans-serif;
+  font-size: 54px;
+  font-stretch: 108%;
+  font-weight: 900;
+  line-height: 1;
   letter-spacing: 0;
 }
 
@@ -286,7 +301,6 @@
 
 .featureNumber {
   color: #8874c5;
-  letter-spacing: 0.09em;
 }
 
 .featureIcon {
@@ -309,8 +323,11 @@
 .feature h3 {
   margin: 0;
   color: var(--landing-text);
-  font-size: 17px;
-  line-height: 1.25;
+  font-family: var(--font-landing-display), Arial, sans-serif;
+  font-size: 19px;
+  font-stretch: 104%;
+  font-weight: 700;
+  line-height: 1.15;
 }
 
 .feature > p:last-child {
@@ -358,8 +375,11 @@
 .accessPanel h2 {
   margin: 0;
   color: var(--landing-text);
-  font-size: clamp(32px, 4vw, 48px);
-  line-height: 1.05;
+  font-family: var(--font-landing-display), Arial, sans-serif;
+  font-size: 48px;
+  font-stretch: 108%;
+  font-weight: 900;
+  line-height: 1;
   letter-spacing: 0;
 }
 
@@ -405,6 +425,18 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .hero h1 {
+    font-size: 64px;
+  }
+
+  .sectionTitle {
+    font-size: 46px;
+  }
+
+  .accessPanel h2 {
+    font-size: 42px;
+  }
+
   .accessPanel {
     align-items: flex-start;
     flex-direction: column;
@@ -440,12 +472,24 @@
   }
 
   .hero h1 {
-    font-size: 48px;
+    font-size: 44px;
     line-height: 1;
+  }
+
+  .heroLine {
+    display: inline;
   }
 
   .heroCopy {
     font-size: 16px;
+  }
+
+  .sectionTitle {
+    font-size: 40px;
+  }
+
+  .accessPanel h2 {
+    font-size: 38px;
   }
 
   .heroActions {
@@ -492,7 +536,15 @@
   }
 
   .hero h1 {
-    font-size: 42px;
+    font-size: 40px;
+  }
+
+  .sectionTitle {
+    font-size: 36px;
+  }
+
+  .accessPanel h2 {
+    font-size: 34px;
   }
 }
 

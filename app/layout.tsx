@@ -6,6 +6,8 @@ import {
   Rajdhani,
   Share_Tech_Mono,
 } from "next/font/google";
+import "@fontsource-variable/archivo/wdth.css";
+import "@fontsource-variable/big-shoulders/wght.css";
 import "./globals.css";
 
 const geist = Geist({ variable: "--font-sans", subsets: ["latin"] });
@@ -72,7 +74,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={`${geist.variable} ${mono.variable} ${display.variable} ${cyberDisplay.variable} ${cyberMono.variable}`}>
+      <body
+        className={`${geist.variable} ${mono.variable} ${display.variable} ${cyberDisplay.variable} ${cyberMono.variable}`}
+      >
         {children}
       </body>
     </html>

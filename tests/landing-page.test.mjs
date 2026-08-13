@@ -41,3 +41,18 @@ test("landing page keeps the official shared BrizBuilder wordmark", () => {
   assert.match(source, /<BrandLogo/);
   assert.doesNotMatch(source, /site-logo-mark|>BB<|logo-mark/);
 });
+
+test("landing typography uses licensed open-source display families", () => {
+  const layout = read("app/layout.tsx");
+  const styles = read("app/landing.module.css");
+  const packageJson = read("package.json");
+
+  assert.match(layout, /@fontsource-variable\/archivo\/wdth\.css/);
+  assert.match(layout, /@fontsource-variable\/big-shoulders\/wght\.css/);
+  assert.match(packageJson, /@fontsource-variable\/archivo/);
+  assert.match(packageJson, /@fontsource-variable\/big-shoulders/);
+  assert.match(styles, /--font-landing-display: "Archivo Variable"/);
+  assert.match(styles, /--font-landing-condensed: "Big Shoulders Variable"/);
+  assert.match(styles, /var\(--font-landing-display\)/);
+  assert.match(styles, /var\(--font-landing-condensed\)/);
+});
