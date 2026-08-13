@@ -7,8 +7,8 @@ import {
   Share_Tech_Mono,
 } from "next/font/google";
 import "@fontsource-variable/archivo/wdth.css";
+import "@fontsource-variable/anybody/wdth.css";
 import "@fontsource-variable/big-shoulders/wght.css";
-import "@fontsource/archivo-black";
 import "./globals.css";
 
 const geist = Geist({ variable: "--font-sans", subsets: ["latin"] });

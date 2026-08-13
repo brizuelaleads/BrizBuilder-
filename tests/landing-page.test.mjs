@@ -48,17 +48,22 @@ test("landing typography uses licensed open-source display families", () => {
   const packageJson = read("package.json");
 
   assert.match(layout, /@fontsource-variable\/archivo\/wdth\.css/);
+  assert.match(layout, /@fontsource-variable\/anybody\/wdth\.css/);
   assert.match(layout, /@fontsource-variable\/big-shoulders\/wght\.css/);
-  assert.match(layout, /@fontsource\/archivo-black/);
   assert.match(packageJson, /@fontsource-variable\/archivo/);
+  assert.match(packageJson, /@fontsource-variable\/anybody/);
   assert.match(packageJson, /@fontsource-variable\/big-shoulders/);
-  assert.match(packageJson, /@fontsource\/archivo-black/);
   assert.match(styles, /--font-landing-display: "Archivo Variable"/);
   assert.match(styles, /--font-landing-condensed: "Big Shoulders Variable"/);
-  assert.match(styles, /--font-landing-hero: "Archivo Black"/);
+  assert.match(styles, /--font-landing-hero: "Anybody Variable"/);
   assert.match(styles, /var\(--font-landing-display\)/);
   assert.match(styles, /var\(--font-landing-condensed\)/);
   assert.match(styles, /\.hero h1\s*{[^}]*font-family: var\(--font-landing-hero\)/s);
+  assert.match(styles, /\.hero h1\s*{[^}]*font-stretch: 150%/s);
+  assert.match(styles, /\.hero h1\s*{[^}]*font-variation-settings: "wdth" 150, "wght" 900/s);
+  assert.match(styles, /\.hero h1\s*{[^}]*text-transform: uppercase/s);
+  assert.match(styles, /\.hero\s*{[^}]*padding: 68px 0 44px/s);
+  assert.match(styles, /\.dashboardFrame\s*{[^}]*margin-top: 46px/s);
 });
 
 test("landing page uses a black noir palette without purple lighting", () => {

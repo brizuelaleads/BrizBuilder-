@@ -1,7 +1,7 @@
 .pageShell {
   --font-landing-display: "Archivo Variable";
   --font-landing-condensed: "Big Shoulders Variable";
-  --font-landing-hero: "Archivo Black";
+  --font-landing-hero: "Anybody Variable";
   --landing-bg: #030303;
   --landing-panel: #0a0a0a;
   --landing-text: #f2f2ee;
@@ -148,14 +148,14 @@
 }
 
 .hero {
-  padding: 104px 0 50px;
+  padding: 68px 0 44px;
   text-align: center;
 }
 
 .eyebrow {
   width: max-content;
   max-width: 100%;
-  margin: 0 auto 25px;
+  margin: 0 auto 18px;
   padding: 8px 12px;
   border: 1px solid rgb(255 255 255 / 13%);
   border-radius: 999px;
@@ -168,14 +168,27 @@
 }
 
 .hero h1 {
-  max-width: 1120px;
+  width: min(1320px, calc(100vw - 40px));
+  max-width: none;
   margin: 0 auto;
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
   color: var(--landing-text);
-  font-family: var(--font-landing-hero), Arial Black, sans-serif;
-  font-size: 78px;
+  font-family: var(--font-landing-hero), Impact, sans-serif;
+  font-size: 60px;
+  font-stretch: 150%;
   font-weight: 900;
-  line-height: 0.94;
+  font-variation-settings: "wdth" 150, "wght" 900;
+  line-height: 0.88;
   letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+@media (max-width: 1200px) {
+  .hero h1 {
+    font-size: 52px;
+  }
 }
 
 .heroLine {
@@ -188,14 +201,14 @@
 
 .heroCopy {
   max-width: 690px;
-  margin: 28px auto 0;
+  margin: 22px auto 0;
   color: #a1a19c;
   font-size: 18px;
   line-height: 1.7;
 }
 
 .heroActions {
-  margin-top: 34px;
+  margin-top: 25px;
   justify-content: center;
   flex-wrap: wrap;
   gap: 12px;
@@ -207,14 +220,14 @@
 }
 
 .privateNote {
-  margin: 17px 0 0;
+  margin: 13px 0 0;
   color: #777773;
   font-size: 12px;
 }
 
 .dashboardFrame {
   width: 100%;
-  margin-top: 72px;
+  margin-top: 46px;
   padding: 18px;
   overflow: hidden;
   border: 1px solid rgb(255 255 255 / 10%);
@@ -417,7 +430,7 @@
   }
 
   .hero h1 {
-    font-size: 64px;
+    font-size: 46px;
   }
 
   .sectionTitle {
@@ -459,12 +472,15 @@
   }
 
   .hero {
-    padding-top: 75px;
+    padding-top: 46px;
   }
 
   .hero h1 {
-    font-size: 44px;
-    line-height: 1;
+    width: 100%;
+    position: static;
+    transform: none;
+    font-size: 34px;
+    line-height: 0.92;
   }
 
   .heroLine {
@@ -472,7 +488,12 @@
   }
 
   .heroCopy {
+    margin-top: 18px;
     font-size: 16px;
+  }
+
+  .heroActions {
+    margin-top: 22px;
   }
 
   .sectionTitle {
@@ -489,7 +510,7 @@
   }
 
   .dashboardFrame {
-    margin-top: 50px;
+    margin-top: 36px;
     padding: 7px;
   }
 
@@ -527,7 +548,7 @@
   }
 
   .hero h1 {
-    font-size: 40px;
+    font-size: 31px;
   }
 
   .sectionTitle {
