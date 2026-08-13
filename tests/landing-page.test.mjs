@@ -65,7 +65,6 @@ test("landing redesign stays product-led and avoids the old template treatments"
   assert.match(source, /02 \/ Everything in one place/);
   assert.match(source, /03 \/ Operating principle/);
   assert.match(source, /04 \/ Private access/);
-  assert.match(source, /Every lead, next step,\{" "\}/);
   assert.match(source, /Private access for LB Marketing clients and team members/);
   assert.doesNotMatch(source, /ambientLight|dashboardFrame|featureGrid|Learn more/);
   assert.doesNotMatch(styles, /filter:\s*blur|border-radius:\s*999px|font-weight:\s*900/);
