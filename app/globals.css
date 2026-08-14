@@ -2732,34 +2732,32 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   }
 
   .crm-shell[data-theme="midnight"] {
-    --crm-navy: #080a08;
-    --crm-ink: #edf1ed;
-    --crm-muted: #99a59d;
-    --crm-line: #27302b;
-    --crm-line-strong: #39463f;
-    --crm-canvas: #090b0a;
-    --crm-card: #121512;
-    --crm-purple: #58c98d;
-    --crm-accent: #58c98d;
-    --crm-accent-2: #d8f36a;
-    --crm-accent-soft: rgb(88 201 141 / 14%);
-    --crm-on-accent: #07100c;
-    --crm-success: #58c98d;
-    --crm-action: #edf1ed;
+    --crm-navy: #000000;
+    --crm-ink: #f8f8f8;
+    --crm-muted: #a7a7a7;
+    --crm-line: #282828;
+    --crm-line-strong: #454545;
+    --crm-canvas: #000000;
+    --crm-card: #090909;
+    --crm-purple: #ffffff;
+    --crm-accent: #ffffff;
+    --crm-accent-2: #d8d8d8;
+    --crm-accent-soft: rgb(255 255 255 / 10%);
+    --crm-on-accent: #000000;
+    --crm-success: #ffffff;
+    --crm-action: #ffffff;
     --crm-border: var(--crm-line);
-    --crm-surface: #171b18;
+    --crm-surface: #111111;
     --crm-text: var(--crm-ink);
-    --crm-chrome-card: #101410;
-    --crm-chrome-line: #27302b;
-    --crm-chrome-hover: #192019;
-    --crm-chrome-active: #202a22;
-    --crm-chrome-text: #c0c9c2;
-    --crm-chrome-dim: #78857d;
-    --crm-glow: rgb(88 201 141 / 18%);
-    --crm-glow-2: rgb(216 243 106 / 16%);
-    background:
-      radial-gradient(circle at 20% -10%, rgb(88 201 141 / 8%), transparent 34%),
-      linear-gradient(135deg, #090b0a 0%, #0d100d 55%, #090b0a 100%);
+    --crm-chrome-card: #050505;
+    --crm-chrome-line: #282828;
+    --crm-chrome-hover: #151515;
+    --crm-chrome-active: #202020;
+    --crm-chrome-text: #eeeeee;
+    --crm-chrome-dim: #8f8f8f;
+    --crm-glow: rgb(255 255 255 / 12%);
+    --crm-glow-2: rgb(255 255 255 / 8%);
+    background: #000000;
   }
 
   /* --- Chrome (sidebar + topbar), shared by all dark themes ------------- */
@@ -7819,7 +7817,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   ) {
     color: var(--crm-ink);
     border-color: var(--crm-line);
-    background: rgb(18 21 18 / 92%);
+    background: rgb(0 0 0 / 92%);
   }
 
   .crm-shell[data-theme="midnight"] .crm-sidebar {
@@ -7954,11 +7952,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   ) {
     color: var(--crm-text);
     border-color: var(--crm-line-strong);
-    background: #0d110e;
+    background: #050505;
   }
 
   .crm-shell[data-theme="midnight"] ::placeholder {
-    color: #738078;
+    color: #767676;
   }
 
   .crm-shell[data-theme="midnight"] :is(
@@ -8110,7 +8108,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
   .crm-shell[data-theme="midnight"] .crm-review-tabs > button.active > span {
     color: var(--crm-on-accent);
-    background: rgb(7 16 12 / 22%);
+    background: rgb(0 0 0 / 22%);
   }
 
   .crm-shell[data-theme="midnight"] :is(
@@ -8151,6 +8149,34 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   }
 
   .crm-shell[data-theme="midnight"] :is(
+    .crm-badge-green,
+    .status-green,
+    .metric-green,
+    .avatar-green
+  ) {
+    color: var(--crm-ink);
+    background: var(--crm-accent-soft);
+  }
+
+  .crm-shell[data-theme="midnight"] :is(
+    .crm-task-complete .crm-task-check,
+    .crm-run-dot.completed,
+    .crm-system-strip > span:first-child i,
+    .crm-bar-list i span,
+    .crm-column-chart div > span,
+    .crm-sidebar nav button.active i
+  ) {
+    color: var(--crm-on-accent);
+    border-color: var(--crm-accent);
+    background: var(--crm-accent);
+    box-shadow: none;
+  }
+
+  .crm-shell[data-theme="midnight"] .crm-system-strip > span:first-child {
+    color: var(--crm-ink);
+  }
+
+  .crm-shell[data-theme="midnight"] :is(
     .crm-inline-error,
     .crm-delete-warning,
     .crm-ai-connector-grant-error,
@@ -8180,7 +8206,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
   .crm-shell[data-theme="midnight"] .crm-calendar-delete {
     color: var(--crm-muted);
-    background: rgb(18 21 18 / 72%);
+    background: rgb(9 9 9 / 72%);
   }
 
   .crm-shell[data-theme="midnight"] .crm-calendar-delete:hover {

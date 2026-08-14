@@ -92,7 +92,13 @@ test("the localStorage pilot is fully removed and theme derives from the viewer"
 test("midnight is the selectable dark CRM theme with dark surfaces", () => {
   assert.match(crmAppSource, /tone=\{theme === "classic" \? "dark" : "light"\}/);
   assert.match(crmAppSource, /\? "Dark"/);
-  assert.match(styles, /\.crm-shell\[data-theme="midnight"\]\s*\{[\s\S]*--crm-canvas: #090b0a/);
+  const midnightTokens = styles.match(
+    /\.crm-shell\[data-theme="midnight"\]\s*\{[\s\S]*?\n  \}/,
+  )?.[0];
+  assert.ok(midnightTokens, "midnight theme tokens exist");
+  assert.match(midnightTokens, /--crm-canvas: #000000/);
+  assert.match(midnightTokens, /--crm-accent: #ffffff/);
+  assert.doesNotMatch(midnightTokens, /#58c98d|#d8f36a|88 201 141|216 243 106/);
   assert.match(styles, /\.crm-shell\[data-theme="midnight"\]\s*:is\([\s\S]*\.crm-modal/);
   assert.match(styles, /\.crm-shell\[data-theme="midnight"\]\s*:is\([\s\S]*\.crm-table-panel/);
 });
