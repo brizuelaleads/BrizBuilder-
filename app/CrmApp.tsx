@@ -764,7 +764,13 @@ export function CrmApp({
             onClick={() => navigate("dashboard")}
             aria-label="Open BrizBuilder dashboard"
           >
-            <BrandLogo className="crm-brand-logo" size={126} decorative priority />
+            <BrandLogo
+              className="crm-brand-logo"
+              size={126}
+              tone={theme === "classic" ? "dark" : "light"}
+              decorative
+              priority
+            />
           </button>
           <button
             type="button"
@@ -905,7 +911,7 @@ export function CrmApp({
                 {option === "cyberpunk"
                   ? "Cyber"
                   : option === "midnight"
-                    ? "Midnight"
+                    ? "Dark"
                     : "Classic"}
               </option>
             ))}

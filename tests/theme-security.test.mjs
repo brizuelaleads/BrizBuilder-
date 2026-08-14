@@ -12,6 +12,7 @@ const d1Source = read("db/crm.ts");
 const themeSource = read("db/theme.ts");
 const crmAppSource = read("app/CrmApp.tsx");
 const dashboardSource = read("app/crm/DashboardView.tsx");
+const styles = read("app/globals.css");
 const migration = read("supabase/migrations/20260726000000_user_preferences.sql");
 
 function themesFromTs() {
@@ -86,6 +87,14 @@ test("the localStorage pilot is fully removed and theme derives from the viewer"
   assert.doesNotMatch(crmAppSource, /localStorage/);
   assert.match(crmAppSource, /data-theme=\{theme === "classic" \? undefined : theme\}/);
   assert.match(crmAppSource, /themeOverride \?\? data\.viewer\.theme \?\? "classic"/);
+});
+
+test("midnight is the selectable dark CRM theme with dark surfaces", () => {
+  assert.match(crmAppSource, /tone=\{theme === "classic" \? "dark" : "light"\}/);
+  assert.match(crmAppSource, /\? "Dark"/);
+  assert.match(styles, /\.crm-shell\[data-theme="midnight"\]\s*\{[\s\S]*--crm-canvas: #090b0a/);
+  assert.match(styles, /\.crm-shell\[data-theme="midnight"\]\s*:is\([\s\S]*\.crm-modal/);
+  assert.match(styles, /\.crm-shell\[data-theme="midnight"\]\s*:is\([\s\S]*\.crm-table-panel/);
 });
 
 test("the bootstrap preference read is fault-isolated from the D1 fallback", () => {

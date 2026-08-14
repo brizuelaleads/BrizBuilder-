@@ -2732,23 +2732,34 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   }
 
   .crm-shell[data-theme="midnight"] {
-    --crm-navy: #0a0b11;
-    --crm-ink: #e2e4ee;
-    --crm-muted: #8b90a6;
-    --crm-line: #232636;
-    --crm-canvas: #0d0e14;
-    --crm-card: #14161f;
-    --crm-purple: #8b7ef0;
-    --crm-accent: #8b7ef0;
-    --crm-accent-2: #8b7ef0;
-    --crm-accent-soft: rgb(139 126 240 / 12%);
-    --crm-on-accent: #0d0e14;
-    --crm-chrome-card: #14151d;
-    --crm-chrome-line: #232636;
-    --crm-chrome-hover: #171821;
-    --crm-chrome-active: #1e1f2c;
-    --crm-chrome-text: #a6aabc;
-    --crm-chrome-dim: #6d7186;
+    --crm-navy: #080a08;
+    --crm-ink: #edf1ed;
+    --crm-muted: #99a59d;
+    --crm-line: #27302b;
+    --crm-line-strong: #39463f;
+    --crm-canvas: #090b0a;
+    --crm-card: #121512;
+    --crm-purple: #58c98d;
+    --crm-accent: #58c98d;
+    --crm-accent-2: #d8f36a;
+    --crm-accent-soft: rgb(88 201 141 / 14%);
+    --crm-on-accent: #07100c;
+    --crm-success: #58c98d;
+    --crm-action: #edf1ed;
+    --crm-border: var(--crm-line);
+    --crm-surface: #171b18;
+    --crm-text: var(--crm-ink);
+    --crm-chrome-card: #101410;
+    --crm-chrome-line: #27302b;
+    --crm-chrome-hover: #192019;
+    --crm-chrome-active: #202a22;
+    --crm-chrome-text: #c0c9c2;
+    --crm-chrome-dim: #78857d;
+    --crm-glow: rgb(88 201 141 / 18%);
+    --crm-glow-2: rgb(216 243 106 / 16%);
+    background:
+      radial-gradient(circle at 20% -10%, rgb(88 201 141 / 8%), transparent 34%),
+      linear-gradient(135deg, #090b0a 0%, #0d100d 55%, #090b0a 100%);
   }
 
   /* --- Chrome (sidebar + topbar), shared by all dark themes ------------- */
@@ -7785,6 +7796,398 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .crm-client-card-actions{display:flex;align-items:center;gap:10px}.crm-client-grid footer .crm-client-card-actions button.danger{color:#a33f52}.crm-client-grid footer .crm-client-card-actions button{cursor:pointer}
 .crm-delete-client-form{grid-template-columns:1fr}.crm-delete-warning{grid-column:1/-1;margin:0;padding:14px;border:1px solid #efd2d8;border-radius:9px;color:#7e2938;background:#fff7f8;font-size:13px;line-height:1.5}.crm-delete-client-form footer button{min-height:40px;padding:0 15px;border:1px solid var(--crm-line-strong);border-radius:8px;background:#fff;font-weight:750;cursor:pointer}.crm-delete-client-form footer .crm-button-danger{color:#fff;border-color:#9d3447;background:#9d3447}.crm-delete-client-form footer .crm-button-danger:disabled{opacity:.45;cursor:not-allowed}
 .crm-delete-error{grid-column:1/-1;margin:0;color:#9d3447;font-size:12px;font-weight:700}
+
+@media screen {
+  .crm-shell[data-theme="midnight"] {
+    --simple-green: var(--crm-accent);
+    --simple-green-soft: var(--crm-accent-soft);
+    --simple-ink: var(--crm-ink);
+    --simple-muted: var(--crm-muted);
+    --simple-line: var(--crm-line);
+  }
+
+  .crm-shell[data-theme="midnight"] .crm-main {
+    background: transparent;
+  }
+
+  .crm-shell[data-theme="midnight"] :is(
+    .crm-sidebar,
+    .crm-topbar,
+    .crm-calendar-toolbar,
+    .crm-week-calendar,
+    .crm-settings-workspace
+  ) {
+    color: var(--crm-ink);
+    border-color: var(--crm-line);
+    background: rgb(18 21 18 / 92%);
+  }
+
+  .crm-shell[data-theme="midnight"] .crm-sidebar {
+    box-shadow: 14px 0 46px rgb(0 0 0 / 30%);
+  }
+
+  .crm-shell[data-theme="midnight"] .crm-brand-home,
+  .crm-shell[data-theme="midnight"] .crm-theme-picker select,
+  .crm-shell[data-theme="midnight"] .crm-user-summary strong {
+    color: var(--crm-ink);
+  }
+
+  .crm-shell[data-theme="midnight"] :is(
+    .crm-org-card,
+    .crm-theme-picker select,
+    .crm-panel,
+    .crm-table-panel,
+    .crm-filterbar,
+    .crm-modal,
+    .crm-metric-grid article,
+    .crm-contact-grid article,
+    .crm-client-grid article,
+    .crm-company-card,
+    .crm-task-list > article,
+    .crm-calendar-list > article,
+    .crm-report-summary article,
+    .crm-settings-grid > article,
+    .crm-lead-summary,
+    .crm-detail-grid article,
+    .crm-message-card,
+    .crm-related-grid article,
+    .crm-timeline,
+    .crm-ai-unavailable,
+    .crm-definition-list > div,
+    .crm-custom-field-editor,
+    .crm-value-list > div,
+    .crm-preview-metrics article,
+    .crm-future-scope,
+    .crm-preview-inbox,
+    .crm-workflow-preview,
+    .crm-funnel-preview,
+    .crm-preview-table-card,
+    .crm-form-builder-preview,
+    .crm-website-metrics article,
+    .crm-website-layout,
+    .crm-ai-connector-heading-status,
+    .crm-ai-connector-cost-note,
+    .crm-ai-connector-capabilities,
+    .crm-ai-connector-capability-grid article,
+    .crm-ai-connector-grant-list > article,
+    .crm-ai-connector-guardrails,
+    .crm-connection-card,
+    .crm-workflow-list,
+    .crm-builder-header,
+    .crm-builder-body,
+    .crm-profile-client-picker,
+    .crm-profile-card,
+    .crm-profile-setup,
+    .crm-review-client-picker,
+    .crm-review-access-banner,
+    .crm-review-tabs,
+    .crm-review-request-metrics article,
+    .crm-review-card,
+    .crm-review-inbox,
+    .crm-review-settings-status article,
+    .crm-review-settings-form > footer,
+    .crm-simple-connect-card,
+    .crm-contact-list,
+    .crm-phone-registration-bar,
+    .crm-phone-settings,
+    .crm-phone-help,
+    .crm-phone-status-grid article,
+    .crm-number-market,
+    .crm-new-workflow,
+    .crm-live-inbox,
+    .crm-conversation-metrics article,
+    .crm-run-history,
+    .crm-automation-list
+  ) {
+    color: var(--crm-ink);
+    border-color: var(--crm-line);
+    background: var(--crm-card);
+    box-shadow: 0 16px 42px rgb(0 0 0 / 24%);
+  }
+
+  .crm-shell[data-theme="midnight"] :is(
+    .crm-table th,
+    .crm-kanban-column,
+    .crm-calendar-list > article > header,
+    .crm-live-messages,
+    .crm-live-messages article,
+    .crm-website-list,
+    .crm-website-status-grid,
+    .crm-website-detail > footer,
+    .crm-review-inbox-filters,
+    .crm-review-inbox > aside,
+    .crm-review-inbox > section,
+    .crm-review-detail,
+    .crm-review-detail > section,
+    .crm-review-link-ready figure,
+    .crm-review-consent,
+    .crm-review-switch,
+    .crm-connection-details > div,
+    .crm-connection-details-simple > div,
+    .crm-connection-details-simple .crm-twilio-balance,
+    .crm-ai-connector-steps li,
+    .crm-ai-connector-access-summary,
+    .crm-ai-connector-grant-meta > div,
+    .crm-ai-connector-guardrails li,
+    .crm-profile-summary,
+    .crm-profile-details > div,
+    .crm-profile-steps article,
+    .crm-webhook-box,
+    .crm-owner-handoff,
+    .crm-help-note,
+    .crm-capture-setup details,
+    .crm-switch-row,
+    .crm-form-note,
+    .crm-empty-state
+  ) {
+    border-color: var(--crm-line);
+    background: var(--crm-surface);
+  }
+
+  .crm-shell[data-theme="midnight"] :is(
+    input:not([type="checkbox"]):not([type="radio"]),
+    select,
+    textarea,
+    .crm-command input,
+    .crm-copy-row code,
+    .crm-capture-setup pre
+  ) {
+    color: var(--crm-text);
+    border-color: var(--crm-line-strong);
+    background: #0d110e;
+  }
+
+  .crm-shell[data-theme="midnight"] ::placeholder {
+    color: #738078;
+  }
+
+  .crm-shell[data-theme="midnight"] :is(
+    .crm-page-heading h2,
+    .crm-topbar h1,
+    .crm-panel h3,
+    .crm-table-person strong,
+    .crm-contact-list article span:not(.crm-avatar),
+    .crm-contact-list .crm-contact-identity strong,
+    .crm-company-card h3,
+    .crm-website-list > button,
+    .crm-website-detail > header h3,
+    .crm-review-card h3,
+    .crm-review-inbox-list > button:not(.crm-review-load-more),
+    .crm-review-detail h3,
+    .crm-ai-connector-view h3,
+    .crm-workflow-list > button,
+    .crm-builder-body .crm-visual-node,
+    .crm-modal h2,
+    .crm-form label > span,
+    .crm-delete-client-form footer button
+  ) {
+    color: var(--crm-ink);
+  }
+
+  .crm-shell[data-theme="midnight"] :is(
+    .crm-table td,
+    .crm-panel header span,
+    .crm-table-person small,
+    .crm-calendar-list article > div p,
+    .crm-calendar-list article > div small,
+    .crm-settings-grid dt,
+    .crm-website-list > button small,
+    .crm-website-detail > header span,
+    .crm-website-status-grid span,
+    .crm-website-detail > footer span,
+    .crm-review-card span,
+    .crm-review-card small,
+    .crm-review-inbox-list small,
+    .crm-profile-card small,
+    .crm-ai-connector-view small,
+    .crm-ai-connector-view p,
+    .crm-connection-details small,
+    .crm-workflow-list p,
+    .crm-live-inbox small,
+    .crm-empty-state p
+  ) {
+    color: var(--crm-muted);
+  }
+
+  .crm-shell[data-theme="midnight"] :is(
+    .crm-table td,
+    .crm-table th,
+    .crm-panel > header,
+    .crm-modal > header,
+    .crm-form footer,
+    .crm-calendar-list article > div,
+    .crm-website-list > button,
+    .crm-website-detail > header,
+    .crm-website-status-grid,
+    .crm-website-detail > footer,
+    .crm-review-card > header,
+    .crm-review-inbox-filters,
+    .crm-review-inbox-list > button:not(.crm-review-load-more),
+    .crm-review-recent-list li,
+    .crm-review-request-history li,
+    .crm-review-checklist li,
+    .crm-ai-connector-activity-list article,
+    .crm-workflow-list > header,
+    .crm-workflow-list > button,
+    .crm-live-inbox > aside,
+    .crm-live-inbox > aside button,
+    .crm-live-inbox > section > header,
+    .crm-live-inbox form
+  ) {
+    border-color: var(--crm-line);
+  }
+
+  .crm-shell[data-theme="midnight"] :is(
+    .crm-table tbody tr:hover,
+    .crm-compact-list > button:hover,
+    .crm-next-panel > button:hover,
+    .crm-schedule-list > button:hover,
+    .crm-conversation-preview-list > button:hover,
+    .crm-business-snapshot-list > button:hover,
+    .crm-website-list > button:hover,
+    .crm-review-inbox-list > button:hover,
+    .crm-workflow-list > button:hover,
+    .crm-live-inbox > aside button:hover
+  ) {
+    background: var(--crm-accent-soft);
+  }
+
+  .crm-shell[data-theme="midnight"] :is(
+    .crm-sidebar nav button.active,
+    .crm-website-list > button.active,
+    .crm-review-tabs > button.active,
+    .crm-live-inbox > aside button.active
+  ) {
+    color: var(--crm-ink);
+    background: var(--crm-chrome-active);
+  }
+
+  .crm-shell[data-theme="midnight"] :is(
+    .crm-topbar-action-primary,
+    .crm-button-primary,
+    .crm-review-send-button,
+    .crm-review-tabs > button.active
+  ) {
+    color: var(--crm-on-accent);
+    border-color: var(--crm-accent);
+    background: var(--crm-accent);
+    box-shadow: 0 8px 22px var(--crm-glow);
+  }
+
+  .crm-shell[data-theme="midnight"] :is(
+    .crm-topbar-action:not(.crm-topbar-action-primary),
+    .crm-button-secondary,
+    .crm-command-button,
+    .crm-connection-actions button:not(.crm-button-primary),
+    .crm-owned-numbers > div:first-child > button,
+    .crm-number-results > button,
+    .crm-review-load-more,
+    .crm-review-checklist li > button,
+    .crm-review-settings-status button,
+    .crm-message-compose > header > button,
+    .crm-calendar-list-actions button,
+    .crm-delete-client-form footer button:not(.crm-button-danger)
+  ) {
+    color: var(--crm-ink);
+    border-color: var(--crm-line-strong);
+    background: var(--crm-surface);
+  }
+
+  .crm-shell[data-theme="midnight"] :is(
+    .crm-button-danger,
+    .crm-connection-actions .danger,
+    .crm-stripe-danger-zone button.danger,
+    .crm-profile-actions .crm-button-danger,
+    .crm-ai-connector-view .crm-button-danger,
+    .crm-review-reply-actions .crm-button-danger,
+    .crm-delete-client-form footer .crm-button-danger,
+    .crm-calendar-list-actions button
+  ) {
+    color: #ff9aaa;
+    border-color: rgb(255 154 170 / 32%);
+    background: rgb(160 52 73 / 14%);
+  }
+
+  .crm-shell[data-theme="midnight"] .crm-review-tabs > button.active > span {
+    color: var(--crm-on-accent);
+    background: rgb(7 16 12 / 22%);
+  }
+
+  .crm-shell[data-theme="midnight"] :is(
+    .crm-avatar,
+    .crm-table-person i,
+    .crm-website-icon,
+    .crm-workflow-list-icon,
+    .crm-node-library > button i,
+    .crm-builder-body .crm-visual-node > span,
+    .crm-review-request-icon,
+    .crm-review-tabs > button > span,
+    .crm-review-honest-empty > span,
+    .crm-ai-connector-steps li > span,
+    .crm-ai-connector-capability-grid article > span:not(.crm-badge),
+    .crm-simple-connect-card .crm-provider-logo.stripe,
+    .crm-connections-view .crm-provider-logo,
+    .crm-google-profiles-view .crm-profile-setup-icon,
+    .crm-google-profiles-view .crm-profile-mark
+  ) {
+    color: var(--crm-accent);
+    background: var(--crm-accent-soft);
+  }
+
+  .crm-shell[data-theme="midnight"] :is(
+    .crm-page-heading p,
+    .crm-welcome-row p,
+    .crm-panel header p,
+    .crm-website-detail > header p,
+    .crm-ai-connector-capabilities > header p,
+    .crm-ai-connector-grant-details section > p,
+    .crm-review-card > header p,
+    .crm-profile-card > header p,
+    .crm-profile-setup > div > p,
+    .crm-profile-review-fallback > div > p
+  ) {
+    color: var(--crm-accent);
+    text-shadow: none;
+  }
+
+  .crm-shell[data-theme="midnight"] :is(
+    .crm-inline-error,
+    .crm-delete-warning,
+    .crm-ai-connector-grant-error,
+    .crm-stripe-embedded-error,
+    .crm-review-callout.error
+  ) {
+    color: #ff9aaa;
+    border-color: rgb(255 154 170 / 32%);
+    background: rgb(160 52 73 / 14%);
+  }
+
+  .crm-shell[data-theme="midnight"] :is(
+    .crm-balance-warning,
+    .crm-ai-connector-runtime-warning,
+    .crm-stripe-attention,
+    .crm-review-callout.warning
+  ) {
+    color: #f0c978;
+    border-color: rgb(240 201 120 / 34%);
+    background: rgb(240 201 120 / 12%);
+  }
+
+  .crm-shell[data-theme="midnight"] .crm-modal-layer,
+  .crm-shell[data-theme="midnight"] .crm-drawer-layer {
+    background: rgb(4 6 5 / 74%);
+  }
+
+  .crm-shell[data-theme="midnight"] .crm-calendar-delete {
+    color: var(--crm-muted);
+    background: rgb(18 21 18 / 72%);
+  }
+
+  .crm-shell[data-theme="midnight"] .crm-calendar-delete:hover {
+    color: #ff9aaa;
+    background: var(--crm-surface);
+  }
+}
 
 /* Responsive application shell */
 .crm-shell {
