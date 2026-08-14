@@ -14,26 +14,35 @@ test("new landing page connects every public destination", () => {
     'href="/privacy"',
     'href="/terms"',
     'href="#platform"',
-    'href="#why"',
+    'href="#features"',
     'href="#access"',
+    'href="#about"',
     'href="mailto:brizuelaleads@gmail.com"',
   ]) {
     assert.match(source, new RegExp(destination.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
-  for (const section of ["platform", "why", "access"]) {
+  for (const section of ["platform", "features", "access", "about"]) {
     assert.match(source, new RegExp(`id="${section}"`));
   }
 });
 
-test("landing dashboard is a real local asset with accessible copy", () => {
+test("landing page keeps the supplied structure with real BrizBuilder UI media", () => {
   const source = read("app/page.tsx");
+  const styles = read("app/landing.module.css");
   const dashboard = fs.statSync(path.join(root, "public/landing-dashboard-dark.webp"));
+
   assert.ok(dashboard.size > 50_000);
   assert.ok(dashboard.size < 250_000);
+  assert.match(source, /className=\{styles\.productStage\}/);
+  assert.match(source, /className=\{styles\.heroProductImage\}/);
   assert.match(source, /src="\/landing-dashboard-dark\.webp"/);
-  assert.match(source, /alt="BrizBuilder dark-mode dashboard/);
+  assert.match(source, /alt="BrizBuilder dark-mode CRM dashboard/);
   assert.match(source, /width=\{1672\}/);
   assert.match(source, /height=\{941\}/);
+  assert.match(source, /productShowcases\.map/);
+  assert.match(styles, /\.showcaseImageDashboard/);
+  assert.match(styles, /\.showcaseImageSchedule/);
+  assert.match(styles, /\.showcaseImageReporting/);
 });
 
 test("landing page keeps the official shared BrizBuilder wordmark", () => {
@@ -42,42 +51,24 @@ test("landing page keeps the official shared BrizBuilder wordmark", () => {
   assert.doesNotMatch(source, /site-logo-mark|>BB<|logo-mark/);
 });
 
-test("landing hero uses the requested wide display face while body copy stays in Geist", () => {
-  const layout = read("app/layout.tsx");
+test("landing hero follows the supplied bold uppercase concept", () => {
   const styles = read("app/landing.module.css");
-  const packageJson = read("package.json");
 
-  assert.match(layout, /Geist/);
-  assert.match(layout, /@fontsource-variable\/anybody\/wdth\.css/);
-  assert.match(packageJson, /@fontsource-variable\/anybody/);
-  assert.match(styles, /\.hero h1\s*{[^}]*font-family: "Anybody Variable"/s);
-  assert.match(styles, /\.hero h1\s*{[^}]*max-width: 980px/s);
-  assert.match(styles, /\.hero h1\s*{[^}]*font-weight: 720/s);
-  assert.match(styles, /\.hero h1\s*{[^}]*font-variation-settings: "wdth" 112, "wght" 720/s);
-  assert.match(styles, /\.hero h1\s*{[^}]*letter-spacing: 0/s);
-  assert.doesNotMatch(styles, /\.hero h1\s*{[^}]*text-transform: uppercase/s);
+  assert.match(styles, /\.hero h1\s*{[^}]*font-family: Impact/s);
+  assert.match(styles, /\.hero h1\s*{[^}]*font-size: clamp\(64px, 8\.4vw, 118px\)/s);
+  assert.match(styles, /\.hero h1\s*{[^}]*line-height: 0\.88/s);
+  assert.match(styles, /\.hero h1\s*{[^}]*text-transform: uppercase/s);
   assert.match(styles, /\.heroCopy\s*{[^}]*font-size: 16px/s);
 });
 
-test("landing hero layers the product artwork with the existing line pattern", () => {
-  const source = read("app/page.tsx");
+test("landing page uses the supplied dark grid and purple access styling", () => {
   const styles = read("app/landing.module.css");
 
-  assert.match(source, /className=\{styles\.heroBackdrop\}/);
-  assert.match(source, /className=\{styles\.heroVeil\}/);
-  assert.match(source, /className=\{styles\.heroPattern\}/);
-  assert.match(styles, /\.heroBackdrop\s*{[^}]*position: absolute/s);
-  assert.match(styles, /\.heroPattern\s*{[^}]*background-image:/s);
-  assert.match(styles, /\.heroPattern\s*{[^}]*background-size: 60px 60px/s);
-  assert.doesNotMatch(source, /className=\{styles\.dashboardFrame\}/);
-});
-
-test("landing page uses a black noir palette without purple lighting", () => {
-  const styles = read("app/landing.module.css");
-
-  assert.match(styles, /--landing-bg: #030303/);
-  assert.match(styles, /--landing-panel: #0a0a0a/);
-  assert.match(styles, /\.ambientLight\s*{\s*display: none/);
-  assert.match(styles, /\.pageShell \.primaryButton\s*{[^}]*background: #7862ad/s);
-  assert.doesNotMatch(styles, /#b995ff|#c8aaff|#a47bff|#9a84d8|153 113 255|185 149 255/);
+  assert.match(styles, /--bg: #070709/);
+  assert.match(styles, /--panel: #0d0d12/);
+  assert.match(styles, /--purple: #8b5cf6/);
+  assert.match(styles, /\.pageShell\s*{[^}]*background:[\s\S]*48px 48px/s);
+  assert.match(styles, /\.heroRingLeft/);
+  assert.match(styles, /\.heroRingRight/);
+  assert.match(styles, /\.primaryButton\s*{[^}]*linear-gradient\(180deg, #9566ff, #7743e8\)/s);
 });
