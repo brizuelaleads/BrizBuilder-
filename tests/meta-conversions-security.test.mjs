@@ -284,6 +284,17 @@ test("diagnostics ride the response and are never written", () => {
   assert.doesNotMatch(update, /detail|message|fbtrace|last_error/);
 });
 
+test("a 2xx is not trusted on its own — the acceptance count decides", () => {
+  const send = fnBlock(providerSource, "export async function sendMetaConversionEvent");
+  // Success requires Meta to confirm it recorded exactly the one event sent.
+  assert.match(send, /readEventsReceived\(body\) === 1/);
+  assert.match(send, /return \{ ok: true, status: "ok", detail: null \};/);
+  // Anything else on a 2xx is a rejection carrying the acceptance detail.
+  assert.match(send, /status: "rejected",\s*\n\s*detail: buildMetaAcceptanceDetail\(response\.status, body\)/);
+  // The success body is parsed locally and never returned or logged.
+  assert.doesNotMatch(send, /return body|console\./);
+});
+
 test("the Graph version is current enough to be supported", () => {
   const version = providerSource.match(/META_GRAPH_VERSION = "v(\d+)\.0"/)?.[1];
   assert.ok(version, "the Graph version is pinned");

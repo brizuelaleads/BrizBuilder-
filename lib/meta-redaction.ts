@@ -106,6 +106,72 @@ export function buildMetaErrorDetail(
   };
 }
 
+const MAX_MESSAGES = 3;
+
+/** Meta reports how many events it actually recorded on a successful call. */
+export function readEventsReceived(body: unknown): number | null {
+  const envelope =
+    body && typeof body === "object" && !Array.isArray(body)
+      ? (body as Record<string, unknown>)
+      : {};
+  const received = envelope.events_received;
+  return typeof received === "number" && Number.isFinite(received)
+    ? received
+    : null;
+}
+
+/**
+ * Reads Meta's advisory messages. Non-string entries are dropped rather than
+ * stringified, so a structured payload cannot smuggle customer data through.
+ */
+function readMessages(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(0, MAX_MESSAGES)
+    .map((entry) =>
+      typeof entry === "string" ? redactDiagnosticText(entry) : null,
+    )
+    .filter(
+      (entry): entry is string =>
+        entry !== null && entry !== "(no message provided)",
+    );
+}
+
+/**
+ * Describes a 2xx that did not actually record the event.
+ *
+ * Meta answers 200 even when it accepted nothing — a stale test event code is
+ * the usual cause, and the events silently go to live data or nowhere. Only
+ * events_received, messages and fbtrace_id are read; the rest of the body is
+ * discarded unexamined.
+ */
+export function buildMetaAcceptanceDetail(
+  status: number,
+  body: unknown,
+): MetaErrorDetail {
+  const envelope =
+    body && typeof body === "object" && !Array.isArray(body)
+      ? (body as Record<string, unknown>)
+      : {};
+  const received = readEventsReceived(body);
+  const summary =
+    received === null
+      ? "Meta accepted the request but did not report how many events it recorded."
+      : `Meta accepted the request but recorded ${received} of 1 expected events.`;
+  const messages = readMessages(envelope.messages);
+  return {
+    status: Number.isFinite(status) ? status : 0,
+    code: null,
+    subcode: null,
+    type: null,
+    message: (messages.length
+      ? `${summary} ${messages.join(" ")}`
+      : summary
+    ).slice(0, 300),
+    traceId: safeTraceId(envelope.fbtrace_id),
+  };
+}
+
 /**
  * Renders the detail onto an action-oriented summary, for display to the
  * authenticated admin who triggered the connection attempt.

@@ -1,6 +1,8 @@
 import {
+  buildMetaAcceptanceDetail,
   buildMetaErrorDetail,
   formatMetaErrorDetail,
+  readEventsReceived,
   type MetaErrorDetail,
 } from "./meta-redaction";
 import { readRuntimeValue } from "./supabase/env";
@@ -472,7 +474,20 @@ export async function sendMetaConversionEvent(input: {
         body: JSON.stringify(payload),
       },
     );
-    if (response.ok) return { ok: true, status: "ok", detail: null };
+    if (response.ok) {
+      // A 2xx is not proof of anything. Meta answers 200 while recording
+      // nothing — a stale test event code does exactly this — so the
+      // acceptance count is what decides success.
+      const body = await response.json().catch(() => null);
+      if (readEventsReceived(body) === 1) {
+        return { ok: true, status: "ok", detail: null };
+      }
+      return {
+        ok: false,
+        status: "rejected",
+        detail: buildMetaAcceptanceDetail(response.status, body),
+      };
+    }
     const detail = await metaErrorDetail(response);
     if (response.status === 401 || response.status === 403) {
       return { ok: false, status: "unauthorized", detail };

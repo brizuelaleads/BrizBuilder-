@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildMetaAcceptanceDetail,
   buildMetaErrorDetail,
   formatMetaErrorDetail,
+  readEventsReceived,
   redactDiagnosticText,
   safeErrorType,
   safeTraceId,
@@ -162,6 +164,95 @@ test("the formatted admin message carries the fields and no secrets", () => {
   assert.match(formatted, /type OAuthException/);
   assert.match(formatted, /trace Zz9Yy8Xx7/);
   assert.match(formatted, /Meta rejected that token\./);
+});
+
+test("the acceptance count is read only when it is a real number", () => {
+  assert.equal(readEventsReceived({ events_received: 1 }), 1);
+  assert.equal(readEventsReceived({ events_received: 0 }), 0);
+  for (const body of [
+    {},
+    null,
+    undefined,
+    "string",
+    [1],
+    { events_received: "1" },
+    { events_received: null },
+    { events_received: NaN },
+    { events_received: Infinity },
+  ]) {
+    assert.equal(
+      readEventsReceived(body),
+      null,
+      `expected null for ${JSON.stringify(body)}`,
+    );
+  }
+});
+
+test("a 2xx that recorded nothing is described without leaking anything", () => {
+  const detail = buildMetaAcceptanceDetail(200, {
+    events_received: 0,
+    messages: [
+      `Test event code expired for ${SECRETS.customerEmail}`,
+      `token ${SECRETS.systemUserToken} stale`,
+    ],
+    fbtrace_id: "Qq1Ww2Ee3",
+    // Fields that must not be carried through.
+    id: SECRETS.datasetId,
+    request: SECRETS.callbackUrl,
+  });
+
+  assert.deepEqual(Object.keys(detail).sort(), [
+    "code",
+    "message",
+    "status",
+    "subcode",
+    "traceId",
+    "type",
+  ]);
+  assert.equal(detail.status, 200);
+  assert.equal(detail.traceId, "Qq1Ww2Ee3");
+  assert.match(detail.message, /recorded 0 of 1 expected events/);
+  assertNothingLeaked(JSON.stringify(detail), "buildMetaAcceptanceDetail");
+});
+
+test("a missing acceptance count is stated rather than guessed", () => {
+  const detail = buildMetaAcceptanceDetail(200, { fbtrace_id: "Tt1Yy2" });
+  assert.match(detail.message, /did not report how many events/);
+  assert.equal(detail.traceId, "Tt1Yy2");
+});
+
+test("advisory messages are bounded and non-strings are dropped", () => {
+  const detail = buildMetaAcceptanceDetail(200, {
+    events_received: 0,
+    messages: [
+      "one",
+      "two",
+      "three",
+      "four",
+      { nested: SECRETS.appSecret },
+      [SECRETS.customerPhone],
+    ],
+  });
+  // Capped, so a flood of messages cannot pad the admin warning.
+  assert.ok(detail.message.length <= 300);
+  assert.doesNotMatch(detail.message, /four/);
+  // A structured entry is never stringified into the message.
+  assertNothingLeaked(JSON.stringify(detail), "message array");
+  assert.doesNotMatch(detail.message, /nested|object Object/);
+});
+
+test("a hostile success body cannot produce a leaky acceptance detail", () => {
+  for (const body of [
+    null,
+    "a string",
+    [SECRETS.appSecret],
+    { messages: SECRETS.metaUserToken },
+    { events_received: 1, fbtrace_id: SECRETS.appSecret },
+  ]) {
+    const detail = buildMetaAcceptanceDetail(200, body);
+    assertNothingLeaked(JSON.stringify(detail), "hostile success body");
+    assert.equal(typeof detail.message, "string");
+  }
 });
 
 test("absent fields are omitted rather than rendered as null", () => {
