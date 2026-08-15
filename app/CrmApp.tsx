@@ -584,6 +584,16 @@ export function CrmApp({
       await refresh();
       setToast(success);
       window.setTimeout(() => setToast(""), 3200);
+      // A saved change can still carry a warning — an ad platform refusing a
+      // conversion, for instance. The save succeeded, so this is shown for
+      // attention rather than raised as a failure.
+      const warning =
+        body.result &&
+        typeof body.result === "object" &&
+        typeof (body.result as { warning?: unknown }).warning === "string"
+          ? (body.result as { warning: string }).warning
+          : "";
+      if (warning) setError(warning);
       return body.result;
     } catch (caught) {
       try {

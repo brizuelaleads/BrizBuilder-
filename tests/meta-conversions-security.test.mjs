@@ -153,12 +153,19 @@ test("a Meta outage can never cost the customer a lead", () => {
   // The whole body is wrapped so nothing propagates to the caller.
   assert.match(dispatch, /try \{/);
   assert.match(dispatch, /\} catch \{/);
-  // A client with no Meta connection is the normal case, not an error.
-  assert.match(dispatch, /if \(!row\) return;/);
+  // A client with no Meta connection is the normal case, not an error: it
+  // returns the quiet outcome rather than throwing or reporting a failure.
+  assert.match(dispatch, /if \(!row\) return quiet;/);
+  assert.match(dispatch, /attempted: false/);
+  // Every exit from the catch is a value, never a rethrow.
+  assert.doesNotMatch(dispatch, /throw/);
   // The sender itself also refuses to throw.
   const send = fnBlock(providerSource, "export async function sendMetaConversionEvent");
   assert.ok(send, "sendMetaConversionEvent exists");
-  assert.match(send, /\} catch \{\s*\n\s*return \{ ok: false, status: "error" \};/);
+  assert.match(
+    send,
+    /\} catch \{[\s\S]*?return \{ ok: false, status: "error", detail: null \};/,
+  );
 });
 
 test("only the closed status vocabulary is ever persisted", () => {
@@ -231,6 +238,52 @@ test("the diagnostic reader takes only the response, never the request", () => {
   assert.doesNotMatch(reader, /return body/);
 });
 
+test("a refused conversion warns the admin without blocking the save", () => {
+  const report = block(crmSource, "async function reportLeadWonToMeta");
+  // The warning is produced only after the send, so the pipeline update has
+  // already been written by the time it can be returned.
+  const dispatchIndex = report.indexOf("await dispatchMetaConversion");
+  const warnIndex = report.indexOf("formatMetaErrorDetail");
+  assert.ok(dispatchIndex >= 0 && warnIndex > dispatchIndex);
+  // A client with no connection, or a successful send, warns about nothing.
+  assert.match(report, /if \(!outcome\.attempted \|\| outcome\.ok\) return null;/);
+  // A thrown error still cannot break the pipeline update.
+  assert.match(report, /\} catch \{[\s\S]*?return null;/);
+  // Both handlers pass the warning back to the caller.
+  for (const handler of ["update_lead", "move_lead"]) {
+    const source = block(crmSource, `if (action === "${handler}")`);
+    assert.match(
+      source,
+      /return metaWarning \? \{ id: leadId, warning: metaWarning \} : \{ id: leadId \};/,
+      `${handler} returns the warning without failing`,
+    );
+  }
+});
+
+test("public lead capture never surfaces provider diagnostics", () => {
+  // The public endpoint dispatches but must discard the outcome: its response
+  // is readable by anyone who can submit a form.
+  assert.doesNotMatch(captureSource, /formatMetaErrorDetail|MetaErrorDetail/);
+  assert.doesNotMatch(captureSource, /outcome|warning|fbtrace|error_subcode/);
+  // Its success body stays limited to the acceptance and the new lead id.
+  assert.match(
+    captureSource,
+    /Response\.json\(\{ accepted: true, leadId: leadResult\.data\.id \}/,
+  );
+});
+
+test("diagnostics ride the response and are never written", () => {
+  const dispatch = block(storeSource, "export async function dispatchMetaConversion");
+  // The detail is returned to the caller...
+  assert.match(dispatch, /detail: result\.detail/);
+  // ...but the row update still writes only the closed status vocabulary.
+  // Bounded to the update payload itself, not the rest of the function.
+  const updateStart = dispatch.indexOf(".update({");
+  const update = dispatch.slice(updateStart, dispatch.indexOf("})", updateStart) + 2);
+  assert.match(update, /last_status: result\.status/);
+  assert.doesNotMatch(update, /detail|message|fbtrace|last_error/);
+});
+
 test("the Graph version is current enough to be supported", () => {
   const version = providerSource.match(/META_GRAPH_VERSION = "v(\d+)\.0"/)?.[1];
   assert.ok(version, "the Graph version is pinned");
@@ -272,7 +325,7 @@ test("the won conversion fires once, on the transition into WON", () => {
   assert.ok(report, "reportLeadWonToMeta exists");
   assert.match(
     report,
-    /if \(nextStatus !== "WON" \|\| previousStatus === "WON"\) return;/,
+    /if \(nextStatus !== "WON" \|\| previousStatus === "WON"\) return null;/,
     "re-saving a won lead does not resend",
   );
   // A distinct event id, so Meta records a second conversion rather than

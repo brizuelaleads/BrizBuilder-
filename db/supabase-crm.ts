@@ -36,6 +36,7 @@ import {
   verifyMetaDataset,
 } from "../lib/meta-conversions";
 import { dispatchMetaConversion } from "../lib/meta-conversions-store";
+import { formatMetaErrorDetail } from "../lib/meta-redaction";
 import {
   buildTwilioConnectUrl,
   checkTwilioConnectedAccount,
@@ -911,6 +912,10 @@ async function stateHash(value: string) {
  *
  * Fires once, on the transition into WON, and never blocks or fails the update
  * that triggered it.
+ *
+ * Returns a warning for the authenticated admin when Meta refused the
+ * conversion, so a silent rejection cannot go unnoticed. The deal is already
+ * saved by this point — the warning never changes that.
  */
 async function reportLeadWonToMeta(
   organizationId: string,
@@ -918,8 +923,8 @@ async function reportLeadWonToMeta(
   leadId: string,
   previousStatus: string,
   nextStatus: string,
-) {
-  if (nextStatus !== "WON" || previousStatus === "WON") return;
+): Promise<string | null> {
+  if (nextStatus !== "WON" || previousStatus === "WON") return null;
   try {
     const lead = await assertOk(
       supabase()
@@ -929,7 +934,7 @@ async function reportLeadWonToMeta(
         .eq("organization_id", organizationId)
         .maybeSingle(),
     );
-    if (!lead) return;
+    if (!lead) return null;
     const contact = lead.contact_id
       ? await assertOk(
           supabase()
@@ -943,7 +948,7 @@ async function reportLeadWonToMeta(
     const valueCents = Number(
       lead.final_revenue_cents ?? lead.estimated_value_cents ?? 0,
     );
-    await dispatchMetaConversion({
+    const outcome = await dispatchMetaConversion({
       organizationId,
       clientId,
       eventName: "Purchase",
@@ -978,8 +983,18 @@ async function reportLeadWonToMeta(
           : {}),
       },
     });
+
+    if (!outcome.attempted || outcome.ok) return null;
+    const summary =
+      "The deal was saved, but Meta did not accept the Purchase conversion.";
+    // A transport failure leaves nothing to report beyond the fact of it.
+    if (!outcome.detail) {
+      return `${summary} BrizBuilder could not reach Meta. The deal is recorded; the conversion was not.`;
+    }
+    return formatMetaErrorDetail(summary, outcome.detail);
   } catch {
     // Ad reporting must never break a pipeline update.
+    return null;
   }
 }
 
@@ -5750,14 +5765,14 @@ export async function executeSupabaseCrmAction(
       { status },
       lead.client_id,
     );
-    await reportLeadWonToMeta(
+    const metaWarning = await reportLeadWonToMeta(
       context.organizationId,
       String(lead.client_id),
       leadId,
       String(lead.status),
       status,
     );
-    return { id: leadId };
+    return metaWarning ? { id: leadId, warning: metaWarning } : { id: leadId };
   }
 
   if (action === "move_lead") {
@@ -5814,14 +5829,14 @@ export async function executeSupabaseCrmAction(
       { stageId },
       lead.client_id,
     );
-    await reportLeadWonToMeta(
+    const metaWarning = await reportLeadWonToMeta(
       context.organizationId,
       String(lead.client_id),
       leadId,
       String(lead.status),
       nextStatus,
     );
-    return { id: leadId };
+    return metaWarning ? { id: leadId, warning: metaWarning } : { id: leadId };
   }
 
   if (action === "archive_lead") {

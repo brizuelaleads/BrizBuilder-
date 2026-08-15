@@ -55,6 +55,10 @@ export type MetaRequestContext = {
 export type MetaConversionSendResult = {
   ok: boolean;
   status: "ok" | "rejected" | "unauthorized" | "error";
+  // Populated only when Meta answered and refused. Transient: callers may show
+  // it to the authenticated admin who caused the send, and must never persist
+  // it or surface it on a public route.
+  detail: MetaErrorDetail | null;
 };
 
 class MetaRequestTimeoutError extends Error {
@@ -468,12 +472,14 @@ export async function sendMetaConversionEvent(input: {
         body: JSON.stringify(payload),
       },
     );
-    if (response.ok) return { ok: true, status: "ok" };
+    if (response.ok) return { ok: true, status: "ok", detail: null };
+    const detail = await metaErrorDetail(response);
     if (response.status === 401 || response.status === 403) {
-      return { ok: false, status: "unauthorized" };
+      return { ok: false, status: "unauthorized", detail };
     }
-    return { ok: false, status: "rejected" };
+    return { ok: false, status: "rejected", detail };
   } catch {
-    return { ok: false, status: "error" };
+    // No response to read — a timeout or transport failure.
+    return { ok: false, status: "error", detail: null };
   }
 }
