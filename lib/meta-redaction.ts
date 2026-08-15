@@ -121,6 +121,15 @@ export function readEventsReceived(body: unknown): number | null {
 }
 
 /**
+ * The single success rule, shared by the connection probe and the event sender
+ * so the two can never drift apart: Meta must confirm it recorded exactly the
+ * one event that was sent. A missing or unparseable count is not success.
+ */
+export function isSingleEventRecorded(body: unknown): boolean {
+  return readEventsReceived(body) === 1;
+}
+
+/**
  * Reads Meta's advisory messages. Non-string entries are dropped rather than
  * stringified, so a structured payload cannot smuggle customer data through.
  */

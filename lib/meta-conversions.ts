@@ -2,7 +2,7 @@ import {
   buildMetaAcceptanceDetail,
   buildMetaErrorDetail,
   formatMetaErrorDetail,
-  readEventsReceived,
+  isSingleEventRecorded,
   type MetaErrorDetail,
 } from "./meta-redaction";
 import { readRuntimeValue } from "./supabase/env";
@@ -413,6 +413,18 @@ export async function verifyMetaDataset(
       ),
     );
   }
+  // Same rule the sender applies: a 2xx only means the request parsed. Meta
+  // answers 200 while recording nothing when the test event code has gone
+  // stale, which would let a connection succeed and every later send vanish.
+  const body = await response.json().catch(() => null);
+  if (!isSingleEventRecorded(body)) {
+    throw new Error(
+      formatMetaErrorDetail(
+        "Meta accepted the request but did not record the test event. Check that the test event code is the one currently shown on this dataset's Test Events tab, then try again.",
+        buildMetaAcceptanceDetail(response.status, body),
+      ),
+    );
+  }
   return { id: datasetId, name: await readDatasetName(datasetId, accessToken) };
 }
 
@@ -479,7 +491,7 @@ export async function sendMetaConversionEvent(input: {
       // nothing — a stale test event code does exactly this — so the
       // acceptance count is what decides success.
       const body = await response.json().catch(() => null);
-      if (readEventsReceived(body) === 1) {
+      if (isSingleEventRecorded(body)) {
         return { ok: true, status: "ok", detail: null };
       }
       return {

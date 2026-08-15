@@ -287,12 +287,44 @@ test("diagnostics ride the response and are never written", () => {
 test("a 2xx is not trusted on its own — the acceptance count decides", () => {
   const send = fnBlock(providerSource, "export async function sendMetaConversionEvent");
   // Success requires Meta to confirm it recorded exactly the one event sent.
-  assert.match(send, /readEventsReceived\(body\) === 1/);
+  assert.match(send, /if \(isSingleEventRecorded\(body\)\)/);
   assert.match(send, /return \{ ok: true, status: "ok", detail: null \};/);
   // Anything else on a 2xx is a rejection carrying the acceptance detail.
   assert.match(send, /status: "rejected",\s*\n\s*detail: buildMetaAcceptanceDetail\(response\.status, body\)/);
   // The success body is parsed locally and never returned or logged.
   assert.doesNotMatch(send, /return body|console\./);
+});
+
+test("the connection probe and the sender share one success rule", () => {
+  const verify = fnBlock(providerSource, "export async function verifyMetaDataset");
+  const send = fnBlock(providerSource, "export async function sendMetaConversionEvent");
+
+  // Both defer to the same predicate rather than reimplementing the check,
+  // so the two paths cannot drift apart.
+  assert.match(verify, /isSingleEventRecorded\(body\)/, "probe uses the shared rule");
+  assert.match(send, /isSingleEventRecorded\(body\)/, "sender uses the shared rule");
+
+  // Neither carries its own copy of the count comparison.
+  for (const [name, source] of [["probe", verify], ["sender", send]]) {
+    assert.doesNotMatch(
+      source,
+      /events_received/,
+      `${name} must not read the count itself`,
+    );
+    assert.doesNotMatch(
+      source,
+      /readEventsReceived/,
+      `${name} must go through the shared predicate`,
+    );
+  }
+
+  // The probe fails closed: a non-2xx and an unrecorded 2xx both throw, so a
+  // connection cannot be stored on either.
+  assert.match(verify, /if \(!response\.ok\)[\s\S]*?throw new Error/);
+  assert.match(verify, /if \(!isSingleEventRecorded\(body\)\)[\s\S]*?throw new Error/);
+  // Both failure paths render through the same sanitized formatter.
+  assert.match(verify, /formatMetaErrorDetail\(\s*\n?\s*"Meta accepted the request but did not record/);
+  assert.match(verify, /buildMetaAcceptanceDetail\(response\.status, body\)/);
 });
 
 test("the Graph version is current enough to be supported", () => {

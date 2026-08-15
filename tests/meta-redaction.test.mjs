@@ -5,6 +5,7 @@ import {
   buildMetaAcceptanceDetail,
   buildMetaErrorDetail,
   formatMetaErrorDetail,
+  isSingleEventRecorded,
   readEventsReceived,
   redactDiagnosticText,
   safeErrorType,
@@ -184,6 +185,30 @@ test("the acceptance count is read only when it is a real number", () => {
       readEventsReceived(body),
       null,
       `expected null for ${JSON.stringify(body)}`,
+    );
+  }
+});
+
+test("exactly one recorded event is the only success", () => {
+  assert.equal(isSingleEventRecorded({ events_received: 1 }), true);
+  // Zero, more than one, absent, or unparseable are all failures. A missing
+  // count is not evidence of success.
+  for (const body of [
+    { events_received: 0 },
+    { events_received: 2 },
+    { events_received: "1" },
+    { events_received: null },
+    { events_received: NaN },
+    {},
+    null,
+    undefined,
+    "200 OK",
+    [1],
+  ]) {
+    assert.equal(
+      isSingleEventRecorded(body),
+      false,
+      `expected failure for ${JSON.stringify(body)}`,
     );
   }
 });
