@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type DragEvent,
   type FormEvent,
@@ -489,6 +491,19 @@ export function PipelineView({
   );
 }
 
+function parseDollarsToCents(raw: string): number | null {
+  const dollars = Number(raw);
+  if (
+    raw.trim() === "" ||
+    !Number.isFinite(dollars) ||
+    dollars < 0 ||
+    dollars > 1_000_000
+  ) {
+    return null;
+  }
+  return Math.round(dollars * 100);
+}
+
 function EstimatedValueEditor({
   lead,
   mutate,
@@ -502,18 +517,26 @@ function EstimatedValueEditor({
       : (lead.estimatedValueCents / 100).toFixed(2);
   const [value, setValue] = useState(initialDollars);
   const [busy, setBusy] = useState(false);
+  // Closing the drawer (backdrop mousedown, ×, Escape) can unmount this input
+  // before the browser fires blur, which would silently drop the edit. Track
+  // the live edit in a ref so the unmount cleanup below can still commit it.
+  const pending = useRef({
+    value: initialDollars,
+    savedCents: lead.estimatedValueCents,
+    mutate,
+  });
+  useEffect(() => {
+    pending.current.value = value;
+    pending.current.mutate = mutate;
+  });
 
   async function save() {
-    const dollars = Number(value);
-    if (value.trim() === "" || !Number.isFinite(dollars) || dollars < 0 || dollars > 1_000_000) {
+    const nextCents = parseDollarsToCents(value);
+    if (nextCents === null || nextCents === pending.current.savedCents) {
       setValue(initialDollars);
       return;
     }
-    const nextCents = Math.round(dollars * 100);
-    if (nextCents === lead.estimatedValueCents) {
-      setValue(initialDollars);
-      return;
-    }
+    pending.current.savedCents = nextCents;
     setBusy(true);
     try {
       await mutate(
@@ -524,10 +547,28 @@ function EstimatedValueEditor({
         },
         "Estimated value updated",
       );
+    } catch {
+      // mutate already surfaced the error banner; allow a retry.
+      pending.current.savedCents = lead.estimatedValueCents;
     } finally {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    const leadId = lead.id;
+    const pendingRef = pending;
+    return () => {
+      const { value: raw, savedCents, mutate: commit } = pendingRef.current;
+      const nextCents = parseDollarsToCents(raw);
+      if (nextCents !== null && nextCents !== savedCents) {
+        void commit(
+          { action: "update_lead", leadId, estimatedValueCents: nextCents },
+          "Estimated value updated",
+        ).catch(() => undefined);
+      }
+    };
+  }, [lead.id]);
 
   return (
     <input
