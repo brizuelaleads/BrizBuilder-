@@ -1769,6 +1769,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .crm-connection-card.ai { border-top: 3px solid #6657e8; }
 .crm-connection-card.stripe { border-top: 3px solid #635bff; }
 .crm-connection-card.meta { border-top: 3px solid #0866ff; }
+.crm-connection-note { margin: 16px 0 0; color: var(--crm-muted); font-size: 11px; line-height: 1.5; }
 .crm-connection-connect-form { display: grid; gap: 12px; margin-top: 20px; }
 .crm-connection-connect-form > p { margin: 0; color: var(--crm-muted); font-size: 11px; line-height: 1.5; }
 .crm-connection-connect-form label { display: grid; gap: 5px; color: var(--crm-muted); font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }

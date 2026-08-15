@@ -2916,6 +2916,7 @@ function mapProviderConnection(row: AnyRecord): CrmProviderConnection {
     accountLabel: nullable(row.external_account_name),
     accountStatus: providerAccountStatus(row),
     accountType: nullable(publicConfig.accountType),
+    mode: nullable(publicConfig.mode),
     setupStatus: nullable(publicConfig.setupStatus),
     chargesEnabled:
       typeof publicConfig.chargesEnabled === "boolean"
@@ -4341,6 +4342,11 @@ export async function executeSupabaseCrmAction(
             access_token_ciphertext: encrypted.ciphertext,
             access_token_iv: encrypted.iv,
             test_event_code: testEventCode,
+            // A connection always starts in test mode. Reconnecting after
+            // going live returns it to test, so the live stamps are cleared.
+            mode: "test",
+            went_live_at: null,
+            went_live_by_email: null,
             connected_by_email: context.email,
             last_status: null,
             last_event_at: null,
@@ -4368,6 +4374,9 @@ export async function executeSupabaseCrmAction(
             connected_at: now,
             disconnected_at: null,
             last_error: null,
+            // Mirrors the credentials row so the Connections card can show the
+            // mode without reading the credentials table.
+            public_config: { mode: "test" },
             updated_at: now,
           },
           { onConflict: "organization_id,client_id,provider" },
@@ -4382,6 +4391,59 @@ export async function executeSupabaseCrmAction(
       clientId,
     );
     return { connected: true, datasetId, datasetName: dataset.name };
+  }
+
+  if (action === "set_meta_conversions_live") {
+    requirePermission(context, "websites.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const existing = await assertOk(
+      supabase()
+        .from("meta_conversion_credentials")
+        .select("mode")
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .maybeSingle(),
+    );
+    if (!existing) throw new Error("Meta is not connected for this business.");
+    if (String(existing.mode) === "live")
+      throw new Error("This connection is already live.");
+
+    const now = new Date().toISOString();
+    // Clearing the code is what makes production payloads omit
+    // test_event_code — the sender skips a missing value, so there is no
+    // branch left that could send one by mistake. A database constraint
+    // rejects any row that is live and still holds a code.
+    await assertOk(
+      supabase()
+        .from("meta_conversion_credentials")
+        .update({
+          mode: "live",
+          test_event_code: null,
+          went_live_at: now,
+          went_live_by_email: context.email,
+          updated_at: now,
+        })
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId),
+    );
+    await assertOk(
+      supabase()
+        .from("provider_connections")
+        .update({ public_config: { mode: "live" }, updated_at: now })
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", "meta"),
+    );
+    await audit(
+      context,
+      "provider.went_live",
+      "provider_connection",
+      null,
+      { provider: "meta" },
+      clientId,
+    );
+    return { live: true, wentLiveAt: now };
   }
 
   if (action === "disconnect_meta_conversions") {

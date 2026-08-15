@@ -69,6 +69,7 @@ export function ConnectionsView({
     (item) => item.clientId === clientId && item.provider === "meta",
   );
   const metaLinked = Boolean(metaConnection?.isLinked);
+  const metaLive = metaConnection?.mode === "live";
   const [metaDatasetId, setMetaDatasetId] = useState("");
   const [metaAccessToken, setMetaAccessToken] = useState("");
   const [metaTestEventCode, setMetaTestEventCode] = useState("");
@@ -316,32 +317,74 @@ export function ConnectionsView({
                 <h3>Meta Conversions</h3>
                 <p>Report which ad clicks became leads and paying customers</p>
               </div>
-              <Badge tone={metaLinked ? "green" : "orange"}>
-                {metaLinked ? "Connected" : "Not connected"}
+              <Badge tone={!metaLinked ? "orange" : metaLive ? "green" : "purple"}>
+                {!metaLinked ? "Not connected" : metaLive ? "Live" : "Test mode"}
               </Badge>
             </header>
             <div className="crm-connection-details compact crm-connection-details-simple">
               <div><span>Dataset</span><strong>{metaConnection?.accountLabel ?? "Not connected"}</strong></div>
-              <div><span>Status</span><strong>{metaLinked ? "Sending conversions" : "Not connected"}</strong></div>
+              <div>
+                <span>Mode</span>
+                <strong>
+                  {!metaLinked
+                    ? "Not connected"
+                    : metaLive
+                      ? "Live"
+                      : "Test mode"}
+                </strong>
+              </div>
             </div>
             {metaLinked ? (
-              <div className="crm-connection-actions">
-                <button
-                  className="danger"
-                  type="button"
-                  onClick={() =>
-                    window.confirm(
-                      "Disconnect Meta? Facebook and Instagram will stop learning which ad clicks turn into customers.",
-                    ) &&
-                    mutate(
-                      { action: "disconnect_meta_conversions", clientId },
-                      "Meta disconnected.",
-                    )
-                  }
-                >
-                  Disconnect
-                </button>
-              </div>
+              <>
+                {metaLive ? (
+                  <p className="crm-connection-note">
+                    Conversions from this business count toward its ad
+                    optimization.
+                  </p>
+                ) : (
+                  <p className="crm-connection-note">
+                    Conversions are sent with a test event code so they show in
+                    Meta&rsquo;s Test Events view. Meta only routes them there
+                    while that code is the active one for this dataset, so check
+                    Test Events to confirm they are arriving. Go live when you
+                    want conversions to start counting.
+                  </p>
+                )}
+                <div className="crm-connection-actions">
+                  {metaLive ? null : (
+                    <button
+                      className="crm-button-primary"
+                      type="button"
+                      onClick={() =>
+                        window.confirm(
+                          "Go live? Conversions will start counting toward this business's ad optimization. Returning to test mode means disconnecting and reconnecting with a new test event code.",
+                        ) &&
+                        mutate(
+                          { action: "set_meta_conversions_live", clientId },
+                          "Meta is now live.",
+                        )
+                      }
+                    >
+                      Go live
+                    </button>
+                  )}
+                  <button
+                    className="danger"
+                    type="button"
+                    onClick={() =>
+                      window.confirm(
+                        "Disconnect Meta? Facebook and Instagram will stop learning which ad clicks turn into customers.",
+                      ) &&
+                      mutate(
+                        { action: "disconnect_meta_conversions", clientId },
+                        "Meta disconnected.",
+                      )
+                    }
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              </>
             ) : (
               <form
                 className="crm-connection-connect-form"

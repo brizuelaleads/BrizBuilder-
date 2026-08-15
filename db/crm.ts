@@ -371,6 +371,8 @@ export type CrmProviderConnection = {
   accountLabel: string | null;
   accountStatus: string | null;
   accountType: string | null;
+  // "test" or "live" for providers that distinguish them, null otherwise.
+  mode: string | null;
   setupStatus: string | null;
   chargesEnabled: boolean | null;
   payoutsEnabled: boolean | null;

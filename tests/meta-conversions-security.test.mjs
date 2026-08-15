@@ -15,6 +15,8 @@ const storeSource = read("lib/meta-conversions-store.ts");
 const crmSource = read("db/supabase-crm.ts");
 const captureSource = read("app/api/website-leads/[key]/route.ts");
 const migrationSource = read("supabase/migrations/20260814000000_meta_conversions.sql");
+const testModeMigration = read("supabase/migrations/20260816000000_meta_test_mode.sql");
+const connectionsUi = read("app/crm/WorkflowViews.tsx");
 
 // Brace matcher for constructs whose first `{` opens the body.
 const block = (source, needle) => {
@@ -325,6 +327,96 @@ test("the connection probe and the sender share one success rule", () => {
   // Both failure paths render through the same sanitized formatter.
   assert.match(verify, /formatMetaErrorDetail\(\s*\n?\s*"Meta accepted the request but did not record/);
   assert.match(verify, /buildMetaAcceptanceDetail\(response\.status, body\)/);
+});
+
+test("going live requires permission and sub-account access before any write", () => {
+  const live = block(crmSource, 'if (action === "set_meta_conversions_live")');
+  assert.ok(live, "set_meta_conversions_live handler exists");
+  const permissionIndex = live.indexOf('requirePermission(context, "websites.manage")');
+  const clientCheckIndex = live.indexOf("await requireClient(context, clientId)");
+  const writeIndex = live.indexOf(".update({");
+  assert.ok(permissionIndex >= 0, "permission gate present");
+  assert.ok(clientCheckIndex > permissionIndex, "tenant access checked after the gate");
+  assert.ok(writeIndex > clientCheckIndex, "nothing written before both checks");
+});
+
+test("going live is tenant-scoped and cannot reach another workspace", () => {
+  const live = block(crmSource, 'if (action === "set_meta_conversions_live")');
+  // Every read and write is pinned to the authenticated organization.
+  const orgScopes = live.match(/\.eq\("organization_id", context\.organizationId\)/g) ?? [];
+  assert.ok(orgScopes.length >= 3, "lookup and both updates are org-scoped");
+  const clientScopes = live.match(/\.eq\("client_id", clientId\)/g) ?? [];
+  assert.ok(clientScopes.length >= 3, "lookup and both updates are client-scoped");
+  // The organization never comes from the request.
+  assert.doesNotMatch(live, /input\.organizationId/);
+  assert.match(live, /went_live_by_email: context\.email/);
+});
+
+test("going live is one-way, audited, and clears the test event code", () => {
+  const live = block(crmSource, 'if (action === "set_meta_conversions_live")');
+  // Clearing the code is what makes production payloads omit it.
+  assert.match(live, /test_event_code: null/);
+  assert.match(live, /mode: "live"/);
+  // Refuses to run twice; there is no transition back to test.
+  assert.match(live, /already live/);
+  assert.doesNotMatch(live, /mode: "test"/, "no path back to test mode");
+  assert.match(live, /"provider\.went_live"/, "the transition is audited");
+  // Connecting always starts in test and clears any prior live stamps.
+  const connect = block(crmSource, 'if (action === "connect_meta_conversions")');
+  assert.match(connect, /mode: "test"/);
+  assert.match(connect, /went_live_at: null/);
+  assert.match(connect, /went_live_by_email: null/);
+});
+
+test("the database refuses a live connection that still holds a test code", () => {
+  assert.match(testModeMigration, /add column if not exists mode text not null default 'test'/);
+  assert.match(testModeMigration, /check \(mode in \('test', 'live'\)\)/);
+  // The contradictory state is impossible at rest, not merely avoided in code.
+  assert.match(
+    testModeMigration,
+    /\(mode = 'live' and test_event_code is null\)\s*\n\s*or \(mode = 'test' and test_event_code is not null\)/,
+  );
+  // Live rows must record who switched them and when.
+  assert.match(
+    testModeMigration,
+    /mode = 'live' and went_live_at is not null and went_live_by_email is not null/,
+  );
+  // Additive and idempotent, so re-running cannot fail or drop anything.
+  assert.doesNotMatch(testModeMigration, /drop (table|column|constraint)/i);
+  assert.match(testModeMigration, /if not exists \(\s*\n\s*select 1 from pg_constraint/);
+});
+
+test("a live payload omits test_event_code entirely", () => {
+  const send = fnBlock(providerSource, "export async function sendMetaConversionEvent");
+  // The key is added only when a code exists, and a live row has none.
+  assert.match(send, /const payload: Record<string, unknown> = \{ data: \[event\] \};/);
+  assert.match(send, /if \(input\.testEventCode\) payload\.test_event_code = input\.testEventCode;/);
+  // It is a sibling of data, never inside the event or its custom_data.
+  const eventBlock = send.slice(
+    send.indexOf("const event: Record<string, unknown> = {"),
+    send.indexOf("const payload:"),
+  );
+  assert.doesNotMatch(eventBlock, /test_event_code/, "absent from the event object");
+  assert.doesNotMatch(eventBlock, /custom_data:[\s\S]*test_event_code/);
+  // The code reaches the sender only from the stored row, which is null once live.
+  assert.match(storeSource, /testEventCode: row\.test_event_code/);
+});
+
+test("the connections card states the mode without overclaiming", () => {
+  assert.match(connectionsUi, /const metaLive = metaConnection\?\.mode === "live"/);
+  // Both states are named explicitly rather than implied.
+  assert.match(connectionsUi, /metaLive \? "Live" : "Test mode"/);
+  // Going live is confirmed and describes the consequence.
+  assert.match(connectionsUi, /set_meta_conversions_live/);
+  assert.match(connectionsUi, /Returning to test mode means disconnecting/);
+  // Wording stays honest: Meta routes to Test Events only while the code is
+  // active, and the app cannot prove what happens when it is not.
+  assert.match(connectionsUi, /while that code is the active one/);
+  assert.doesNotMatch(
+    connectionsUi,
+    /will (be|become|count as) live|guaranteed|never counts/i,
+    "must not claim what a stale code provably does",
+  );
 });
 
 test("the Graph version is current enough to be supported", () => {
