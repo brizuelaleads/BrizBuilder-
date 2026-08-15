@@ -1,3 +1,8 @@
+import {
+  buildMetaErrorDetail,
+  formatMetaErrorDetail,
+  type MetaErrorDetail,
+} from "./meta-redaction";
 import { readRuntimeValue } from "./supabase/env";
 
 // Server-side Meta Conversions API client. Contact details are hashed here and
@@ -293,6 +298,18 @@ async function fetchMeta(input: string, init: RequestInit): Promise<Response> {
   }
 }
 
+/**
+ * Extracts the six diagnostic fields from a failed response.
+ *
+ * The parsed body is consumed here and never returned, logged or stored — only
+ * the sanitized detail leaves this function. Callers surface that detail to the
+ * authenticated admin performing the connection and nowhere else.
+ */
+async function metaErrorDetail(response: Response): Promise<MetaErrorDetail> {
+  const body = await response.json().catch(() => null);
+  return buildMetaErrorDetail(response.status, body);
+}
+
 function assertDatasetId(datasetId: string) {
   if (!/^[0-9]{5,32}$/u.test(datasetId)) {
     throw new Error("Enter a valid Meta dataset (pixel) ID.");
@@ -376,12 +393,18 @@ export async function verifyMetaDataset(
   });
   if (response.status === 401 || response.status === 403) {
     throw new Error(
-      "Meta rejected that access token for this dataset. Check it was generated for this dataset and try again.",
+      formatMetaErrorDetail(
+        "Meta rejected that access token for this dataset. Check it was generated for this dataset and try again.",
+        await metaErrorDetail(response),
+      ),
     );
   }
   if (!response.ok) {
     throw new Error(
-      "Meta could not accept a test event for that dataset. Check the dataset ID and test event code, then try again.",
+      formatMetaErrorDetail(
+        "Meta could not accept a test event for that dataset. Check the dataset ID and test event code, then try again.",
+        await metaErrorDetail(response),
+      ),
     );
   }
   return { id: datasetId, name: await readDatasetName(datasetId, accessToken) };

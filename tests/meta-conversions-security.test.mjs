@@ -202,6 +202,35 @@ test("the CRM conversion identifies itself as CRM-sourced", () => {
   assert.match(connect, /requireText\(input\.testEventCode, "Test event code", 40\)/);
 });
 
+test("connection diagnostics are transient and never reach the database", () => {
+  // The detail is built from the response and thrown; it is never handed to a
+  // write. Persisting it would defeat the closed status vocabulary.
+  const connect = block(crmSource, 'if (action === "connect_meta_conversions")');
+  for (const field of ["fbtrace", "traceId", "error_subcode", "diagnostic"]) {
+    assert.ok(
+      !connect.includes(field),
+      `${field} must not be written by the connect handler`,
+    );
+  }
+  const dispatch = block(storeSource, "export async function dispatchMetaConversion");
+  assert.doesNotMatch(dispatch, /buildMetaErrorDetail|formatMetaErrorDetail/);
+  assert.match(dispatch, /last_status: result\.status/);
+  // The sender still reports only the closed vocabulary, not a message.
+  const send = fnBlock(providerSource, "export async function sendMetaConversionEvent");
+  assert.doesNotMatch(send, /formatMetaErrorDetail/);
+});
+
+test("the diagnostic reader takes only the response, never the request", () => {
+  const reader = block(providerSource, "async function metaErrorDetail");
+  assert.ok(reader, "metaErrorDetail exists");
+  // Only status and parsed body go in; the URL, headers, token and payload are
+  // not in scope here at all.
+  assert.match(reader, /buildMetaErrorDetail\(response\.status, body\)/);
+  assert.doesNotMatch(reader, /accessToken|Authorization|headers|url|datasetId/);
+  // The body is consumed locally and never returned.
+  assert.doesNotMatch(reader, /return body/);
+});
+
 test("the Graph version is current enough to be supported", () => {
   const version = providerSource.match(/META_GRAPH_VERSION = "v(\d+)\.0"/)?.[1];
   assert.ok(version, "the Graph version is pinned");
