@@ -1,4 +1,6 @@
 import { getBackendProvider } from "../../../../db/backend";
+import { normalizeAttribution } from "../../../../lib/meta-conversions";
+import { dispatchMetaConversion } from "../../../../lib/meta-conversions-store";
 import { getSupabaseAdminClient } from "../../../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -143,6 +145,9 @@ export async function POST(request: Request, context: RouteContext) {
 
     const service = cleanText(input.service, 160) ?? cleanText(input.serviceRequested, 160) ?? "Website inquiry";
     const now = new Date().toISOString();
+    // Ad click identifiers forwarded by the landing page. Unknown keys are
+    // dropped, so a page can post its whole query string without risk.
+    const attribution = normalizeAttribution(input);
     const leadResult = await supabase.from("leads").insert({
       organization_id: site.organization_id,
       client_id: site.client_id,
@@ -157,6 +162,7 @@ export async function POST(request: Request, context: RouteContext) {
       lead_score: 60,
       tags: ["website-lead"],
       consent_status: input.consent === true || input.consent === "granted" ? "granted" : "unknown",
+      attribution,
     }).select("id").single();
     if (leadResult.error) throw new Error(leadResult.error.message);
 
@@ -166,6 +172,38 @@ export async function POST(request: Request, context: RouteContext) {
       supabase.from("websites").update({ analytics: { ...site.analytics, lastLeadAt: now }, updated_at: now }).eq("id", site.id),
       supabase.from("audit_events").insert({ organization_id: site.organization_id, client_id: site.client_id, actor_email: `website:${site.domain ?? site.id}`, action: "website.lead_captured", record_type: "lead", record_id: leadResult.data.id, metadata: { websiteId: site.id, source: "website" } }),
     ]);
+
+    // Tell Meta the ad click converted so its targeting can learn from it.
+    // This never throws and never fails the capture — a lead is worth more than
+    // an ad signal, so an outage at Meta must not cost the customer the lead.
+    // Visitor IP and user agent improve match quality but are passed through
+    // here only; they are never written to the database.
+    await dispatchMetaConversion({
+      organizationId: site.organization_id,
+      clientId: site.client_id,
+      eventName: "Lead",
+      // Reused from the landing page when it also runs a Meta Pixel, so the
+      // browser event and this one collapse into a single conversion instead
+      // of being counted twice.
+      eventId: cleanText(input.eventId, 100) ?? leadResult.data.id,
+      actionSource: "website",
+      eventSourceUrl: cleanText(input.pageUrl, 500) ?? origin,
+      identity: {
+        email,
+        phone,
+        firstName,
+        lastName,
+        city: cleanText(input.city, 80),
+        state: cleanText(input.state, 30),
+        zip: cleanText(input.zip, 20),
+      },
+      attribution,
+      context: {
+        clientIpAddress: request.headers.get("cf-connecting-ip"),
+        clientUserAgent: request.headers.get("user-agent"),
+      },
+      customData: { content_name: service },
+    });
 
     return Response.json({ accepted: true, leadId: leadResult.data.id }, { status: 201, headers });
   } catch (error) {

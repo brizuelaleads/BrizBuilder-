@@ -27,7 +27,16 @@ function endpointFor(websiteId: string) {
 }
 
 function captureSnippet(websiteId: string) {
-  return `fetch("${endpointFor(websiteId)}", {
+  return `// Forward the ad click ids from the landing page URL so paid traffic can be
+// matched back to the ad that produced the lead.
+const params = new URLSearchParams(location.search);
+const attribution = {};
+for (const key of ["fbclid", "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]) {
+  const value = params.get(key);
+  if (value) attribution[key] = value;
+}
+
+fetch("${endpointFor(websiteId)}", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
@@ -37,7 +46,9 @@ function captureSnippet(websiteId: string) {
     email: "jane@example.com",
     service: "Free estimate",
     message: "I would like more information",
-    consent: true
+    consent: true,
+    pageUrl: location.href,
+    ...attribution
   })
 });`;
 }
@@ -49,6 +60,8 @@ Please make the form send a JSON POST request to this URL:
 ${endpointFor(website.id)}
 
 Please send these fields when available: firstName, lastName, phone, email, service, message, address, city, state, zip, campaign, and consent. A phone number or email is required.
+
+If we run Facebook or Instagram ads to this page, please also forward whatever is in the page URL: fbclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term, plus pageUrl. That is what lets the ads learn which clicks turn into real customers.
 
 When it is finished, please submit one test form and let me know so I can confirm the lead appeared in my CRM. Thank you!`;
 }
@@ -156,7 +169,7 @@ export function WebsitesView({ websites, clients, leads, mutate, canManage }: { 
           </div>
           <div className="crm-owner-handoff"><div><strong>Message for your website person</strong><p>Everything they need—including the special connection URL—is already included.</p></div><button onClick={() => void copyText(handoffMessage(selected), () => markCopied("message"))}>{copied === "message" ? "Message copied!" : "Copy Message to Send"}</button></div>
           <div className="crm-help-note"><span>?</span><p><strong>Not sure who manages the website?</strong> Ask the person or company you pay for website updates, hosting, or online marketing. Send them the copied message.</p></div>
-          <details><summary>For website professionals only</summary><p>Lead-capture URL:</p><div className="crm-copy-row"><code>{endpointFor(selected.id)}</code><button onClick={() => void copyText(endpointFor(selected.id), () => markCopied("url"))}>{copied === "url" ? "Copied" : "Copy URL"}</button></div><p>Send a JSON POST request with at least a phone number or email. Supported fields: firstName, lastName, name, phone, email, service, message, address, city, state, zip, campaign, and consent.</p><pre>{captureSnippet(selected.id)}</pre><button className="crm-button-secondary" onClick={() => void copyText(captureSnippet(selected.id), () => markCopied("code"))}>{copied === "code" ? "Code copied" : "Copy example code"}</button></details>
+          <details><summary>For website professionals only</summary><p>Lead-capture URL:</p><div className="crm-copy-row"><code>{endpointFor(selected.id)}</code><button onClick={() => void copyText(endpointFor(selected.id), () => markCopied("url"))}>{copied === "url" ? "Copied" : "Copy URL"}</button></div><p>Send a JSON POST request with at least a phone number or email. Supported fields: firstName, lastName, name, phone, email, service, message, address, city, state, zip, campaign, and consent. For paid traffic also send pageUrl, fbclid and any utm_ values from the landing page URL, plus eventId if the page runs a Meta Pixel.</p><pre>{captureSnippet(selected.id)}</pre><button className="crm-button-secondary" onClick={() => void copyText(captureSnippet(selected.id), () => markCopied("code"))}>{copied === "code" ? "Code copied" : "Copy example code"}</button></details>
         </section>
         <footer><span>Connected {shortDate(selected.createdAt)}</span>{canManage ? <div className="crm-website-footer-actions">{selected.status === "connected" ? <button onClick={() => void disconnect(selected)}>Disconnect</button> : null}<button className="danger" onClick={() => void remove(selected)}>Delete website</button></div> : null}</footer>
       </section> : null}

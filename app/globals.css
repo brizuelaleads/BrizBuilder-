@@ -1765,8 +1765,15 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .crm-provider-logo.twilio { background: #f22f67; }
 .crm-provider-logo.ai { background: linear-gradient(135deg, #6657e8, #2f8f82); font-size: 10px; letter-spacing: -.2px; }
 .crm-provider-logo.stripe { background: #635bff; }
+.crm-provider-logo.meta { background: #0866ff; }
 .crm-connection-card.ai { border-top: 3px solid #6657e8; }
 .crm-connection-card.stripe { border-top: 3px solid #635bff; }
+.crm-connection-card.meta { border-top: 3px solid #0866ff; }
+.crm-connection-connect-form { display: grid; gap: 12px; margin-top: 20px; }
+.crm-connection-connect-form > p { margin: 0; color: var(--crm-muted); font-size: 11px; line-height: 1.5; }
+.crm-connection-connect-form label { display: grid; gap: 5px; color: var(--crm-muted); font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.crm-connection-connect-form input { width: 100%; padding: 10px 12px; border: 1px solid var(--crm-border); border-radius: 10px; background: var(--crm-surface); color: var(--crm-text); font: inherit; font-size: 12px; letter-spacing: 0; text-transform: none; }
+.crm-connection-connect-form button { justify-self: start; }
 .crm-connection-details.compact { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .crm-connection-details { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
 .crm-connection-details > div { padding: 12px; border-radius: 11px; background: #f8f8fb; }

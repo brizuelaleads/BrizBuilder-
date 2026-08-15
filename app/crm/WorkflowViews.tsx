@@ -65,6 +65,13 @@ export function ConnectionsView({
       authorization.clientIds.includes(clientId),
   );
   const aiConnected = activeAiAuthorizations.length > 0;
+  const metaConnection = connections.find(
+    (item) => item.clientId === clientId && item.provider === "meta",
+  );
+  const metaLinked = Boolean(metaConnection?.isLinked);
+  const [metaDatasetId, setMetaDatasetId] = useState("");
+  const [metaAccessToken, setMetaAccessToken] = useState("");
+  const [metaTestEventCode, setMetaTestEventCode] = useState("");
   const [balanceResult, setBalanceResult] = useState<{
     key: string;
     data: TwilioVisibleBalance | null;
@@ -301,6 +308,100 @@ export function ConnectionsView({
                 </button>
               ) : null}
             </div>
+          </article>
+          <article className="crm-connection-card meta">
+            <header>
+              <span className="crm-provider-logo meta">M</span>
+              <div>
+                <h3>Meta Conversions</h3>
+                <p>Report which ad clicks became leads and paying customers</p>
+              </div>
+              <Badge tone={metaLinked ? "green" : "orange"}>
+                {metaLinked ? "Connected" : "Not connected"}
+              </Badge>
+            </header>
+            <div className="crm-connection-details compact crm-connection-details-simple">
+              <div><span>Dataset</span><strong>{metaConnection?.accountLabel ?? "Not connected"}</strong></div>
+              <div><span>Status</span><strong>{metaLinked ? "Sending conversions" : "Not connected"}</strong></div>
+            </div>
+            {metaLinked ? (
+              <div className="crm-connection-actions">
+                <button
+                  className="danger"
+                  type="button"
+                  onClick={() =>
+                    window.confirm(
+                      "Disconnect Meta? Facebook and Instagram will stop learning which ad clicks turn into customers.",
+                    ) &&
+                    mutate(
+                      { action: "disconnect_meta_conversions", clientId },
+                      "Meta disconnected.",
+                    )
+                  }
+                >
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <form
+                className="crm-connection-connect-form"
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  await mutate(
+                    {
+                      action: "connect_meta_conversions",
+                      clientId,
+                      datasetId: metaDatasetId,
+                      accessToken: metaAccessToken,
+                      testEventCode: metaTestEventCode || undefined,
+                    },
+                    "Meta conversions connected.",
+                  );
+                  // Never keep the customer's token in browser state after use.
+                  setMetaAccessToken("");
+                }}
+              >
+                <p>
+                  This business creates both of these in their own Meta Events
+                  Manager, on the dataset for their pixel. BrizBuilder stores the
+                  token encrypted and never sees their Meta password.
+                </p>
+                <label>
+                  Dataset (pixel) ID
+                  <input
+                    value={metaDatasetId}
+                    onChange={(event) => setMetaDatasetId(event.target.value)}
+                    inputMode="numeric"
+                    placeholder="1234567890123456"
+                    required
+                  />
+                </label>
+                <label>
+                  Conversions API access token
+                  <input
+                    type="password"
+                    value={metaAccessToken}
+                    onChange={(event) => setMetaAccessToken(event.target.value)}
+                    autoComplete="off"
+                    required
+                  />
+                </label>
+                <label>
+                  Test event code
+                  <input
+                    value={metaTestEventCode}
+                    onChange={(event) =>
+                      setMetaTestEventCode(event.target.value)
+                    }
+                    autoComplete="off"
+                    placeholder="Optional, for Events Manager testing"
+                  />
+                </label>
+                <button className="crm-button-primary" type="submit">
+                  Connect
+                </button>
+              </form>
+            )}
           </article>
         </div>
       )}

@@ -30,6 +30,13 @@ import {
   verifyGoogleCalendarAccess,
 } from "../lib/google-calendar";
 import {
+  encryptMetaSecret,
+  getMetaConversionsRuntimeStatus,
+  normalizeAttribution,
+  verifyMetaDataset,
+} from "../lib/meta-conversions";
+import { dispatchMetaConversion } from "../lib/meta-conversions-store";
+import {
   buildTwilioConnectUrl,
   checkTwilioConnectedAccount,
   configureTwilioNumber,
@@ -895,6 +902,78 @@ async function stateHash(value: string) {
   return [...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+/**
+ * Reports a won lead to Meta so ad delivery optimizes for people who become
+ * customers rather than people who fill in forms — the signal only the CRM
+ * holds, because only the CRM knows what happened after the click.
+ *
+ * Fires once, on the transition into WON, and never blocks or fails the update
+ * that triggered it.
+ */
+async function reportLeadWonToMeta(
+  organizationId: string,
+  clientId: string,
+  leadId: string,
+  previousStatus: string,
+  nextStatus: string,
+) {
+  if (nextStatus !== "WON" || previousStatus === "WON") return;
+  try {
+    const lead = await assertOk(
+      supabase()
+        .from("leads")
+        .select("contact_id,attribution,final_revenue_cents,estimated_value_cents")
+        .eq("id", leadId)
+        .eq("organization_id", organizationId)
+        .maybeSingle(),
+    );
+    if (!lead) return;
+    const contact = lead.contact_id
+      ? await assertOk(
+          supabase()
+            .from("contacts")
+            .select("first_name,last_name,email,phone,city,state,zip")
+            .eq("id", lead.contact_id)
+            .eq("organization_id", organizationId)
+            .maybeSingle(),
+        )
+      : null;
+    const valueCents = Number(
+      lead.final_revenue_cents ?? lead.estimated_value_cents ?? 0,
+    );
+    await dispatchMetaConversion({
+      organizationId,
+      clientId,
+      eventName: "Purchase",
+      // Distinct from the Lead event id so Meta records a second, later
+      // conversion for this person instead of deduplicating it against the
+      // original form submission.
+      eventId: `won-${leadId}`,
+      actionSource: "system_generated",
+      identity: {
+        email: contact?.email ? String(contact.email) : null,
+        phone: contact?.phone ? String(contact.phone) : null,
+        firstName: contact?.first_name ? String(contact.first_name) : null,
+        lastName: contact?.last_name ? String(contact.last_name) : null,
+        city: contact?.city ? String(contact.city) : null,
+        state: contact?.state ? String(contact.state) : null,
+        zip: contact?.zip ? String(contact.zip) : null,
+      },
+      // The stored attribution already carries the click id captured at form
+      // submission, so a conversion days later still matches the right ad.
+      attribution: normalizeAttribution(lead.attribution),
+      // Revenue is recorded in cents; Meta expects a major-unit amount. USD
+      // matches the Stripe and Twilio markets this CRM is wired for.
+      customData:
+        valueCents > 0
+          ? { value: valueCents / 100, currency: "USD" }
+          : undefined,
+    });
+  } catch {
+    // Ad reporting must never break a pipeline update.
+  }
 }
 
 export async function beginSupabaseTwilioConnect(
@@ -4204,6 +4283,120 @@ export async function executeSupabaseCrmAction(
     );
   }
 
+  if (action === "connect_meta_conversions") {
+    requirePermission(context, "websites.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const runtime = getMetaConversionsRuntimeStatus();
+    if (!runtime.ready)
+      throw new Error(
+        `Meta conversions are not configured. Missing ${runtime.missing.join(", ")}.`,
+      );
+    const datasetId = requireText(input.datasetId, "Dataset ID", 32);
+    const accessToken = requireText(input.accessToken, "Access token", 500);
+    const testEventCode = optionalText(input.testEventCode, 40);
+    // Confirm the pair actually works before saving it. A bad paste otherwise
+    // fails silently on every future lead instead of at the moment of setup.
+    const dataset = await verifyMetaDataset(datasetId, accessToken);
+    const encrypted = await encryptMetaSecret(
+      accessToken,
+      context.organizationId,
+      clientId,
+    );
+    const now = new Date().toISOString();
+    await assertOk(
+      supabase()
+        .from("meta_conversion_credentials")
+        .upsert(
+          {
+            organization_id: context.organizationId,
+            client_id: clientId,
+            dataset_id: datasetId,
+            access_token_ciphertext: encrypted.ciphertext,
+            access_token_iv: encrypted.iv,
+            test_event_code: testEventCode,
+            connected_by_email: context.email,
+            last_status: null,
+            last_event_at: null,
+            updated_at: now,
+          },
+          { onConflict: "organization_id,client_id" },
+        ),
+    );
+    await assertOk(
+      supabase()
+        .from("provider_connections")
+        .upsert(
+          {
+            organization_id: context.organizationId,
+            client_id: clientId,
+            provider: "meta",
+            status: "connected",
+            // The dataset id is public in the customer's own pixel; the token
+            // that goes with it never leaves the encrypted credentials table.
+            external_account_id: datasetId,
+            // Meta does not always return a dataset name; fall back to the id
+            // so the Connections card never shows a blank account.
+            external_account_name: dataset.name ?? datasetId,
+            connected_by_email: context.email,
+            connected_at: now,
+            disconnected_at: null,
+            last_error: null,
+            updated_at: now,
+          },
+          { onConflict: "organization_id,client_id,provider" },
+        ),
+    );
+    await audit(
+      context,
+      "provider.connected",
+      "provider_connection",
+      null,
+      { provider: "meta", datasetId },
+      clientId,
+    );
+    return { connected: true, datasetId, datasetName: dataset.name };
+  }
+
+  if (action === "disconnect_meta_conversions") {
+    requirePermission(context, "websites.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const now = new Date().toISOString();
+    // The token row is deleted outright rather than flagged, so disconnecting
+    // actually destroys the stored credential.
+    await assertOk(
+      supabase()
+        .from("meta_conversion_credentials")
+        .delete()
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId),
+    );
+    await assertOk(
+      supabase()
+        .from("provider_connections")
+        .update({
+          status: "disconnected",
+          external_account_id: null,
+          disconnected_at: now,
+          last_error: null,
+          updated_at: now,
+        })
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", "meta"),
+    );
+    await audit(
+      context,
+      "provider.disconnected",
+      "provider_connection",
+      null,
+      { provider: "meta" },
+      clientId,
+    );
+    return { disconnected: true };
+  }
+
   if (action === "disconnect_provider") {
     const provider = optionalText(input.provider, 40) ?? "twilio";
     if (provider !== "twilio" && provider !== "stripe")
@@ -5547,6 +5740,13 @@ export async function executeSupabaseCrmAction(
       { status },
       lead.client_id,
     );
+    await reportLeadWonToMeta(
+      context.organizationId,
+      String(lead.client_id),
+      leadId,
+      String(lead.status),
+      status,
+    );
     return { id: leadId };
   }
 
@@ -5557,7 +5757,7 @@ export async function executeSupabaseCrmAction(
     const lead = await assertOk(
       supabase()
         .from("leads")
-        .select("client_id")
+        .select("client_id,status")
         .eq("id", leadId)
         .eq("organization_id", context.organizationId)
         .is("archived_at", null)
@@ -5584,12 +5784,13 @@ export async function executeSupabaseCrmAction(
       won: "WON",
       lost: "LOST",
     };
+    const nextStatus = statusByStage[stage.slug] ?? "NEW";
     await assertOk(
       supabase()
         .from("leads")
         .update({
           stage_id: stageId,
-          status: statusByStage[stage.slug] ?? "NEW",
+          status: nextStatus,
           updated_at: new Date().toISOString(),
         })
         .eq("id", leadId)
@@ -5602,6 +5803,13 @@ export async function executeSupabaseCrmAction(
       leadId,
       { stageId },
       lead.client_id,
+    );
+    await reportLeadWonToMeta(
+      context.organizationId,
+      String(lead.client_id),
+      leadId,
+      String(lead.status),
+      nextStatus,
     );
     return { id: leadId };
   }
