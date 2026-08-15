@@ -489,6 +489,66 @@ export function PipelineView({
   );
 }
 
+function EstimatedValueEditor({
+  lead,
+  mutate,
+}: {
+  lead: CrmLead;
+  mutate: Mutate;
+}) {
+  const initialDollars =
+    lead.estimatedValueCents % 100 === 0
+      ? String(lead.estimatedValueCents / 100)
+      : (lead.estimatedValueCents / 100).toFixed(2);
+  const [value, setValue] = useState(initialDollars);
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    const dollars = Number(value);
+    if (value.trim() === "" || !Number.isFinite(dollars) || dollars < 0 || dollars > 1_000_000) {
+      setValue(initialDollars);
+      return;
+    }
+    const nextCents = Math.round(dollars * 100);
+    if (nextCents === lead.estimatedValueCents) {
+      setValue(initialDollars);
+      return;
+    }
+    setBusy(true);
+    try {
+      await mutate(
+        {
+          action: "update_lead",
+          leadId: lead.id,
+          estimatedValueCents: nextCents,
+        },
+        "Estimated value updated",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <input
+      type="number"
+      inputMode="decimal"
+      min={0}
+      max={1_000_000}
+      step="0.01"
+      value={value}
+      disabled={busy}
+      aria-label="Estimated value in dollars"
+      onChange={(event) => setValue(event.target.value)}
+      onBlur={() => void save()}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+        if (event.key === "Escape") setValue(initialDollars);
+      }}
+    />
+  );
+}
+
 export function LeadDetail({
   lead,
   stages,
@@ -673,8 +733,12 @@ export function LeadDetail({
               <strong>{lead.leadScore}/100</strong>
             </div>
             <div>
-              <span>Estimated value</span>
-              <strong>{money(lead.estimatedValueCents)}</strong>
+              <span>Estimated value ($)</span>
+              <EstimatedValueEditor
+                key={`${lead.id}:${lead.estimatedValueCents}`}
+                lead={lead}
+                mutate={mutate}
+              />
             </div>
           </section>
 
