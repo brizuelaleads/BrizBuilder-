@@ -353,7 +353,7 @@ export function ConnectionsView({
                       clientId,
                       datasetId: metaDatasetId,
                       accessToken: metaAccessToken,
-                      testEventCode: metaTestEventCode || undefined,
+                      testEventCode: metaTestEventCode,
                     },
                     "Meta conversions connected.",
                   );
@@ -394,9 +394,15 @@ export function ConnectionsView({
                       setMetaTestEventCode(event.target.value)
                     }
                     autoComplete="off"
-                    placeholder="Optional, for Events Manager testing"
+                    placeholder="From the Test Events tab"
+                    required
                   />
                 </label>
+                <p>
+                  Connecting sends one test event to confirm the token works. The
+                  test event code keeps it in the Test Events view, out of this
+                  business&rsquo;s real reporting.
+                </p>
                 <button className="crm-button-primary" type="submit">
                   Connect
                 </button>

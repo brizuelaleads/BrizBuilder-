@@ -3,7 +3,7 @@ import { readRuntimeValue } from "./supabase/env";
 // Server-side Meta Conversions API client. Contact details are hashed here and
 // never leave the Worker in plain text, and the customer's dataset token is
 // decrypted only for the duration of a single send.
-const META_GRAPH_VERSION = "v21.0";
+const META_GRAPH_VERSION = "v26.0";
 const META_GRAPH_URL = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
 const META_REQUEST_TIMEOUT_MS = 5_000;
 const META_MAX_ATTRIBUTION_VALUE = 512;
@@ -301,36 +301,90 @@ function assertDatasetId(datasetId: string) {
 }
 
 /**
- * Confirms a dataset id and token actually work together, without sending a
- * conversion. Used at connect time so a bad paste fails immediately instead of
- * silently dropping every future lead.
+ * Best-effort dataset name, purely for display on the Connections card.
+ *
+ * Reading the dataset node needs ads_read or business_management on the owning
+ * business, which a dataset-scoped Conversions API token usually does not have.
+ * So this never throws and never blocks a connection — a missing name is not a
+ * broken integration.
+ */
+async function readDatasetName(
+  datasetId: string,
+  accessToken: string,
+): Promise<string | null> {
+  try {
+    const url = new URL(`${META_GRAPH_URL}/${datasetId}`);
+    url.searchParams.set("fields", "id,name");
+    const response = await fetchMeta(url.toString(), {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!response.ok) return null;
+    const body = (await response.json().catch(() => ({}))) as { name?: string };
+    return body.name ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Confirms a dataset id and token actually work together, so a bad paste fails
+ * at setup instead of silently dropping every future lead.
+ *
+ * Validates against the *events* endpoint rather than by reading the dataset
+ * node. A Conversions API token generated in Events Manager is scoped to post
+ * events and frequently cannot read the pixel object at all, so gating the
+ * connection on that read rejects credentials that would have worked perfectly.
+ *
+ * A test event code is required precisely so this check cannot fabricate a
+ * conversion: events carrying one are routed to Events Manager's Test Events
+ * view and never enter ad optimization or the customer's reporting.
  */
 export async function verifyMetaDataset(
   datasetId: string,
   accessToken: string,
+  testEventCode: string,
 ): Promise<{ id: string; name: string | null }> {
   assertDatasetId(datasetId);
-  const url = new URL(`${META_GRAPH_URL}/${datasetId}`);
-  url.searchParams.set("fields", "id,name");
-  const response = await fetchMeta(url.toString(), {
-    method: "GET",
-    headers: { Authorization: `Bearer ${accessToken}` },
+  if (!testEventCode.trim()) {
+    throw new Error(
+      "A test event code is required to verify the connection without creating a real conversion.",
+    );
+  }
+  const response = await fetchMeta(`${META_GRAPH_URL}/${datasetId}/events`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      test_event_code: testEventCode,
+      data: [
+        {
+          event_name: "Lead",
+          event_time: Math.floor(Date.now() / 1000),
+          event_id: `brizbuilder-connection-check-${crypto.randomUUID()}`,
+          action_source: "system_generated",
+          user_data: {
+            external_id: [
+              await sha256Hex(`brizbuilder:connection-check:${datasetId}`),
+            ],
+          },
+        },
+      ],
+    }),
   });
   if (response.status === 401 || response.status === 403) {
     throw new Error(
-      "Meta rejected that access token for this dataset. Check it was generated for this pixel and try again.",
+      "Meta rejected that access token for this dataset. Check it was generated for this dataset and try again.",
     );
   }
   if (!response.ok) {
     throw new Error(
-      "Meta could not confirm that dataset. Check the dataset ID and try again.",
+      "Meta could not accept a test event for that dataset. Check the dataset ID and test event code, then try again.",
     );
   }
-  const body = (await response.json().catch(() => ({}))) as {
-    id?: string;
-    name?: string;
-  };
-  return { id: String(body.id ?? datasetId), name: body.name ?? null };
+  return { id: datasetId, name: await readDatasetName(datasetId, accessToken) };
 }
 
 /**

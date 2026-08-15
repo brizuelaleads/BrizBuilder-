@@ -966,10 +966,17 @@ async function reportLeadWonToMeta(
       attribution: normalizeAttribution(lead.attribution),
       // Revenue is recorded in cents; Meta expects a major-unit amount. USD
       // matches the Stripe and Twilio markets this CRM is wired for.
-      customData:
-        valueCents > 0
+      // event_source and lead_event_source identify this as a CRM-originated
+      // conversion. Note they do not by themselves enable Meta's Qualified
+      // Leads optimization, which additionally requires the lead to have come
+      // from a Lead Ads instant form and carry its Meta lead id.
+      customData: {
+        event_source: "crm",
+        lead_event_source: "BrizBuilder",
+        ...(valueCents > 0
           ? { value: valueCents / 100, currency: "USD" }
-          : undefined,
+          : {}),
+      },
     });
   } catch {
     // Ad reporting must never break a pipeline update.
@@ -4294,10 +4301,13 @@ export async function executeSupabaseCrmAction(
       );
     const datasetId = requireText(input.datasetId, "Dataset ID", 32);
     const accessToken = requireText(input.accessToken, "Access token", 500);
-    const testEventCode = optionalText(input.testEventCode, 40);
+    // Required, not optional: verification sends a real event to prove the
+    // token works, and the test code is what keeps that event out of the
+    // customer's live reporting.
+    const testEventCode = requireText(input.testEventCode, "Test event code", 40);
     // Confirm the pair actually works before saving it. A bad paste otherwise
     // fails silently on every future lead instead of at the moment of setup.
-    const dataset = await verifyMetaDataset(datasetId, accessToken);
+    const dataset = await verifyMetaDataset(datasetId, accessToken, testEventCode);
     const encrypted = await encryptMetaSecret(
       accessToken,
       context.organizationId,

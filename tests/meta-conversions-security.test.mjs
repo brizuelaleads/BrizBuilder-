@@ -169,6 +169,47 @@ test("only the closed status vocabulary is ever persisted", () => {
   assert.doesNotMatch(dispatch, /response\.(text|json)\(\)/);
 });
 
+test("connection checks exercise the capability actually used, without faking a conversion", () => {
+  const verify = fnBlock(providerSource, "export async function verifyMetaDataset");
+  assert.ok(verify, "verifyMetaDataset exists");
+  // A dataset-scoped Conversions API token can post events but often cannot
+  // read the pixel node, so the check must not gate on that read.
+  assert.match(verify, /\/events`/, "validates against the events endpoint");
+  assert.doesNotMatch(
+    verify,
+    /searchParams\.set\("fields"/,
+    "does not gate the connection on reading the dataset node",
+  );
+  // The test event code is mandatory: it is what keeps the probe event out of
+  // the customer's live reporting.
+  assert.match(verify, /if \(!testEventCode\.trim\(\)\)/);
+  assert.match(verify, /test_event_code: testEventCode/);
+  // Reading the display name is best effort and can never fail a connection.
+  const name = fnBlock(providerSource, "async function readDatasetName");
+  assert.ok(name, "readDatasetName exists");
+  assert.match(name, /return null/);
+  assert.match(name, /\} catch \{/);
+});
+
+test("the CRM conversion identifies itself as CRM-sourced", () => {
+  const report = block(crmSource, "async function reportLeadWonToMeta");
+  assert.match(report, /event_source: "crm"/);
+  assert.match(report, /lead_event_source: "BrizBuilder"/);
+  assert.match(report, /actionSource: "system_generated"/);
+  // Connecting requires a test event code, so verification cannot invent a
+  // conversion in a real account.
+  const connect = block(crmSource, 'if (action === "connect_meta_conversions")');
+  assert.match(connect, /requireText\(input\.testEventCode, "Test event code", 40\)/);
+});
+
+test("the Graph version is current enough to be supported", () => {
+  const version = providerSource.match(/META_GRAPH_VERSION = "v(\d+)\.0"/)?.[1];
+  assert.ok(version, "the Graph version is pinned");
+  // Meta supports each version for about two years; staying within a few of
+  // the newest keeps the integration clear of the sunset window.
+  assert.ok(Number(version) >= 24, `Graph version v${version}.0 is too old`);
+});
+
 test("the access token travels in a header and the dataset id is shape checked", () => {
   const send = fnBlock(providerSource, "export async function sendMetaConversionEvent");
   assert.match(send, /Authorization: `Bearer \$\{input\.accessToken\}`/);
