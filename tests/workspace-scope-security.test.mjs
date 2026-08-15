@@ -5,7 +5,10 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
-const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
+// Line endings are normalized so the block-matching patterns below behave the
+// same on a CRLF checkout as they do on LF.
+const read = (rel) =>
+  fs.readFileSync(path.join(root, rel), "utf8").replaceAll("\r\n", "\n");
 
 const d1Source = read("db/crm.ts");
 const supabaseSource = read("db/supabase-crm.ts");
