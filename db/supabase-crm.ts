@@ -36,6 +36,10 @@ import {
   verifyMetaDataset,
 } from "../lib/meta-conversions";
 import { dispatchMetaConversion } from "../lib/meta-conversions-store";
+import {
+  resolveWonValueCents,
+  wonValueCustomData,
+} from "../lib/meta-conversion-value";
 import { formatMetaErrorDetail } from "../lib/meta-redaction";
 import {
   buildTwilioConnectUrl,
@@ -945,8 +949,9 @@ async function reportLeadWonToMeta(
             .maybeSingle(),
         )
       : null;
-    const valueCents = Number(
-      lead.final_revenue_cents ?? lead.estimated_value_cents ?? 0,
+    const valueCents = resolveWonValueCents(
+      lead.final_revenue_cents,
+      lead.estimated_value_cents,
     );
     const outcome = await dispatchMetaConversion({
       organizationId,
@@ -969,8 +974,6 @@ async function reportLeadWonToMeta(
       // The stored attribution already carries the click id captured at form
       // submission, so a conversion days later still matches the right ad.
       attribution: normalizeAttribution(lead.attribution),
-      // Revenue is recorded in cents; Meta expects a major-unit amount. USD
-      // matches the Stripe and Twilio markets this CRM is wired for.
       // event_source and lead_event_source identify this as a CRM-originated
       // conversion. Note they do not by themselves enable Meta's Qualified
       // Leads optimization, which additionally requires the lead to have come
@@ -978,9 +981,7 @@ async function reportLeadWonToMeta(
       customData: {
         event_source: "crm",
         lead_event_source: "BrizBuilder",
-        ...(valueCents > 0
-          ? { value: valueCents / 100, currency: "USD" }
-          : {}),
+        ...wonValueCustomData(valueCents),
       },
     });
 
