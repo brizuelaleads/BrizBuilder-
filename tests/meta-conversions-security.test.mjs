@@ -16,6 +16,7 @@ const crmSource = read("db/supabase-crm.ts");
 const captureSource = read("app/api/website-leads/[key]/route.ts");
 const migrationSource = read("supabase/migrations/20260814000000_meta_conversions.sql");
 const testModeMigration = read("supabase/migrations/20260816000000_meta_test_mode.sql");
+const pendingPurchaseMigration = read("supabase/migrations/20260817000000_pending_purchase.sql");
 const connectionsUi = read("app/crm/WorkflowViews.tsx");
 
 // Brace matcher for constructs whose first `{` opens the body.
@@ -201,7 +202,7 @@ test("connection checks exercise the capability actually used, without faking a 
 });
 
 test("the CRM conversion identifies itself as CRM-sourced", () => {
-  const report = block(crmSource, "async function reportLeadWonToMeta");
+  const report = block(crmSource, "async function reconcileLeadPurchase");
   assert.match(report, /event_source: "crm"/);
   assert.match(report, /lead_event_source: "BrizBuilder"/);
   assert.match(report, /actionSource: "system_generated"/);
@@ -241,7 +242,7 @@ test("the diagnostic reader takes only the response, never the request", () => {
 });
 
 test("a refused conversion warns the admin without blocking the save", () => {
-  const report = block(crmSource, "async function reportLeadWonToMeta");
+  const report = block(crmSource, "async function reconcileLeadPurchase");
   // The warning is produced only after the send, so the pipeline update has
   // already been written by the time it can be returned.
   const dispatchIndex = report.indexOf("await dispatchMetaConversion");
@@ -455,25 +456,136 @@ test("lead capture stores only recognized attribution and fires one event", () =
   assert.doesNotMatch(captureSource, /attribution: \{[\s\S]*?cf-connecting-ip/);
 });
 
-test("the won conversion fires once, on the transition into WON", () => {
-  const report = block(crmSource, "async function reportLeadWonToMeta");
-  assert.ok(report, "reportLeadWonToMeta exists");
-  assert.match(
-    report,
-    /if \(nextStatus !== "WON" \|\| previousStatus === "WON"\) return null;/,
-    "re-saving a won lead does not resend",
-  );
-  // A distinct event id, so Meta records a second conversion rather than
-  // deduplicating it against the original form submission.
+test("a reported purchase is never sent again", () => {
+  const report = block(crmSource, "async function reconcileLeadPurchase");
+  assert.ok(report, "reconcileLeadPurchase exists");
+  // The permanent stamp closes the lead before anything else is considered.
+  assert.match(report, /if \(lead\.purchase_sent_at\) return null;/);
+  assert.match(report, /if \(String\(lead\.status\) !== "WON"\) return null;/);
+  // A stable event id: a fresh one to carry a corrected value would let Meta
+  // count the same customer twice.
   assert.match(report, /eventId: `won-\$\{leadId\}`/);
   assert.match(report, /actionSource: "system_generated"/);
   // Ad reporting must never break a pipeline update.
-  assert.match(report, /\} catch \{/);
-  // Both status paths report, and both read the previous status first.
+  assert.match(report, /\} catch \{[\s\S]*?return null;/);
+});
+
+test("a won deal with no amount waits instead of sending", () => {
+  const report = block(crmSource, "async function reconcileLeadPurchase");
+  assert.match(report, /if \(valueCents === null\)/);
+  // It records that it is waiting, once, and sends nothing.
+  assert.match(report, /if \(!lead\.purchase_pending_since\)/);
+  assert.match(report, /purchase_pending_since: new Date\(\)\.toISOString\(\)/);
+  // The pending branch returns before any claim or dispatch.
+  const pendingIndex = report.indexOf("valueCents === null");
+  const claimIndex = report.indexOf("purchase_claim_id: claimId");
+  const dispatchIndex = report.indexOf("dispatchMetaConversion");
+  assert.ok(pendingIndex < claimIndex && claimIndex < dispatchIndex);
+});
+
+test("the send is reserved by an atomic, self-identifying, expiring claim", () => {
+  const report = block(crmSource, "async function reconcileLeadPurchase");
+  // A unique id per attempt, so one request cannot release another's claim.
+  assert.match(report, /const claimId = crypto\.randomUUID\(\);/);
+  // One conditional update is the concurrency control: the loser's WHERE stops
+  // matching, so exactly one of two racing saves proceeds.
+  assert.match(report, /\.eq\("status", "WON"\)/);
+  assert.match(report, /\.is\("purchase_sent_at", null\)/);
+  // Expiry by age, so a crashed or timed-out request cannot strand the lead.
+  assert.match(
+    report,
+    /\.or\(\s*`purchase_claimed_at\.is\.null,purchase_claimed_at\.lt\.\$\{staleBefore\}`,?\s*\)/,
+  );
+  assert.match(report, /PURCHASE_CLAIM_TTL_MS/);
+  assert.match(crmSource, /const PURCHASE_CLAIM_TTL_MS = [\d_]+;/);
+  // Losing the race is a silent no-op, not an error or a second send.
+  assert.match(report, /if \(!Array\.isArray\(claimed\) \|\| claimed\.length !== 1\) return null;/);
+});
+
+test("purchase_sent_at is written only after Meta confirms, and only once", () => {
+  const report = block(crmSource, "async function reconcileLeadPurchase");
+  const stampIndex = report.indexOf("purchase_sent_at: new Date().toISOString()");
+  const confirmIndex = report.indexOf("if (outcome.attempted && outcome.ok)");
+  assert.ok(confirmIndex >= 0, "the stamp is gated on a confirmed outcome");
+  assert.ok(stampIndex > confirmIndex, "the stamp follows the confirmation");
+  // Guarded so a concurrent writer cannot be overwritten.
+  const stampBlock = report.slice(confirmIndex, stampIndex + 500);
+  assert.match(stampBlock, /\.is\("purchase_sent_at", null\)/);
+  // Recording it as sent clears the pending marker in the same write, so the
+  // two can never both be set.
+  assert.match(stampBlock, /purchase_pending_since: null/);
+  // dispatchMetaConversion only reports ok when Meta recorded exactly one
+  // event, so the stamp inherits that requirement.
+  assert.match(storeSource, /ok: result\.ok/);
+});
+
+test("a failure releases only this request's claim and stays retryable", () => {
+  const report = block(crmSource, "async function reconcileLeadPurchase");
+  // The release is matched on the claim id this request generated.
+  assert.match(
+    report,
+    /purchase_claimed_at: null, purchase_claim_id: null[\s\S]*?\.eq\("purchase_claim_id", claimId\)/,
+  );
+  // It runs on both paths, so a rejection does not leave the lead reserved.
+  const releaseIndex = report.indexOf('.eq("purchase_claim_id", claimId)');
+  const warningIndex = report.indexOf("The deal was saved, but Meta did not accept");
+  assert.ok(releaseIndex < warningIndex, "the claim is released before returning a warning");
+  // Nothing on the failure path stamps the lead as sent.
+  const failureBlock = report.slice(warningIndex);
+  assert.doesNotMatch(failureBlock, /purchase_sent_at:/);
+  assert.match(report, /retried on the next save/);
+});
+
+test("both handlers reconcile on every save, not only on the transition", () => {
   for (const handler of ["update_lead", "move_lead"]) {
     const source = block(crmSource, `if (action === "${handler}")`);
     assert.ok(source, `${handler} exists`);
-    assert.match(source, /await reportLeadWonToMeta\(/, `${handler} reports won leads`);
-    assert.match(source, /String\(lead\.status\)/, `${handler} passes the previous status`);
+    assert.match(source, /await reconcileLeadPurchase\(\s*\n?\s*context\.organizationId/);
+    // The old transition-only guard is gone, which is what lets a value
+    // entered later still report.
+    assert.doesNotMatch(source, /reportLeadWonToMeta/);
+    assert.doesNotMatch(source, /previousStatus/);
   }
+  assert.doesNotMatch(crmSource, /reportLeadWonToMeta/, "the old reporter is fully replaced");
+});
+
+test("the pending purchase migration is additive and closes existing won deals", () => {
+  for (const column of [
+    "purchase_sent_at timestamptz",
+    "purchase_pending_since timestamptz",
+    "purchase_claimed_at timestamptz",
+    "purchase_claim_id text",
+  ]) {
+    assert.ok(
+      pendingPurchaseMigration.includes(`add column if not exists ${column}`),
+      `${column} added idempotently`,
+    );
+  }
+  // Historical won deals are stamped closed so a later edit cannot fire a
+  // conversion for something that closed weeks ago.
+  assert.match(
+    pendingPurchaseMigration,
+    /update public\.leads\s*\nset purchase_sent_at = updated_at\s*\nwhere status = 'WON'\s*\n\s*and purchase_sent_at is null;/,
+  );
+  assert.doesNotMatch(pendingPurchaseMigration, /drop (table|column|constraint)/i);
+});
+
+test("the database rejects a half-written claim and a sent-but-pending lead", () => {
+  // Both halves of a reservation move together: an owner with no timestamp
+  // could never expire, and a timestamp with no owner could not be released.
+  assert.match(
+    pendingPurchaseMigration,
+    /\(purchase_claimed_at is null and purchase_claim_id is null\)\s*\n\s*or \(purchase_claimed_at is not null and purchase_claim_id is not null\)/,
+  );
+  // A recorded Purchase is not still waiting for one.
+  assert.match(
+    pendingPurchaseMigration,
+    /check \(purchase_sent_at is null or purchase_pending_since is null\)/,
+  );
+  // Constraints are added after the backfill, so existing rows already comply.
+  const backfillIndex = pendingPurchaseMigration.indexOf("set purchase_sent_at = updated_at");
+  const constraintIndex = pendingPurchaseMigration.indexOf("leads_purchase_claim_pair_check");
+  assert.ok(backfillIndex >= 0 && constraintIndex > backfillIndex);
+  // Idempotent, so re-running is safe.
+  assert.match(pendingPurchaseMigration, /if not exists \(\s*\n\s*select 1 from pg_constraint/);
 });

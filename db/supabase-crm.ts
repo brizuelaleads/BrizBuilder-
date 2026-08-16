@@ -909,36 +909,100 @@ async function stateHash(value: string) {
     .join("");
 }
 
+// How long a send reservation stays valid. Comfortably longer than the five
+// second Meta request timeout, short enough that a Worker killed mid-send frees
+// the lead within one working minute rather than blocking it indefinitely.
+const PURCHASE_CLAIM_TTL_MS = 60_000;
+
 /**
  * Reports a won lead to Meta so ad delivery optimizes for people who become
  * customers rather than people who fill in forms — the signal only the CRM
  * holds, because only the CRM knows what happened after the click.
  *
- * Fires once, on the transition into WON, and never blocks or fails the update
- * that triggered it.
+ * Driven by state rather than by the transition, so entering an amount on a
+ * deal that was already won still sends the conversion. A won deal with no
+ * amount waits: Meta rejects a Purchase with no value, so there is nothing
+ * useful to send until someone types one.
  *
- * Returns a warning for the authenticated admin when Meta refused the
- * conversion, so a silent rejection cannot go unnoticed. The deal is already
- * saved by this point — the warning never changes that.
+ * Sends at most once per lead, ever. purchase_sent_at is the permanent record
+ * and is written only after Meta confirms it recorded the event, so a refusal
+ * leaves the lead retryable rather than silently closed.
+ *
+ * Never blocks or fails the update that triggered it. Returns a warning for the
+ * authenticated admin when Meta refused, so a silent rejection cannot go
+ * unnoticed — the deal is already saved by then.
  */
-async function reportLeadWonToMeta(
+async function reconcileLeadPurchase(
   organizationId: string,
   clientId: string,
   leadId: string,
-  previousStatus: string,
-  nextStatus: string,
 ): Promise<string | null> {
-  if (nextStatus !== "WON" || previousStatus === "WON") return null;
   try {
     const lead = await assertOk(
       supabase()
         .from("leads")
-        .select("contact_id,attribution,final_revenue_cents,estimated_value_cents")
+        .select(
+          "status,purchase_sent_at,purchase_pending_since,contact_id,attribution,final_revenue_cents,estimated_value_cents",
+        )
         .eq("id", leadId)
         .eq("organization_id", organizationId)
         .maybeSingle(),
     );
     if (!lead) return null;
+    // Already reported. Nothing reopens this — a corrected amount must never
+    // produce a second conversion for the same customer.
+    if (lead.purchase_sent_at) return null;
+    if (String(lead.status) !== "WON") return null;
+
+    const valueCents = resolveWonValueCents(
+      lead.final_revenue_cents,
+      lead.estimated_value_cents,
+    );
+    if (valueCents === null) {
+      // Won, but nobody has typed an amount yet. Record that it is waiting and
+      // send nothing: a valueless Purchase is rejected by Meta anyway.
+      if (!lead.purchase_pending_since) {
+        await assertOk(
+          supabase()
+            .from("leads")
+            .update({ purchase_pending_since: new Date().toISOString() })
+            .eq("id", leadId)
+            .eq("organization_id", organizationId)
+            .select("id"),
+        );
+      }
+      return null;
+    }
+
+    // Reserve the send. A single conditional update is the whole concurrency
+    // control: two simultaneous saves race here and exactly one wins, because
+    // the loser's WHERE no longer matches. The claim carries a unique id so a
+    // request can only release its own, and expires by age so a Worker that
+    // dies mid-send cannot strand the lead.
+    const claimId = crypto.randomUUID();
+    const now = new Date();
+    const staleBefore = new Date(
+      now.getTime() - PURCHASE_CLAIM_TTL_MS,
+    ).toISOString();
+    const claimed = await assertOk(
+      supabase()
+        .from("leads")
+        .update({
+          purchase_claimed_at: now.toISOString(),
+          purchase_claim_id: claimId,
+        })
+        .eq("id", leadId)
+        .eq("organization_id", organizationId)
+        .eq("status", "WON")
+        .is("purchase_sent_at", null)
+        .or(
+          `purchase_claimed_at.is.null,purchase_claimed_at.lt.${staleBefore}`,
+        )
+        .select("id"),
+    );
+    // Someone else holds a live claim, or the lead was reported in between.
+    if (!Array.isArray(claimed) || claimed.length !== 1) return null;
+
     const contact = lead.contact_id
       ? await assertOk(
           supabase()
@@ -949,10 +1013,6 @@ async function reportLeadWonToMeta(
             .maybeSingle(),
         )
       : null;
-    const valueCents = resolveWonValueCents(
-      lead.final_revenue_cents,
-      lead.estimated_value_cents,
-    );
     const outcome = await dispatchMetaConversion({
       organizationId,
       clientId,
@@ -985,16 +1045,48 @@ async function reportLeadWonToMeta(
       },
     });
 
+    if (outcome.attempted && outcome.ok) {
+      // Meta confirmed it recorded exactly one event. Only now is the lead
+      // closed to further sends, and only if nothing else closed it first.
+      await assertOk(
+        supabase()
+          .from("leads")
+          .update({
+            purchase_sent_at: new Date().toISOString(),
+            // Recorded, so no longer waiting. Clearing this in the same write
+            // keeps the two from ever both being set.
+            purchase_pending_since: null,
+          })
+          .eq("id", leadId)
+          .eq("organization_id", organizationId)
+          .is("purchase_sent_at", null)
+          .select("id"),
+      );
+    }
+    // Release the reservation either way, matched on this request's own claim
+    // id so a expired-and-retaken claim belonging to another request is left
+    // alone. A rejection therefore leaves the lead pending and retryable.
+    await assertOk(
+      supabase()
+        .from("leads")
+        .update({ purchase_claimed_at: null, purchase_claim_id: null })
+        .eq("id", leadId)
+        .eq("organization_id", organizationId)
+        .eq("purchase_claim_id", claimId)
+        .select("id"),
+    );
+
     if (!outcome.attempted || outcome.ok) return null;
     const summary =
       "The deal was saved, but Meta did not accept the Purchase conversion.";
     // A transport failure leaves nothing to report beyond the fact of it.
     if (!outcome.detail) {
-      return `${summary} BrizBuilder could not reach Meta. The deal is recorded; the conversion was not.`;
+      return `${summary} BrizBuilder could not reach Meta. The deal is recorded; the conversion was not, and it will be retried on the next save.`;
     }
     return formatMetaErrorDetail(summary, outcome.detail);
   } catch {
-    // Ad reporting must never break a pipeline update.
+    // Ad reporting must never break a pipeline update. A claim left behind by
+    // a throw here expires on age rather than stranding the lead.
     return null;
   }
 }
@@ -5828,12 +5920,12 @@ export async function executeSupabaseCrmAction(
       { status },
       lead.client_id,
     );
-    const metaWarning = await reportLeadWonToMeta(
+    // Runs on every save, not just the transition, so entering an amount on a
+    // deal that was already won still reports the conversion.
+    const metaWarning = await reconcileLeadPurchase(
       context.organizationId,
       String(lead.client_id),
       leadId,
-      String(lead.status),
-      status,
     );
     return metaWarning ? { id: leadId, warning: metaWarning } : { id: leadId };
   }
@@ -5892,12 +5984,10 @@ export async function executeSupabaseCrmAction(
       { stageId },
       lead.client_id,
     );
-    const metaWarning = await reportLeadWonToMeta(
+    const metaWarning = await reconcileLeadPurchase(
       context.organizationId,
       String(lead.client_id),
       leadId,
-      String(lead.status),
-      nextStatus,
     );
     return metaWarning ? { id: leadId, warning: metaWarning } : { id: leadId };
   }
