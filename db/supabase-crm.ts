@@ -942,13 +942,18 @@ async function reconcileLeadPurchase(
       supabase()
         .from("leads")
         .select(
-          "status,purchase_sent_at,purchase_pending_since,contact_id,attribution,final_revenue_cents,estimated_value_cents",
+          "status,meta_eligible,purchase_sent_at,purchase_pending_since,contact_id,attribution,final_revenue_cents,estimated_value_cents",
         )
         .eq("id", leadId)
         .eq("organization_id", organizationId)
         .maybeSingle(),
     );
     if (!lead) return null;
+    // Attribution first, before any side effect. A lead Meta did not produce
+    // never gets a pending marker, never claims a send, and never dispatches —
+    // it stays entirely outside this machinery. The decision was made at
+    // capture and the database refuses to let anything revise it.
+    if (!lead.meta_eligible) return null;
     // Already reported. Nothing reopens this — a corrected amount must never
     // produce a second conversion for the same customer.
     if (lead.purchase_sent_at) return null;

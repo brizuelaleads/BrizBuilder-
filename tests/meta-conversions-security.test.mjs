@@ -17,6 +17,8 @@ const captureSource = read("app/api/website-leads/[key]/route.ts");
 const migrationSource = read("supabase/migrations/20260814000000_meta_conversions.sql");
 const testModeMigration = read("supabase/migrations/20260816000000_meta_test_mode.sql");
 const pendingPurchaseMigration = read("supabase/migrations/20260817000000_pending_purchase.sql");
+const eligibilityMigration = read("supabase/migrations/20260818000000_meta_eligibility.sql");
+const eligibilitySource = read("lib/meta-eligibility.ts");
 const connectionsUi = read("app/crm/WorkflowViews.tsx");
 
 // Brace matcher for constructs whose first `{` opens the body.
@@ -420,6 +422,55 @@ test("the connections card states the mode without overclaiming", () => {
   );
 });
 
+test("capture reports only leads Meta actually produced", () => {
+  // The decision is made from the submission itself and stored on the lead.
+  assert.match(captureSource, /const eligibility = decideMetaEligibility\(input\)/);
+  assert.match(captureSource, /meta_eligible: eligibility\.eligible/);
+  assert.match(captureSource, /meta_eligibility_reason: eligibility\.reason/);
+  // Dispatch is gated, and the gate encloses the whole send.
+  const gateIndex = captureSource.indexOf("if (eligibility.eligible) {");
+  const dispatchIndex = captureSource.indexOf("await dispatchMetaConversion");
+  assert.ok(gateIndex >= 0 && dispatchIndex > gateIndex, "dispatch sits inside the gate");
+  // Ineligible leads still save: the gate wraps only the send, not the write.
+  const insertIndex = captureSource.indexOf('.from("leads").insert');
+  assert.ok(insertIndex >= 0 && insertIndex < gateIndex, "the lead is written first");
+  assert.match(captureSource, /accepted: true, leadId: leadResult\.data\.id/);
+});
+
+test("an ineligible lead never reaches any Meta side effect", () => {
+  const report = block(crmSource, "async function reconcileLeadPurchase");
+  const eligibilityIndex = report.indexOf("if (!lead.meta_eligible) return null;");
+  assert.ok(eligibilityIndex >= 0, "the Purchase path checks eligibility");
+  // Before the pending marker, before the claim, before the dispatch.
+  for (const [label, needle] of [
+    ["pending marker", "purchase_pending_since: new Date().toISOString()"],
+    ["claim", "purchase_claim_id: claimId"],
+    ["dispatch", "dispatchMetaConversion"],
+  ]) {
+    const index = report.indexOf(needle);
+    assert.ok(index > eligibilityIndex, `eligibility precedes the ${label}`);
+  }
+  // Read from the stored row, not recomputed and not supplied by a caller.
+  assert.match(report, /"status,meta_eligible,purchase_sent_at/);
+});
+
+test("eligibility is immutable and conservatively backfilled", () => {
+  assert.match(
+    eligibilityMigration,
+    /add column if not exists meta_eligible boolean not null default false/,
+  );
+  // Only stored evidence of a well-formed click id promotes a row.
+  assert.match(eligibilityMigration, /attribution->>'fbclid' ~/);
+  assert.match(eligibilityMigration, /meta_eligibility_reason = 'backfill_no_evidence'/);
+  // An eligible row cannot exist without the reason that justified it.
+  assert.match(eligibilityMigration, /or meta_eligibility_reason = 'meta_fbclid'/);
+  // A trigger refuses any later revision rather than trusting every caller.
+  assert.match(eligibilityMigration, /create trigger leads_meta_eligibility_immutable/);
+  assert.match(eligibilityMigration, /before update on public\.leads/);
+  assert.match(eligibilityMigration, /raise exception/);
+  assert.doesNotMatch(eligibilityMigration, /drop (table|column)/i);
+});
+
 test("the Graph version is current enough to be supported", () => {
   const version = providerSource.match(/META_GRAPH_VERSION = "v(\d+)\.0"/)?.[1];
   assert.ok(version, "the Graph version is pinned");
@@ -442,11 +493,17 @@ test("the access token travels in a header and the dataset id is shape checked",
 
 test("lead capture stores only recognized attribution and fires one event", () => {
   assert.match(captureSource, /const attribution = normalizeAttribution\(input\)/);
-  const normalize = block(providerSource, "export function normalizeAttribution");
+  // Normalization lives in the dependency-free module so the rule that fbc may
+  // only come from a validated fbclid can be exercised directly in tests.
+  const normalize = block(eligibilitySource, "export function normalizeAttribution");
   assert.ok(normalize, "normalizeAttribution exists");
   // A landing page is untrusted input: unknown keys are dropped, not stored.
   assert.match(normalize, /for \(const key of ATTRIBUTION_KEYS\)/);
-  assert.match(providerSource, /META_MAX_ATTRIBUTION_VALUE = 512/);
+  assert.match(eligibilitySource, /MAX_ATTRIBUTION_VALUE = 512/);
+  // fbc is derived only from a valid click id, and a caller-supplied one is
+  // discarded rather than trusted as a match key.
+  assert.match(normalize, /if \(isValidFbclid\(attribution\.fbclid\)\)/);
+  assert.match(normalize, /delete attribution\.fbc;/);
   // The pixel and the server agree on one id, so a lead is not counted twice.
   assert.match(captureSource, /eventId: cleanText\(input\.eventId, 100\) \?\? leadResult\.data\.id/);
   assert.match(captureSource, /eventName: "Lead"/);

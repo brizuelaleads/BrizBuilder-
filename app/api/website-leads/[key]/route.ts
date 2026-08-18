@@ -1,5 +1,6 @@
 import { getBackendProvider } from "../../../../db/backend";
 import { normalizeAttribution } from "../../../../lib/meta-conversions";
+import { decideMetaEligibility } from "../../../../lib/meta-eligibility";
 import { dispatchMetaConversion } from "../../../../lib/meta-conversions-store";
 import { getSupabaseAdminClient } from "../../../../lib/supabase/server";
 
@@ -148,6 +149,11 @@ export async function POST(request: Request, context: RouteContext) {
     // Ad click identifiers forwarded by the landing page. Unknown keys are
     // dropped, so a page can post its whole query string without risk.
     const attribution = normalizeAttribution(input);
+    // Decided here, from the submission itself, and stored on the lead. Only a
+    // validated Meta click id qualifies; a utm_source or a source label is
+    // caller-controlled on this public endpoint and proves nothing. The
+    // database rejects any later attempt to revise this.
+    const eligibility = decideMetaEligibility(input);
     const leadResult = await supabase.from("leads").insert({
       organization_id: site.organization_id,
       client_id: site.client_id,
@@ -163,6 +169,8 @@ export async function POST(request: Request, context: RouteContext) {
       tags: ["website-lead"],
       consent_status: input.consent === true || input.consent === "granted" ? "granted" : "unknown",
       attribution,
+      meta_eligible: eligibility.eligible,
+      meta_eligibility_reason: eligibility.reason,
     }).select("id").single();
     if (leadResult.error) throw new Error(leadResult.error.message);
 
@@ -178,32 +186,37 @@ export async function POST(request: Request, context: RouteContext) {
     // an ad signal, so an outage at Meta must not cost the customer the lead.
     // Visitor IP and user agent improve match quality but are passed through
     // here only; they are never written to the database.
-    await dispatchMetaConversion({
-      organizationId: site.organization_id,
-      clientId: site.client_id,
-      eventName: "Lead",
-      // Reused from the landing page when it also runs a Meta Pixel, so the
-      // browser event and this one collapse into a single conversion instead
-      // of being counted twice.
-      eventId: cleanText(input.eventId, 100) ?? leadResult.data.id,
-      actionSource: "website",
-      eventSourceUrl: cleanText(input.pageUrl, 500) ?? origin,
-      identity: {
-        email,
-        phone,
-        firstName,
-        lastName,
-        city: cleanText(input.city, 80),
-        state: cleanText(input.state, 30),
-        zip: cleanText(input.zip, 20),
-      },
-      attribution,
-      context: {
-        clientIpAddress: request.headers.get("cf-connecting-ip"),
-        clientUserAgent: request.headers.get("user-agent"),
-      },
-      customData: { content_name: service },
-    });
+    // Google, organic, direct, referral and unattributed leads save exactly as
+    // before but are never reported: Meta must only learn from clicks it
+    // actually produced.
+    if (eligibility.eligible) {
+      await dispatchMetaConversion({
+        organizationId: site.organization_id,
+        clientId: site.client_id,
+        eventName: "Lead",
+        // Reused from the landing page when it also runs a Meta Pixel, so the
+        // browser event and this one collapse into a single conversion instead
+        // of being counted twice.
+        eventId: cleanText(input.eventId, 100) ?? leadResult.data.id,
+        actionSource: "website",
+        eventSourceUrl: cleanText(input.pageUrl, 500) ?? origin,
+        identity: {
+          email,
+          phone,
+          firstName,
+          lastName,
+          city: cleanText(input.city, 80),
+          state: cleanText(input.state, 30),
+          zip: cleanText(input.zip, 20),
+        },
+        attribution,
+        context: {
+          clientIpAddress: request.headers.get("cf-connecting-ip"),
+          clientUserAgent: request.headers.get("user-agent"),
+        },
+        customData: { content_name: service },
+      });
+    }
 
     return Response.json({ accepted: true, leadId: leadResult.data.id }, { status: 201, headers });
   } catch (error) {

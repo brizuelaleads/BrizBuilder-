@@ -1,3 +1,8 @@
+import { normalizeAttribution, type MetaAttribution } from "./meta-eligibility";
+
+// Re-exported so callers keep importing attribution handling from one place.
+export { normalizeAttribution };
+export type { MetaAttribution };
 import {
   buildMetaAcceptanceDetail,
   buildMetaErrorDetail,
@@ -13,24 +18,7 @@ import { readRuntimeValue } from "./supabase/env";
 const META_GRAPH_VERSION = "v26.0";
 const META_GRAPH_URL = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
 const META_REQUEST_TIMEOUT_MS = 5_000;
-const META_MAX_ATTRIBUTION_VALUE = 512;
 
-// Only these keys are ever persisted from a landing page URL. Anything else the
-// page sends is dropped rather than stored.
-const ATTRIBUTION_KEYS = [
-  "fbclid",
-  "fbc",
-  "fbp",
-  "utm_source",
-  "utm_medium",
-  "utm_campaign",
-  "utm_content",
-  "utm_term",
-] as const;
-
-export type MetaAttribution = Partial<
-  Record<(typeof ATTRIBUTION_KEYS)[number], string>
->;
 
 export type MetaEncryptedValue = {
   ciphertext: string;
@@ -70,11 +58,6 @@ class MetaRequestTimeoutError extends Error {
   }
 }
 
-function asText(value: unknown, max: number): string | null {
-  return typeof value === "string" && value.trim()
-    ? value.trim().slice(0, max)
-    : null;
-}
 
 function bytesToBase64Url(bytes: Uint8Array): string {
   let binary = "";
@@ -269,27 +252,6 @@ export async function buildMetaUserData(
   return userData;
 }
 
-/**
- * Keeps only the attribution keys we recognize, bounded in length. A landing
- * page is untrusted input, so unknown keys are dropped rather than stored.
- */
-export function normalizeAttribution(input: unknown): MetaAttribution {
-  const source =
-    input && typeof input === "object" && !Array.isArray(input)
-      ? (input as Record<string, unknown>)
-      : {};
-  const attribution: MetaAttribution = {};
-  for (const key of ATTRIBUTION_KEYS) {
-    const value = asText(source[key], META_MAX_ATTRIBUTION_VALUE);
-    if (value) attribution[key] = value;
-  }
-  // Meta matches on `fbc`, which wraps the raw click id. Deriving it here means
-  // a landing page only has to forward the fbclid it already has in its URL.
-  if (!attribution.fbc && attribution.fbclid) {
-    attribution.fbc = `fb.1.${Date.now()}.${attribution.fbclid}`;
-  }
-  return attribution;
-}
 
 async function fetchMeta(input: string, init: RequestInit): Promise<Response> {
   const controller = new AbortController();
