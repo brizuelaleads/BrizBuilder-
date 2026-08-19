@@ -123,6 +123,15 @@ const futureModules: FutureModule[] = [
   "funnels",
 ];
 
+function crmTimestamp(value: string | null) {
+  if (!value) return 0;
+  const normalized = value.includes("T")
+    ? value
+    : `${value.replace(" ", "T")}Z`;
+  const parsed = new Date(normalized).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
 const nav: Array<{
   id: View;
   label: string;
@@ -470,23 +479,16 @@ export function CrmApp({
       ),
     [data.leads, effectiveSelectedClientId],
   );
+  const rangeCutoff = useMemo(() => {
+    const days = Number(range);
+    if (range === "all" || !Number.isFinite(days) || days <= 0) return null;
+    return crmTimestamp(data.generatedAt) - days * 86400000;
+  }, [data.generatedAt, range]);
   const filteredLeads = useMemo(() => {
-    const cutoff =
-      range === "all"
-        ? null
-        : new Date(
-            new Date(data.generatedAt).getTime() - Number(range) * 86400000,
-          );
     return workspaceLeads.filter(
-      (lead) =>
-        !cutoff ||
-          new Date(
-            lead.createdAt.includes("T")
-              ? lead.createdAt
-              : `${lead.createdAt.replace(" ", "T")}Z`,
-          ) >= cutoff,
+      (lead) => !rangeCutoff || crmTimestamp(lead.createdAt) >= rangeCutoff,
     );
-  }, [data.generatedAt, range, workspaceLeads]);
+  }, [rangeCutoff, workspaceLeads]);
   const filteredContacts = data.contacts.filter(
     (contact) =>
       effectiveSelectedClientId === "all" ||
@@ -533,10 +535,21 @@ export function CrmApp({
       effectiveSelectedClientId === "all" ||
       appointment.clientId === effectiveSelectedClientId,
   );
+  const filteredPhoneCalls = data.phoneCalls.filter(
+    (call) =>
+      (effectiveSelectedClientId === "all" ||
+        call.clientId === effectiveSelectedClientId) &&
+      (!rangeCutoff || crmTimestamp(call.startedAt) >= rangeCutoff),
+  );
   const filteredClients = data.clients.filter(
     (client) =>
       effectiveSelectedClientId === "all" ||
       client.id === effectiveSelectedClientId,
+  );
+  const filteredProviderConnections = data.providerConnections.filter(
+    (connection) =>
+      effectiveSelectedClientId === "all" ||
+      connection.clientId === effectiveSelectedClientId,
   );
   const selectedLead =
     data.leads.find((lead) => lead.id === selectedLeadId) ?? null;
@@ -1123,6 +1136,11 @@ export function CrmApp({
             pipelineLeads={workspaceLeads}
             appointments={filteredAppointments}
             tasks={filteredTasks}
+            clients={filteredClients}
+            phoneCalls={filteredPhoneCalls}
+            providerConnections={filteredProviderConnections}
+            stages={data.stages}
+            range={range}
             generatedAt={data.generatedAt}
             onOpenLead={openLead}
             onNavigate={navigate}
