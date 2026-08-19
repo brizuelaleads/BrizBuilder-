@@ -1,30 +1,14 @@
 "use client";
 
-import {
-  BriefcaseBusiness,
-  CalendarDays,
-  FileText,
-  ListChecks,
-  ScrollText,
-} from "lucide-react";
-import type {
-  CrmAppointment,
-  CrmClient,
-  CrmConversation,
-  CrmLead,
-  CrmMessage,
-  CrmStage,
-  CrmTask,
-} from "../../db/crm";
-import { Badge, dateTime, initials, money } from "./ui";
+import { CalendarDays, ListChecks } from "lucide-react";
+import type { CrmAppointment, CrmLead, CrmTask } from "../../db/crm";
+import { Badge, dateTime, money } from "./ui";
 
 type DashboardDestination =
   | "leads"
   | "pipeline"
   | "calendar"
-  | "tasks"
-  | "reports"
-  | "conversations";
+  | "tasks";
 
 function timestamp(value: string | null) {
   if (!value) return 0;
@@ -44,7 +28,9 @@ function displayStatus(value: string) {
 
 function dateKey(value: string) {
   const parsed = timestamp(value);
-  return parsed ? new Date(parsed).toISOString().slice(0, 10) : value.slice(0, 10);
+  return parsed
+    ? new Date(parsed).toISOString().slice(0, 10)
+    : value.slice(0, 10);
 }
 
 function timeOnly(value: string) {
@@ -56,51 +42,21 @@ function timeOnly(value: string) {
   });
 }
 
-type DashboardSkeletonVariant =
-  | "chart"
-  | "sources"
-  | "list"
-  | "schedule"
-  | "pipeline"
-  | "conversations";
+function leadInitials(lead: CrmLead) {
+  return `${lead.firstName[0] ?? ""}${lead.lastName[0] ?? ""}` || "L";
+}
 
-const skeletonChartHeights = [38, 64, 48, 76, 56, 84, 46];
-
-function DashboardSkeleton({
-  variant,
-  caption,
-  rows = 3,
+function DashboardEmpty({
+  title,
+  detail,
 }: {
-  variant: DashboardSkeletonVariant;
-  caption: string;
-  rows?: number;
+  title: string;
+  detail: string;
 }) {
   return (
-    <div className={`crm-dashboard-placeholder is-${variant}`}>
-      {variant === "chart" ? (
-        <div
-          className="crm-dashboard-placeholder-chart"
-          aria-hidden="true"
-        >
-          {skeletonChartHeights.map((height, index) => (
-            <span key={index} style={{ height: `${height}%` }} />
-          ))}
-        </div>
-      ) : (
-        <div className="crm-dashboard-placeholder-rows" aria-hidden="true">
-          {Array.from({ length: rows }, (_, index) => (
-            <div key={index} className="crm-dashboard-placeholder-row">
-              {!["sources", "pipeline"].includes(variant) ? <i /> : null}
-              <span>
-                <b />
-                <small />
-              </span>
-              <em />
-            </div>
-          ))}
-        </div>
-      )}
-      <p>{caption}</p>
+    <div className="crm-dashboard-calm-empty">
+      <strong>{title}</strong>
+      <span>{detail}</span>
     </div>
   );
 }
@@ -108,27 +64,17 @@ function DashboardSkeleton({
 export function DashboardView({
   leads,
   pipelineLeads,
-  clients,
   appointments,
   tasks,
-  stages,
-  conversations,
-  messages,
   generatedAt,
-  canViewConversations,
   onOpenLead,
   onNavigate,
 }: {
   leads: CrmLead[];
   pipelineLeads: CrmLead[];
-  clients: CrmClient[];
   appointments: CrmAppointment[];
   tasks: CrmTask[];
-  stages: CrmStage[];
-  conversations: CrmConversation[];
-  messages: CrmMessage[];
   generatedAt: string;
-  canViewConversations: boolean;
   onOpenLead: (lead: CrmLead) => void;
   onNavigate: (view: DashboardDestination) => void;
 }) {
@@ -138,25 +84,13 @@ export function DashboardView({
     (sum, lead) => sum + lead.finalRevenueCents,
     0,
   );
-  const spend = clients.reduce(
-    (sum, client) => sum + client.monthlyAdBudgetCents,
-    0,
-  );
   const booked = leads.filter((lead) =>
     ["APPOINTMENT_BOOKED", "ESTIMATE_SENT", "WON"].includes(lead.status),
   ).length;
   const closeRate = leads.length
     ? Math.round((won.length / leads.length) * 100)
     : 0;
-  const roas = spend ? revenue / spend : 0;
-  const openTasks = tasks
-    .filter((task) => !["COMPLETED", "CANCELED"].includes(task.status))
-    .sort((first, second) => {
-      if (!first.dueAt && !second.dueAt) return 0;
-      if (!first.dueAt) return 1;
-      if (!second.dueAt) return -1;
-      return timestamp(first.dueAt) - timestamp(second.dueAt);
-    });
+
   const generatedAtTimestamp = timestamp(generatedAt);
   const currentDateKey = dateKey(generatedAt);
   const todayAppointments = appointments
@@ -179,203 +113,15 @@ export function DashboardView({
       (first, second) =>
         timestamp(first.startsAt) - timestamp(second.startsAt),
     );
-  const futureAppointments = appointments
-    .filter(
-      (appointment) =>
-        appointment.status !== "CANCELED" &&
-        timestamp(appointment.startsAt) >= timestamp(generatedAt),
-    )
-    .sort(
-      (first, second) =>
-        timestamp(first.startsAt) - timestamp(second.startsAt),
-    );
 
-  const daily = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(generatedAt);
-    date.setUTCDate(date.getUTCDate() - 6 + index);
-    const iso = date.toISOString().slice(0, 10);
-    return {
-      label: date.toLocaleDateString("en-US", { weekday: "short" }),
-      value: pipelineLeads.filter(
-        (lead) => lead.createdAt.slice(0, 10) === iso,
-      ).length,
-    };
-  });
-  const maxDaily = Math.max(1, ...daily.map((item) => item.value));
-  const hasDailyLeadActivity = daily.some((item) => item.value > 0);
-  const weeklyLeadTotal = daily.reduce((sum, item) => sum + item.value, 0);
-  const leadChartPoints = daily.map((item, index) => ({
-    x: 18 + (index / Math.max(1, daily.length - 1)) * 564,
-    y: 18 + (1 - item.value / maxDaily) * 122,
-  }));
-  const leadLinePoints = leadChartPoints
-    .map((point) => `${point.x},${point.y}`)
-    .join(" ");
-  const leadAreaPoints = `18,140 ${leadLinePoints} 582,140`;
-
-  const sources = Object.entries(
-    leads.reduce<Record<string, number>>((acc, lead) => {
-      const source = lead.source || "Unknown";
-      acc[source] = (acc[source] ?? 0) + 1;
-      return acc;
-    }, {}),
-  ).sort((first, second) => second[1] - first[1]);
-  const sourceTotal = sources.reduce((sum, [, count]) => sum + count, 0);
-  const explicitOtherCount =
-    sources.find(([source]) => source.toLowerCase() === "other")?.[1] ?? 0;
-  const namedSources = sources.filter(
-    ([source]) => source.toLowerCase() !== "other",
-  );
-  const sourceBreakdown = namedSources.slice(0, 4);
-  const otherSourceCount =
-    explicitOtherCount +
-    namedSources
-      .slice(4)
-      .reduce((sum, [, count]) => sum + count, 0);
-  if (otherSourceCount > 0) {
-    sourceBreakdown.push(["Other", otherSourceCount]);
-  }
-  const sourceColors = [
-    "#2f6f3e",
-    "#5c8a66",
-    "#87a48d",
-    "#aebdaf",
-    "#d8ddd7",
-  ];
-  let sourcePercentageCursor = 0;
-  const sourceDonutBackground = sourceTotal
-    ? `conic-gradient(${sourceBreakdown
-        .map(([, count], index) => {
-          const start = sourcePercentageCursor;
-          sourcePercentageCursor += (count / sourceTotal) * 100;
-          return `${sourceColors[index]} ${start}% ${sourcePercentageCursor}%`;
-        })
-        .join(", ")})`
-    : undefined;
-
-  const stageById = new Map(stages.map((stage) => [stage.id, stage]));
-  const groupedStages = new Map<
-    string,
-    {
-      name: string;
-      position: number;
-      count: number;
-      valueCents: number;
-      isWon: boolean;
-      isLost: boolean;
-    }
-  >();
-
-  [...stages]
-    .sort((first, second) => first.position - second.position)
-    .forEach((stage) => {
-      const key = stage.slug || stage.name.toLowerCase();
-      const current = groupedStages.get(key);
-      if (!current) {
-        groupedStages.set(key, {
-          name: stage.name,
-          position: stage.position,
-          count: 0,
-          valueCents: 0,
-          isWon: stage.isWon,
-          isLost: stage.isLost,
-        });
-      } else {
-        current.position = Math.min(current.position, stage.position);
-        current.isWon ||= stage.isWon;
-        current.isLost &&= stage.isLost;
-      }
+  const openTasks = tasks
+    .filter((task) => !["COMPLETED", "CANCELED"].includes(task.status))
+    .sort((first, second) => {
+      if (!first.dueAt && !second.dueAt) return 0;
+      if (!first.dueAt) return 1;
+      if (!second.dueAt) return -1;
+      return timestamp(first.dueAt) - timestamp(second.dueAt);
     });
-
-  pipelineLeads.forEach((lead) => {
-    const stage = stageById.get(lead.stageId);
-    const key =
-      stage?.slug ||
-      lead.stageName.toLowerCase().replaceAll(" ", "-") ||
-      lead.status.toLowerCase();
-    let row = groupedStages.get(key);
-    if (!row) {
-      row = {
-        name: lead.stageName || displayStatus(lead.status),
-        position: Number.MAX_SAFE_INTEGER,
-        count: 0,
-        valueCents: 0,
-        isWon: lead.status === "WON",
-        isLost: lead.status === "LOST",
-      };
-      groupedStages.set(key, row);
-    }
-    row.count += 1;
-    row.valueCents += row.isWon
-      ? lead.finalRevenueCents
-      : lead.estimatedValueCents;
-  });
-
-  const pipelineSnapshot = [...groupedStages.values()]
-    .filter((stage) => !stage.isLost)
-    .sort((first, second) => first.position - second.position);
-  const hasPipelineActivity = pipelineSnapshot.some(
-    (stage) => stage.count > 0,
-  );
-  const maxPipelineStage = Math.max(
-    1,
-    ...pipelineSnapshot.map((stage) => stage.count),
-  );
-  const openPipeline = pipelineLeads.filter(
-    (lead) =>
-      !["WON", "LOST", "SPAM", "UNRESPONSIVE"].includes(lead.status),
-  );
-  const openPipelineValue = openPipeline.reduce(
-    (sum, lead) => sum + lead.estimatedValueCents,
-    0,
-  );
-
-  const latestMessageByConversation = new Map<string, CrmMessage>();
-  messages.forEach((message) => {
-    const current = latestMessageByConversation.get(message.conversationId);
-    if (
-      !current ||
-      timestamp(message.createdAt) > timestamp(current.createdAt)
-    ) {
-      latestMessageByConversation.set(message.conversationId, message);
-    }
-  });
-  const recentConversations = conversations
-    .map((conversation) => {
-      const latestMessage = latestMessageByConversation.get(conversation.id);
-      const previewIsCurrent =
-        latestMessage &&
-        (!conversation.lastMessageAt ||
-          timestamp(latestMessage.createdAt) >=
-            timestamp(conversation.lastMessageAt));
-      return {
-        conversation,
-        latestMessage: previewIsCurrent ? latestMessage : null,
-        lastActivityAt:
-          conversation.lastMessageAt ?? latestMessage?.createdAt ?? null,
-      };
-    })
-    .sort(
-      (first, second) =>
-        timestamp(second.lastActivityAt) - timestamp(first.lastActivityAt),
-    )
-    .slice(0, 4);
-
-  const quotes = pipelineLeads.filter(
-    (lead) => lead.status === "ESTIMATE_SENT",
-  );
-  const quoteValue = quotes.reduce(
-    (sum, lead) => sum + lead.estimatedValueCents,
-    0,
-  );
-  const jobs = pipelineLeads.filter((lead) => lead.status === "WON");
-  const jobValue = jobs.reduce(
-    (sum, lead) => sum + lead.finalRevenueCents,
-    0,
-  );
-  const workspaceNewLeads = pipelineLeads.filter(
-    (lead) => lead.status === "NEW",
-  );
   const pastDueTasks = openTasks.filter(
     (task) =>
       task.dueAt && timestamp(task.dueAt) < generatedAtTimestamp,
@@ -386,6 +132,13 @@ export function DashboardView({
       lead.nextFollowUpAt &&
       timestamp(lead.nextFollowUpAt) <= generatedAtTimestamp,
   );
+  const workspaceNewLeads = pipelineLeads.filter(
+    (lead) => lead.status === "NEW",
+  );
+  const quotes = pipelineLeads.filter(
+    (lead) => lead.status === "ESTIMATE_SENT",
+  );
+
   const attentionItems: {
     label: string;
     count: number;
@@ -399,7 +152,7 @@ export function DashboardView({
       destination: "leads",
     },
     {
-      label: "Tasks past due",
+      label: "Past-due tasks",
       count: pastDueTasks.length,
       tone: "critical",
       destination: "tasks",
@@ -411,86 +164,48 @@ export function DashboardView({
       destination: "pipeline",
     },
     {
-      label: "Quotes awaiting follow-up",
+      label: "Estimates to check",
       count: quotes.length,
       tone: "warning",
       destination: "pipeline",
     },
   ];
+  const activeAttentionItems = attentionItems.filter((item) => item.count > 0);
+  const totalAttentionCount = attentionItems.reduce(
+    (sum, item) => sum + item.count,
+    0,
+  );
 
   const metrics = [
     {
-      label: "Leads in range",
+      label: "Leads",
       value: String(leads.length),
-      detail: "Selected reporting period",
+      detail: "Selected range",
     },
     {
-      label: "New leads",
+      label: "New",
       value: String(newLeads.length),
       detail: "Need first response",
     },
     {
-      label: "Booked leads",
+      label: "Booked",
       value: String(booked),
-      detail: "Appointment stage or later",
+      detail: "Appointments or later",
     },
     {
-      label: "Won opportunities",
-      value: String(won.length),
-      detail: leads.length
-        ? `${closeRate}% close rate`
-        : "Add leads to calculate",
-    },
-    {
-      label: "Recorded won value",
+      label: "Won value",
       value: money(revenue, true),
-      detail: "From won opportunities",
-    },
-    {
-      label: "Monthly ad budget",
-      value: clients.length ? money(spend, true) : "—",
-      detail: clients.length
-        ? "Across selected clients"
-        : "Add a client budget",
-    },
-    {
-      label: "Budget per lead",
-      value:
-        leads.length && spend
-          ? money(Math.round(spend / leads.length))
-          : "—",
-      detail: !leads.length
-        ? "Add leads to calculate"
-        : spend
-          ? "Monthly budget ÷ leads"
-          : "Add a client budget",
-    },
-    {
-      label: "Value / budget",
-      value: spend ? `${roas.toFixed(1)}x` : "—",
-      detail: spend
-        ? "Recorded won value ÷ budget"
-        : "Add a client budget",
+      detail: leads.length
+        ? `${won.length} won / ${closeRate}% close`
+        : "No wins yet",
     },
   ];
 
   return (
     <div className="crm-view crm-dashboard-view">
-      <section className="crm-welcome-row">
-        <div>
-          <p>AGENCY COMMAND CENTER</p>
-          <h2>Every lead, next step, and dollar in one view.</h2>
-          <span>
-            Performance cards follow the selected date range. Operational
-            panels below show current workspace records.
-          </span>
-        </div>
-        <Badge tone="green">Live workspace</Badge>
-      </section>
-
       <section
         className="crm-metric-grid"
-        aria-label="Key performance indicators"
+        aria-label="Essential performance indicators"
       >
         {metrics.map(({ label, value, detail }, index) => (
           <article
@@ -505,17 +220,52 @@ export function DashboardView({
       </section>
 
       <section
-        className="crm-dashboard-widget-grid is-top"
-        aria-label="Schedule and attention"
+        className="crm-dashboard-essential-grid"
+        aria-label="Immediate work"
       >
-        <article className="crm-panel crm-dashboard-widget crm-dashboard-today-widget">
+        <article className="crm-panel crm-dashboard-attention-panel">
+          <header>
+            <div className="crm-dashboard-widget-heading">
+              <ListChecks aria-hidden="true" />
+              <h3>Needs Attention</h3>
+            </div>
+            <Badge tone={totalAttentionCount ? "orange" : "green"}>
+              {totalAttentionCount ? `${totalAttentionCount} open` : "Clear"}
+            </Badge>
+          </header>
+          <div className="crm-dashboard-attention-list">
+            {activeAttentionItems.length ? (
+              activeAttentionItems.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => onNavigate(item.destination)}
+                >
+                  <i className={`is-${item.tone}`} aria-hidden="true" />
+                  <span>{item.label}</span>
+                  <strong>{item.count}</strong>
+                </button>
+              ))
+            ) : (
+              <DashboardEmpty
+                title="All clear"
+                detail="No urgent leads, tasks, or follow-ups need action."
+              />
+            )}
+          </div>
+        </article>
+
+        <article className="crm-panel crm-dashboard-today-panel">
           <header>
             <div className="crm-dashboard-widget-heading">
               <CalendarDays aria-hidden="true" />
-              <h3>Today&apos;s Schedule</h3>
+              <h3>Today</h3>
             </div>
+            <button type="button" onClick={() => onNavigate("calendar")}>
+              Calendar
+            </button>
           </header>
-          <div className="crm-dashboard-widget-list crm-dashboard-appointment-list">
+          <div className="crm-dashboard-simple-list is-schedule">
             {todayAppointments.length ? (
               todayAppointments.slice(0, 4).map((appointment) => (
                 <button
@@ -526,190 +276,28 @@ export function DashboardView({
                   <time dateTime={appointment.startsAt}>
                     {timeOnly(appointment.startsAt)}
                   </time>
-                  <strong>{appointment.serviceType || "Appointment"}</strong>
                   <span>
-                    {appointment.clientName || appointment.contactName}
+                    <strong>{appointment.serviceType || "Appointment"}</strong>
+                    <small>
+                      {appointment.clientName || appointment.contactName}
+                    </small>
                   </span>
                 </button>
               ))
             ) : (
-              <DashboardSkeleton
-                variant="schedule"
-                rows={4}
-                caption="Today's appointments will appear here."
+              <DashboardEmpty
+                title="Nothing scheduled"
+                detail="Appointments for today will appear here."
               />
             )}
           </div>
-          <footer>
-            <button type="button" onClick={() => onNavigate("calendar")}>
-              View full calendar
-            </button>
-          </footer>
-        </article>
-
-        <article className="crm-panel crm-dashboard-widget crm-dashboard-attention-widget">
-          <header>
-            <div className="crm-dashboard-widget-heading">
-              <ListChecks aria-hidden="true" />
-              <h3>Needs Attention</h3>
-            </div>
-          </header>
-          <div className="crm-dashboard-widget-list crm-dashboard-attention-list">
-            {attentionItems.map((item) => (
-              <button
-                key={item.label}
-                type="button"
-                onClick={() => onNavigate(item.destination)}
-              >
-                <i className={`is-${item.tone}`} aria-hidden="true" />
-                <span>{item.label}</span>
-                <strong>{item.count}</strong>
-              </button>
-            ))}
-          </div>
-          <footer>
-            <button type="button" onClick={() => onNavigate("tasks")}>
-              Review tasks
-            </button>
-          </footer>
-        </article>
-
-        <article className="crm-panel crm-dashboard-widget crm-dashboard-upcoming-widget">
-          <header>
-            <div className="crm-dashboard-widget-heading">
-              <CalendarDays aria-hidden="true" />
-              <h3>Upcoming Appointments</h3>
-            </div>
-          </header>
-          <div className="crm-dashboard-widget-list crm-dashboard-appointment-list">
-            {upcomingAppointments.length ? (
-              upcomingAppointments.slice(0, 4).map((appointment) => (
-                <button
-                  key={appointment.id}
-                  type="button"
-                  onClick={() => onNavigate("calendar")}
-                >
-                  <time dateTime={appointment.startsAt}>
-                    {dateTime(appointment.startsAt)}
-                  </time>
-                  <strong>{appointment.serviceType || "Appointment"}</strong>
-                  <span>
-                    {appointment.clientName || appointment.contactName}
-                  </span>
-                </button>
-              ))
-            ) : (
-              <DashboardSkeleton
-                variant="schedule"
-                rows={4}
-                caption="Upcoming appointments will appear here."
-              />
-            )}
-          </div>
-          <footer>
-            <button type="button" onClick={() => onNavigate("calendar")}>
-              View all
-            </button>
-          </footer>
         </article>
       </section>
 
       <section
-        className="crm-dashboard-widget-grid is-bottom"
-        aria-label="Lead insights"
+        className="crm-dashboard-essential-grid is-secondary"
+        aria-label="Recent and upcoming work"
       >
-        <article className="crm-panel crm-dashboard-widget crm-dashboard-leads-week-widget">
-          <header>
-            <div className="crm-dashboard-widget-heading">
-              <h3>Leads This Week</h3>
-            </div>
-            <strong>{weeklyLeadTotal}</strong>
-          </header>
-          {hasDailyLeadActivity ? (
-            <div
-              className="crm-dashboard-line-chart"
-              role="img"
-              aria-label={`Leads this week by day: ${daily
-                .map((item) => `${item.label} ${item.value}`)
-                .join(", ")}`}
-            >
-              <svg
-                viewBox="0 0 600 158"
-                preserveAspectRatio="none"
-                aria-hidden="true"
-              >
-                {[18, 58, 98, 140].map((y) => (
-                  <line key={y} x1="18" x2="582" y1={y} y2={y} />
-                ))}
-                <polygon points={leadAreaPoints} />
-                <polyline points={leadLinePoints} />
-                {leadChartPoints.map((point, index) => (
-                  <circle
-                    key={daily[index].label}
-                    cx={point.x}
-                    cy={point.y}
-                    r="4"
-                  />
-                ))}
-              </svg>
-              <div aria-hidden="true">
-                {daily.map((item) => (
-                  <span key={item.label}>{item.label}</span>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <DashboardSkeleton
-              variant="chart"
-              caption="No inquiries were recorded in the last 7 days."
-            />
-          )}
-        </article>
-
-        <article className="crm-panel crm-dashboard-widget crm-dashboard-source-widget">
-          <header>
-            <div className="crm-dashboard-widget-heading">
-              <h3>Leads by Source</h3>
-            </div>
-            <button type="button" onClick={() => onNavigate("reports")}>
-              Full report
-            </button>
-          </header>
-          {sourceTotal ? (
-            <div
-              className="crm-dashboard-source-chart"
-              role="img"
-              aria-label={`Leads by source: ${sourceBreakdown
-                .map(([source, count]) => `${source} ${count}`)
-                .join(", ")}`}
-            >
-              <div
-                className="crm-dashboard-source-donut"
-                style={{ background: sourceDonutBackground }}
-                aria-hidden="true"
-              />
-              <div className="crm-dashboard-source-legend" aria-hidden="true">
-                {sourceBreakdown.map(([source, count], index) => (
-                  <div key={source}>
-                    <i style={{ background: sourceColors[index] }} />
-                    <span>{source}</span>
-                    <strong>
-                      {Math.round((count / sourceTotal) * 100)}%
-                    </strong>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <DashboardSkeleton
-              variant="sources"
-              caption="Sources such as Meta and Google will appear here."
-            />
-          )}
-        </article>
-      </section>
-
-      <section className="crm-dashboard-grid crm-dashboard-lower">
         <article className="crm-panel crm-recent-panel">
           <header>
             <div>
@@ -722,15 +310,14 @@ export function DashboardView({
           </header>
           <div className="crm-compact-list">
             {leads.length ? (
-              leads.slice(0, 5).map((lead) => (
+              leads.slice(0, 4).map((lead) => (
                 <button
                   key={lead.id}
                   type="button"
                   onClick={() => onOpenLead(lead)}
                 >
-                  <span className="crm-avatar">
-                    {lead.firstName[0]}
-                    {lead.lastName[0]}
+                  <span className="crm-avatar" aria-hidden="true">
+                    {leadInitials(lead)}
                   </span>
                   <span>
                     <strong>
@@ -738,7 +325,7 @@ export function DashboardView({
                     </strong>
                     <small>
                       {lead.serviceRequested}
-                      {" · "}
+                      {" / "}
                       {lead.source}
                     </small>
                   </span>
@@ -756,9 +343,9 @@ export function DashboardView({
                 </button>
               ))
             ) : (
-              <DashboardSkeleton
-                variant="list"
-                caption="New leads will appear here as they arrive."
+              <DashboardEmpty
+                title="No recent leads"
+                detail="New opportunities will appear here as they arrive."
               />
             )}
           </div>
@@ -771,215 +358,51 @@ export function DashboardView({
               <h3>Appointments and tasks</h3>
             </div>
           </header>
-          {futureAppointments.slice(0, 2).map((appointment) => (
-            <button
-              key={appointment.id}
-              type="button"
-              onClick={() => onNavigate("calendar")}
-            >
-              <span className="crm-next-icon">
-                <CalendarDays aria-hidden="true" />
-              </span>
-              <span>
-                <strong>{appointment.contactName}</strong>
-                <small>
-                  {appointment.serviceType}
-                  {" · "}
-                  {dateTime(appointment.startsAt)}
-                </small>
-              </span>
-            </button>
-          ))}
-          {openTasks.slice(0, 3).map((task) => (
-            <button
-              key={task.id}
-              type="button"
-              onClick={() => onNavigate("tasks")}
-            >
-              <span className="crm-next-icon crm-next-task">
-                <ListChecks aria-hidden="true" />
-              </span>
-              <span>
-                <strong>{task.title}</strong>
-                <small>
-                  {displayStatus(task.priority)} priority
-                  {" · "}
-                  {dateTime(task.dueAt)}
-                </small>
-              </span>
-            </button>
-          ))}
-          {!futureAppointments.length && !openTasks.length ? (
-            <DashboardSkeleton
-              variant="list"
-              caption="Upcoming appointments and tasks will appear here."
-            />
-          ) : null}
-        </article>
-      </section>
-
-      <section className="crm-dashboard-bottom-grid crm-dashboard-bottom-primary crm-dashboard-bottom-single">
-        <article className="crm-panel crm-pipeline-snapshot-panel">
-          <header>
-            <div>
-              <p>PIPELINE SNAPSHOT</p>
-              <h3>Opportunity progress</h3>
-            </div>
-            <button type="button" onClick={() => onNavigate("pipeline")}>
-              Open pipeline
-            </button>
-          </header>
-          {hasPipelineActivity ? (
-            <>
-              <div className="crm-pipeline-snapshot-summary">
-                <div>
-                  <strong>{money(openPipelineValue, true)}</strong>
-                  <span>Open pipeline value</span>
-                </div>
-                <Badge tone="green">{openPipeline.length} open</Badge>
-              </div>
-              <div className="crm-pipeline-snapshot-list">
-                {pipelineSnapshot.map((stage) => (
-                  <button
-                    key={`${stage.name}-${stage.position}`}
-                    type="button"
-                    onClick={() => onNavigate("pipeline")}
-                  >
-                    <span>
-                      <strong>{stage.name}</strong>
-                      <small>{money(stage.valueCents, true)}</small>
-                    </span>
-                    <i aria-hidden="true">
-                      <span
-                        style={{
-                          width: `${Math.max(
-                            stage.count ? 7 : 0,
-                            (stage.count / maxPipelineStage) * 100,
-                          )}%`,
-                        }}
-                      />
-                    </i>
-                    <b>{stage.count}</b>
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : (
-            <DashboardSkeleton
-              variant="pipeline"
-              rows={4}
-              caption="Pipeline counts and values will appear with your first active opportunity."
-            />
-          )}
-        </article>
-      </section>
-
-      <section className="crm-dashboard-bottom-grid crm-dashboard-bottom-secondary">
-        <article className="crm-panel crm-recent-conversations-panel">
-          <header>
-            <div>
-              <p>RECENT CONVERSATIONS</p>
-              <h3>Recent text activity</h3>
-            </div>
-            {canViewConversations ? (
+          <div className="crm-dashboard-simple-list">
+            {upcomingAppointments.slice(0, 2).map((appointment) => (
               <button
+                key={appointment.id}
                 type="button"
-                onClick={() => onNavigate("conversations")}
+                onClick={() => onNavigate("calendar")}
               >
-                Open inbox
+                <span className="crm-next-icon" aria-hidden="true">
+                  <CalendarDays />
+                </span>
+                <span>
+                  <strong>{appointment.contactName}</strong>
+                  <small>
+                    {appointment.serviceType} / {dateTime(appointment.startsAt)}
+                  </small>
+                </span>
               </button>
-            ) : (
-              <span>Restricted</span>
-            )}
-          </header>
-          <div className="crm-conversation-preview-list">
-            {canViewConversations
-              ? recentConversations.map(
-                  ({ conversation, latestMessage, lastActivityAt }) => (
-                    <button
-                      key={conversation.id}
-                      type="button"
-                      onClick={() => onNavigate("conversations")}
-                    >
-                      <span className="crm-dashboard-avatar">
-                        {initials(conversation.contactName)}
-                      </span>
-                      <span className="crm-dashboard-row-copy">
-                        <strong>{conversation.contactName}</strong>
-                        <small>
-                          {latestMessage?.body ||
-                            "Open the inbox to view the latest message"}
-                        </small>
-                      </span>
-                      <span className="crm-conversation-preview-meta">
-                        <time dateTime={lastActivityAt ?? undefined}>
-                          {dateTime(lastActivityAt)}
-                        </time>
-                        {conversation.unreadCount > 0 ? (
-                          <b aria-label={`${conversation.unreadCount} unread`}>
-                            {conversation.unreadCount}
-                          </b>
-                        ) : null}
-                      </span>
-                    </button>
-                  ),
-                )
-              : null}
-            {canViewConversations && !recentConversations.length ? (
-              <DashboardSkeleton
-                variant="conversations"
-                caption="Customer conversations will appear here."
+            ))}
+            {openTasks.slice(0, 2).map((task) => (
+              <button
+                key={task.id}
+                type="button"
+                onClick={() => onNavigate("tasks")}
+              >
+                <span
+                  className="crm-next-icon crm-next-task"
+                  aria-hidden="true"
+                >
+                  <ListChecks />
+                </span>
+                <span>
+                  <strong>{task.title}</strong>
+                  <small>
+                    {displayStatus(task.priority)} priority /{" "}
+                    {dateTime(task.dueAt)}
+                  </small>
+                </span>
+              </button>
+            ))}
+            {!upcomingAppointments.length && !openTasks.length ? (
+              <DashboardEmpty
+                title="No next steps"
+                detail="Upcoming appointments and open tasks will appear here."
               />
             ) : null}
-            {!canViewConversations ? (
-              <p className="crm-dashboard-empty-row">
-                Messaging access is not available for your role.
-              </p>
-            ) : null}
-          </div>
-        </article>
-
-        <article className="crm-panel crm-business-snapshot-panel">
-          <header>
-            <div>
-              <p>BUSINESS</p>
-              <h3>Invoices, quotes, and jobs</h3>
-            </div>
-            <span>Stage-based totals</span>
-          </header>
-          <div className="crm-business-snapshot-list">
-            <div className="is-unavailable">
-              <span className="crm-dashboard-row-icon">
-                <FileText aria-hidden="true" />
-              </span>
-              <span className="crm-dashboard-row-copy">
-                <strong>Invoices</strong>
-                <small>Invoice tracking is not available yet</small>
-              </span>
-              <b aria-label="Not tracked">—</b>
-            </div>
-            <button type="button" onClick={() => onNavigate("pipeline")}>
-              <span className="crm-dashboard-row-icon">
-                <ScrollText aria-hidden="true" />
-              </span>
-              <span className="crm-dashboard-row-copy">
-                <strong>Quotes</strong>
-                <small>
-                  {money(quoteValue, true)} in estimate-stage opportunities
-                </small>
-              </span>
-              <b>{quotes.length}</b>
-            </button>
-            <button type="button" onClick={() => onNavigate("pipeline")}>
-              <span className="crm-dashboard-row-icon">
-                <BriefcaseBusiness aria-hidden="true" />
-              </span>
-              <span className="crm-dashboard-row-copy">
-                <strong>Jobs</strong>
-                <small>{money(jobValue, true)} in won opportunities</small>
-              </span>
-              <b>{jobs.length}</b>
-            </button>
           </div>
         </article>
       </section>
