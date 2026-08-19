@@ -406,7 +406,6 @@ export function CrmApp({
         ? selectedClientId
         : data.clients[0]?.id ?? "";
       if (selectedClientId !== nextClientId) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelectedClientId(nextClientId);
       }
       const url = new URL(window.location.href);
@@ -533,16 +532,6 @@ export function CrmApp({
     (appointment) =>
       effectiveSelectedClientId === "all" ||
       appointment.clientId === effectiveSelectedClientId,
-  );
-  const filteredConversations = data.conversations.filter(
-    (conversation) =>
-      effectiveSelectedClientId === "all" ||
-      conversation.clientId === effectiveSelectedClientId,
-  );
-  const filteredMessages = data.messages.filter(
-    (message) =>
-      effectiveSelectedClientId === "all" ||
-      message.clientId === effectiveSelectedClientId,
   );
   const filteredClients = data.clients.filter(
     (client) =>
@@ -1132,16 +1121,9 @@ export function CrmApp({
           <DashboardView
             leads={filteredLeads}
             pipelineLeads={workspaceLeads}
-            clients={filteredClients}
             appointments={filteredAppointments}
             tasks={filteredTasks}
-            stages={data.stages}
-            conversations={filteredConversations}
-            messages={filteredMessages}
             generatedAt={data.generatedAt}
-            canViewConversations={data.viewer.permissions.includes(
-              "messages.write",
-            )}
             onOpenLead={openLead}
             onNavigate={navigate}
           />
