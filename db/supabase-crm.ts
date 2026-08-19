@@ -30,6 +30,23 @@ import {
   verifyGoogleCalendarAccess,
 } from "../lib/google-calendar";
 import {
+  assertCallRailAccountId,
+  assertCallRailCompanyId,
+  encryptCallRailSecret,
+  getCallRailAccount,
+  getCallRailCompany,
+  getCallRailRuntimeStatus,
+  listCallRailAccounts,
+  listCallRailCompanies,
+  type CallRailAccount,
+  type CallRailCompany,
+} from "../lib/callrail";
+import {
+  checkCallRailConnection,
+  loadCallRailApiAccess,
+  purgeAbandonedCallRailSetup,
+} from "../lib/callrail-store";
+import {
   encryptMetaSecret,
   getMetaConversionsRuntimeStatus,
   normalizeAttribution,
@@ -212,6 +229,7 @@ const fullAccessPermissions: CrmPermission[] = [
   "appointments.write",
   "calendar.connect",
   "websites.manage",
+  "call_tracking.manage",
   "profiles.manage",
   "profiles.connect",
   "reviews.read",
@@ -241,6 +259,7 @@ const lbAdminPermissions: CrmPermission[] = [
   "appointments.write",
   "calendar.connect",
   "websites.manage",
+  "call_tracking.manage",
   "reviews.read",
   "reviews.reply",
   "reviews.request",
@@ -278,6 +297,7 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "appointments.write",
     "calendar.connect",
     "websites.manage",
+    "call_tracking.manage",
     "reviews.read",
     "reviews.reply",
     "reviews.request",
@@ -361,6 +381,67 @@ function requireText(value: unknown, label: string, max = 200): string {
 function optionalText(value: unknown, max = 500): string | null {
   if (typeof value !== "string" || !value.trim()) return null;
   return value.trim().slice(0, max);
+}
+
+// Non-secret CallRail connection state for the Connections card. Everything
+// here is safe to return to an authenticated tenant user; the API key lives
+// only in callrail_credentials and never reaches this object.
+//
+// setupStatus distinguishes "connected but no company chosen yet" from a
+// working connection, so a half-finished setup reads as a next step rather
+// than as a failure.
+function callRailPublicConfig(
+  account: CallRailAccount | null,
+  company: CallRailCompany | null,
+) {
+  return {
+    setupStatus: !account ? "needs_account" : !company ? "needs_company" : "ready",
+    accountId: account?.id ?? null,
+    accountName: account?.name ?? null,
+    // Recorded now because HIPAA accounts return expiring recording URLs that
+    // must never be stored, and the recording work needs to know before it
+    // starts rather than after.
+    hipaaAccount: account?.hipaaAccount ?? null,
+    companyId: company?.id ?? null,
+    companyName: company?.name ?? null,
+    companyTimeZone: company?.timeZone ?? null,
+    dniActive: company?.dniActive ?? null,
+    // CallScribe being switched on for a company is not the same claim as the
+    // subscription permitting transcript retrieval through the API. The field
+    // name says what the flag actually proves so no consumer can overstate it.
+    callScribeEnabled: company?.callScribeEnabled ?? null,
+  };
+}
+
+// Cleanup for a setup that was started and never finished.
+//
+// Takes the client the caller has already been authorized for, never
+// context.clientId and never the whole organization: `call_tracking.manage` is
+// held by client owners, so a sweep with organization reach would let one
+// business delete another's row and appear in its audit trail. The audit entry
+// names only the client actually cleaned up.
+//
+// Called from the CallRail actions so it happens without a scheduler. An
+// organization-wide sweep, for clients nobody ever revisits, belongs to a
+// trusted scheduled process or an agency-admin-only action — deliberately not
+// to this path.
+async function purgeAbandonedCallRailSetupForClient(
+  context: TenantContext,
+  clientId: string,
+) {
+  const purged = await purgeAbandonedCallRailSetup(
+    context.organizationId,
+    clientId,
+  );
+  if (!purged) return;
+  await audit(
+    context,
+    "provider.abandoned_setup_cleared",
+    "provider_connection",
+    null,
+    { provider: "callrail" },
+    clientId,
+  );
 }
 
 const DEFAULT_REVIEW_SMS_TEMPLATE =
@@ -3015,6 +3096,15 @@ function mapProviderConnection(row: AnyRecord): CrmProviderConnection {
     accountType: nullable(publicConfig.accountType),
     mode: nullable(publicConfig.mode),
     setupStatus: nullable(publicConfig.setupStatus),
+    companyName: nullable(publicConfig.companyName),
+    dniActive:
+      typeof publicConfig.dniActive === "boolean"
+        ? publicConfig.dniActive
+        : null,
+    callScribeEnabled:
+      typeof publicConfig.callScribeEnabled === "boolean"
+        ? publicConfig.callScribeEnabled
+        : null,
     chargesEnabled:
       typeof publicConfig.chargesEnabled === "boolean"
         ? publicConfig.chargesEnabled
@@ -4577,6 +4667,482 @@ export async function executeSupabaseCrmAction(
       "provider_connection",
       null,
       { provider: "meta" },
+      clientId,
+    );
+    return { disconnected: true };
+  }
+
+  // CallRail setup runs in stages: key, then account, then company. The key is
+  // stored encrypted on the first step so the later steps can be performed
+  // server-side with it. The alternative — asking the browser to hold the key
+  // until a company is chosen — would keep a live credential in page memory
+  // across several round trips, so it is not offered.
+  if (action === "connect_callrail") {
+    requirePermission(context, "call_tracking.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const runtime = getCallRailRuntimeStatus();
+    if (!runtime.ready)
+      throw new Error(
+        `CallRail is not configured. Missing ${runtime.missing.join(", ")}.`,
+      );
+    const apiKey = requireText(input.apiKey, "CallRail API key", 200);
+    // Clear this client's own abandoned setup, if it has one. Scoped to the
+    // client just authorized above — never wider.
+    await purgeAbandonedCallRailSetupForClient(context, clientId);
+
+    // The key is the authoritative source for which accounts it can reach, so
+    // no account id is accepted from the browser. This call doubles as the
+    // credential check: a key that cannot list accounts is not a working key,
+    // and that fails here rather than on the first call weeks from now.
+    const accountPage = await listCallRailAccounts(apiKey);
+    if (accountPage.accounts.length === 0)
+      throw new Error(
+        "That API key does not reach any CallRail account. Create the key from a user that has access to this business's account, then try again.",
+      );
+
+    // One account is the ordinary case and there is nothing to choose, so it is
+    // selected here rather than making the operator confirm a list of one.
+    const soleAccount =
+      accountPage.accounts.length === 1 ? accountPage.accounts[0] : null;
+
+    // Reconnecting with a rotated key keeps the existing selection, but only
+    // when the new key still reaches the same account. A replacement key scoped
+    // elsewhere must not leave a stale account or company standing.
+    const existing = await assertOk(
+      supabase()
+        .from("callrail_credentials")
+        .select("account_id,account_name,company_id,company_name")
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .maybeSingle(),
+    );
+    const keptAccount =
+      existing?.account_id &&
+      accountPage.accounts.some(
+        (account) => account.id === String(existing.account_id),
+      )
+        ? (accountPage.accounts.find(
+            (account) => account.id === String(existing.account_id),
+          ) ?? null)
+        : null;
+    const chosenAccount = keptAccount ?? soleAccount;
+
+    // A retained company is only trusted after the account it belongs to has
+    // been confirmed reachable, and only when this key can still read it.
+    let keptCompany: CallRailCompany | null = null;
+    let companyPage: Awaited<ReturnType<typeof listCallRailCompanies>> | null =
+      null;
+    if (chosenAccount) {
+      companyPage = await listCallRailCompanies(chosenAccount.id, apiKey);
+      if (
+        keptAccount &&
+        existing?.company_id &&
+        String(existing.account_id) === chosenAccount.id
+      ) {
+        keptCompany =
+          companyPage.companies.find(
+            (company) => company.id === String(existing.company_id),
+          ) ?? null;
+      }
+    }
+
+    // A retained pair is only trusted after both halves are read back
+    // individually. Appearing in a listing is not the same evidence, and a
+    // connection may not be reported as connected on anything less. If either
+    // read fails the key is still good, so the connection is kept and only the
+    // stale selection is dropped back to setup.
+    let verifiedAccount: CallRailAccount | null = null;
+    let verifiedCompany: CallRailCompany | null = null;
+    if (chosenAccount && keptCompany) {
+      try {
+        verifiedAccount = await getCallRailAccount(chosenAccount.id, apiKey);
+        verifiedCompany = await getCallRailCompany(
+          verifiedAccount.id,
+          keptCompany.id,
+          apiKey,
+        );
+      } catch {
+        verifiedAccount = null;
+        verifiedCompany = null;
+      }
+    }
+    const storedCompany = verifiedCompany;
+    // Connected means usable. Until an account and a company have both been
+    // chosen and re-read, the connection is setup_required — never connected.
+    const connectionStatus =
+      verifiedAccount && verifiedCompany ? "connected" : "setup_required";
+
+    const encrypted = await encryptCallRailSecret(
+      apiKey,
+      context.organizationId,
+      clientId,
+    );
+    const now = new Date().toISOString();
+    await assertOk(
+      supabase()
+        .from("callrail_credentials")
+        .upsert(
+          {
+            organization_id: context.organizationId,
+            client_id: clientId,
+            account_id: chosenAccount?.id ?? null,
+            account_name: chosenAccount?.name ?? null,
+            company_id: storedCompany?.id ?? null,
+            company_name: storedCompany?.name ?? null,
+            api_key_ciphertext: encrypted.ciphertext,
+            api_key_iv: encrypted.iv,
+            connected_by_email: context.email,
+            last_checked_at: now,
+            last_status: "ok",
+            updated_at: now,
+          },
+          { onConflict: "organization_id,client_id" },
+        ),
+    );
+    await assertOk(
+      supabase()
+        .from("provider_connections")
+        .upsert(
+          {
+            organization_id: context.organizationId,
+            client_id: clientId,
+            provider: "callrail",
+            status: connectionStatus,
+            // The account id is already visible in the customer's own CallRail
+            // dashboard; the key that goes with it never leaves the encrypted
+            // credentials table.
+            external_account_id: chosenAccount?.id ?? null,
+            external_account_name: chosenAccount?.name ?? null,
+            connected_by_email: context.email,
+            connected_at: now,
+            disconnected_at: null,
+            last_error: null,
+            last_health_check_at: now,
+            public_config: callRailPublicConfig(chosenAccount, storedCompany),
+            updated_at: now,
+          },
+          { onConflict: "organization_id,client_id,provider" },
+        ),
+    );
+    await audit(
+      context,
+      "provider.connected",
+      "provider_connection",
+      null,
+      {
+        provider: "callrail",
+        accountId: chosenAccount?.id ?? null,
+        companyId: storedCompany?.id ?? null,
+        accountsVisible: accountPage.accounts.length,
+        status: connectionStatus,
+      },
+      clientId,
+    );
+    // The key itself is deliberately absent from this response and from every
+    // response below. Once submitted it exists only as ciphertext.
+    return {
+      connected: true,
+      accounts: accountPage.accounts,
+      accountsTruncated: accountPage.truncated,
+      selectedAccountId: chosenAccount?.id ?? null,
+      companies: companyPage?.companies ?? [],
+      companiesTruncated: companyPage?.truncated ?? false,
+      selectedCompanyId: storedCompany?.id ?? null,
+      setupStatus: !chosenAccount
+        ? "needs_account"
+        : storedCompany
+          ? "ready"
+          : "needs_company",
+    };
+  }
+
+  if (action === "select_callrail_account") {
+    requirePermission(context, "call_tracking.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const accountId = assertCallRailAccountId(
+      requireText(input.accountId, "CallRail account", 80),
+    );
+    const access = await loadCallRailApiAccess(context.organizationId, clientId);
+    // Read the account back with the stored key rather than trusting an id from
+    // the browser. It proves the account exists and that this key reaches it.
+    const account = await getCallRailAccount(accountId, access.apiKey);
+    const companyPage = await listCallRailCompanies(account.id, access.apiKey);
+
+    const now = new Date().toISOString();
+    await assertOk(
+      supabase()
+        .from("callrail_credentials")
+        .update({
+          account_id: account.id,
+          account_name: account.name,
+          // Changing account invalidates any company chosen under the old one.
+          company_id: null,
+          company_name: null,
+          last_checked_at: now,
+          last_status: "ok",
+          updated_at: now,
+        })
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId),
+    );
+    await assertOk(
+      supabase()
+        .from("provider_connections")
+        .update({
+          // An account without a company is not a usable connection, so this
+          // stays setup_required until a company is chosen and re-read.
+          status: "setup_required",
+          external_account_id: account.id,
+          external_account_name: account.name,
+          last_error: null,
+          last_health_check_at: now,
+          public_config: callRailPublicConfig(account, null),
+          updated_at: now,
+        })
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", "callrail"),
+    );
+    await audit(
+      context,
+      "provider.updated",
+      "provider_connection",
+      null,
+      { provider: "callrail", accountId: account.id, accountName: account.name },
+      clientId,
+    );
+    return {
+      selected: true,
+      account,
+      companies: companyPage.companies,
+      companiesTruncated: companyPage.truncated,
+      setupStatus: "needs_company",
+    };
+  }
+
+  if (action === "select_callrail_company") {
+    requirePermission(context, "call_tracking.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const companyId = assertCallRailCompanyId(
+      requireText(input.companyId, "CallRail company", 80),
+    );
+    const access = await loadCallRailApiAccess(context.organizationId, clientId);
+    if (!access.accountId)
+      throw new Error("Choose a CallRail account before choosing a company.");
+
+    // Both are re-fetched with the stored key before anything is written. The
+    // company read alone would not catch a key that no longer reaches the
+    // account, and a selection is only worth storing if the pair still resolves
+    // together at the moment it is saved.
+    const account = await getCallRailAccount(access.accountId, access.apiKey);
+    const company = await getCallRailCompany(
+      account.id,
+      companyId,
+      access.apiKey,
+    );
+
+    const now = new Date().toISOString();
+    await assertOk(
+      supabase()
+        .from("callrail_credentials")
+        .update({
+          account_id: account.id,
+          account_name: account.name,
+          company_id: company.id,
+          company_name: company.name,
+          last_checked_at: now,
+          last_status: "ok",
+          updated_at: now,
+        })
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId),
+    );
+    await assertOk(
+      supabase()
+        .from("provider_connections")
+        .update({
+          status: "connected",
+          external_account_id: account.id,
+          external_account_name: account.name,
+          last_error: null,
+          last_health_check_at: now,
+          public_config: callRailPublicConfig(account, company),
+          updated_at: now,
+        })
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", "callrail"),
+    );
+    await audit(
+      context,
+      "provider.updated",
+      "provider_connection",
+      null,
+      {
+        provider: "callrail",
+        accountId: account.id,
+        companyId: company.id,
+        companyName: company.name,
+      },
+      clientId,
+    );
+    return { selected: true, account, company, setupStatus: "ready" };
+  }
+
+  // Read-only. Both exist so the pickers still work after a page refresh, when
+  // the browser no longer holds anything from the connect step — and they read
+  // the stored key rather than asking for it again.
+  if (action === "list_callrail_accounts") {
+    requirePermission(context, "call_tracking.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const access = await loadCallRailApiAccess(context.organizationId, clientId);
+    const page = await listCallRailAccounts(access.apiKey);
+    return {
+      accounts: page.accounts,
+      accountsTruncated: page.truncated,
+      selectedAccountId: access.accountId,
+    };
+  }
+
+  if (action === "list_callrail_companies") {
+    requirePermission(context, "call_tracking.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const access = await loadCallRailApiAccess(context.organizationId, clientId);
+    if (!access.accountId)
+      throw new Error("Choose a CallRail account before choosing a company.");
+    const page = await listCallRailCompanies(access.accountId, access.apiKey);
+    return {
+      companies: page.companies,
+      companiesTruncated: page.truncated,
+      selectedCompanyId: access.companyId,
+    };
+  }
+
+  if (action === "check_callrail_connection") {
+    requirePermission(context, "call_tracking.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    // The other place cleanup is driven from: opening the card for this
+    // business clears its own abandoned setup. No other client is touched.
+    await purgeAbandonedCallRailSetupForClient(context, clientId);
+    const previous = await assertOk(
+      supabase()
+        .from("provider_connections")
+        .select("status")
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", "callrail")
+        .maybeSingle(),
+    );
+    const outcome = await checkCallRailConnection(
+      context.organizationId,
+      clientId,
+    );
+    if (!outcome.attempted)
+      throw new Error("CallRail is not connected for this business.");
+
+    const now = new Date().toISOString();
+    // Three distinct outcomes, and mid-setup is none of the other two. It is
+    // not a failure, so it is not "attention"; it is not usable, so it is
+    // never "connected".
+    const status =
+      outcome.setupStatus !== "ready"
+        ? "setup_required"
+        : outcome.ok
+          ? "connected"
+          : "attention";
+    const patch: Record<string, unknown> = {
+      status,
+      // Only our own fixed diagnostics are stored. A provider response body is
+      // never written here.
+      last_error: outcome.ok ? null : (outcome.message?.slice(0, 500) ?? null),
+      last_health_check_at: now,
+      updated_at: now,
+    };
+    if (outcome.account) {
+      patch.public_config = callRailPublicConfig(
+        outcome.account,
+        outcome.company,
+      );
+    }
+    await assertOk(
+      supabase()
+        .from("provider_connections")
+        .update(patch)
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", "callrail"),
+    );
+    // Audited on transition only. A health check runs on every visit to the
+    // Connections card, and recording each one would bury the change that
+    // actually mattered.
+    const previousStatus = previous ? String(previous.status) : null;
+    if (previousStatus !== status) {
+      await audit(
+        context,
+        "provider.health_changed",
+        "provider_connection",
+        null,
+        { provider: "callrail", from: previousStatus, to: status },
+        clientId,
+      );
+    }
+    return {
+      ok: outcome.ok,
+      status: outcome.status,
+      setupStatus: outcome.setupStatus,
+      message: outcome.message,
+      account: outcome.account,
+      company: outcome.company,
+    };
+  }
+
+  if (action === "disconnect_callrail") {
+    requirePermission(context, "call_tracking.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const now = new Date().toISOString();
+    // The key row is deleted outright rather than flagged, so disconnecting
+    // actually destroys the stored credential.
+    //
+    // Nothing is changed inside the customer's CallRail account here: no
+    // webhook is removed, because BrizBuilder has not created one yet. Once
+    // webhook registration ships, disconnecting must also withdraw this
+    // integration's URLs while leaving any other tool's URLs in place.
+    await assertOk(
+      supabase()
+        .from("callrail_credentials")
+        .delete()
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId),
+    );
+    await assertOk(
+      supabase()
+        .from("provider_connections")
+        .update({
+          status: "disconnected",
+          external_account_id: null,
+          external_account_name: null,
+          disconnected_at: now,
+          last_error: null,
+          public_config: {},
+          updated_at: now,
+        })
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", "callrail"),
+    );
+    await audit(
+      context,
+      "provider.disconnected",
+      "provider_connection",
+      null,
+      { provider: "callrail" },
       clientId,
     );
     return { disconnected: true };

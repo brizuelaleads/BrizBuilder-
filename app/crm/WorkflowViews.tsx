@@ -73,6 +73,37 @@ export function ConnectionsView({
   const [metaDatasetId, setMetaDatasetId] = useState("");
   const [metaAccessToken, setMetaAccessToken] = useState("");
   const [metaTestEventCode, setMetaTestEventCode] = useState("");
+  const callRailConnection = connections.find(
+    (item) => item.clientId === clientId && item.provider === "callrail",
+  );
+  // A CallRail connection exists as soon as the key is stored, which is before
+  // an account or company has been chosen. isLinked is keyed on the external
+  // account id and would read false during that window, so status is what
+  // decides whether the connect form or the setup steps are shown.
+  const callRailStored =
+    callRailConnection?.status === "connected" ||
+    callRailConnection?.status === "setup_required" ||
+    callRailConnection?.status === "attention";
+  const callRailSetup = callRailConnection?.setupStatus ?? null;
+  const emptyCallRail = {
+    apiKey: "",
+    accounts: [] as Array<{ id: string; name: string }>,
+    companies: [] as Array<{ id: string; name: string }>,
+    check: "",
+  };
+  const [callRailState, setCallRailState] = useState({
+    clientId,
+    ...emptyCallRail,
+  });
+  // Scoped by deriving during render rather than by clearing in an effect:
+  // anything fetched for one business is simply not shown against another, and
+  // switching business costs no cascading render.
+  const callRail =
+    callRailState.clientId === clientId
+      ? callRailState
+      : { clientId, ...emptyCallRail };
+  const patchCallRail = (patch: Partial<typeof emptyCallRail>) =>
+    setCallRailState({ ...callRail, clientId, ...patch });
   const [balanceResult, setBalanceResult] = useState<{
     key: string;
     data: TwilioVisibleBalance | null;
@@ -445,6 +476,265 @@ export function ConnectionsView({
                   Connecting sends one test event to confirm the token works. The
                   test event code keeps it in the Test Events view, out of this
                   business&rsquo;s real reporting.
+                </p>
+                <button className="crm-button-primary" type="submit">
+                  Connect
+                </button>
+              </form>
+            )}
+          </article>
+          <article className="crm-connection-card callrail">
+            <header>
+              <span className="crm-provider-logo callrail">CR</span>
+              <div>
+                <h3>CallRail</h3>
+                <p>See which ads and pages produce phone calls</p>
+              </div>
+              <Badge
+                tone={
+                  !callRailStored
+                    ? "orange"
+                    : callRailConnection?.status === "attention"
+                      ? "orange"
+                      : callRailSetup === "ready"
+                        ? "green"
+                        : "purple"
+                }
+              >
+                {!callRailStored
+                  ? "Not connected"
+                  : callRailConnection?.status === "attention"
+                    ? "Needs attention"
+                    : callRailSetup === "ready"
+                      ? "Connected"
+                      : "Finish setup"}
+              </Badge>
+            </header>
+            {callRailStored ? (
+              <>
+                <div className="crm-connection-details compact crm-connection-details-simple">
+                  <div>
+                    <span>Account</span>
+                    <strong>
+                      {callRailConnection?.accountLabel ?? "Not chosen yet"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Company</span>
+                    <strong>
+                      {callRailConnection?.companyName ?? "Not chosen yet"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Tracking script</span>
+                    <strong>
+                      {callRailConnection?.dniActive === true
+                        ? "Detected on the site"
+                        : callRailConnection?.dniActive === false
+                          ? "Not detected"
+                          : "Never installed"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>CallScribe</span>
+                    <strong>
+                      {callRailConnection?.callScribeEnabled === true
+                        ? "Enabled on this company"
+                        : callRailConnection?.callScribeEnabled === false
+                          ? "Off for this company"
+                          : "Unknown"}
+                    </strong>
+                  </div>
+                </div>
+                <p className="crm-connection-note">
+                  CallScribe being enabled means the feature is switched on for
+                  this company. It does not confirm that this CallRail
+                  subscription returns call transcripts through the API — that
+                  is a separate plan entitlement, and an account can show
+                  CallScribe on while the API still returns nothing. Confirm it
+                  with CallRail before relying on transcripts.
+                </p>
+                {callRailSetup !== "ready" ? (
+                  <div className="crm-connection-connect-form">
+                    {callRailSetup === "needs_account" ? (
+                      callRail.accounts.length > 0 ? (
+                        <label>
+                          CallRail account
+                          <select
+                            defaultValue=""
+                            onChange={async (event) => {
+                              const accountId = event.target.value;
+                              if (!accountId) return;
+                              const result = (await mutate(
+                                {
+                                  action: "select_callrail_account",
+                                  clientId,
+                                  accountId,
+                                },
+                                "CallRail account selected.",
+                              )) as {
+                                companies?: Array<{ id: string; name: string }>;
+                              } | null;
+                              patchCallRail({ companies: result?.companies ?? [] });
+                            }}
+                          >
+                            <option value="">Choose an account…</option>
+                            {callRail.accounts.map((account) => (
+                              <option key={account.id} value={account.id}>
+                                {account.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : (
+                        <button
+                          className="crm-button-primary"
+                          type="button"
+                          onClick={async () => {
+                            const result = (await mutate(
+                              { action: "list_callrail_accounts", clientId },
+                              "Accounts loaded.",
+                            )) as {
+                              accounts?: Array<{ id: string; name: string }>;
+                            } | null;
+                            patchCallRail({ accounts: result?.accounts ?? [] });
+                          }}
+                        >
+                          Choose an account
+                        </button>
+                      )
+                    ) : callRail.companies.length > 0 ? (
+                      <label>
+                        CallRail company
+                        <select
+                          defaultValue=""
+                          onChange={async (event) => {
+                            const companyId = event.target.value;
+                            if (!companyId) return;
+                            await mutate(
+                              {
+                                action: "select_callrail_company",
+                                clientId,
+                                companyId,
+                              },
+                              "CallRail company selected.",
+                            );
+                          }}
+                        >
+                          <option value="">Choose a company…</option>
+                          {callRail.companies.map((company) => (
+                            <option key={company.id} value={company.id}>
+                              {company.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      <button
+                        className="crm-button-primary"
+                        type="button"
+                        onClick={async () => {
+                          const result = (await mutate(
+                            { action: "list_callrail_companies", clientId },
+                            "Companies loaded.",
+                          )) as {
+                            companies?: Array<{ id: string; name: string }>;
+                          } | null;
+                          patchCallRail({ companies: result?.companies ?? [] });
+                        }}
+                      >
+                        Choose a company
+                      </button>
+                    )}
+                  </div>
+                ) : null}
+                {callRail.check ? (
+                  <p className="crm-connection-note">{callRail.check}</p>
+                ) : null}
+                <div className="crm-connection-actions">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const result = (await mutate(
+                        { action: "check_callrail_connection", clientId },
+                        "CallRail connection checked.",
+                      )) as { ok?: boolean; message?: string | null } | null;
+                      patchCallRail({
+                        check: result?.ok
+                          ? "CallRail answered and the selected company is reachable."
+                          : (result?.message ??
+                            "CallRail did not confirm the connection."),
+                      });
+                    }}
+                  >
+                    Check connection
+                  </button>
+                  <button
+                    className="danger"
+                    type="button"
+                    onClick={() =>
+                      window.confirm(
+                        "Disconnect CallRail? The stored API key is deleted. Call tracking in CallRail keeps running; BrizBuilder simply stops reading it.",
+                      ) &&
+                      mutate(
+                        { action: "disconnect_callrail", clientId },
+                        "CallRail disconnected.",
+                      ).then(() =>
+                        patchCallRail({
+                          accounts: [],
+                          companies: [],
+                          check: "",
+                        }),
+                      )
+                    }
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              </>
+            ) : (
+              <form
+                className="crm-connection-connect-form"
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  const result = (await mutate(
+                    {
+                      action: "connect_callrail",
+                      clientId,
+                      apiKey: callRail.apiKey,
+                    },
+                    "CallRail connected.",
+                  )) as {
+                    accounts?: Array<{ id: string; name: string }>;
+                    companies?: Array<{ id: string; name: string }>;
+                  } | null;
+                  // Never keep the customer's key in browser state after use.
+                  patchCallRail({
+                    accounts: result?.accounts ?? [],
+                    companies: result?.companies ?? [],
+                    apiKey: "",
+                  });
+                }}
+              >
+                <p>
+                  This business creates the key in their own CallRail account,
+                  under a user that can see the company you want to track.
+                  BrizBuilder stores it encrypted and never shows it again.
+                </p>
+                <label>
+                  CallRail API key
+                  <input
+                    type="password"
+                    value={callRail.apiKey}
+                    onChange={(event) => patchCallRail({ apiKey: event.target.value })}
+                    autoComplete="off"
+                    required
+                  />
+                </label>
+                <p>
+                  No account ID is needed. BrizBuilder asks CallRail which
+                  accounts this key can reach and lets you pick from those, so a
+                  mistyped ID cannot point the connection at the wrong place.
                 </p>
                 <button className="crm-button-primary" type="submit">
                   Connect
