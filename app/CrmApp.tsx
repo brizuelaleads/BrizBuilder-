@@ -9,10 +9,12 @@ import {
   useSyncExternalStore,
 } from "react";
 import {
+  Bell,
   BriefcaseBusiness,
   Building2,
   CalendarDays,
   ChartNoAxesCombined,
+  CircleUserRound,
   ContactRound,
   CreditCard,
   Database,
@@ -30,6 +32,7 @@ import {
   PhoneCall,
   Plus,
   Plug,
+  Search,
   Settings as SettingsIcon,
   Sparkles,
   Star,
@@ -744,6 +747,9 @@ export function CrmApp({
   const openTaskCount = filteredTasks.filter(
     (task) => !["COMPLETED", "CANCELED"].includes(task.status),
   ).length;
+  const dashboardNotificationCount =
+    filteredLeads.filter((lead) => lead.status === "NEW").length +
+    openTaskCount;
   const topbarDetail =
     view === "leads"
       ? `${filteredLeads.length} ${filteredLeads.length === 1 ? "lead" : "leads"}`
@@ -1097,9 +1103,40 @@ export function CrmApp({
               onClick={() => setModal("search")}
               aria-label="Search workspace"
             >
-              <span>⌕ Search</span>
+              <Search aria-hidden="true" />
+              <span>Search...</span>
               <kbd>Ctrl K</kbd>
             </button>
+            {view === "dashboard" ? (
+              <>
+                <button
+                  type="button"
+                  className={`crm-topbar-icon-button${
+                    dashboardNotificationCount ? " has-alert" : ""
+                  }`}
+                  onClick={() => navigate("tasks")}
+                  aria-label="Open notifications"
+                >
+                  <Bell aria-hidden="true" />
+                  {dashboardNotificationCount ? (
+                    <span>
+                      {dashboardNotificationCount > 9
+                        ? "9+"
+                        : dashboardNotificationCount}
+                    </span>
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  className="crm-topbar-icon-button"
+                  onClick={() => navigate("settings")}
+                  aria-label="Open account settings"
+                  title={data.viewer.name}
+                >
+                  <CircleUserRound aria-hidden="true" />
+                </button>
+              </>
+            ) : null}
           </div>
         </header>
         <div className="crm-mobile-filterbar">
