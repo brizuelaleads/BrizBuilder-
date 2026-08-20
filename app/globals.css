@@ -12178,22 +12178,46 @@ canvas {
 .crm-dashboard-pipeline-strip {
   padding: 0 18px 18px;
   gap: 0;
+  overflow: visible;
 }
 
 .crm-dashboard-pipeline-stage {
+  --pipeline-notch: 28px;
   min-height: 76px;
-  padding: 9px 18px 10px;
+  padding: 10px calc(var(--pipeline-notch) + 12px) 12px
+    calc(var(--pipeline-notch) + 12px);
   border-color: #e8ece8;
   background: linear-gradient(90deg, #f7fbf8 0%, #f4faf6 100%);
-  clip-path: polygon(0 0, 93% 0, 100% 50%, 93% 100%, 0 100%, 7% 50%);
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--pipeline-notch)) 0,
+    100% 50%,
+    calc(100% - var(--pipeline-notch)) 100%,
+    0 100%,
+    var(--pipeline-notch) 50%
+  );
 }
 
 .crm-dashboard-pipeline-stage:first-child {
-  clip-path: polygon(0 0, 93% 0, 100% 50%, 93% 100%, 0 100%);
+  padding-left: 18px;
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--pipeline-notch)) 0,
+    100% 50%,
+    calc(100% - var(--pipeline-notch)) 100%,
+    0 100%
+  );
 }
 
 .crm-dashboard-pipeline-stage:last-child {
-  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 7% 50%);
+  padding-right: 18px;
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% 100%,
+    0 100%,
+    var(--pipeline-notch) 50%
+  );
 }
 
 .crm-dashboard-pipeline-stage span {
@@ -12209,9 +12233,9 @@ canvas {
 
 .crm-dashboard-pipeline-stage i {
   height: 4px;
-  right: 28px;
+  right: calc(var(--pipeline-notch) + 12px);
   bottom: 10px;
-  left: 18px;
+  left: calc(var(--pipeline-notch) + 12px);
   background: #dfe8e1;
 }
 
@@ -12220,7 +12244,7 @@ canvas {
 }
 
 .crm-dashboard-pipeline-stage:last-child i {
-  right: 28px;
+  right: 18px;
 }
 
 .crm-dashboard-pipeline-stage i::after {
@@ -12372,6 +12396,7 @@ canvas {
   .crm-dashboard-pipeline-stage,
   .crm-dashboard-pipeline-stage:first-child,
   .crm-dashboard-pipeline-stage:last-child {
+    padding: 12px 14px;
     border-radius: 8px;
     clip-path: none;
   }

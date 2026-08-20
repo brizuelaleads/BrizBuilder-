@@ -773,10 +773,7 @@ export function CrmApp({
   );
 
   return (
-    <div
-      className={view === "dashboard" ? "crm-shell crm-shell-dashboard" : "crm-shell"}
-      data-theme={theme === "classic" ? undefined : theme}
-    >
+    <div className="crm-shell" data-theme={theme === "classic" ? undefined : theme}>
       <aside className={`crm-sidebar ${mobileNav ? "crm-sidebar-open" : ""}`}>
         <div className="crm-brand">
           <button

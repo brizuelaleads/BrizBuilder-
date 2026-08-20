@@ -628,7 +628,7 @@ export function DashboardView({
           </div>
         </header>
         <div className="crm-dashboard-pipeline-strip">
-          {pipelineItems.map((item, index) => (
+          {pipelineItems.map((item) => (
             <button
               key={item.label}
               type="button"
@@ -647,9 +647,6 @@ export function DashboardView({
               <span>{item.label}</span>
               <strong>{item.count}</strong>
               <i aria-hidden="true" />
-              {index < pipelineItems.length - 1 ? (
-                <b aria-hidden="true" />
-              ) : null}
             </button>
           ))}
         </div>
