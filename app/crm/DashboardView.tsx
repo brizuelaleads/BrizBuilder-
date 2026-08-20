@@ -1,13 +1,5 @@
 "use client";
 
-import {
-  CalendarDays,
-  Columns3,
-  ListChecks,
-  Megaphone,
-  PhoneCall,
-  UserRoundSearch,
-} from "lucide-react";
 import type {
   CrmAppointment,
   CrmClient,
@@ -39,33 +31,6 @@ function timestamp(value: string | null) {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-function displayStatus(value: string) {
-  return value
-    .replaceAll("_", " ")
-    .toLowerCase()
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function dateKey(value: string) {
-  const parsed = timestamp(value);
-  return parsed
-    ? new Date(parsed).toISOString().slice(0, 10)
-    : value.slice(0, 10);
-}
-
-function timeOnly(value: string) {
-  const parsed = timestamp(value);
-  if (!parsed) return value;
-  return new Date(parsed).toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function leadInitials(lead: CrmLead) {
-  return `${lead.firstName[0] ?? ""}${lead.lastName[0] ?? ""}` || "L";
-}
-
 function rangeLabel(range: string) {
   if (range === "all") return "All time";
   return `Last ${range} days`;
@@ -86,10 +51,11 @@ function previousRangeCount(
   }).length;
 }
 
-function formatDelta(current: number, previous: number | null) {
-  if (previous == null) return null;
-  const difference = current - previous;
-  return `${difference >= 0 ? "+" : ""}${difference} vs previous`;
+function formatLeadDelta(current: number, previous: number | null) {
+  if (previous == null) return rangeLabel("all");
+  if (previous === 0) return current ? `+${current} vs previous` : "No change";
+  const percent = Math.round(((current - previous) / previous) * 100);
+  return `${percent >= 0 ? "+" : ""}${percent}% vs previous`;
 }
 
 function isOpenTask(task: CrmTask) {
@@ -112,24 +78,6 @@ function isMissedCall(call: CrmPhoneCall) {
   );
 }
 
-function isAnsweredCall(call: CrmPhoneCall) {
-  const status = call.status.toLowerCase();
-  return (
-    status === "completed" ||
-    status === "answered" ||
-    status === "connected" ||
-    Boolean(call.durationSeconds && call.durationSeconds > 0 && !isMissedCall(call))
-  );
-}
-
-function formatDuration(seconds: number | null) {
-  if (!seconds || seconds < 1) return "-";
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  if (!minutes) return `${remainingSeconds}s`;
-  return `${minutes}m ${remainingSeconds.toString().padStart(2, "0")}s`;
-}
-
 function providerIsCallTracking(connection: CrmProviderConnection) {
   return ["twilio", "callrail"].includes(connection.provider.toLowerCase());
 }
@@ -137,6 +85,33 @@ function providerIsCallTracking(connection: CrmProviderConnection) {
 function providerIsAdReporting(connection: CrmProviderConnection) {
   const provider = connection.provider.toLowerCase();
   return provider.includes("ads") || provider === "google_ads";
+}
+
+function formatProviderSpend(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function relativeTime(value: string, generatedAtTimestamp: number) {
+  const eventTimestamp = timestamp(value);
+  if (!eventTimestamp || !generatedAtTimestamp) return dateTime(value);
+  const delta = generatedAtTimestamp - eventTimestamp;
+  const absDelta = Math.abs(delta);
+  if (delta < 0) {
+    if (absDelta < DAY_MS) {
+      const hours = Math.max(1, Math.round(absDelta / 3_600_000));
+      return `In ${hours}h`;
+    }
+    return dateTime(value);
+  }
+  if (delta < 60_000) return "Now";
+  if (delta < 3_600_000) return `${Math.round(delta / 60_000)}m ago`;
+  if (delta < DAY_MS) return `${Math.round(delta / 3_600_000)}h ago`;
+  if (delta < DAY_MS * 7) return `${Math.round(delta / DAY_MS)}d ago`;
+  return dateTime(value);
 }
 
 function DashboardEmpty({
@@ -162,6 +137,16 @@ function DashboardEmpty({
     </div>
   );
 }
+
+type DashboardActivity = {
+  id: string;
+  title: string;
+  detail: string;
+  time: string;
+  destination: DashboardDestination;
+  tone: "critical" | "neutral" | "success";
+  lead?: CrmLead;
+};
 
 export function DashboardView({
   leads,
@@ -191,75 +176,44 @@ export function DashboardView({
   onNavigate: (view: DashboardDestination) => void;
 }) {
   const generatedAtTimestamp = timestamp(generatedAt);
-  const currentDateKey = dateKey(generatedAt);
   const previousLeads = previousRangeCount(
     pipelineLeads,
     range,
     generatedAtTimestamp,
   );
-  const won = leads.filter((lead) => lead.status === "WON");
-  const revenue = won.reduce(
-    (sum, lead) => sum + lead.finalRevenueCents,
-    0,
-  );
+  const wonLeads = leads.filter((lead) => lead.status === "WON");
   const bookedLeads = leads.filter((lead) =>
     ["APPOINTMENT_BOOKED", "ESTIMATE_SENT", "WON"].includes(lead.status),
   );
-  const openTasks = tasks
-    .filter(isOpenTask)
-    .sort((first, second) => {
-      if (!first.dueAt && !second.dueAt) return 0;
-      if (!first.dueAt) return 1;
-      if (!second.dueAt) return -1;
-      return timestamp(first.dueAt) - timestamp(second.dueAt);
-    });
-  const pastDueTasks = openTasks.filter(
-    (task) =>
-      task.dueAt && timestamp(task.dueAt) < generatedAtTimestamp,
+  const revenue = wonLeads.reduce(
+    (sum, lead) => sum + lead.finalRevenueCents,
+    0,
   );
-  const todaysTasks = openTasks.filter(
-    (task) => task.dueAt && dateKey(task.dueAt) === currentDateKey,
-  );
-  const todayAppointments = appointments
-    .filter(
-      (appointment) =>
-        appointment.status !== "CANCELED" &&
-        dateKey(appointment.startsAt) === currentDateKey,
-    )
-    .sort(
-      (first, second) =>
-        timestamp(first.startsAt) - timestamp(second.startsAt),
-    );
-  const upcomingAppointments = appointments
-    .filter(
-      (appointment) =>
-        appointment.status !== "CANCELED" &&
-        dateKey(appointment.startsAt) > currentDateKey,
-    )
-    .sort(
-      (first, second) =>
-        timestamp(first.startsAt) - timestamp(second.startsAt),
-    );
-  const appointmentsToConfirm = upcomingAppointments.filter(
-    (appointment) =>
-      appointment.status === "SCHEDULED" &&
-      timestamp(appointment.startsAt) <= generatedAtTimestamp + DAY_MS,
-  );
-  const followUpsDue = pipelineLeads.filter(
+  const bookedRate = leads.length
+    ? Math.round((bookedLeads.length / leads.length) * 100)
+    : null;
+  const conversionRate = leads.length
+    ? Math.round((wonLeads.length / leads.length) * 100)
+    : null;
+
+  const openTasks = tasks.filter(isOpenTask);
+  const overdueFollowUps = pipelineLeads.filter(
     (lead) =>
       isInactiveLead(lead) &&
       lead.nextFollowUpAt &&
       timestamp(lead.nextFollowUpAt) <= generatedAtTimestamp,
   );
-  const todaysFollowUps = followUpsDue.filter(
-    (lead) =>
-      lead.nextFollowUpAt && dateKey(lead.nextFollowUpAt) === currentDateKey,
+  const untouchedLeads = pipelineLeads.filter(
+    (lead) => lead.status === "NEW" && !lead.lastContactedAt,
   );
-  const workspaceNewLeads = pipelineLeads.filter(
-    (lead) => lead.status === "NEW",
+  const appointmentsToConfirm = appointments.filter(
+    (appointment) =>
+      appointment.status === "SCHEDULED" &&
+      timestamp(appointment.startsAt) >= generatedAtTimestamp &&
+      timestamp(appointment.startsAt) <= generatedAtTimestamp + DAY_MS,
   );
-  const estimatesAwaitingFollowUp = pipelineLeads.filter(
-    (lead) => lead.status === "ESTIMATE_SENT",
+  const overdueTasks = openTasks.filter(
+    (task) => task.dueAt && timestamp(task.dueAt) < generatedAtTimestamp,
   );
 
   const inboundCalls = phoneCalls.filter(
@@ -267,21 +221,6 @@ export function DashboardView({
   );
   const callsForSummary = inboundCalls.length ? inboundCalls : phoneCalls;
   const missedCalls = callsForSummary.filter(isMissedCall);
-  const answeredCalls = callsForSummary.filter(isAnsweredCall);
-  const answerRate = callsForSummary.length
-    ? Math.round((answeredCalls.length / callsForSummary.length) * 100)
-    : 0;
-  const averageDurationSeconds = answeredCalls.length
-    ? Math.round(
-        answeredCalls.reduce(
-          (sum, call) => sum + (call.durationSeconds ?? 0),
-          0,
-        ) / answeredCalls.length,
-      )
-    : null;
-  const recentCalls = [...phoneCalls].sort(
-    (first, second) => timestamp(second.startedAt) - timestamp(first.startedAt),
-  );
   const callTrackingConnected =
     phoneCalls.length > 0 ||
     providerConnections.some(
@@ -289,115 +228,102 @@ export function DashboardView({
         providerIsCallTracking(connection) &&
         (connection.isActive || connection.isLinked),
     );
-  const adReportingConnected = providerConnections.some(
-    (connection) =>
-      providerIsAdReporting(connection) &&
-      (connection.isActive || connection.isLinked),
-  );
+
   const configuredBudgetCents = clients.reduce(
     (sum, client) => sum + client.monthlyAdBudgetCents,
     0,
   );
+  const reportedAdSpend = providerConnections
+    .filter(
+      (connection) =>
+        providerIsAdReporting(connection) &&
+        (connection.isActive || connection.isLinked) &&
+        connection.monthSpend != null,
+    )
+    .reduce((sum, connection) => sum + (connection.monthSpend ?? 0), 0);
+  const hasReportedAdSpend = reportedAdSpend > 0;
+  const roas =
+    hasReportedAdSpend && revenue > 0
+      ? revenue / 100 / reportedAdSpend
+      : null;
 
-  const snapshotCards: Array<{
-    label: string;
-    value: string;
-    detail: string;
-    trend?: string | null;
-    tone?: "primary" | "alert" | "muted";
-  }> = [
+  const snapshotCards = [
     {
       label: "Leads",
       value: String(leads.length),
-      detail: rangeLabel(range),
-      trend: formatDelta(leads.length, previousLeads),
+      support:
+        previousLeads == null
+          ? rangeLabel(range)
+          : formatLeadDelta(leads.length, previousLeads),
       tone: "primary",
     },
     {
-      label: "Missed calls",
-      value: callTrackingConnected ? String(missedCalls.length) : "Not connected",
-      detail: callTrackingConnected
-        ? "Inbound calls needing callback"
+      label: "Missed Calls",
+      value: callTrackingConnected ? String(missedCalls.length) : "-",
+      support: callTrackingConnected
+        ? missedCalls.length
+          ? "Needs response"
+          : "No missed calls"
         : "No call tracking connected",
       tone: missedCalls.length ? "alert" : undefined,
     },
     {
-      label: "Booked",
+      label: "Appointments Booked",
       value: String(bookedLeads.length),
-      detail: "Appointments or later",
+      support: bookedRate == null ? "No leads in range" : `${bookedRate}% of leads`,
     },
     {
-      label: "Won revenue",
-      value: money(revenue, true),
-      detail: revenue ? `${won.length} won opportunities` : "No revenue recorded",
-    },
-    {
-      label: "Ad spend",
-      value: adReportingConnected
-        ? "-"
-        : configuredBudgetCents
-          ? money(configuredBudgetCents, true)
-          : "Connect ads",
-      detail: adReportingConnected
-        ? "No spend reported"
-        : configuredBudgetCents
-          ? "Budget set, spend not connected"
-          : "No ad platform connected",
-      tone: adReportingConnected || configuredBudgetCents ? undefined : "muted",
+      label: "Won Revenue",
+      value: money(revenue),
+      support: revenue ? `${wonLeads.length} won leads` : "No revenue recorded",
     },
     {
       label: "ROAS",
-      value: "-",
-      detail: "Needs actual ad spend",
-      tone: "muted",
+      value: roas == null ? "-" : `${roas.toFixed(1)}x`,
+      support: hasReportedAdSpend
+        ? `${formatProviderSpend(reportedAdSpend)} spend`
+        : "No ad spend connected",
+      tone: roas == null ? "muted" : undefined,
     },
   ];
 
   const attentionItems: {
     label: string;
     count: number;
+    detail: string;
     tone: "warning" | "critical";
     destination: DashboardDestination;
   }[] = [
     {
-      label: "Missed calls to return",
+      label: "Missed calls",
       count: missedCalls.length,
+      detail: callTrackingConnected ? "Needs callback" : "Connect call tracking",
       tone: "critical",
-      destination: "conversations",
+      destination: callTrackingConnected ? "conversations" : "phone-system",
     },
     {
-      label: "Leads awaiting first response",
-      count: workspaceNewLeads.length,
+      label: "Untouched leads",
+      count: untouchedLeads.length,
+      detail: "No first contact logged",
       tone: "warning",
       destination: "leads",
     },
     {
-      label: "Overdue tasks",
-      count: pastDueTasks.length,
+      label: "Overdue follow-ups",
+      count: overdueFollowUps.length + overdueTasks.length,
+      detail: "Leads and tasks past due",
       tone: "critical",
       destination: "tasks",
     },
     {
-      label: "Follow-ups due",
-      count: followUpsDue.length,
-      tone: "critical",
-      destination: "pipeline",
-    },
-    {
-      label: "Appointments soon",
+      label: "Appointments to confirm",
       count: appointmentsToConfirm.length,
+      detail: "Scheduled in the next 24h",
       tone: "warning",
       destination: "calendar",
     },
-    {
-      label: "Estimates awaiting follow-up",
-      count: estimatesAwaitingFollowUp.length,
-      tone: "warning",
-      destination: "pipeline",
-    },
   ];
-  const activeAttentionItems = attentionItems.filter((item) => item.count > 0);
-  const totalAttentionCount = attentionItems.reduce(
+  const activeAttentionCount = attentionItems.reduce(
     (sum, item) => sum + item.count,
     0,
   );
@@ -409,7 +335,7 @@ export function DashboardView({
     {
       label: "Booked",
       slug: "appointment-booked",
-      statuses: ["APPOINTMENT_BOOKED"],
+      statuses: ["APPOINTMENT_BOOKED", "ESTIMATE_SENT"],
     },
     { label: "Won", slug: "won", statuses: ["WON"] },
   ];
@@ -432,49 +358,75 @@ export function DashboardView({
     ...pipelineItems.map((item) => item.count),
   );
 
-  const sourceMap = new Map<
-    string,
-    { leads: number; revenueCents: number }
-  >();
-  leads.forEach((lead) => {
-    const source = lead.source || "Unknown";
-    const row = sourceMap.get(source) ?? { leads: 0, revenueCents: 0 };
-    row.leads += 1;
-    row.revenueCents += lead.finalRevenueCents;
-    sourceMap.set(source, row);
-  });
-  const sourceRows = Array.from(sourceMap.entries())
-    .map(([source, row]) => ({ source, ...row }))
-    .sort((first, second) => second.leads - first.leads)
-    .slice(0, 5);
+  const performanceRows = [
+    {
+      label: "Leads",
+      value: String(leads.length),
+      support: rangeLabel(range),
+    },
+    {
+      label: "Revenue",
+      value: money(revenue, true),
+      support: revenue ? "Recorded won value" : "No revenue recorded",
+    },
+    {
+      label: "Ad Spend",
+      value: hasReportedAdSpend ? formatProviderSpend(reportedAdSpend) : "-",
+      support: hasReportedAdSpend
+        ? "Reported this month"
+        : configuredBudgetCents
+          ? `Budget ${money(configuredBudgetCents, true)} set`
+          : "No spend connected",
+    },
+    {
+      label: "ROAS",
+      value: roas == null ? "-" : `${roas.toFixed(1)}x`,
+      support: roas == null ? "Needs ad spend" : "Revenue / spend",
+    },
+    {
+      label: "Conversion Rate",
+      value: conversionRate == null ? "-" : `${conversionRate}%`,
+      support:
+        conversionRate == null
+          ? "No leads in range"
+          : `${wonLeads.length} won / ${leads.length} leads`,
+    },
+  ];
 
-  const recentLeads = [...leads]
-    .sort((first, second) => timestamp(second.createdAt) - timestamp(first.createdAt))
-    .slice(0, 6);
-
-  const todayItems = [
-    ...todayAppointments.slice(0, 3).map((appointment) => ({
+  const leadActivities: DashboardActivity[] = leads.map((lead) => ({
+    id: `lead-${lead.id}`,
+    title: lead.status === "WON" ? "Lead marked won" : "New lead received",
+    detail: `${lead.firstName} ${lead.lastName} - ${lead.serviceRequested || lead.source}`,
+    time: lead.status === "WON" ? lead.updatedAt : lead.createdAt,
+    destination: "leads" as DashboardDestination,
+    lead,
+    tone: lead.status === "WON" ? "success" : "neutral",
+  }));
+  const callActivities: DashboardActivity[] = missedCalls.map((call) => ({
+    id: `call-${call.id}`,
+    title: "Missed call",
+    detail: call.fromNumber,
+    time: call.startedAt,
+    destination: "conversations" as DashboardDestination,
+    tone: "critical",
+  }));
+  const appointmentActivities: DashboardActivity[] = appointments
+    .filter((appointment) => appointment.status !== "CANCELED")
+    .map((appointment) => ({
       id: `appointment-${appointment.id}`,
-      time: timeOnly(appointment.startsAt),
-      title: appointment.contactName || "Appointment",
-      detail: appointment.serviceType || appointment.clientName,
+      title: "Appointment booked",
+      detail: `${appointment.contactName} - ${appointment.serviceType}`,
+      time: appointment.startsAt,
       destination: "calendar" as DashboardDestination,
-    })),
-    ...todaysTasks.slice(0, 2).map((task) => ({
-      id: `task-${task.id}`,
-      time: task.dueAt ? timeOnly(task.dueAt) : "Today",
-      title: task.title,
-      detail: `${displayStatus(task.priority)} priority`,
-      destination: "tasks" as DashboardDestination,
-    })),
-    ...todaysFollowUps.slice(0, 2).map((lead) => ({
-      id: `followup-${lead.id}`,
-      time: lead.nextFollowUpAt ? timeOnly(lead.nextFollowUpAt) : "Today",
-      title: `${lead.firstName} ${lead.lastName}`,
-      detail: "Follow-up due",
-      destination: "pipeline" as DashboardDestination,
-    })),
-  ].slice(0, 6);
+      tone: "neutral",
+    }));
+  const recentActivity = [
+    ...leadActivities,
+    ...callActivities,
+    ...appointmentActivities,
+  ]
+    .sort((first, second) => timestamp(second.time) - timestamp(first.time))
+    .slice(0, 5);
 
   return (
     <div className="crm-view crm-dashboard-view">
@@ -482,7 +434,7 @@ export function DashboardView({
         className="crm-dashboard-business-grid"
         aria-label="Business snapshot"
       >
-        {snapshotCards.map(({ label, value, detail, trend, tone }) => (
+        {snapshotCards.map(({ label, value, support, tone }) => (
           <article
             key={label}
             className={
@@ -493,95 +445,20 @@ export function DashboardView({
           >
             <span>{label}</span>
             <strong>{value}</strong>
-            <small>{detail}</small>
-            {trend ? <em>{trend}</em> : null}
+            <small>{support}</small>
           </article>
         ))}
       </section>
 
-      <section
-        className="crm-dashboard-action-grid"
-        aria-label="Immediate work"
-      >
-        <article className="crm-panel crm-dashboard-attention-panel">
-          <header>
-            <div className="crm-dashboard-widget-heading">
-              <ListChecks aria-hidden="true" />
-              <h3>Needs Attention</h3>
-            </div>
-            <Badge tone={totalAttentionCount ? "orange" : "green"}>
-              {totalAttentionCount ? `${totalAttentionCount} open` : "Clear"}
-            </Badge>
-          </header>
-          <div className="crm-dashboard-attention-list">
-            {activeAttentionItems.length ? (
-              activeAttentionItems.slice(0, 6).map((item) => (
-                <button
-                  key={item.label}
-                  type="button"
-                  onClick={() => onNavigate(item.destination)}
-                >
-                  <i className={`is-${item.tone}`} aria-hidden="true" />
-                  <span>{item.label}</span>
-                  <strong>{item.count}</strong>
-                </button>
-              ))
-            ) : (
-              <DashboardEmpty
-                title="All clear"
-                detail="No missed calls, overdue tasks, or stale follow-ups need action."
-              />
-            )}
-          </div>
-        </article>
-
-        <article className="crm-panel crm-dashboard-today-panel">
-          <header>
-            <div className="crm-dashboard-widget-heading">
-              <CalendarDays aria-hidden="true" />
-              <h3>Today</h3>
-            </div>
-            <button type="button" onClick={() => onNavigate("calendar")}>
-              Calendar
-            </button>
-          </header>
-          <div className="crm-dashboard-simple-list is-schedule">
-            {todayItems.length ? (
-              todayItems.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => onNavigate(item.destination)}
-                >
-                  <time>{item.time}</time>
-                  <span>
-                    <strong>{item.title}</strong>
-                    <small>{item.detail}</small>
-                  </span>
-                </button>
-              ))
-            ) : (
-              <DashboardEmpty
-                title="Nothing scheduled"
-                detail="Appointments, due tasks, and follow-ups for today will appear here."
-              />
-            )}
-          </div>
-        </article>
-      </section>
-
-      <section
-        className="crm-dashboard-performance-grid"
-        aria-label="Pipeline and marketing"
-      >
+      <section className="crm-dashboard-main-grid" aria-label="Dashboard panels">
         <article className="crm-panel crm-dashboard-pipeline-panel">
           <header>
-            <div className="crm-dashboard-widget-heading">
-              <Columns3 aria-hidden="true" />
-              <h3>Lead Pipeline</h3>
+            <div>
+              <p>PIPELINE</p>
+              <h3>Lead stages</h3>
             </div>
             <button type="button" onClick={() => onNavigate("pipeline")}>
-              Pipeline
+              Open
             </button>
           </header>
           <div className="crm-dashboard-pipeline-list">
@@ -593,13 +470,16 @@ export function DashboardView({
               >
                 <span>
                   <strong>{item.label}</strong>
-                  <small>{item.count} leads</small>
+                  <small>{item.count}</small>
                 </span>
                 <i aria-hidden="true">
                   <b
                     style={{
                       backgroundColor: item.color,
-                      width: `${Math.max(6, (item.count / maxPipelineCount) * 100)}%`,
+                      width: `${Math.max(
+                        6,
+                        (item.count / maxPipelineCount) * 100,
+                      )}%`,
                     }}
                   />
                 </i>
@@ -608,184 +488,92 @@ export function DashboardView({
           </div>
         </article>
 
-        <article className="crm-panel crm-dashboard-marketing-panel">
+        <article className="crm-panel crm-dashboard-attention-panel">
           <header>
-            <div className="crm-dashboard-widget-heading">
-              <Megaphone aria-hidden="true" />
-              <h3>Marketing Performance</h3>
+            <div>
+              <p>ACTION NEEDED</p>
+              <h3>Needs Attention</h3>
+            </div>
+            <Badge tone={activeAttentionCount ? "orange" : "green"}>
+              {activeAttentionCount ? `${activeAttentionCount} open` : "Clear"}
+            </Badge>
+          </header>
+          <div className="crm-dashboard-attention-list">
+            {attentionItems.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => onNavigate(item.destination)}
+              >
+                <i className={`is-${item.tone}`} aria-hidden="true" />
+                <span>
+                  <strong>{item.count} {item.label.toLowerCase()}</strong>
+                  <small>{item.detail}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+        </article>
+
+        <article className="crm-panel crm-dashboard-performance-panel">
+          <header>
+            <div>
+              <p>PERFORMANCE</p>
+              <h3>Range summary</h3>
             </div>
             <button type="button" onClick={() => onNavigate("connections")}>
-              Connections
+              Data
             </button>
           </header>
-          {sourceRows.length ? (
-            <>
-              <div className="crm-dashboard-table-wrap">
-                <table className="crm-dashboard-source-table">
-                  <thead>
-                    <tr>
-                      <th>Source</th>
-                      <th>Leads</th>
-                      <th>Revenue</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sourceRows.map((row) => (
-                      <tr key={row.source}>
-                        <td>{row.source}</td>
-                        <td>{row.leads}</td>
-                        <td>{money(row.revenueCents, true)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <div className="crm-dashboard-performance-summary">
+            {performanceRows.map((row) => (
+              <div key={row.label}>
+                <span>{row.label}</span>
+                <strong>{row.value}</strong>
+                <small>{row.support}</small>
               </div>
-              <div className="crm-dashboard-connect-note">
-                <span>
-                  Spend, CPL, and ROAS will appear when ad reporting is connected.
-                </span>
-                <button type="button" onClick={() => onNavigate("connections")}>
-                  Connect ads
-                </button>
-              </div>
-            </>
-          ) : (
-            <DashboardEmpty
-              title="No source data yet"
-              detail="Lead source rows will appear when opportunities are created."
-              actionLabel="Connect ads"
-              onAction={() => onNavigate("connections")}
-            />
-          )}
+            ))}
+          </div>
         </article>
       </section>
 
-      <section className="crm-dashboard-records-grid" aria-label="Leads and calls">
-        <article className="crm-panel crm-dashboard-leads-panel">
-          <header>
-            <div className="crm-dashboard-widget-heading">
-              <UserRoundSearch aria-hidden="true" />
-              <h3>Recent Leads</h3>
-            </div>
-            <button type="button" onClick={() => onNavigate("leads")}>
-              View all
-            </button>
-          </header>
-          <div className="crm-dashboard-lead-list">
-            {recentLeads.length ? (
-              recentLeads.map((lead) => (
-                <button
-                  key={lead.id}
-                  type="button"
-                  onClick={() => onOpenLead(lead)}
-                >
-                  <span className="crm-avatar" aria-hidden="true">
-                    {leadInitials(lead)}
-                  </span>
-                  <span>
-                    <strong>
-                      {lead.firstName} {lead.lastName}
-                    </strong>
-                    <small>{lead.serviceRequested || lead.source}</small>
-                  </span>
-                  <span>{lead.source}</span>
-                  <Badge
-                    tone={
-                      lead.status === "NEW"
-                        ? "purple"
-                        : lead.status === "WON"
-                          ? "green"
-                          : "neutral"
-                    }
-                  >
-                    {displayStatus(lead.status)}
-                  </Badge>
-                </button>
-              ))
-            ) : (
-              <DashboardEmpty
-                title="No recent leads"
-                detail="New opportunities from the selected range will appear here."
-              />
-            )}
+      <section className="crm-panel crm-dashboard-activity-panel">
+        <header>
+          <div>
+            <p>RECENT ACTIVITY</p>
+            <h3>Latest workspace events</h3>
           </div>
-        </article>
-
-        <article className="crm-panel crm-dashboard-calls-panel">
-          <header>
-            <div className="crm-dashboard-widget-heading">
-              <PhoneCall aria-hidden="true" />
-              <h3>Call Overview</h3>
-            </div>
-            <button type="button" onClick={() => onNavigate("phone-system")}>
-              Phone
-            </button>
-          </header>
-          <div className="crm-dashboard-call-stats">
-            <div>
-              <span>Total</span>
-              <strong>{callTrackingConnected ? callsForSummary.length : "-"}</strong>
-            </div>
-            <div>
-              <span>Answered</span>
-              <strong>{callTrackingConnected ? answeredCalls.length : "-"}</strong>
-            </div>
-            <div>
-              <span>Missed</span>
-              <strong>{callTrackingConnected ? missedCalls.length : "-"}</strong>
-            </div>
-            <div>
-              <span>Answer rate</span>
-              <strong>{callTrackingConnected ? `${answerRate}%` : "-"}</strong>
-            </div>
-          </div>
-          {callTrackingConnected && recentCalls.length ? (
-            <div className="crm-dashboard-call-list">
-              {recentCalls.slice(0, 4).map((call) => (
-                <button
-                  key={call.id}
-                  type="button"
-                  onClick={() => onNavigate("conversations")}
-                >
-                  <span>
-                    <strong>
-                      {call.direction.toLowerCase() === "outbound"
-                        ? "Outbound call"
-                        : "Inbound call"}
-                    </strong>
-                    <small>
-                      {call.fromNumber} / {dateTime(call.startedAt)}
-                    </small>
-                  </span>
-                  <span>
-                    <Badge tone={isMissedCall(call) ? "red" : "green"}>
-                      {displayStatus(call.status)}
-                    </Badge>
-                    <small>{formatDuration(call.durationSeconds)}</small>
-                  </span>
-                </button>
-              ))}
-              {averageDurationSeconds ? (
-                <p>Average answered call: {formatDuration(averageDurationSeconds)}</p>
-              ) : null}
-            </div>
+          <button type="button" onClick={() => onNavigate("leads")}>
+            View leads
+          </button>
+        </header>
+        <div className="crm-dashboard-activity-list">
+          {recentActivity.length ? (
+            recentActivity.map((activity) => (
+              <button
+                key={activity.id}
+                type="button"
+                onClick={() =>
+                  activity.lead
+                    ? onOpenLead(activity.lead)
+                    : onNavigate(activity.destination)
+                }
+              >
+                <i className={`is-${activity.tone}`} aria-hidden="true" />
+                <span>
+                  <strong>{activity.title}</strong>
+                  <small>{activity.detail}</small>
+                </span>
+                <time>{relativeTime(activity.time, generatedAtTimestamp)}</time>
+              </button>
+            ))
           ) : (
             <DashboardEmpty
-              title={
-                callTrackingConnected
-                  ? "No calls in range"
-                  : "No call tracking connected"
-              }
-              detail={
-                callTrackingConnected
-                  ? "Recent calls will appear here when they are recorded."
-                  : "Connect CallRail or Twilio to see missed calls and answer rate."
-              }
-              actionLabel="Phone setup"
-              onAction={() => onNavigate("phone-system")}
+              title="No recent activity"
+              detail="New leads, missed calls, appointments, and won leads will appear here."
             />
           )}
-        </article>
+        </div>
       </section>
     </div>
   );
