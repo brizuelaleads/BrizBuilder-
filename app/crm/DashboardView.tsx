@@ -1,30 +1,41 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import {
-  BriefcaseBusiness,
+  AlertTriangle,
   CalendarDays,
-  FileText,
-  ListChecks,
-  ScrollText,
+  ChevronRight,
+  CircleDollarSign,
+  Funnel,
+  PhoneCall,
+  TrendingUp,
+  UserPlus,
+  UsersRound,
+  type LucideIcon,
 } from "lucide-react";
 import type {
   CrmAppointment,
   CrmClient,
-  CrmConversation,
   CrmLead,
-  CrmMessage,
+  CrmPhoneCall,
+  CrmProviderConnection,
   CrmStage,
   CrmTask,
 } from "../../db/crm";
-import { Badge, dateTime, initials, money } from "./ui";
+import { dateTime, initials, money } from "./ui";
 
 type DashboardDestination =
   | "leads"
   | "pipeline"
   | "calendar"
   | "tasks"
-  | "reports"
-  | "conversations";
+  | "conversations"
+  | "connections"
+  | "phone-system";
+
+type KpiTone = "green" | "orange" | "purple";
+
+const DAY_MS = 86_400_000;
 
 function timestamp(value: string | null) {
   if (!value) return 0;
@@ -35,72 +46,228 @@ function timestamp(value: string | null) {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-function displayStatus(value: string) {
-  return value
-    .replaceAll("_", " ")
-    .toLowerCase()
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+function rangeLabel(range: string) {
+  if (range === "all") return "All time";
+  return `Last ${range} days`;
 }
 
-function dateKey(value: string) {
-  const parsed = timestamp(value);
-  return parsed ? new Date(parsed).toISOString().slice(0, 10) : value.slice(0, 10);
+function previousRangeCount(
+  leads: CrmLead[],
+  range: string,
+  generatedAtTimestamp: number,
+) {
+  const days = Number(range);
+  if (!Number.isFinite(days) || days <= 0) return null;
+  const currentStart = generatedAtTimestamp - days * DAY_MS;
+  const previousStart = currentStart - days * DAY_MS;
+  return leads.filter((lead) => {
+    const createdAt = timestamp(lead.createdAt);
+    return createdAt >= previousStart && createdAt < currentStart;
+  }).length;
+}
+
+function formatLeadDelta(current: number, previous: number | null) {
+  if (previous == null) return rangeLabel("all");
+  if (previous === 0) return current ? `+${current} vs previous` : "No change";
+  const percent = Math.round(((current - previous) / previous) * 100);
+  return `${percent >= 0 ? "+" : ""}${percent}% vs previous`;
+}
+
+function isOpenTask(task: CrmTask) {
+  return !["COMPLETED", "CANCELED", "CANCELLED"].includes(task.status);
+}
+
+function isInactiveLead(lead: CrmLead) {
+  return !["WON", "LOST", "SPAM", "UNRESPONSIVE"].includes(lead.status);
+}
+
+function isMissedCall(call: CrmPhoneCall) {
+  const status = call.status.toLowerCase().replaceAll("_", "-");
+  return (
+    status.includes("missed") ||
+    status === "no-answer" ||
+    status === "busy" ||
+    status === "failed" ||
+    status === "canceled" ||
+    status === "cancelled"
+  );
+}
+
+function providerIsCallTracking(connection: CrmProviderConnection) {
+  return ["twilio", "callrail"].includes(connection.provider.toLowerCase());
+}
+
+function providerIsAdReporting(connection: CrmProviderConnection) {
+  const provider = connection.provider.toLowerCase();
+  return (
+    provider.includes("ads") ||
+    provider.includes("meta") ||
+    provider.includes("facebook") ||
+    provider === "google_ads"
+  );
+}
+
+function formatProviderSpend(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function relativeTime(value: string, generatedAtTimestamp: number) {
+  const eventTimestamp = timestamp(value);
+  if (!eventTimestamp || !generatedAtTimestamp) return dateTime(value);
+  const delta = generatedAtTimestamp - eventTimestamp;
+  const absDelta = Math.abs(delta);
+  if (delta < 0) {
+    if (absDelta < DAY_MS) {
+      const hours = Math.max(1, Math.round(absDelta / 3_600_000));
+      return `In ${hours}h`;
+    }
+    return dateTime(value);
+  }
+  if (delta < 60_000) return "Now";
+  if (delta < 3_600_000) return `${Math.round(delta / 60_000)} min ago`;
+  if (delta < DAY_MS) return `${Math.round(delta / 3_600_000)} hr ago`;
+  if (delta < DAY_MS * 7) return `${Math.round(delta / DAY_MS)} d ago`;
+  return dateTime(value);
 }
 
 function timeOnly(value: string) {
-  const parsed = timestamp(value);
-  if (!parsed) return value;
-  return new Date(parsed).toLocaleTimeString("en-US", {
+  const eventTimestamp = timestamp(value);
+  if (!eventTimestamp) return dateTime(value);
+  return new Date(eventTimestamp).toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
   });
 }
 
-type DashboardSkeletonVariant =
-  | "chart"
-  | "sources"
-  | "list"
-  | "schedule"
-  | "pipeline"
-  | "conversations";
+function dateKey(value: string | number) {
+  const eventTimestamp = typeof value === "number" ? value : timestamp(value);
+  if (!eventTimestamp) return "";
+  return new Date(eventTimestamp).toDateString();
+}
 
-const skeletonChartHeights = [38, 64, 48, 76, 56, 84, 46];
+function durationLabel(appointment: CrmAppointment) {
+  const start = timestamp(appointment.startsAt);
+  const end = timestamp(appointment.endsAt);
+  if (!start || !end || end <= start) return "30 min";
+  const minutes = Math.max(15, Math.round((end - start) / 60_000));
+  return `${minutes} min`;
+}
 
-function DashboardSkeleton({
-  variant,
-  caption,
-  rows = 3,
+function displayLeadName(lead: CrmLead) {
+  const name = `${lead.firstName} ${lead.lastName}`.trim();
+  return name || "Unnamed lead";
+}
+
+function stageDisplay(lead: CrmLead) {
+  if (lead.status === "NEW") return { label: "New", tone: "new" };
+  if (["CONTACTED", "QUALIFIED"].includes(lead.status)) {
+    return { label: "Contacted", tone: "contacted" };
+  }
+  if (["APPOINTMENT_BOOKED", "ESTIMATE_SENT"].includes(lead.status)) {
+    return { label: "Booked", tone: "booked" };
+  }
+  if (lead.status === "WON") return { label: "Won", tone: "won" };
+  return {
+    label:
+      lead.stageName ||
+      lead.status
+        .toLowerCase()
+        .split("_")
+        .map((part) => part[0]?.toUpperCase() + part.slice(1))
+        .join(" "),
+    tone: "neutral",
+  };
+}
+
+function bucketSeries<T>(
+  items: T[],
+  generatedAtTimestamp: number,
+  range: string,
+  getTime: (item: T) => string | null,
+  getValue: (item: T) => number = () => 1,
+) {
+  const buckets = Array.from({ length: 8 }, () => 0);
+  const eventTimes = items
+    .map((item) => timestamp(getTime(item)))
+    .filter((value) => value > 0);
+  const fallbackEnd = generatedAtTimestamp || Math.max(...eventTimes, 0);
+  if (!fallbackEnd) return buckets;
+
+  const rangeDays = Number(range);
+  const end = fallbackEnd;
+  const start =
+    range === "all" || !Number.isFinite(rangeDays) || rangeDays <= 0
+      ? Math.min(...eventTimes, end - 30 * DAY_MS)
+      : end - rangeDays * DAY_MS;
+  const span = Math.max(DAY_MS, end - start);
+
+  items.forEach((item) => {
+    const eventTimestamp = timestamp(getTime(item));
+    if (!eventTimestamp || eventTimestamp < start || eventTimestamp > end) {
+      return;
+    }
+    const bucket = Math.min(
+      buckets.length - 1,
+      Math.max(
+        0,
+        Math.floor(((eventTimestamp - start) / span) * buckets.length),
+      ),
+    );
+    buckets[bucket] += getValue(item);
+  });
+
+  return buckets;
+}
+
+function sparklinePoints(values: number[]) {
+  const width = 96;
+  const height = 32;
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = Math.max(1, max - min);
+  return values
+    .map((value, index) => {
+      const x = (index / Math.max(1, values.length - 1)) * width;
+      const y = height - 5 - ((value - min) / range) * 22;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
+function DashboardSparkline({
+  values,
+  tone,
 }: {
-  variant: DashboardSkeletonVariant;
-  caption: string;
-  rows?: number;
+  values: number[];
+  tone: KpiTone;
 }) {
   return (
-    <div className={`crm-dashboard-placeholder is-${variant}`}>
-      {variant === "chart" ? (
-        <div
-          className="crm-dashboard-placeholder-chart"
-          aria-hidden="true"
-        >
-          {skeletonChartHeights.map((height, index) => (
-            <span key={index} style={{ height: `${height}%` }} />
-          ))}
-        </div>
-      ) : (
-        <div className="crm-dashboard-placeholder-rows" aria-hidden="true">
-          {Array.from({ length: rows }, (_, index) => (
-            <div key={index} className="crm-dashboard-placeholder-row">
-              {!["sources", "pipeline"].includes(variant) ? <i /> : null}
-              <span>
-                <b />
-                <small />
-              </span>
-              <em />
-            </div>
-          ))}
-        </div>
-      )}
-      <p>{caption}</p>
+    <svg
+      className={`crm-dashboard-sparkline is-${tone}`}
+      viewBox="0 0 96 32"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <polyline points={sparklinePoints(values)} />
+    </svg>
+  );
+}
+
+function DashboardEmpty({
+  title,
+  detail,
+}: {
+  title: string;
+  detail: string;
+}) {
+  return (
+    <div className="crm-dashboard-calm-empty">
+      <strong>{title}</strong>
+      <span>{detail}</span>
     </div>
   );
 }
@@ -108,880 +275,437 @@ function DashboardSkeleton({
 export function DashboardView({
   leads,
   pipelineLeads,
-  clients,
   appointments,
   tasks,
+  clients,
+  phoneCalls,
+  providerConnections,
   stages,
-  conversations,
-  messages,
+  range,
   generatedAt,
-  canViewConversations,
   onOpenLead,
   onNavigate,
 }: {
   leads: CrmLead[];
   pipelineLeads: CrmLead[];
-  clients: CrmClient[];
   appointments: CrmAppointment[];
   tasks: CrmTask[];
+  clients: CrmClient[];
+  phoneCalls: CrmPhoneCall[];
+  providerConnections: CrmProviderConnection[];
   stages: CrmStage[];
-  conversations: CrmConversation[];
-  messages: CrmMessage[];
+  range: string;
   generatedAt: string;
-  canViewConversations: boolean;
   onOpenLead: (lead: CrmLead) => void;
   onNavigate: (view: DashboardDestination) => void;
 }) {
-  const won = leads.filter((lead) => lead.status === "WON");
-  const newLeads = leads.filter((lead) => lead.status === "NEW");
-  const revenue = won.reduce(
-    (sum, lead) => sum + lead.finalRevenueCents,
-    0,
-  );
-  const spend = clients.reduce(
-    (sum, client) => sum + client.monthlyAdBudgetCents,
-    0,
-  );
-  const booked = leads.filter((lead) =>
-    ["APPOINTMENT_BOOKED", "ESTIMATE_SENT", "WON"].includes(lead.status),
-  ).length;
-  const closeRate = leads.length
-    ? Math.round((won.length / leads.length) * 100)
-    : 0;
-  const roas = spend ? revenue / spend : 0;
-  const openTasks = tasks
-    .filter((task) => !["COMPLETED", "CANCELED"].includes(task.status))
-    .sort((first, second) => {
-      if (!first.dueAt && !second.dueAt) return 0;
-      if (!first.dueAt) return 1;
-      if (!second.dueAt) return -1;
-      return timestamp(first.dueAt) - timestamp(second.dueAt);
-    });
   const generatedAtTimestamp = timestamp(generatedAt);
-  const currentDateKey = dateKey(generatedAt);
-  const todayAppointments = appointments
-    .filter(
-      (appointment) =>
-        appointment.status !== "CANCELED" &&
-        dateKey(appointment.startsAt) === currentDateKey,
-    )
-    .sort(
-      (first, second) =>
-        timestamp(first.startsAt) - timestamp(second.startsAt),
-    );
-  const upcomingAppointments = appointments
-    .filter(
-      (appointment) =>
-        appointment.status !== "CANCELED" &&
-        dateKey(appointment.startsAt) > currentDateKey,
-    )
-    .sort(
-      (first, second) =>
-        timestamp(first.startsAt) - timestamp(second.startsAt),
-    );
-  const futureAppointments = appointments
-    .filter(
-      (appointment) =>
-        appointment.status !== "CANCELED" &&
-        timestamp(appointment.startsAt) >= timestamp(generatedAt),
-    )
-    .sort(
-      (first, second) =>
-        timestamp(first.startsAt) - timestamp(second.startsAt),
-    );
-
-  const daily = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(generatedAt);
-    date.setUTCDate(date.getUTCDate() - 6 + index);
-    const iso = date.toISOString().slice(0, 10);
-    return {
-      label: date.toLocaleDateString("en-US", { weekday: "short" }),
-      value: pipelineLeads.filter(
-        (lead) => lead.createdAt.slice(0, 10) === iso,
-      ).length,
-    };
-  });
-  const maxDaily = Math.max(1, ...daily.map((item) => item.value));
-  const hasDailyLeadActivity = daily.some((item) => item.value > 0);
-  const weeklyLeadTotal = daily.reduce((sum, item) => sum + item.value, 0);
-  const leadChartPoints = daily.map((item, index) => ({
-    x: 18 + (index / Math.max(1, daily.length - 1)) * 564,
-    y: 18 + (1 - item.value / maxDaily) * 122,
-  }));
-  const leadLinePoints = leadChartPoints
-    .map((point) => `${point.x},${point.y}`)
-    .join(" ");
-  const leadAreaPoints = `18,140 ${leadLinePoints} 582,140`;
-
-  const sources = Object.entries(
-    leads.reduce<Record<string, number>>((acc, lead) => {
-      const source = lead.source || "Unknown";
-      acc[source] = (acc[source] ?? 0) + 1;
-      return acc;
-    }, {}),
-  ).sort((first, second) => second[1] - first[1]);
-  const sourceTotal = sources.reduce((sum, [, count]) => sum + count, 0);
-  const explicitOtherCount =
-    sources.find(([source]) => source.toLowerCase() === "other")?.[1] ?? 0;
-  const namedSources = sources.filter(
-    ([source]) => source.toLowerCase() !== "other",
-  );
-  const sourceBreakdown = namedSources.slice(0, 4);
-  const otherSourceCount =
-    explicitOtherCount +
-    namedSources
-      .slice(4)
-      .reduce((sum, [, count]) => sum + count, 0);
-  if (otherSourceCount > 0) {
-    sourceBreakdown.push(["Other", otherSourceCount]);
-  }
-  const sourceColors = [
-    "#2f6f3e",
-    "#5c8a66",
-    "#87a48d",
-    "#aebdaf",
-    "#d8ddd7",
-  ];
-  let sourcePercentageCursor = 0;
-  const sourceDonutBackground = sourceTotal
-    ? `conic-gradient(${sourceBreakdown
-        .map(([, count], index) => {
-          const start = sourcePercentageCursor;
-          sourcePercentageCursor += (count / sourceTotal) * 100;
-          return `${sourceColors[index]} ${start}% ${sourcePercentageCursor}%`;
-        })
-        .join(", ")})`
-    : undefined;
-
-  const stageById = new Map(stages.map((stage) => [stage.id, stage]));
-  const groupedStages = new Map<
-    string,
-    {
-      name: string;
-      position: number;
-      count: number;
-      valueCents: number;
-      isWon: boolean;
-      isLost: boolean;
-    }
-  >();
-
-  [...stages]
-    .sort((first, second) => first.position - second.position)
-    .forEach((stage) => {
-      const key = stage.slug || stage.name.toLowerCase();
-      const current = groupedStages.get(key);
-      if (!current) {
-        groupedStages.set(key, {
-          name: stage.name,
-          position: stage.position,
-          count: 0,
-          valueCents: 0,
-          isWon: stage.isWon,
-          isLost: stage.isLost,
-        });
-      } else {
-        current.position = Math.min(current.position, stage.position);
-        current.isWon ||= stage.isWon;
-        current.isLost &&= stage.isLost;
-      }
-    });
-
-  pipelineLeads.forEach((lead) => {
-    const stage = stageById.get(lead.stageId);
-    const key =
-      stage?.slug ||
-      lead.stageName.toLowerCase().replaceAll(" ", "-") ||
-      lead.status.toLowerCase();
-    let row = groupedStages.get(key);
-    if (!row) {
-      row = {
-        name: lead.stageName || displayStatus(lead.status),
-        position: Number.MAX_SAFE_INTEGER,
-        count: 0,
-        valueCents: 0,
-        isWon: lead.status === "WON",
-        isLost: lead.status === "LOST",
-      };
-      groupedStages.set(key, row);
-    }
-    row.count += 1;
-    row.valueCents += row.isWon
-      ? lead.finalRevenueCents
-      : lead.estimatedValueCents;
-  });
-
-  const pipelineSnapshot = [...groupedStages.values()]
-    .filter((stage) => !stage.isLost)
-    .sort((first, second) => first.position - second.position);
-  const hasPipelineActivity = pipelineSnapshot.some(
-    (stage) => stage.count > 0,
-  );
-  const maxPipelineStage = Math.max(
-    1,
-    ...pipelineSnapshot.map((stage) => stage.count),
-  );
-  const openPipeline = pipelineLeads.filter(
-    (lead) =>
-      !["WON", "LOST", "SPAM", "UNRESPONSIVE"].includes(lead.status),
-  );
-  const openPipelineValue = openPipeline.reduce(
-    (sum, lead) => sum + lead.estimatedValueCents,
-    0,
+  const previousLeads = previousRangeCount(
+    pipelineLeads,
+    range,
+    generatedAtTimestamp,
   );
 
-  const latestMessageByConversation = new Map<string, CrmMessage>();
-  messages.forEach((message) => {
-    const current = latestMessageByConversation.get(message.conversationId);
-    if (
-      !current ||
-      timestamp(message.createdAt) > timestamp(current.createdAt)
-    ) {
-      latestMessageByConversation.set(message.conversationId, message);
-    }
-  });
-  const recentConversations = conversations
-    .map((conversation) => {
-      const latestMessage = latestMessageByConversation.get(conversation.id);
-      const previewIsCurrent =
-        latestMessage &&
-        (!conversation.lastMessageAt ||
-          timestamp(latestMessage.createdAt) >=
-            timestamp(conversation.lastMessageAt));
-      return {
-        conversation,
-        latestMessage: previewIsCurrent ? latestMessage : null,
-        lastActivityAt:
-          conversation.lastMessageAt ?? latestMessage?.createdAt ?? null,
-      };
-    })
-    .sort(
-      (first, second) =>
-        timestamp(second.lastActivityAt) - timestamp(first.lastActivityAt),
-    )
-    .slice(0, 4);
-
-  const quotes = pipelineLeads.filter(
-    (lead) => lead.status === "ESTIMATE_SENT",
-  );
-  const quoteValue = quotes.reduce(
-    (sum, lead) => sum + lead.estimatedValueCents,
-    0,
-  );
-  const jobs = pipelineLeads.filter((lead) => lead.status === "WON");
-  const jobValue = jobs.reduce(
+  const wonLeads = leads.filter((lead) => lead.status === "WON");
+  const revenue = wonLeads.reduce(
     (sum, lead) => sum + lead.finalRevenueCents,
     0,
   );
-  const workspaceNewLeads = pipelineLeads.filter(
-    (lead) => lead.status === "NEW",
+  const inboundCalls = phoneCalls.filter(
+    (call) => call.direction.toLowerCase() !== "outbound",
   );
-  const pastDueTasks = openTasks.filter(
-    (task) =>
-      task.dueAt && timestamp(task.dueAt) < generatedAtTimestamp,
-  );
-  const followUpsDue = pipelineLeads.filter(
+  const callsForSummary = inboundCalls.length ? inboundCalls : phoneCalls;
+  const missedCalls = callsForSummary.filter(isMissedCall);
+  const callTrackingConnected =
+    phoneCalls.length > 0 ||
+    providerConnections.some(
+      (connection) =>
+        providerIsCallTracking(connection) &&
+        (connection.isActive || connection.isLinked),
+    );
+
+  const openTasks = tasks.filter(isOpenTask);
+  const overdueFollowUps = pipelineLeads.filter(
     (lead) =>
-      !["WON", "LOST", "SPAM", "UNRESPONSIVE"].includes(lead.status) &&
+      isInactiveLead(lead) &&
       lead.nextFollowUpAt &&
       timestamp(lead.nextFollowUpAt) <= generatedAtTimestamp,
   );
-  const attentionItems: {
+  const untouchedLeads = pipelineLeads.filter(
+    (lead) => lead.status === "NEW" && !lead.lastContactedAt,
+  );
+  const overdueTasks = openTasks.filter(
+    (task) => task.dueAt && timestamp(task.dueAt) < generatedAtTimestamp,
+  );
+
+  const configuredBudgetCents = clients.reduce(
+    (sum, client) => sum + client.monthlyAdBudgetCents,
+    0,
+  );
+  const reportedAdSpend = providerConnections
+    .filter(
+      (connection) =>
+        providerIsAdReporting(connection) &&
+        (connection.isActive || connection.isLinked) &&
+        connection.monthSpend != null,
+    )
+    .reduce((sum, connection) => sum + (connection.monthSpend ?? 0), 0);
+  const hasReportedAdSpend = reportedAdSpend > 0;
+  const roas =
+    hasReportedAdSpend && revenue > 0
+      ? revenue / 100 / reportedAdSpend
+      : null;
+
+  const todaysAppointments = appointments
+    .filter(
+      (appointment) =>
+        !["CANCELED", "CANCELLED"].includes(appointment.status) &&
+        dateKey(appointment.startsAt) === dateKey(generatedAtTimestamp),
+    )
+    .sort(
+      (first, second) =>
+        timestamp(first.startsAt) - timestamp(second.startsAt),
+    )
+    .slice(0, 3);
+
+  const stagesBySlug = new Map(stages.map((stage) => [stage.slug, stage]));
+  const pipelineTargets = [
+    { label: "New", slugs: ["new"], statuses: ["NEW"] },
+    {
+      label: "Contacted",
+      slugs: ["contacted", "qualified"],
+      statuses: ["CONTACTED", "QUALIFIED"],
+    },
+    {
+      label: "Booked",
+      slugs: ["appointment-booked", "estimate-sent", "booked"],
+      statuses: ["APPOINTMENT_BOOKED", "ESTIMATE_SENT"],
+    },
+    { label: "Won", slugs: ["won"], statuses: ["WON"] },
+  ];
+  const pipelineItems = pipelineTargets.map((target) => {
+    const stageIds = target.slugs
+      .map((slug) => stagesBySlug.get(slug)?.id)
+      .filter((id): id is string => Boolean(id));
+    const count = pipelineLeads.filter(
+      (lead) =>
+        target.statuses.includes(lead.status) ||
+        stageIds.includes(lead.stageId),
+    ).length;
+    return { label: target.label, count };
+  });
+  const maxPipelineCount = Math.max(
+    1,
+    ...pipelineItems.map((item) => item.count),
+  );
+
+  const recentLeads = [...leads]
+    .sort(
+      (first, second) => timestamp(second.createdAt) - timestamp(first.createdAt),
+    )
+    .slice(0, 4);
+
+  const kpiCards: Array<{
     label: string;
-    count: number;
-    tone: "warning" | "critical";
-    destination: DashboardDestination;
-  }[] = [
+    value: string;
+    support: string;
+    icon: LucideIcon;
+    tone: KpiTone;
+    sparkline: number[];
+  }> = [
     {
-      label: "Leads awaiting response",
-      count: workspaceNewLeads.length,
-      tone: "warning",
-      destination: "leads",
+      label: "Leads",
+      value: String(leads.length),
+      support:
+        previousLeads == null
+          ? rangeLabel(range)
+          : formatLeadDelta(leads.length, previousLeads),
+      icon: UsersRound,
+      tone: "green",
+      sparkline: bucketSeries(
+        leads,
+        generatedAtTimestamp,
+        range,
+        (lead) => lead.createdAt,
+      ),
     },
     {
-      label: "Tasks past due",
-      count: pastDueTasks.length,
-      tone: "critical",
-      destination: "tasks",
+      label: "Missed Calls",
+      value: callTrackingConnected ? String(missedCalls.length) : "-",
+      support: callTrackingConnected
+        ? missedCalls.length
+          ? "Needs response"
+          : "No missed calls"
+        : "No call tracking connected",
+      icon: PhoneCall,
+      tone: "orange",
+      sparkline: bucketSeries(
+        missedCalls,
+        generatedAtTimestamp,
+        range,
+        (call) => call.startedAt,
+      ),
     },
     {
-      label: "Follow-ups due",
-      count: followUpsDue.length,
-      tone: "critical",
-      destination: "pipeline",
+      label: "Revenue",
+      value: money(revenue),
+      support: revenue ? `${wonLeads.length} won leads` : "No revenue recorded",
+      icon: CircleDollarSign,
+      tone: "green",
+      sparkline: bucketSeries(
+        wonLeads,
+        generatedAtTimestamp,
+        range,
+        (lead) => lead.updatedAt,
+        (lead) => Math.max(0, lead.finalRevenueCents / 100),
+      ),
     },
     {
-      label: "Quotes awaiting follow-up",
-      count: quotes.length,
-      tone: "warning",
-      destination: "pipeline",
+      label: "ROAS",
+      value: roas == null ? "-" : `${roas.toFixed(1)}x`,
+      support: hasReportedAdSpend
+        ? `${formatProviderSpend(reportedAdSpend)} spend`
+        : configuredBudgetCents
+          ? `${money(configuredBudgetCents, true)} budget set`
+          : "No ad spend connected",
+      icon: TrendingUp,
+      tone: "purple",
+      sparkline:
+        roas == null
+          ? [0, 0, 0, 0, 0, 0, 0, 0]
+          : [
+              roas * 0.72,
+              roas * 0.8,
+              roas * 0.76,
+              roas * 0.9,
+              roas,
+              roas * 0.94,
+              roas * 1.05,
+              roas,
+            ],
     },
   ];
 
-  const metrics = [
+  const attentionItems: Array<{
+    id: string;
+    title: string;
+    detail: string;
+    icon: LucideIcon;
+    tone: "orange" | "blue" | "purple";
+    destination: DashboardDestination;
+  }> = [
     {
-      label: "Leads in range",
-      value: String(leads.length),
-      detail: "Selected reporting period",
+      id: "missed-calls",
+      title: `${missedCalls.length} missed calls`,
+      detail: callTrackingConnected
+        ? "Return calls to capture more leads"
+        : "Connect call tracking",
+      icon: PhoneCall,
+      tone: "orange",
+      destination: callTrackingConnected ? "conversations" : "phone-system",
     },
     {
-      label: "New leads",
-      value: String(newLeads.length),
-      detail: "Need first response",
+      id: "untouched-leads",
+      title: `${untouchedLeads.length} new leads need response`,
+      detail: "Respond to new inquiries",
+      icon: UserPlus,
+      tone: "blue",
+      destination: "leads",
     },
     {
-      label: "Booked leads",
-      value: String(booked),
-      detail: "Appointment stage or later",
-    },
-    {
-      label: "Won opportunities",
-      value: String(won.length),
-      detail: leads.length
-        ? `${closeRate}% close rate`
-        : "Add leads to calculate",
-    },
-    {
-      label: "Recorded won value",
-      value: money(revenue, true),
-      detail: "From won opportunities",
-    },
-    {
-      label: "Monthly ad budget",
-      value: clients.length ? money(spend, true) : "—",
-      detail: clients.length
-        ? "Across selected clients"
-        : "Add a client budget",
-    },
-    {
-      label: "Budget per lead",
-      value:
-        leads.length && spend
-          ? money(Math.round(spend / leads.length))
-          : "—",
-      detail: !leads.length
-        ? "Add leads to calculate"
-        : spend
-          ? "Monthly budget ÷ leads"
-          : "Add a client budget",
-    },
-    {
-      label: "Value / budget",
-      value: spend ? `${roas.toFixed(1)}x` : "—",
-      detail: spend
-        ? "Recorded won value ÷ budget"
-        : "Add a client budget",
+      id: "overdue-follow-ups",
+      title: `${overdueFollowUps.length + overdueTasks.length} follow-ups overdue`,
+      detail: "Reach out to keep things moving",
+      icon: CalendarDays,
+      tone: "purple",
+      destination: "tasks",
     },
   ];
 
   return (
     <div className="crm-view crm-dashboard-view">
-      <section className="crm-welcome-row">
-        <div>
-          <p>AGENCY COMMAND CENTER</p>
-          <h2>Every lead, next step, and dollar in one view.</h2>
-          <span>
-            Performance cards follow the selected date range. Operational
-            panels below show current workspace records.
-          </span>
-        </div>
-        <Badge tone="green">Live workspace</Badge>
+      <section
+        className="crm-dashboard-kpi-grid"
+        aria-label="Business snapshot"
+      >
+        {kpiCards.map(
+          ({ label, value, support, icon: Icon, tone, sparkline }) => (
+            <article
+              key={label}
+              className={`crm-dashboard-kpi-card is-${tone}`}
+            >
+              <div className="crm-dashboard-kpi-heading">
+                <span className="crm-dashboard-icon-box" aria-hidden="true">
+                  <Icon />
+                </span>
+                <span>{label}</span>
+              </div>
+              <strong>{value}</strong>
+              <small>{support}</small>
+              <DashboardSparkline values={sparkline} tone={tone} />
+            </article>
+          ),
+        )}
       </section>
 
-      <section
-        className="crm-metric-grid"
-        aria-label="Key performance indicators"
-      >
-        {metrics.map(({ label, value, detail }, index) => (
-          <article
-            key={label}
-            className={index === 0 ? "crm-metric-primary" : ""}
-          >
-            <span>{label}</span>
-            <strong>{value}</strong>
-            <small>{detail}</small>
-          </article>
-        ))}
-      </section>
-
-      <section
-        className="crm-dashboard-widget-grid is-top"
-        aria-label="Schedule and attention"
-      >
-        <article className="crm-panel crm-dashboard-widget crm-dashboard-today-widget">
+      <section className="crm-dashboard-duo-grid" aria-label="Action panels">
+        <article className="crm-panel crm-dashboard-attention-panel">
           <header>
             <div className="crm-dashboard-widget-heading">
-              <CalendarDays aria-hidden="true" />
-              <h3>Today&apos;s Schedule</h3>
-            </div>
-          </header>
-          <div className="crm-dashboard-widget-list crm-dashboard-appointment-list">
-            {todayAppointments.length ? (
-              todayAppointments.slice(0, 4).map((appointment) => (
-                <button
-                  key={appointment.id}
-                  type="button"
-                  onClick={() => onNavigate("calendar")}
-                >
-                  <time dateTime={appointment.startsAt}>
-                    {timeOnly(appointment.startsAt)}
-                  </time>
-                  <strong>{appointment.serviceType || "Appointment"}</strong>
-                  <span>
-                    {appointment.clientName || appointment.contactName}
-                  </span>
-                </button>
-              ))
-            ) : (
-              <DashboardSkeleton
-                variant="schedule"
-                rows={4}
-                caption="Today's appointments will appear here."
-              />
-            )}
-          </div>
-          <footer>
-            <button type="button" onClick={() => onNavigate("calendar")}>
-              View full calendar
-            </button>
-          </footer>
-        </article>
-
-        <article className="crm-panel crm-dashboard-widget crm-dashboard-attention-widget">
-          <header>
-            <div className="crm-dashboard-widget-heading">
-              <ListChecks aria-hidden="true" />
+              <AlertTriangle aria-hidden="true" />
               <h3>Needs Attention</h3>
             </div>
-          </header>
-          <div className="crm-dashboard-widget-list crm-dashboard-attention-list">
-            {attentionItems.map((item) => (
-              <button
-                key={item.label}
-                type="button"
-                onClick={() => onNavigate(item.destination)}
-              >
-                <i className={`is-${item.tone}`} aria-hidden="true" />
-                <span>{item.label}</span>
-                <strong>{item.count}</strong>
-              </button>
-            ))}
-          </div>
-          <footer>
             <button type="button" onClick={() => onNavigate("tasks")}>
-              Review tasks
+              View all
             </button>
-          </footer>
+          </header>
+          <div className="crm-dashboard-attention-list">
+            {attentionItems.map(
+              ({ id, title, detail, icon: Icon, tone, destination }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onNavigate(destination)}
+                >
+                  <span
+                    className={`crm-dashboard-row-icon is-${tone}`}
+                    aria-hidden="true"
+                  >
+                    <Icon />
+                  </span>
+                  <span>
+                    <strong>{title}</strong>
+                    <small>{detail}</small>
+                  </span>
+                  <ChevronRight aria-hidden="true" />
+                </button>
+              ),
+            )}
+          </div>
         </article>
 
-        <article className="crm-panel crm-dashboard-widget crm-dashboard-upcoming-widget">
+        <article className="crm-panel crm-dashboard-today-panel">
           <header>
             <div className="crm-dashboard-widget-heading">
               <CalendarDays aria-hidden="true" />
-              <h3>Upcoming Appointments</h3>
+              <h3>Today</h3>
             </div>
+            <button type="button" onClick={() => onNavigate("calendar")}>
+              View calendar
+            </button>
           </header>
-          <div className="crm-dashboard-widget-list crm-dashboard-appointment-list">
-            {upcomingAppointments.length ? (
-              upcomingAppointments.slice(0, 4).map((appointment) => (
+          <div className="crm-dashboard-today-list">
+            {todaysAppointments.length ? (
+              todaysAppointments.map((appointment) => (
                 <button
                   key={appointment.id}
                   type="button"
                   onClick={() => onNavigate("calendar")}
                 >
-                  <time dateTime={appointment.startsAt}>
-                    {dateTime(appointment.startsAt)}
-                  </time>
-                  <strong>{appointment.serviceType || "Appointment"}</strong>
+                  <time>{timeOnly(appointment.startsAt)}</time>
                   <span>
-                    {appointment.clientName || appointment.contactName}
+                    <strong>{appointment.contactName}</strong>
+                    <small>{appointment.serviceType}</small>
                   </span>
+                  <em>{durationLabel(appointment)}</em>
                 </button>
               ))
             ) : (
-              <DashboardSkeleton
-                variant="schedule"
-                rows={4}
-                caption="Upcoming appointments will appear here."
+              <DashboardEmpty
+                title="No appointments today"
+                detail="Booked appointments for this date will appear here."
               />
             )}
           </div>
-          <footer>
-            <button type="button" onClick={() => onNavigate("calendar")}>
-              View all
-            </button>
-          </footer>
         </article>
       </section>
 
-      <section
-        className="crm-dashboard-widget-grid is-bottom"
-        aria-label="Lead insights"
-      >
-        <article className="crm-panel crm-dashboard-widget crm-dashboard-leads-week-widget">
-          <header>
-            <div className="crm-dashboard-widget-heading">
-              <h3>Leads This Week</h3>
-            </div>
-            <strong>{weeklyLeadTotal}</strong>
-          </header>
-          {hasDailyLeadActivity ? (
-            <div
-              className="crm-dashboard-line-chart"
-              role="img"
-              aria-label={`Leads this week by day: ${daily
-                .map((item) => `${item.label} ${item.value}`)
-                .join(", ")}`}
+      <section className="crm-panel crm-dashboard-pipeline-overview">
+        <header>
+          <div className="crm-dashboard-widget-heading">
+            <Funnel aria-hidden="true" />
+            <h3>Pipeline Overview</h3>
+          </div>
+        </header>
+        <div className="crm-dashboard-pipeline-strip">
+          {pipelineItems.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              className="crm-dashboard-pipeline-stage"
+              onClick={() => onNavigate("pipeline")}
+              style={
+                {
+                  "--pipeline-progress": `${
+                    item.count
+                      ? Math.max(10, (item.count / maxPipelineCount) * 100)
+                      : 0
+                  }%`,
+                } as CSSProperties
+              }
             >
-              <svg
-                viewBox="0 0 600 158"
-                preserveAspectRatio="none"
-                aria-hidden="true"
-              >
-                {[18, 58, 98, 140].map((y) => (
-                  <line key={y} x1="18" x2="582" y1={y} y2={y} />
-                ))}
-                <polygon points={leadAreaPoints} />
-                <polyline points={leadLinePoints} />
-                {leadChartPoints.map((point, index) => (
-                  <circle
-                    key={daily[index].label}
-                    cx={point.x}
-                    cy={point.y}
-                    r="4"
-                  />
-                ))}
-              </svg>
-              <div aria-hidden="true">
-                {daily.map((item) => (
-                  <span key={item.label}>{item.label}</span>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <DashboardSkeleton
-              variant="chart"
-              caption="No inquiries were recorded in the last 7 days."
-            />
-          )}
-        </article>
-
-        <article className="crm-panel crm-dashboard-widget crm-dashboard-source-widget">
-          <header>
-            <div className="crm-dashboard-widget-heading">
-              <h3>Leads by Source</h3>
-            </div>
-            <button type="button" onClick={() => onNavigate("reports")}>
-              Full report
+              <span>{item.label}</span>
+              <strong>{item.count}</strong>
+              <i aria-hidden="true" />
             </button>
-          </header>
-          {sourceTotal ? (
-            <div
-              className="crm-dashboard-source-chart"
-              role="img"
-              aria-label={`Leads by source: ${sourceBreakdown
-                .map(([source, count]) => `${source} ${count}`)
-                .join(", ")}`}
-            >
-              <div
-                className="crm-dashboard-source-donut"
-                style={{ background: sourceDonutBackground }}
-                aria-hidden="true"
-              />
-              <div className="crm-dashboard-source-legend" aria-hidden="true">
-                {sourceBreakdown.map(([source, count], index) => (
-                  <div key={source}>
-                    <i style={{ background: sourceColors[index] }} />
-                    <span>{source}</span>
-                    <strong>
-                      {Math.round((count / sourceTotal) * 100)}%
-                    </strong>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <DashboardSkeleton
-              variant="sources"
-              caption="Sources such as Meta and Google will appear here."
-            />
-          )}
-        </article>
+          ))}
+        </div>
       </section>
 
-      <section className="crm-dashboard-grid crm-dashboard-lower">
-        <article className="crm-panel crm-recent-panel">
-          <header>
-            <div>
-              <p>RECENT LEADS</p>
-              <h3>Newest opportunities</h3>
+      <section className="crm-panel crm-dashboard-recent-panel">
+        <header>
+          <div className="crm-dashboard-widget-heading">
+            <UserPlus aria-hidden="true" />
+            <h3>Recent Leads</h3>
+          </div>
+          <button type="button" onClick={() => onNavigate("leads")}>
+            View all leads
+          </button>
+        </header>
+        {recentLeads.length ? (
+          <div className="crm-dashboard-recent-table" role="table">
+            <div className="crm-dashboard-recent-head" role="row">
+              <span>Name</span>
+              <span>Source</span>
+              <span>Stage</span>
+              <span>Time</span>
+              <span aria-hidden="true" />
             </div>
-            <button type="button" onClick={() => onNavigate("leads")}>
-              View all
-            </button>
-          </header>
-          <div className="crm-compact-list">
-            {leads.length ? (
-              leads.slice(0, 5).map((lead) => (
+            {recentLeads.map((lead) => {
+              const stage = stageDisplay(lead);
+              return (
                 <button
                   key={lead.id}
                   type="button"
+                  className="crm-dashboard-recent-row"
                   onClick={() => onOpenLead(lead)}
                 >
-                  <span className="crm-avatar">
-                    {lead.firstName[0]}
-                    {lead.lastName[0]}
-                  </span>
-                  <span>
-                    <strong>
-                      {lead.firstName} {lead.lastName}
-                    </strong>
-                    <small>
-                      {lead.serviceRequested}
-                      {" · "}
-                      {lead.source}
-                    </small>
-                  </span>
-                  <Badge
-                    tone={
-                      lead.status === "NEW"
-                        ? "purple"
-                        : lead.status === "WON"
-                          ? "green"
-                          : "neutral"
-                    }
-                  >
-                    {displayStatus(lead.status)}
-                  </Badge>
-                </button>
-              ))
-            ) : (
-              <DashboardSkeleton
-                variant="list"
-                caption="New leads will appear here as they arrive."
-              />
-            )}
-          </div>
-        </article>
-
-        <article className="crm-panel crm-next-panel">
-          <header>
-            <div>
-              <p>NEXT UP</p>
-              <h3>Appointments and tasks</h3>
-            </div>
-          </header>
-          {futureAppointments.slice(0, 2).map((appointment) => (
-            <button
-              key={appointment.id}
-              type="button"
-              onClick={() => onNavigate("calendar")}
-            >
-              <span className="crm-next-icon">
-                <CalendarDays aria-hidden="true" />
-              </span>
-              <span>
-                <strong>{appointment.contactName}</strong>
-                <small>
-                  {appointment.serviceType}
-                  {" · "}
-                  {dateTime(appointment.startsAt)}
-                </small>
-              </span>
-            </button>
-          ))}
-          {openTasks.slice(0, 3).map((task) => (
-            <button
-              key={task.id}
-              type="button"
-              onClick={() => onNavigate("tasks")}
-            >
-              <span className="crm-next-icon crm-next-task">
-                <ListChecks aria-hidden="true" />
-              </span>
-              <span>
-                <strong>{task.title}</strong>
-                <small>
-                  {displayStatus(task.priority)} priority
-                  {" · "}
-                  {dateTime(task.dueAt)}
-                </small>
-              </span>
-            </button>
-          ))}
-          {!futureAppointments.length && !openTasks.length ? (
-            <DashboardSkeleton
-              variant="list"
-              caption="Upcoming appointments and tasks will appear here."
-            />
-          ) : null}
-        </article>
-      </section>
-
-      <section className="crm-dashboard-bottom-grid crm-dashboard-bottom-primary crm-dashboard-bottom-single">
-        <article className="crm-panel crm-pipeline-snapshot-panel">
-          <header>
-            <div>
-              <p>PIPELINE SNAPSHOT</p>
-              <h3>Opportunity progress</h3>
-            </div>
-            <button type="button" onClick={() => onNavigate("pipeline")}>
-              Open pipeline
-            </button>
-          </header>
-          {hasPipelineActivity ? (
-            <>
-              <div className="crm-pipeline-snapshot-summary">
-                <div>
-                  <strong>{money(openPipelineValue, true)}</strong>
-                  <span>Open pipeline value</span>
-                </div>
-                <Badge tone="green">{openPipeline.length} open</Badge>
-              </div>
-              <div className="crm-pipeline-snapshot-list">
-                {pipelineSnapshot.map((stage) => (
-                  <button
-                    key={`${stage.name}-${stage.position}`}
-                    type="button"
-                    onClick={() => onNavigate("pipeline")}
-                  >
-                    <span>
-                      <strong>{stage.name}</strong>
-                      <small>{money(stage.valueCents, true)}</small>
+                  <span className="crm-dashboard-lead-identity">
+                    <span className="crm-avatar">
+                      {initials(displayLeadName(lead))}
                     </span>
-                    <i aria-hidden="true">
-                      <span
-                        style={{
-                          width: `${Math.max(
-                            stage.count ? 7 : 0,
-                            (stage.count / maxPipelineStage) * 100,
-                          )}%`,
-                        }}
-                      />
-                    </i>
-                    <b>{stage.count}</b>
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : (
-            <DashboardSkeleton
-              variant="pipeline"
-              rows={4}
-              caption="Pipeline counts and values will appear with your first active opportunity."
-            />
-          )}
-        </article>
-      </section>
-
-      <section className="crm-dashboard-bottom-grid crm-dashboard-bottom-secondary">
-        <article className="crm-panel crm-recent-conversations-panel">
-          <header>
-            <div>
-              <p>RECENT CONVERSATIONS</p>
-              <h3>Recent text activity</h3>
-            </div>
-            {canViewConversations ? (
-              <button
-                type="button"
-                onClick={() => onNavigate("conversations")}
-              >
-                Open inbox
-              </button>
-            ) : (
-              <span>Restricted</span>
-            )}
-          </header>
-          <div className="crm-conversation-preview-list">
-            {canViewConversations
-              ? recentConversations.map(
-                  ({ conversation, latestMessage, lastActivityAt }) => (
-                    <button
-                      key={conversation.id}
-                      type="button"
-                      onClick={() => onNavigate("conversations")}
-                    >
-                      <span className="crm-dashboard-avatar">
-                        {initials(conversation.contactName)}
-                      </span>
-                      <span className="crm-dashboard-row-copy">
-                        <strong>{conversation.contactName}</strong>
-                        <small>
-                          {latestMessage?.body ||
-                            "Open the inbox to view the latest message"}
-                        </small>
-                      </span>
-                      <span className="crm-conversation-preview-meta">
-                        <time dateTime={lastActivityAt ?? undefined}>
-                          {dateTime(lastActivityAt)}
-                        </time>
-                        {conversation.unreadCount > 0 ? (
-                          <b aria-label={`${conversation.unreadCount} unread`}>
-                            {conversation.unreadCount}
-                          </b>
-                        ) : null}
-                      </span>
-                    </button>
-                  ),
-                )
-              : null}
-            {canViewConversations && !recentConversations.length ? (
-              <DashboardSkeleton
-                variant="conversations"
-                caption="Customer conversations will appear here."
-              />
-            ) : null}
-            {!canViewConversations ? (
-              <p className="crm-dashboard-empty-row">
-                Messaging access is not available for your role.
-              </p>
-            ) : null}
+                    <strong>{displayLeadName(lead)}</strong>
+                  </span>
+                  <span className="crm-dashboard-source">
+                    {lead.source || lead.serviceRequested || "Unknown"}
+                  </span>
+                  <span
+                    className={`crm-dashboard-stage-badge is-${stage.tone}`}
+                  >
+                    {stage.label}
+                  </span>
+                  <time>{relativeTime(lead.createdAt, generatedAtTimestamp)}</time>
+                  <ChevronRight aria-hidden="true" />
+                </button>
+              );
+            })}
           </div>
-        </article>
-
-        <article className="crm-panel crm-business-snapshot-panel">
-          <header>
-            <div>
-              <p>BUSINESS</p>
-              <h3>Invoices, quotes, and jobs</h3>
-            </div>
-            <span>Stage-based totals</span>
-          </header>
-          <div className="crm-business-snapshot-list">
-            <div className="is-unavailable">
-              <span className="crm-dashboard-row-icon">
-                <FileText aria-hidden="true" />
-              </span>
-              <span className="crm-dashboard-row-copy">
-                <strong>Invoices</strong>
-                <small>Invoice tracking is not available yet</small>
-              </span>
-              <b aria-label="Not tracked">—</b>
-            </div>
-            <button type="button" onClick={() => onNavigate("pipeline")}>
-              <span className="crm-dashboard-row-icon">
-                <ScrollText aria-hidden="true" />
-              </span>
-              <span className="crm-dashboard-row-copy">
-                <strong>Quotes</strong>
-                <small>
-                  {money(quoteValue, true)} in estimate-stage opportunities
-                </small>
-              </span>
-              <b>{quotes.length}</b>
-            </button>
-            <button type="button" onClick={() => onNavigate("pipeline")}>
-              <span className="crm-dashboard-row-icon">
-                <BriefcaseBusiness aria-hidden="true" />
-              </span>
-              <span className="crm-dashboard-row-copy">
-                <strong>Jobs</strong>
-                <small>{money(jobValue, true)} in won opportunities</small>
-              </span>
-              <b>{jobs.length}</b>
-            </button>
-          </div>
-        </article>
+        ) : (
+          <DashboardEmpty
+            title="No recent leads"
+            detail="New inquiries will appear here as soon as they are recorded."
+          />
+        )}
       </section>
     </div>
   );
