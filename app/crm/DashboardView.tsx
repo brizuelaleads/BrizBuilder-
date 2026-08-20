@@ -491,7 +491,7 @@ export function DashboardView({
     title: string;
     detail: string;
     icon: LucideIcon;
-    tone: "orange" | "blue" | "green";
+    tone: "orange" | "blue" | "purple";
     destination: DashboardDestination;
   }> = [
     {
@@ -517,7 +517,7 @@ export function DashboardView({
       title: `${overdueFollowUps.length + overdueTasks.length} follow-ups overdue`,
       detail: "Reach out to keep things moving",
       icon: CalendarDays,
-      tone: "green",
+      tone: "purple",
       destination: "tasks",
     },
   ];
