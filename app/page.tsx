@@ -137,9 +137,6 @@ export default function MarketingHome() {
       </header>
 
       <section className={styles.hero} aria-labelledby="landing-title">
-        <div className={styles.heroRingLeft} aria-hidden="true" />
-        <div className={styles.heroRingRight} aria-hidden="true" />
-
         <div className={styles.container}>
           <p className={styles.eyebrow}>Private business platform - Built for LB Marketing</p>
           <h1 id="landing-title">
