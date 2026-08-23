@@ -1080,10 +1080,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
 .site-home {
   min-height: 100vh;
-  background:
-    radial-gradient(circle at top left, rgb(109 93 251 / 14%), transparent 34rem),
-    radial-gradient(circle at 88% 12%, rgb(200 255 77 / 18%), transparent 28rem),
-    #f6f4ef;
+  background: #f6f4ef;
   color: #171a2a;
 }
 
