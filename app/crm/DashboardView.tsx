@@ -616,6 +616,85 @@ export function DashboardView({
         )}
       </section>
 
+      <section className="crm-panel crm-dashboard-marketing-panel">
+        <header>
+          <div className="crm-dashboard-widget-heading">
+            <Megaphone aria-hidden="true" />
+            <h3>Marketing Snapshot</h3>
+          </div>
+        </header>
+        <div className="crm-dashboard-marketing-grid">
+          <article className="crm-dashboard-marketing-card">
+            <span>Ad Spend</span>
+            <strong>
+              {hasReportedAdSpend ? formatProviderSpend(reportedAdSpend) : "-"}
+            </strong>
+            <small>{adSpendSupport}</small>
+            <i
+              className="crm-dashboard-marketing-progress"
+              style={
+                {
+                  "--marketing-progress": `${adBudgetUsedPercent}%`,
+                } as CSSProperties
+              }
+              aria-hidden="true"
+            />
+          </article>
+          <article className="crm-dashboard-marketing-card">
+            <span>Appointments Booked</span>
+            <strong>{appointmentsBooked}</strong>
+            <small>
+              {appointmentsBooked
+                ? todaysAppointments.length
+                  ? `${todaysAppointments.length} today`
+                  : "No appointments today"
+                : "No appointments booked"}
+            </small>
+            <DashboardSparkline values={appointmentTrend} tone="green" />
+          </article>
+          <article className="crm-dashboard-marketing-card is-sources">
+            <span>Lead Sources</span>
+            {sourceShares.length ? (
+              <div className="crm-dashboard-source-snapshot">
+                <div
+                  className="crm-dashboard-source-donut"
+                  style={
+                    {
+                      "--source-gradient": sourceGradient,
+                    } as CSSProperties
+                  }
+                  aria-label={`${totalSourceLeads} total leads by source`}
+                >
+                  <span>Total</span>
+                  <strong>{totalSourceLeads}</strong>
+                </div>
+                <ul>
+                  {sourceShares.map((source) => (
+                    <li key={source.label}>
+                      <i
+                        style={{ background: source.color }}
+                        aria-hidden="true"
+                      />
+                      <span>{source.label}</span>
+                      <strong>{source.percent}%</strong>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <small>No lead source data yet</small>
+            )}
+          </article>
+        </div>
+        <button
+          type="button"
+          className="crm-dashboard-marketing-link"
+          onClick={() => onNavigate("reports")}
+        >
+          View full marketing report
+        </button>
+      </section>
+
       <section className="crm-dashboard-duo-grid" aria-label="Action panels">
         <article className="crm-panel crm-dashboard-attention-panel">
           <header>
@@ -774,85 +853,6 @@ export function DashboardView({
             detail="New inquiries will appear here as soon as they are recorded."
           />
         )}
-      </section>
-
-      <section className="crm-panel crm-dashboard-marketing-panel">
-        <header>
-          <div className="crm-dashboard-widget-heading">
-            <Megaphone aria-hidden="true" />
-            <h3>Marketing Snapshot</h3>
-          </div>
-        </header>
-        <div className="crm-dashboard-marketing-grid">
-          <article className="crm-dashboard-marketing-card">
-            <span>Ad Spend</span>
-            <strong>
-              {hasReportedAdSpend ? formatProviderSpend(reportedAdSpend) : "-"}
-            </strong>
-            <small>{adSpendSupport}</small>
-            <i
-              className="crm-dashboard-marketing-progress"
-              style={
-                {
-                  "--marketing-progress": `${adBudgetUsedPercent}%`,
-                } as CSSProperties
-              }
-              aria-hidden="true"
-            />
-          </article>
-          <article className="crm-dashboard-marketing-card">
-            <span>Appointments Booked</span>
-            <strong>{appointmentsBooked}</strong>
-            <small>
-              {appointmentsBooked
-                ? todaysAppointments.length
-                  ? `${todaysAppointments.length} today`
-                  : "No appointments today"
-                : "No appointments booked"}
-            </small>
-            <DashboardSparkline values={appointmentTrend} tone="green" />
-          </article>
-          <article className="crm-dashboard-marketing-card is-sources">
-            <span>Lead Sources</span>
-            {sourceShares.length ? (
-              <div className="crm-dashboard-source-snapshot">
-                <div
-                  className="crm-dashboard-source-donut"
-                  style={
-                    {
-                      "--source-gradient": sourceGradient,
-                    } as CSSProperties
-                  }
-                  aria-label={`${totalSourceLeads} total leads by source`}
-                >
-                  <span>Total</span>
-                  <strong>{totalSourceLeads}</strong>
-                </div>
-                <ul>
-                  {sourceShares.map((source) => (
-                    <li key={source.label}>
-                      <i
-                        style={{ background: source.color }}
-                        aria-hidden="true"
-                      />
-                      <span>{source.label}</span>
-                      <strong>{source.percent}%</strong>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : (
-              <small>No lead source data yet</small>
-            )}
-          </article>
-        </div>
-        <button
-          type="button"
-          className="crm-dashboard-marketing-link"
-          onClick={() => onNavigate("reports")}
-        >
-          View full marketing report
-        </button>
       </section>
     </div>
   );
