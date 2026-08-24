@@ -5,6 +5,7 @@ import {
   Activity,
   ChevronRight,
   Funnel,
+  Megaphone,
   PhoneCall,
   TrendingUp,
   UsersRound,
@@ -27,7 +28,8 @@ type DashboardDestination =
   | "tasks"
   | "conversations"
   | "connections"
-  | "phone-system";
+  | "phone-system"
+  | "reports";
 
 type SourceLabel = "Meta" | "Google" | "Website" | "Referral" | "Other";
 type ActivityTone = "green" | "orange" | "muted";
@@ -40,6 +42,13 @@ const SOURCE_LABELS: SourceLabel[] = [
   "Referral",
   "Other",
 ];
+const SOURCE_COLORS: Record<SourceLabel, string> = {
+  Meta: "#8b5cf6",
+  Google: "#58d889",
+  Website: "#ff865a",
+  Referral: "#60a5fa",
+  Other: "#a8a29e",
+};
 
 function timestamp(value: string | null) {
   if (!value) return 0;
@@ -282,6 +291,29 @@ function DashboardAreaChart({
   );
 }
 
+function DashboardMiniSparkline({
+  values,
+  tone = "green",
+}: {
+  values: number[];
+  tone?: "green" | "purple";
+}) {
+  const width = 132;
+  const height = 38;
+  const points = chartPoints(values, width, height);
+
+  return (
+    <svg
+      className={`crm-dashboard-snapshot-sparkline is-${tone}`}
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <polyline points={points} />
+    </svg>
+  );
+}
+
 function DashboardEmpty({
   title,
   detail,
@@ -408,6 +440,26 @@ export function DashboardView({
     .filter((item) => item.count > 0)
     .sort((first, second) => second.count - first.count)
     .slice(0, 3);
+  const totalSourceLeads = sourceBreakdown.reduce(
+    (sum, source) => sum + source.count,
+    0,
+  );
+  const sourceShares = sourceBreakdown.map((source) => ({
+    ...source,
+    percent: totalSourceLeads
+      ? Math.round((source.count / totalSourceLeads) * 100)
+      : 0,
+  }));
+  let sourceCursor = 0;
+  const sourceGradient = totalSourceLeads
+    ? `conic-gradient(${sourceShares
+        .map((source) => {
+          const start = sourceCursor;
+          sourceCursor += (source.count / totalSourceLeads) * 360;
+          return `${SOURCE_COLORS[source.label]} ${start}deg ${sourceCursor}deg`;
+        })
+        .join(", ")})`
+    : "conic-gradient(rgb(255 244 232 / 14%) 0deg 360deg)";
 
   const configuredBudgetCents = clients.reduce(
     (sum, client) => sum + client.monthlyAdBudgetCents,
@@ -446,12 +498,17 @@ export function DashboardView({
       ? totalRevenue / 100 / reportedAdSpend
       : null;
 
-  const upcomingAppointments = appointments
-    .filter(
-      (appointment) =>
-        !["CANCELED", "CANCELLED"].includes(appointment.status) &&
-        timestamp(appointment.startsAt) >= generatedAtTimestamp,
-    )
+  const activeAppointments = appointments.filter(
+    (appointment) => !["CANCELED", "CANCELLED"].includes(appointment.status),
+  );
+  const appointmentTrend = bucketSeries(
+    activeAppointments,
+    generatedAtTimestamp,
+    range,
+    (appointment) => appointment.startsAt,
+  );
+  const upcomingAppointments = activeAppointments
+    .filter((appointment) => timestamp(appointment.startsAt) >= generatedAtTimestamp)
     .sort(
       (first, second) =>
         timestamp(first.startsAt) - timestamp(second.startsAt),
@@ -799,6 +856,105 @@ export function DashboardView({
               ? `${todaysAppointments.length} scheduled today`
               : "Calendar is clear today"}
           </p>
+        </article>
+
+        <article className="crm-dashboard-premium-card is-marketing-snapshot">
+          <header className="crm-dashboard-premium-card-header">
+            <div>
+              <span className="crm-dashboard-premium-eyebrow">
+                Marketing Snapshot
+              </span>
+              <h3>Campaign health at a glance</h3>
+            </div>
+            <span className="crm-dashboard-premium-icon" aria-hidden="true">
+              <Megaphone />
+            </span>
+          </header>
+          <div className="crm-dashboard-marketing-snapshot-grid">
+            <section className="crm-dashboard-snapshot-tile">
+              <span>Ad Spend</span>
+              <strong>
+                {reportedAdSpend ? formatProviderSpend(reportedAdSpend) : "-"}
+              </strong>
+              <small>
+                {reportedAdSpend
+                  ? configuredBudgetCents
+                    ? `${Math.round(adBudgetUsedPercent)}% of budget`
+                    : "Connected spend"
+                  : configuredBudgetCents
+                    ? `${money(configuredBudgetCents, true)} budget set`
+                    : "No ad spend connected"}
+              </small>
+              <div
+                className="crm-dashboard-snapshot-progress"
+                style={
+                  {
+                    "--snapshot-progress": `${adBudgetUsedPercent}%`,
+                  } as CSSProperties
+                }
+                aria-hidden="true"
+              >
+                <span />
+              </div>
+            </section>
+
+            <section className="crm-dashboard-snapshot-tile">
+              <span>Appointments Booked</span>
+              <strong>{activeAppointments.length}</strong>
+              <small>
+                {todaysAppointments.length
+                  ? `${todaysAppointments.length} scheduled today`
+                  : "No appointments today"}
+              </small>
+              <DashboardMiniSparkline values={appointmentTrend} />
+            </section>
+
+            <section className="crm-dashboard-snapshot-tile is-sources">
+              <span>Lead Sources</span>
+              <div className="crm-dashboard-snapshot-sources">
+                <div
+                  className="crm-dashboard-snapshot-donut"
+                  style={{ background: sourceGradient }}
+                  aria-hidden="true"
+                >
+                  <span>
+                    <b>{totalSourceLeads}</b>
+                    <small>Total leads</small>
+                  </span>
+                </div>
+                <ul>
+                  {sourceShares.map((source) => (
+                    <li key={source.label}>
+                      <i
+                        style={
+                          {
+                            "--snapshot-source-color":
+                              SOURCE_COLORS[source.label],
+                          } as CSSProperties
+                        }
+                        aria-hidden="true"
+                      />
+                      <span>
+                        {source.label === "Meta"
+                          ? "Meta Ads"
+                          : source.label === "Google"
+                            ? "Google Ads"
+                            : source.label}
+                      </span>
+                      <strong>{source.percent}%</strong>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </section>
+          </div>
+          <button
+            type="button"
+            className="crm-dashboard-marketing-report-link"
+            onClick={() => onNavigate("reports")}
+          >
+            View full marketing report
+          </button>
         </article>
 
         <article className="crm-dashboard-premium-card is-activity">
