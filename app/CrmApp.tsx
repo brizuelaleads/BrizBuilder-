@@ -9,10 +9,12 @@ import {
   useSyncExternalStore,
 } from "react";
 import {
+  Bell,
   BriefcaseBusiness,
   Building2,
   CalendarDays,
   ChartNoAxesCombined,
+  CircleUserRound,
   ContactRound,
   CreditCard,
   Database,
@@ -30,6 +32,7 @@ import {
   PhoneCall,
   Plus,
   Plug,
+  Search,
   Settings as SettingsIcon,
   Sparkles,
   Star,
@@ -122,6 +125,15 @@ const futureModules: FutureModule[] = [
   "forms",
   "funnels",
 ];
+
+function crmTimestamp(value: string | null) {
+  if (!value) return 0;
+  const normalized = value.includes("T")
+    ? value
+    : `${value.replace(" ", "T")}Z`;
+  const parsed = new Date(normalized).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
 
 const nav: Array<{
   id: View;
@@ -406,7 +418,6 @@ export function CrmApp({
         ? selectedClientId
         : data.clients[0]?.id ?? "";
       if (selectedClientId !== nextClientId) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelectedClientId(nextClientId);
       }
       const url = new URL(window.location.href);
@@ -471,23 +482,16 @@ export function CrmApp({
       ),
     [data.leads, effectiveSelectedClientId],
   );
+  const rangeCutoff = useMemo(() => {
+    const days = Number(range);
+    if (range === "all" || !Number.isFinite(days) || days <= 0) return null;
+    return crmTimestamp(data.generatedAt) - days * 86400000;
+  }, [data.generatedAt, range]);
   const filteredLeads = useMemo(() => {
-    const cutoff =
-      range === "all"
-        ? null
-        : new Date(
-            new Date(data.generatedAt).getTime() - Number(range) * 86400000,
-          );
     return workspaceLeads.filter(
-      (lead) =>
-        !cutoff ||
-          new Date(
-            lead.createdAt.includes("T")
-              ? lead.createdAt
-              : `${lead.createdAt.replace(" ", "T")}Z`,
-          ) >= cutoff,
+      (lead) => !rangeCutoff || crmTimestamp(lead.createdAt) >= rangeCutoff,
     );
-  }, [data.generatedAt, range, workspaceLeads]);
+  }, [rangeCutoff, workspaceLeads]);
   const filteredContacts = data.contacts.filter(
     (contact) =>
       effectiveSelectedClientId === "all" ||
@@ -534,20 +538,21 @@ export function CrmApp({
       effectiveSelectedClientId === "all" ||
       appointment.clientId === effectiveSelectedClientId,
   );
-  const filteredConversations = data.conversations.filter(
-    (conversation) =>
-      effectiveSelectedClientId === "all" ||
-      conversation.clientId === effectiveSelectedClientId,
-  );
-  const filteredMessages = data.messages.filter(
-    (message) =>
-      effectiveSelectedClientId === "all" ||
-      message.clientId === effectiveSelectedClientId,
+  const filteredPhoneCalls = data.phoneCalls.filter(
+    (call) =>
+      (effectiveSelectedClientId === "all" ||
+        call.clientId === effectiveSelectedClientId) &&
+      (!rangeCutoff || crmTimestamp(call.startedAt) >= rangeCutoff),
   );
   const filteredClients = data.clients.filter(
     (client) =>
       effectiveSelectedClientId === "all" ||
       client.id === effectiveSelectedClientId,
+  );
+  const filteredProviderConnections = data.providerConnections.filter(
+    (connection) =>
+      effectiveSelectedClientId === "all" ||
+      connection.clientId === effectiveSelectedClientId,
   );
   const selectedLead =
     data.leads.find((lead) => lead.id === selectedLeadId) ?? null;
@@ -742,6 +747,9 @@ export function CrmApp({
   const openTaskCount = filteredTasks.filter(
     (task) => !["COMPLETED", "CANCELED"].includes(task.status),
   ).length;
+  const dashboardNotificationCount =
+    filteredLeads.filter((lead) => lead.status === "NEW").length +
+    openTaskCount;
   const topbarDetail =
     view === "leads"
       ? `${filteredLeads.length} ${filteredLeads.length === 1 ? "lead" : "leads"}`
@@ -1095,9 +1103,40 @@ export function CrmApp({
               onClick={() => setModal("search")}
               aria-label="Search workspace"
             >
-              <span>⌕ Search</span>
+              <Search aria-hidden="true" />
+              <span>Search...</span>
               <kbd>Ctrl K</kbd>
             </button>
+            {view === "dashboard" ? (
+              <>
+                <button
+                  type="button"
+                  className={`crm-topbar-icon-button${
+                    dashboardNotificationCount ? " has-alert" : ""
+                  }`}
+                  onClick={() => navigate("tasks")}
+                  aria-label="Open notifications"
+                >
+                  <Bell aria-hidden="true" />
+                  {dashboardNotificationCount ? (
+                    <span>
+                      {dashboardNotificationCount > 9
+                        ? "9+"
+                        : dashboardNotificationCount}
+                    </span>
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  className="crm-topbar-icon-button"
+                  onClick={() => navigate("settings")}
+                  aria-label="Open account settings"
+                  title={data.viewer.name}
+                >
+                  <CircleUserRound aria-hidden="true" />
+                </button>
+              </>
+            ) : null}
           </div>
         </header>
         <div className="crm-mobile-filterbar">
@@ -1132,16 +1171,14 @@ export function CrmApp({
           <DashboardView
             leads={filteredLeads}
             pipelineLeads={workspaceLeads}
-            clients={filteredClients}
             appointments={filteredAppointments}
             tasks={filteredTasks}
+            clients={filteredClients}
+            phoneCalls={filteredPhoneCalls}
+            providerConnections={filteredProviderConnections}
             stages={data.stages}
-            conversations={filteredConversations}
-            messages={filteredMessages}
+            range={range}
             generatedAt={data.generatedAt}
-            canViewConversations={data.viewer.permissions.includes(
-              "messages.write",
-            )}
             onOpenLead={openLead}
             onNavigate={navigate}
           />
