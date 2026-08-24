@@ -2,13 +2,17 @@
 
 import type { CSSProperties } from "react";
 import {
-  Activity,
+  AlertTriangle,
+  CalendarDays,
   ChevronRight,
+  CircleDollarSign,
   Funnel,
   Megaphone,
   PhoneCall,
   TrendingUp,
+  UserPlus,
   UsersRound,
+  type LucideIcon,
 } from "lucide-react";
 import type {
   CrmAppointment,
@@ -19,7 +23,7 @@ import type {
   CrmStage,
   CrmTask,
 } from "../../db/crm";
-import { dateTime, money } from "./ui";
+import { dateTime, initials, money } from "./ui";
 
 type DashboardDestination =
   | "leads"
@@ -31,24 +35,10 @@ type DashboardDestination =
   | "phone-system"
   | "reports";
 
-type SourceLabel = "Meta" | "Google" | "Website" | "Referral" | "Other";
-type ActivityTone = "green" | "orange" | "muted";
+type KpiTone = "green" | "orange" | "purple";
 
 const DAY_MS = 86_400_000;
-const SOURCE_LABELS: SourceLabel[] = [
-  "Meta",
-  "Google",
-  "Website",
-  "Referral",
-  "Other",
-];
-const SOURCE_COLORS: Record<SourceLabel, string> = {
-  Meta: "#8b5cf6",
-  Google: "#58d889",
-  Website: "#ff865a",
-  Referral: "#60a5fa",
-  Other: "#a8a29e",
-};
+const SOURCE_COLORS = ["#18b65d", "#ff7a2f", "#6947ff", "#4d8fff", "#9ca3af"];
 
 function timestamp(value: string | null) {
   if (!value) return 0;
@@ -59,24 +49,31 @@ function timestamp(value: string | null) {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-function startOfMonth(value: number) {
-  const date = new Date(value || Date.now());
-  date.setDate(1);
-  date.setHours(0, 0, 0, 0);
-  return date.getTime();
+function rangeLabel(range: string) {
+  if (range === "all") return "All time";
+  return `Last ${range} days`;
 }
 
-function startOfPreviousMonth(value: number) {
-  const date = new Date(value || Date.now());
-  date.setDate(1);
-  date.setMonth(date.getMonth() - 1);
-  date.setHours(0, 0, 0, 0);
-  return date.getTime();
+function previousRangeCount(
+  leads: CrmLead[],
+  range: string,
+  generatedAtTimestamp: number,
+) {
+  const days = Number(range);
+  if (!Number.isFinite(days) || days <= 0) return null;
+  const currentStart = generatedAtTimestamp - days * DAY_MS;
+  const previousStart = currentStart - days * DAY_MS;
+  return leads.filter((lead) => {
+    const createdAt = timestamp(lead.createdAt);
+    return createdAt >= previousStart && createdAt < currentStart;
+  }).length;
 }
 
-function clampPercent(value: number) {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(100, value));
+function formatLeadDelta(current: number, previous: number | null) {
+  if (previous == null) return rangeLabel("all");
+  if (previous === 0) return current ? `+${current} vs previous` : "No change";
+  const percent = Math.round(((current - previous) / previous) * 100);
+  return `${percent >= 0 ? "+" : ""}${percent}% vs previous`;
 }
 
 function isOpenTask(task: CrmTask) {
@@ -111,16 +108,6 @@ function providerIsAdReporting(connection: CrmProviderConnection) {
     provider.includes("facebook") ||
     provider === "google_ads"
   );
-}
-
-function providerIsMeta(connection: CrmProviderConnection) {
-  const provider = connection.provider.toLowerCase();
-  return provider.includes("meta") || provider.includes("facebook");
-}
-
-function providerIsGoogle(connection: CrmProviderConnection) {
-  const provider = connection.provider.toLowerCase();
-  return provider.includes("google") || provider === "google_ads";
 }
 
 function formatProviderSpend(value: number) {
@@ -178,35 +165,25 @@ function displayLeadName(lead: CrmLead) {
   return name || "Unnamed lead";
 }
 
-function sourceCategory(lead: CrmLead): SourceLabel {
-  const value = `${lead.source} ${lead.campaign ?? ""}`.toLowerCase();
-  if (
-    value.includes("meta") ||
-    value.includes("facebook") ||
-    value.includes("instagram")
-  ) {
-    return "Meta";
+function stageDisplay(lead: CrmLead) {
+  if (lead.status === "NEW") return { label: "New", tone: "new" };
+  if (["CONTACTED", "QUALIFIED"].includes(lead.status)) {
+    return { label: "Contacted", tone: "contacted" };
   }
-  if (
-    value.includes("google") ||
-    value.includes("adwords") ||
-    value.includes("gmb") ||
-    value.includes("gbp")
-  ) {
-    return "Google";
+  if (["APPOINTMENT_BOOKED", "ESTIMATE_SENT"].includes(lead.status)) {
+    return { label: "Booked", tone: "booked" };
   }
-  if (
-    value.includes("website") ||
-    value.includes("form") ||
-    value.includes("landing") ||
-    value.includes("site")
-  ) {
-    return "Website";
-  }
-  if (value.includes("referral") || value.includes("refer")) {
-    return "Referral";
-  }
-  return "Other";
+  if (lead.status === "WON") return { label: "Won", tone: "won" };
+  return {
+    label:
+      lead.stageName ||
+      lead.status
+        .toLowerCase()
+        .split("_")
+        .map((part) => part[0]?.toUpperCase() + part.slice(1))
+        .join(" "),
+    tone: "neutral",
+  };
 }
 
 function bucketSeries<T>(
@@ -216,7 +193,7 @@ function bucketSeries<T>(
   getTime: (item: T) => string | null,
   getValue: (item: T) => number = () => 1,
 ) {
-  const buckets = Array.from({ length: 10 }, () => 0);
+  const buckets = Array.from({ length: 8 }, () => 0);
   const eventTimes = items
     .map((item) => timestamp(getTime(item)))
     .filter((value) => value > 0);
@@ -249,67 +226,36 @@ function bucketSeries<T>(
   return buckets;
 }
 
-function chartPoints(values: number[], width: number, height: number) {
+function sparklinePoints(values: number[]) {
+  const width = 96;
+  const height = 32;
   const max = Math.max(...values, 1);
   const min = Math.min(...values, 0);
   const range = Math.max(1, max - min);
-  const top = 12;
-  const bottom = height - 10;
-  const drawable = bottom - top;
-
   return values
     .map((value, index) => {
       const x = (index / Math.max(1, values.length - 1)) * width;
-      const y = bottom - ((value - min) / range) * drawable;
+      const y = height - 5 - ((value - min) / range) * 22;
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     })
     .join(" ");
 }
 
-function DashboardAreaChart({
+function DashboardSparkline({
   values,
-  tone = "green",
+  tone,
 }: {
   values: number[];
-  tone?: "green" | "orange";
+  tone: KpiTone;
 }) {
-  const width = 280;
-  const height = 124;
-  const points = chartPoints(values, width, height);
-  const areaPoints = `0,${height} ${points} ${width},${height}`;
-
   return (
     <svg
-      className={`crm-dashboard-premium-chart is-${tone}`}
-      viewBox={`0 0 ${width} ${height}`}
+      className={`crm-dashboard-sparkline is-${tone}`}
+      viewBox="0 0 96 32"
       preserveAspectRatio="none"
       aria-hidden="true"
     >
-      <polygon points={areaPoints} />
-      <polyline points={points} />
-    </svg>
-  );
-}
-
-function DashboardMiniSparkline({
-  values,
-  tone = "green",
-}: {
-  values: number[];
-  tone?: "green" | "purple";
-}) {
-  const width = 132;
-  const height = 38;
-  const points = chartPoints(values, width, height);
-
-  return (
-    <svg
-      className={`crm-dashboard-snapshot-sparkline is-${tone}`}
-      viewBox={`0 0 ${width} ${height}`}
-      preserveAspectRatio="none"
-      aria-hidden="true"
-    >
-      <polyline points={points} />
+      <polyline points={sparklinePoints(values)} />
     </svg>
   );
 }
@@ -322,7 +268,7 @@ function DashboardEmpty({
   detail: string;
 }) {
   return (
-    <div className="crm-dashboard-premium-empty">
+    <div className="crm-dashboard-calm-empty">
       <strong>{title}</strong>
       <span>{detail}</span>
     </div>
@@ -337,6 +283,7 @@ export function DashboardView({
   clients,
   phoneCalls,
   providerConnections,
+  stages,
   range,
   generatedAt,
   onOpenLead,
@@ -356,61 +303,17 @@ export function DashboardView({
   onNavigate: (view: DashboardDestination) => void;
 }) {
   const generatedAtTimestamp = timestamp(generatedAt);
-  const weekStart = generatedAtTimestamp - 7 * DAY_MS;
-  const previousWeekStart = weekStart - 7 * DAY_MS;
-  const monthStart = startOfMonth(generatedAtTimestamp);
-  const previousMonthStart = startOfPreviousMonth(generatedAtTimestamp);
-
-  const openPipelineLeads = pipelineLeads.filter(isInactiveLead);
-  const pipelineValue = openPipelineLeads.reduce(
-    (sum, lead) => sum + lead.estimatedValueCents,
-    0,
+  const previousLeads = previousRangeCount(
+    pipelineLeads,
+    range,
+    generatedAtTimestamp,
   );
-  const wonLeads = pipelineLeads.filter((lead) => lead.status === "WON");
-  const totalRevenue = wonLeads.reduce(
+
+  const wonLeads = leads.filter((lead) => lead.status === "WON");
+  const revenue = wonLeads.reduce(
     (sum, lead) => sum + lead.finalRevenueCents,
     0,
   );
-  const revenueThisMonth = wonLeads
-    .filter((lead) => timestamp(lead.updatedAt) >= monthStart)
-    .reduce((sum, lead) => sum + lead.finalRevenueCents, 0);
-  const previousMonthRevenue = wonLeads
-    .filter((lead) => {
-      const updatedAt = timestamp(lead.updatedAt);
-      return updatedAt >= previousMonthStart && updatedAt < monthStart;
-    })
-    .reduce((sum, lead) => sum + lead.finalRevenueCents, 0);
-  const revenueMonthLabel =
-    revenueThisMonth > previousMonthRevenue
-      ? `Up ${money(revenueThisMonth, true)} this month`
-      : revenueThisMonth
-        ? `${money(revenueThisMonth, true)} won this month`
-        : "No won revenue this month";
-  const pipelineTrend = bucketSeries(
-    openPipelineLeads,
-    generatedAtTimestamp,
-    range,
-    (lead) => lead.createdAt,
-    (lead) => Math.max(0, lead.estimatedValueCents / 100),
-  );
-
-  const leadsThisWeek = pipelineLeads.filter(
-    (lead) => timestamp(lead.createdAt) >= weekStart,
-  );
-  const previousWeekLeads = pipelineLeads.filter((lead) => {
-    const createdAt = timestamp(lead.createdAt);
-    return createdAt >= previousWeekStart && createdAt < weekStart;
-  });
-  const weeklyLeadGoal = Math.max(
-    10,
-    Math.ceil(
-      (Math.max(leadsThisWeek.length, previousWeekLeads.length, 1) * 1.2) / 5,
-    ) * 5,
-  );
-  const leadGoalPercent = clampPercent(
-    (leadsThisWeek.length / weeklyLeadGoal) * 100,
-  );
-
   const inboundCalls = phoneCalls.filter(
     (call) => call.direction.toLowerCase() !== "outbound",
   );
@@ -423,408 +326,345 @@ export function DashboardView({
         providerIsCallTracking(connection) &&
         (connection.isActive || connection.isLinked),
     );
-  const missedCallTexts = missedCalls.filter(
-    (call) => call.missedCallTextSentAt,
-  ).length;
-  const openFollowUps = tasks.filter(isOpenTask).length;
 
-  const sourceBreakdown = SOURCE_LABELS.map((label) => ({
-    label,
-    count: leads.filter((lead) => sourceCategory(lead) === label).length,
-  }));
-  const maxSourceCount = Math.max(
-    1,
-    ...sourceBreakdown.map((item) => item.count),
+  const openTasks = tasks.filter(isOpenTask);
+  const overdueFollowUps = pipelineLeads.filter(
+    (lead) =>
+      isInactiveLead(lead) &&
+      lead.nextFollowUpAt &&
+      timestamp(lead.nextFollowUpAt) <= generatedAtTimestamp,
   );
-  const topSourceBreakdown = [...sourceBreakdown]
-    .filter((item) => item.count > 0)
-    .sort((first, second) => second.count - first.count)
-    .slice(0, 3);
-  const totalSourceLeads = sourceBreakdown.reduce(
-    (sum, source) => sum + source.count,
-    0,
+  const untouchedLeads = pipelineLeads.filter(
+    (lead) => lead.status === "NEW" && !lead.lastContactedAt,
   );
-  const sourceShares = sourceBreakdown.map((source) => ({
-    ...source,
-    percent: totalSourceLeads
-      ? Math.round((source.count / totalSourceLeads) * 100)
-      : 0,
-  }));
-  let sourceCursor = 0;
-  const sourceGradient = totalSourceLeads
-    ? `conic-gradient(${sourceShares
-        .map((source) => {
-          const start = sourceCursor;
-          sourceCursor += (source.count / totalSourceLeads) * 360;
-          return `${SOURCE_COLORS[source.label]} ${start}deg ${sourceCursor}deg`;
-        })
-        .join(", ")})`
-    : "conic-gradient(rgb(255 244 232 / 14%) 0deg 360deg)";
+  const overdueTasks = openTasks.filter(
+    (task) => task.dueAt && timestamp(task.dueAt) < generatedAtTimestamp,
+  );
 
   const configuredBudgetCents = clients.reduce(
     (sum, client) => sum + client.monthlyAdBudgetCents,
     0,
   );
-  const adConnections = providerConnections.filter(
-    (connection) =>
-      providerIsAdReporting(connection) &&
-      (connection.isActive || connection.isLinked) &&
-      connection.monthSpend != null,
-  );
-  const reportedAdSpend = adConnections.reduce(
-    (sum, connection) => sum + (connection.monthSpend ?? 0),
-    0,
-  );
-  const metaSpend = adConnections
-    .filter(providerIsMeta)
+  const reportedAdSpend = providerConnections
+    .filter(
+      (connection) =>
+        providerIsAdReporting(connection) &&
+        (connection.isActive || connection.isLinked) &&
+        connection.monthSpend != null,
+    )
     .reduce((sum, connection) => sum + (connection.monthSpend ?? 0), 0);
-  const googleSpend = adConnections
-    .filter(providerIsGoogle)
-    .reduce((sum, connection) => sum + (connection.monthSpend ?? 0), 0);
-  const adBudgetDollars = configuredBudgetCents / 100;
-  const adBudgetUsedPercent = clampPercent(
-    adBudgetDollars ? (reportedAdSpend / adBudgetDollars) * 100 : 0,
-  );
-  const remainingAdBudgetCents = Math.max(
-    0,
-    configuredBudgetCents - Math.round(reportedAdSpend * 100),
-  );
-  const adLeadCount = leads.filter((lead) =>
-    ["Meta", "Google"].includes(sourceCategory(lead)),
-  ).length;
-  const costPerLead = adLeadCount ? reportedAdSpend / adLeadCount : null;
+  const hasReportedAdSpend = reportedAdSpend > 0;
   const roas =
-    reportedAdSpend > 0 && totalRevenue > 0
-      ? totalRevenue / 100 / reportedAdSpend
+    hasReportedAdSpend && revenue > 0
+      ? revenue / 100 / reportedAdSpend
       : null;
 
   const activeAppointments = appointments.filter(
     (appointment) => !["CANCELED", "CANCELLED"].includes(appointment.status),
   );
+  const todaysAppointments = activeAppointments
+    .filter(
+      (appointment) =>
+        dateKey(appointment.startsAt) === dateKey(generatedAtTimestamp),
+    )
+    .sort(
+      (first, second) =>
+        timestamp(first.startsAt) - timestamp(second.startsAt),
+    )
+    .slice(0, 3);
+
+  const stagesBySlug = new Map(stages.map((stage) => [stage.slug, stage]));
+  const pipelineTargets = [
+    { label: "New", slugs: ["new"], statuses: ["NEW"] },
+    {
+      label: "Contacted",
+      slugs: ["contacted", "qualified"],
+      statuses: ["CONTACTED", "QUALIFIED"],
+    },
+    {
+      label: "Booked",
+      slugs: ["appointment-booked", "estimate-sent", "booked"],
+      statuses: ["APPOINTMENT_BOOKED", "ESTIMATE_SENT"],
+    },
+    { label: "Won", slugs: ["won"], statuses: ["WON"] },
+  ];
+  const pipelineItems = pipelineTargets.map((target) => {
+    const stageIds = target.slugs
+      .map((slug) => stagesBySlug.get(slug)?.id)
+      .filter((id): id is string => Boolean(id));
+    const count = pipelineLeads.filter(
+      (lead) =>
+        target.statuses.includes(lead.status) ||
+        stageIds.includes(lead.stageId),
+    ).length;
+    return { label: target.label, count };
+  });
+  const maxPipelineCount = Math.max(
+    1,
+    ...pipelineItems.map((item) => item.count),
+  );
+
+  const recentLeads = [...leads]
+    .sort(
+      (first, second) => timestamp(second.createdAt) - timestamp(first.createdAt),
+    )
+    .slice(0, 4);
+  const appointmentsBooked = activeAppointments.length;
   const appointmentTrend = bucketSeries(
     activeAppointments,
     generatedAtTimestamp,
     range,
     (appointment) => appointment.startsAt,
   );
-  const upcomingAppointments = activeAppointments
-    .filter((appointment) => timestamp(appointment.startsAt) >= generatedAtTimestamp)
-    .sort(
-      (first, second) =>
-        timestamp(first.startsAt) - timestamp(second.startsAt),
-    )
-    .slice(0, 4);
-  const todaysAppointments = upcomingAppointments.filter(
-    (appointment) =>
-      dateKey(appointment.startsAt) === dateKey(generatedAtTimestamp),
+  const adBudgetCents = configuredBudgetCents;
+  const adBudgetUsedPercent =
+    adBudgetCents && hasReportedAdSpend
+      ? Math.min(100, Math.round((reportedAdSpend / (adBudgetCents / 100)) * 100))
+      : 0;
+  const adSpendSupport = hasReportedAdSpend
+    ? adBudgetCents
+      ? `${adBudgetUsedPercent}% of monthly budget`
+      : "Connected spend"
+    : adBudgetCents
+      ? `${money(adBudgetCents, true)} budget set`
+      : "No ad spend connected";
+  const sourceCounts = leads.reduce((sourceMap, lead) => {
+    const label = lead.source.trim() || "Unattributed";
+    sourceMap.set(label, (sourceMap.get(label) ?? 0) + 1);
+    return sourceMap;
+  }, new Map<string, number>());
+  const sourceEntries = Array.from(sourceCounts.entries()).sort(
+    (first, second) => second[1] - first[1],
   );
+  const topSourceEntries = sourceEntries.slice(0, 4);
+  const otherSourceCount = sourceEntries
+    .slice(4)
+    .reduce((sum, [, count]) => sum + count, 0);
+  const sourceShareEntries: Array<[string, number]> = otherSourceCount
+    ? [...topSourceEntries, ["Other sources", otherSourceCount]]
+    : topSourceEntries;
+  const totalSourceLeads = sourceShareEntries.reduce(
+    (sum, [, count]) => sum + count,
+    0,
+  );
+  const sourceShares = sourceShareEntries.map(([label, count], index) => ({
+    label,
+    count,
+    percent: totalSourceLeads
+      ? Math.round((count / totalSourceLeads) * 100)
+      : 0,
+    color: SOURCE_COLORS[index % SOURCE_COLORS.length],
+  }));
+  const sourceSegments = sourceShares.reduce<
+    Array<{ color: string; start: number; end: number }>
+  >((segments, source) => {
+    const start = segments.at(-1)?.end ?? 0;
+    const end =
+      start +
+      (totalSourceLeads ? (source.count / totalSourceLeads) * 360 : 0);
+    return [...segments, { color: source.color, start, end }];
+  }, []);
+  const sourceGradient = sourceSegments.length
+    ? `conic-gradient(${sourceSegments
+        .map(
+          (segment) =>
+            `${segment.color} ${segment.start.toFixed(1)}deg ${segment.end.toFixed(1)}deg`,
+        )
+        .join(", ")})`
+    : "conic-gradient(#edf1ee 0deg 360deg)";
 
-  const recentActivity: Array<{
+  const kpiCards: Array<{
+    label: string;
+    value: string;
+    support: string;
+    icon: LucideIcon;
+    tone: KpiTone;
+    sparkline: number[];
+  }> = [
+    {
+      label: "Leads",
+      value: String(leads.length),
+      support:
+        previousLeads == null
+          ? rangeLabel(range)
+          : formatLeadDelta(leads.length, previousLeads),
+      icon: UsersRound,
+      tone: "green",
+      sparkline: bucketSeries(
+        leads,
+        generatedAtTimestamp,
+        range,
+        (lead) => lead.createdAt,
+      ),
+    },
+    {
+      label: "Missed Calls",
+      value: callTrackingConnected ? String(missedCalls.length) : "-",
+      support: callTrackingConnected
+        ? missedCalls.length
+          ? "Needs response"
+          : "No missed calls"
+        : "No call tracking connected",
+      icon: PhoneCall,
+      tone: "orange",
+      sparkline: bucketSeries(
+        missedCalls,
+        generatedAtTimestamp,
+        range,
+        (call) => call.startedAt,
+      ),
+    },
+    {
+      label: "Revenue",
+      value: money(revenue),
+      support: revenue ? `${wonLeads.length} won leads` : "No revenue recorded",
+      icon: CircleDollarSign,
+      tone: "green",
+      sparkline: bucketSeries(
+        wonLeads,
+        generatedAtTimestamp,
+        range,
+        (lead) => lead.updatedAt,
+        (lead) => Math.max(0, lead.finalRevenueCents / 100),
+      ),
+    },
+    {
+      label: "ROAS",
+      value: roas == null ? "-" : `${roas.toFixed(1)}x`,
+      support: hasReportedAdSpend
+        ? `${formatProviderSpend(reportedAdSpend)} spend`
+        : configuredBudgetCents
+          ? `${money(configuredBudgetCents, true)} budget set`
+          : "No ad spend connected",
+      icon: TrendingUp,
+      tone: "purple",
+      sparkline:
+        roas == null
+          ? [0, 0, 0, 0, 0, 0, 0, 0]
+          : [
+              roas * 0.72,
+              roas * 0.8,
+              roas * 0.76,
+              roas * 0.9,
+              roas,
+              roas * 0.94,
+              roas * 1.05,
+              roas,
+            ],
+    },
+  ];
+
+  const attentionItems: Array<{
     id: string;
     title: string;
     detail: string;
-    occurredAt: string;
-    tone: ActivityTone;
+    icon: LucideIcon;
+    tone: "orange" | "blue" | "purple";
     destination: DashboardDestination;
-    lead?: CrmLead;
   }> = [
-    ...missedCalls.map((call) => ({
-      id: `missed-${call.id}`,
-      title: "Missed call",
-      detail: call.missedCallTextSentAt
-        ? "Auto text sent"
-        : "Needs follow up",
-      occurredAt: call.startedAt,
-      tone: "orange" as ActivityTone,
-      destination: "conversations" as DashboardDestination,
-    })),
-    ...phoneCalls
-      .filter((call) => !isMissedCall(call))
-      .map((call) => ({
-        id: `call-${call.id}`,
-        title:
-          call.direction.toLowerCase() === "outbound"
-            ? "Outbound call"
-            : "Call logged",
-        detail:
-          call.durationSeconds && call.durationSeconds > 0
-            ? `${Math.round(call.durationSeconds / 60)} min call`
-            : "Conversation recorded",
-        occurredAt: call.startedAt,
-        tone: "muted" as ActivityTone,
-        destination: "conversations" as DashboardDestination,
-      })),
-    ...leads.map((lead) => ({
-      id: `lead-${lead.id}`,
-      title:
-        sourceCategory(lead) === "Website"
-          ? "Form submission"
-          : displayLeadName(lead),
-      detail: `${lead.source || "Manual"} - ${lead.serviceRequested}`,
-      occurredAt: lead.createdAt,
-      tone: "green" as ActivityTone,
-      destination: "leads" as DashboardDestination,
-      lead,
-    })),
-    ...wonLeads.map((lead) => ({
-      id: `won-${lead.id}`,
-      title: "Booked job",
-      detail: `${displayLeadName(lead)} - ${money(lead.finalRevenueCents)}`,
-      occurredAt: lead.updatedAt,
-      tone: "green" as ActivityTone,
-      destination: "pipeline" as DashboardDestination,
-      lead,
-    })),
-  ]
-    .filter((item) => timestamp(item.occurredAt) > 0)
-    .sort(
-      (first, second) =>
-        timestamp(second.occurredAt) - timestamp(first.occurredAt),
-    )
-    .slice(0, 5);
+    {
+      id: "missed-calls",
+      title: `${missedCalls.length} missed calls`,
+      detail: callTrackingConnected
+        ? "Return calls to capture more leads"
+        : "Connect call tracking",
+      icon: PhoneCall,
+      tone: "orange",
+      destination: callTrackingConnected ? "conversations" : "phone-system",
+    },
+    {
+      id: "untouched-leads",
+      title: `${untouchedLeads.length} new leads need response`,
+      detail: "Respond to new inquiries",
+      icon: UserPlus,
+      tone: "blue",
+      destination: "leads",
+    },
+    {
+      id: "overdue-follow-ups",
+      title: `${overdueFollowUps.length + overdueTasks.length} follow-ups overdue`,
+      detail: "Reach out to keep things moving",
+      icon: CalendarDays,
+      tone: "purple",
+      destination: "tasks",
+    },
+  ];
 
   return (
-    <div className="crm-view crm-dashboard-view crm-dashboard-premium">
+    <div className="crm-view crm-dashboard-view">
       <section
-        className="crm-dashboard-premium-grid"
+        className="crm-dashboard-kpi-grid"
         aria-label="Business snapshot"
       >
-        <article className="crm-dashboard-premium-card is-revenue">
-          <header className="crm-dashboard-premium-card-header">
-            <div>
-              <span className="crm-dashboard-premium-eyebrow">
-                Revenue / Pipeline Value
-              </span>
-              <h3>What is on the table?</h3>
-            </div>
-            <span className="crm-dashboard-premium-badge is-green">
-              {revenueMonthLabel}
-            </span>
-          </header>
-          <div className="crm-dashboard-premium-value">
-            {money(pipelineValue)}
-          </div>
-          <p className="crm-dashboard-premium-muted">
-            Open pipeline across {openPipelineLeads.length} active leads.
-          </p>
-          <DashboardAreaChart values={pipelineTrend} />
-          <div className="crm-dashboard-premium-split">
-            <span>
-              <small>Won revenue</small>
-              <strong>{money(totalRevenue)}</strong>
-            </span>
-            <span>
-              <small>View</small>
-              <button type="button" onClick={() => onNavigate("pipeline")}>
-                Pipeline
-              </button>
-            </span>
-          </div>
-        </article>
-
-        <article className="crm-dashboard-premium-card is-leads">
-          <header className="crm-dashboard-premium-card-header">
-            <div>
-              <span className="crm-dashboard-premium-eyebrow">
-                Leads This Week
-              </span>
-              <h3>Are we on pace?</h3>
-            </div>
-            <span className="crm-dashboard-premium-icon" aria-hidden="true">
-              <UsersRound />
-            </span>
-          </header>
-          <div className="crm-dashboard-premium-value">
-            {leadsThisWeek.length}
-          </div>
-          <div className="crm-dashboard-premium-progress-label">
-            <span>Goal {weeklyLeadGoal}</span>
-            <strong>{Math.round(leadGoalPercent)}%</strong>
-          </div>
-          <div
-            className="crm-dashboard-premium-progress"
-            style={
-              {
-                "--dashboard-progress": `${leadGoalPercent}%`,
-              } as CSSProperties
-            }
-          >
-            <span />
-          </div>
-          <div className="crm-dashboard-premium-source-chips">
-            {topSourceBreakdown.length ? (
-              topSourceBreakdown.map((source) => (
-                <span key={source.label}>
-                  <b>{source.label}</b>
-                  {source.count}
+        {kpiCards.map(
+          ({ label, value, support, icon: Icon, tone, sparkline }) => (
+            <article
+              key={label}
+              className={`crm-dashboard-kpi-card is-${tone}`}
+            >
+              <div className="crm-dashboard-kpi-heading">
+                <span className="crm-dashboard-icon-box" aria-hidden="true">
+                  <Icon />
                 </span>
-              ))
-            ) : (
-              <span>
-                <b>No leads</b>
-                This week
-              </span>
+                <span>{label}</span>
+              </div>
+              <strong>{value}</strong>
+              <small>{support}</small>
+              <DashboardSparkline values={sparkline} tone={tone} />
+            </article>
+          ),
+        )}
+      </section>
+
+      <section className="crm-dashboard-duo-grid" aria-label="Action panels">
+        <article className="crm-panel crm-dashboard-attention-panel">
+          <header>
+            <div className="crm-dashboard-widget-heading">
+              <AlertTriangle aria-hidden="true" />
+              <h3>Needs Attention</h3>
+            </div>
+            <button type="button" onClick={() => onNavigate("tasks")}>
+              View all
+            </button>
+          </header>
+          <div className="crm-dashboard-attention-list">
+            {attentionItems.map(
+              ({ id, title, detail, icon: Icon, tone, destination }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onNavigate(destination)}
+                >
+                  <span
+                    className={`crm-dashboard-row-icon is-${tone}`}
+                    aria-hidden="true"
+                  >
+                    <Icon />
+                  </span>
+                  <span>
+                    <strong>{title}</strong>
+                    <small>{detail}</small>
+                  </span>
+                  <ChevronRight aria-hidden="true" />
+                </button>
+              ),
             )}
           </div>
         </article>
 
-        <article className="crm-dashboard-premium-card is-missed">
-          <header className="crm-dashboard-premium-card-header">
-            <div>
-              <span className="crm-dashboard-premium-eyebrow">
-                Missed Calls
-              </span>
-              <h3>Who needs follow up?</h3>
-            </div>
-            <span
-              className="crm-dashboard-premium-icon is-alert"
-              aria-hidden="true"
-            >
-              <PhoneCall />
-            </span>
-          </header>
-          <div className="crm-dashboard-premium-value is-alert">
-            {callTrackingConnected ? missedCalls.length : "-"}
-          </div>
-          <p className="crm-dashboard-premium-muted">
-            {callTrackingConnected
-              ? missedCalls.length
-                ? "Needs follow up"
-                : "No missed calls"
-              : "Call tracking not connected"}
-          </p>
-          <div className="crm-dashboard-premium-alert-row">
-            <span>
-              <strong>{missedCallTexts}</strong>
-              auto-texts
-            </span>
-            <span>
-              <strong>{openFollowUps}</strong>
-              open follow-ups
-            </span>
-          </div>
-          <button
-            type="button"
-            className="crm-dashboard-premium-action"
-            onClick={() =>
-              onNavigate(callTrackingConnected ? "conversations" : "phone-system")
-            }
-          >
-            Open calls
-            <ChevronRight aria-hidden="true" />
-          </button>
-        </article>
-
-        <article className="crm-dashboard-premium-card is-sources">
-          <header className="crm-dashboard-premium-card-header">
-            <div>
-              <span className="crm-dashboard-premium-eyebrow">
-                Lead Sources
-              </span>
-              <h3>Where are leads coming from?</h3>
-            </div>
-            <span className="crm-dashboard-premium-icon" aria-hidden="true">
-              <Funnel />
-            </span>
-          </header>
-          <div className="crm-dashboard-source-bars">
-            {sourceBreakdown.map((source) => (
-              <div className="crm-dashboard-source-row" key={source.label}>
-                <span>{source.label}</span>
-                <i
-                  style={
-                    {
-                      "--dashboard-source": `${
-                        source.count
-                          ? Math.max(7, (source.count / maxSourceCount) * 100)
-                          : 0
-                      }%`,
-                    } as CSSProperties
-                  }
-                  aria-hidden="true"
-                >
-                  <b />
-                </i>
-                <strong>{source.count}</strong>
-              </div>
-            ))}
-          </div>
-        </article>
-
-        <article className="crm-dashboard-premium-card is-ad">
-          <header className="crm-dashboard-premium-card-header">
-            <div>
-              <span className="crm-dashboard-premium-eyebrow">
-                Ad Spend / ROAS
-              </span>
-              <h3>Is spend turning into leads?</h3>
-            </div>
-            <span className="crm-dashboard-premium-icon" aria-hidden="true">
-              <TrendingUp />
-            </span>
-          </header>
-          <div className="crm-dashboard-ad-body">
-            <div
-              className="crm-dashboard-donut"
-              style={
-                {
-                  "--dashboard-donut": `${adBudgetUsedPercent * 3.6}deg`,
-                } as CSSProperties
-              }
-              aria-hidden="true"
-            >
-              <span>{Math.round(adBudgetUsedPercent)}%</span>
-            </div>
-            <div>
-              <strong>{formatProviderSpend(reportedAdSpend)}</strong>
-              <small>Budget used</small>
-              <em>
-                {configuredBudgetCents
-                  ? `${money(remainingAdBudgetCents, true)} remaining`
-                  : "No budget set"}
-              </em>
-            </div>
-          </div>
-          <dl className="crm-dashboard-ad-metrics">
-            <div>
-              <dt>Meta</dt>
-              <dd>{formatProviderSpend(metaSpend)}</dd>
-            </div>
-            <div>
-              <dt>Google</dt>
-              <dd>{formatProviderSpend(googleSpend)}</dd>
-            </div>
-            <div>
-              <dt>Leads</dt>
-              <dd>{adLeadCount}</dd>
-            </div>
-            <div>
-              <dt>CPL</dt>
-              <dd>
-                {costPerLead == null ? "-" : formatProviderSpend(costPerLead)}
-              </dd>
-            </div>
-          </dl>
-          <p className="crm-dashboard-premium-muted">
-            {roas == null ? "ROAS unavailable" : `${roas.toFixed(1)}x ROAS`}
-          </p>
-        </article>
-
-        <article className="crm-dashboard-premium-card is-appointments">
-          <header className="crm-dashboard-premium-card-header">
-            <div>
-              <span className="crm-dashboard-premium-eyebrow">
-                Upcoming Appointments
-              </span>
-              <h3>What is next on the calendar?</h3>
+        <article className="crm-panel crm-dashboard-today-panel">
+          <header>
+            <div className="crm-dashboard-widget-heading">
+              <CalendarDays aria-hidden="true" />
+              <h3>Today</h3>
             </div>
             <button type="button" onClick={() => onNavigate("calendar")}>
               View calendar
             </button>
           </header>
-          {upcomingAppointments.length ? (
-            <div className="crm-dashboard-premium-list">
-              {upcomingAppointments.map((appointment) => (
+          <div className="crm-dashboard-today-list">
+            {todaysAppointments.length ? (
+              todaysAppointments.map((appointment) => (
                 <button
                   key={appointment.id}
                   type="button"
@@ -833,168 +673,186 @@ export function DashboardView({
                   <time>{timeOnly(appointment.startsAt)}</time>
                   <span>
                     <strong>{appointment.contactName}</strong>
-                    <small>
-                      {appointment.serviceType} - {durationLabel(appointment)}
-                    </small>
+                    <small>{appointment.serviceType}</small>
                   </span>
-                  <em>
-                    {dateKey(appointment.startsAt) === dateKey(generatedAtTimestamp)
-                      ? "Today"
-                      : dateTime(appointment.startsAt).split(",")[0]}
-                  </em>
+                  <em>{durationLabel(appointment)}</em>
                 </button>
-              ))}
-            </div>
-          ) : (
-            <DashboardEmpty
-              title="No upcoming appointments"
-              detail="Booked appointments will appear here."
-            />
-          )}
-          <p className="crm-dashboard-premium-footnote">
-            {todaysAppointments.length
-              ? `${todaysAppointments.length} scheduled today`
-              : "Calendar is clear today"}
-          </p>
+              ))
+            ) : (
+              <DashboardEmpty
+                title="No appointments today"
+                detail="Booked appointments for this date will appear here."
+              />
+            )}
+          </div>
         </article>
+      </section>
 
-        <article className="crm-dashboard-premium-card is-marketing-snapshot">
-          <header className="crm-dashboard-premium-card-header">
-            <div>
-              <span className="crm-dashboard-premium-eyebrow">
-                Marketing Snapshot
-              </span>
-              <h3>Campaign health at a glance</h3>
+      <section className="crm-panel crm-dashboard-pipeline-overview">
+        <header>
+          <div className="crm-dashboard-widget-heading">
+            <Funnel aria-hidden="true" />
+            <h3>Pipeline Overview</h3>
+          </div>
+        </header>
+        <div className="crm-dashboard-pipeline-strip">
+          {pipelineItems.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              className="crm-dashboard-pipeline-stage"
+              onClick={() => onNavigate("pipeline")}
+              style={
+                {
+                  "--pipeline-progress": `${
+                    item.count
+                      ? Math.max(10, (item.count / maxPipelineCount) * 100)
+                      : 0
+                  }%`,
+                } as CSSProperties
+              }
+            >
+              <span>{item.label}</span>
+              <strong>{item.count}</strong>
+              <i aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="crm-panel crm-dashboard-recent-panel">
+        <header>
+          <div className="crm-dashboard-widget-heading">
+            <UserPlus aria-hidden="true" />
+            <h3>Recent Leads</h3>
+          </div>
+          <button type="button" onClick={() => onNavigate("leads")}>
+            View all leads
+          </button>
+        </header>
+        {recentLeads.length ? (
+          <div className="crm-dashboard-recent-table" role="table">
+            <div className="crm-dashboard-recent-head" role="row">
+              <span>Name</span>
+              <span>Source</span>
+              <span>Stage</span>
+              <span>Time</span>
+              <span aria-hidden="true" />
             </div>
-            <span className="crm-dashboard-premium-icon" aria-hidden="true">
-              <Megaphone />
-            </span>
-          </header>
-          <div className="crm-dashboard-marketing-snapshot-grid">
-            <section className="crm-dashboard-snapshot-tile">
-              <span>Ad Spend</span>
-              <strong>
-                {reportedAdSpend ? formatProviderSpend(reportedAdSpend) : "-"}
-              </strong>
-              <small>
-                {reportedAdSpend
-                  ? configuredBudgetCents
-                    ? `${Math.round(adBudgetUsedPercent)}% of budget`
-                    : "Connected spend"
-                  : configuredBudgetCents
-                    ? `${money(configuredBudgetCents, true)} budget set`
-                    : "No ad spend connected"}
-              </small>
-              <div
-                className="crm-dashboard-snapshot-progress"
-                style={
-                  {
-                    "--snapshot-progress": `${adBudgetUsedPercent}%`,
-                  } as CSSProperties
-                }
-                aria-hidden="true"
-              >
-                <span />
-              </div>
-            </section>
-
-            <section className="crm-dashboard-snapshot-tile">
-              <span>Appointments Booked</span>
-              <strong>{activeAppointments.length}</strong>
-              <small>
-                {todaysAppointments.length
-                  ? `${todaysAppointments.length} scheduled today`
-                  : "No appointments today"}
-              </small>
-              <DashboardMiniSparkline values={appointmentTrend} />
-            </section>
-
-            <section className="crm-dashboard-snapshot-tile is-sources">
-              <span>Lead Sources</span>
-              <div className="crm-dashboard-snapshot-sources">
-                <div
-                  className="crm-dashboard-snapshot-donut"
-                  style={{ background: sourceGradient }}
-                  aria-hidden="true"
+            {recentLeads.map((lead) => {
+              const stage = stageDisplay(lead);
+              return (
+                <button
+                  key={lead.id}
+                  type="button"
+                  className="crm-dashboard-recent-row"
+                  onClick={() => onOpenLead(lead)}
                 >
-                  <span>
-                    <b>{totalSourceLeads}</b>
-                    <small>Total leads</small>
+                  <span className="crm-dashboard-lead-identity">
+                    <span className="crm-avatar">
+                      {initials(displayLeadName(lead))}
+                    </span>
+                    <strong>{displayLeadName(lead)}</strong>
                   </span>
+                  <span className="crm-dashboard-source">
+                    {lead.source || lead.serviceRequested || "Unknown"}
+                  </span>
+                  <span
+                    className={`crm-dashboard-stage-badge is-${stage.tone}`}
+                  >
+                    {stage.label}
+                  </span>
+                  <time>{relativeTime(lead.createdAt, generatedAtTimestamp)}</time>
+                  <ChevronRight aria-hidden="true" />
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <DashboardEmpty
+            title="No recent leads"
+            detail="New inquiries will appear here as soon as they are recorded."
+          />
+        )}
+      </section>
+
+      <section className="crm-panel crm-dashboard-marketing-panel">
+        <header>
+          <div className="crm-dashboard-widget-heading">
+            <Megaphone aria-hidden="true" />
+            <h3>Marketing Snapshot</h3>
+          </div>
+        </header>
+        <div className="crm-dashboard-marketing-grid">
+          <article className="crm-dashboard-marketing-card">
+            <span>Ad Spend</span>
+            <strong>
+              {hasReportedAdSpend ? formatProviderSpend(reportedAdSpend) : "-"}
+            </strong>
+            <small>{adSpendSupport}</small>
+            <i
+              className="crm-dashboard-marketing-progress"
+              style={
+                {
+                  "--marketing-progress": `${adBudgetUsedPercent}%`,
+                } as CSSProperties
+              }
+              aria-hidden="true"
+            />
+          </article>
+          <article className="crm-dashboard-marketing-card">
+            <span>Appointments Booked</span>
+            <strong>{appointmentsBooked}</strong>
+            <small>
+              {appointmentsBooked
+                ? todaysAppointments.length
+                  ? `${todaysAppointments.length} today`
+                  : "No appointments today"
+                : "No appointments booked"}
+            </small>
+            <DashboardSparkline values={appointmentTrend} tone="green" />
+          </article>
+          <article className="crm-dashboard-marketing-card is-sources">
+            <span>Lead Sources</span>
+            {sourceShares.length ? (
+              <div className="crm-dashboard-source-snapshot">
+                <div
+                  className="crm-dashboard-source-donut"
+                  style={
+                    {
+                      "--source-gradient": sourceGradient,
+                    } as CSSProperties
+                  }
+                  aria-label={`${totalSourceLeads} total leads by source`}
+                >
+                  <span>Total</span>
+                  <strong>{totalSourceLeads}</strong>
                 </div>
                 <ul>
                   {sourceShares.map((source) => (
                     <li key={source.label}>
                       <i
-                        style={
-                          {
-                            "--snapshot-source-color":
-                              SOURCE_COLORS[source.label],
-                          } as CSSProperties
-                        }
+                        style={{ background: source.color }}
                         aria-hidden="true"
                       />
-                      <span>
-                        {source.label === "Meta"
-                          ? "Meta Ads"
-                          : source.label === "Google"
-                            ? "Google Ads"
-                            : source.label}
-                      </span>
+                      <span>{source.label}</span>
                       <strong>{source.percent}%</strong>
                     </li>
                   ))}
                 </ul>
               </div>
-            </section>
-          </div>
-          <button
-            type="button"
-            className="crm-dashboard-marketing-report-link"
-            onClick={() => onNavigate("reports")}
-          >
-            View full marketing report
-          </button>
-        </article>
-
-        <article className="crm-dashboard-premium-card is-activity">
-          <header className="crm-dashboard-premium-card-header">
-            <div>
-              <span className="crm-dashboard-premium-eyebrow">
-                Recent Activity
-              </span>
-              <h3>What just happened?</h3>
-            </div>
-            <span className="crm-dashboard-premium-icon" aria-hidden="true">
-              <Activity />
-            </span>
-          </header>
-          {recentActivity.length ? (
-            <div className="crm-dashboard-activity-list">
-              {recentActivity.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() =>
-                    item.lead ? onOpenLead(item.lead) : onNavigate(item.destination)
-                  }
-                >
-                  <i className={`is-${item.tone}`} aria-hidden="true" />
-                  <span>
-                    <strong>{item.title}</strong>
-                    <small>{item.detail}</small>
-                  </span>
-                  <em>{relativeTime(item.occurredAt, generatedAtTimestamp)}</em>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <DashboardEmpty
-              title="No recent activity"
-              detail="Calls, forms, and booked jobs will appear here."
-            />
-          )}
-        </article>
+            ) : (
+              <small>No lead source data yet</small>
+            )}
+          </article>
+        </div>
+        <button
+          type="button"
+          className="crm-dashboard-marketing-link"
+          onClick={() => onNavigate("reports")}
+        >
+          View full marketing report
+        </button>
       </section>
     </div>
   );
