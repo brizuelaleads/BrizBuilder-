@@ -446,6 +446,38 @@ test("neither listing action can return a key or decrypted credential", () => {
   }
 });
 
+test("one CallRail company can serve only one client", () => {
+  const uniqueness = read(
+    "supabase/migrations/20260819010000_callrail_company_uniqueness.sql",
+  );
+  // Enforced in the database, so no future code path can bypass it.
+  assert.match(
+    uniqueness,
+    /create unique index[\s\S]*?callrail_credentials_company_unique_idx[\s\S]*?\(organization_id, company_id\)[\s\S]*?where company_id is not null/,
+  );
+  // A setup that has not chosen a company yet must stay exempt, or two
+  // half-finished connections would collide on NULL.
+  assert.match(uniqueness, /where company_id is not null/);
+
+  // And surfaced in the application, before anything is written.
+  const conflict = block(crmSource, "async function callRailCompanyConflict");
+  assert.ok(conflict, "the conflict lookup exists");
+  assert.match(conflict, /\.eq\("organization_id", organizationId\)/);
+  assert.match(conflict, /\.eq\("company_id", companyId\)/);
+  assert.match(conflict, /\.neq\("client_id", clientId\)/);
+
+  const select = block(crmSource, 'if (action === "select_callrail_company")');
+  const checkAt = select.indexOf("callRailCompanyConflict(");
+  const writeAt = select.indexOf('.from("callrail_credentials")');
+  assert.ok(checkAt > -1, "selection checks for a conflict");
+  assert.ok(checkAt < writeAt, "the check precedes the write");
+  assert.match(select, /already connected to \$\{claimedBy\}/);
+
+  // Reconnecting must not silently re-claim a company someone else now holds.
+  const connect = block(crmSource, 'if (action === "connect_callrail")');
+  assert.match(connect, /callRailCompanyConflict\([\s\S]*?keptCompany = null;/);
+});
+
 test("the permission exists in both permission files", () => {
   const d1Source = read("db/crm.ts");
   assert.match(d1Source, /"call_tracking\.manage"/);

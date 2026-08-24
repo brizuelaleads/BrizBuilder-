@@ -425,6 +425,41 @@ function callRailPublicConfig(
 // organization-wide sweep, for clients nobody ever revisits, belongs to a
 // trusted scheduled process or an agency-admin-only action — deliberately not
 // to this path.
+/**
+ * Names the other client already using a CallRail company, or null when the
+ * company is free.
+ *
+ * A unique index enforces this in the database. This exists so the operator
+ * sees which business already holds the company instead of a raw constraint
+ * violation, and so the conflict is detected before anything is written.
+ */
+async function callRailCompanyConflict(
+  organizationId: string,
+  clientId: string,
+  companyId: string,
+): Promise<string | null> {
+  const rows = await assertOk(
+    supabase()
+      .from("callrail_credentials")
+      .select("client_id")
+      .eq("organization_id", organizationId)
+      .eq("company_id", companyId)
+      .neq("client_id", clientId)
+      .limit(1),
+  );
+  const other = Array.isArray(rows) ? rows[0] : null;
+  if (!other) return null;
+  const owner = await assertOk(
+    supabase()
+      .from("clients")
+      .select("business_name")
+      .eq("id", String(other.client_id))
+      .eq("organization_id", organizationId)
+      .maybeSingle(),
+  );
+  return owner?.business_name ? String(owner.business_name) : "another business";
+}
+
 async function purgeAbandonedCallRailSetupForClient(
   context: TenantContext,
   clientId: string,
@@ -4744,6 +4779,19 @@ export async function executeSupabaseCrmAction(
           companyPage.companies.find(
             (company) => company.id === String(existing.company_id),
           ) ?? null;
+        // A company another client has claimed in the meantime is not
+        // retained. Dropping back to setup is right here: the key is still
+        // good, and only the stale selection is in question.
+        if (
+          keptCompany &&
+          (await callRailCompanyConflict(
+            context.organizationId,
+            clientId,
+            keptCompany.id,
+          ))
+        ) {
+          keptCompany = null;
+        }
       }
     }
 
@@ -4943,6 +4991,19 @@ export async function executeSupabaseCrmAction(
       companyId,
       access.apiKey,
     );
+
+    // One CallRail company serves one business. Two clients sharing one company
+    // would record every call, contact and lead twice once webhooks are live,
+    // and report two conversions for a single phone call.
+    const claimedBy = await callRailCompanyConflict(
+      context.organizationId,
+      clientId,
+      company.id,
+    );
+    if (claimedBy)
+      throw new Error(
+        `${company.name} is already connected to ${claimedBy}. One CallRail company can serve only one business — sharing it would record every call twice.`,
+      );
 
     const now = new Date().toISOString();
     await assertOk(
