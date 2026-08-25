@@ -45,7 +45,12 @@ type CallRailDeliveryOutcome =
   | "accepted"
   | "duplicate"
   | "rejected_signature"
+  // Retained so rows written before the split still read back. Nothing
+  // emits it any more: the three below say which of its cases occurred.
   | "rejected_payload"
+  | "rejected_unparseable"
+  | "rejected_missing_call_id"
+  | "rejected_company_mismatch"
   | "rejected_unknown_client"
   | "rejected_ingest_disabled"
   | "failed";
@@ -254,35 +259,60 @@ async function receiveCallRailWebhook(
       companyId: verifier.companyId,
       bodySha256,
       signatureValid: true,
-      outcome: "rejected_payload",
+      outcome: "rejected_unparseable",
     });
     return {
       status: 400,
       accepted: false,
       process: false,
       deliveryId,
-      outcome: "rejected_payload",
+      outcome: "rejected_unparseable",
     };
   }
 
   const envelope = readCallRailWebhook(route.kind, body);
-  if (!envelope || !verifier.companyId || envelope.companyId !== verifier.companyId) {
+  if (!envelope) {
     const deliveryId = await recordDelivery({
       organizationId: verifier.organizationId,
       clientId: verifier.clientId,
       kind: route.kind,
-      callId: envelope?.callId ?? null,
-      companyId: envelope?.companyId ?? verifier.companyId,
+      callId: null,
+      companyId: verifier.companyId,
       bodySha256,
       signatureValid: true,
-      outcome: "rejected_payload",
+      outcome: "rejected_missing_call_id",
     });
     return {
       status: 400,
       accepted: false,
       process: false,
       deliveryId,
-      outcome: "rejected_payload",
+      outcome: "rejected_missing_call_id",
+    };
+  }
+
+  // A body that names a company must name ours. A body that names none is
+  // the ordinary case and is not an error — CallRail's post-call payload is
+  // the call object's default fields, which exclude company_id. Nothing is
+  // lost by proceeding: ingestFetchedCall refetches the call with company_id
+  // explicitly requested and refuses it there if it belongs elsewhere.
+  if (envelope.companyId && envelope.companyId !== verifier.companyId) {
+    const deliveryId = await recordDelivery({
+      organizationId: verifier.organizationId,
+      clientId: verifier.clientId,
+      kind: envelope.kind,
+      callId: envelope.callId,
+      companyId: envelope.companyId,
+      bodySha256,
+      signatureValid: true,
+      outcome: "rejected_company_mismatch",
+    });
+    return {
+      status: 400,
+      accepted: false,
+      process: false,
+      deliveryId,
+      outcome: "rejected_company_mismatch",
     };
   }
 

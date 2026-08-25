@@ -188,6 +188,7 @@ test("the envelope carries only what decides which call to refetch", () => {
   assert.ok(envelope);
   // The vector's ids are numeric in JSON; both forms have to be readable.
   assert.equal(envelope.callId, "766970532");
+  // This body does state a company, so it is carried through to be checked.
   assert.equal(envelope.companyId, "155920786");
   assert.equal(envelope.kind, "post_call");
   // The body is a notification, not a source of truth: nothing else is taken.
@@ -210,12 +211,11 @@ test("string identifiers are read as readily as numeric ones", () => {
   assert.equal(envelope.resourceId, "RES123");
 });
 
-test("a payload without the identifiers is rejected, not half-processed", () => {
+test("a payload without a call id is rejected, not half-processed", () => {
   for (const body of [
     {},
     { id: "" },
     { company_id: "COM123" },
-    { id: "CAL123" },
     { id: null, company_id: null },
     null,
     "a string",
@@ -224,6 +224,11 @@ test("a payload without the identifiers is rejected, not half-processed", () => 
   ]) {
     assert.equal(readCallRailWebhook("post_call", body), null, JSON.stringify(body));
   }
+  // A call id and nothing else is enough, and used to be refused here. That
+  // is the shape of a real CallRail post-call notification: the call object's
+  // default fields, which do not include company_id. Requiring one turned a
+  // genuine delivery away in production.
+  assert.ok(readCallRailWebhook("post_call", { id: "CAL123" }));
   // And an unrecognized kind is refused whatever the body says.
   assert.equal(
     readCallRailWebhook("form_submission", JSON.parse(VECTOR_BODY)),
@@ -458,4 +463,74 @@ test("our URLs carry the per-connection path id, not a tenant id", () => {
   assert.notEqual(URLS.post_call.url, URLS.call_modified.url);
   assert.equal(URLS.post_call.configKey, "post_call_webhook");
   assert.equal(URLS.call_modified.configKey, "updated_call_webhook");
+});
+
+// ------------------------------- what CallRail actually posts after a call
+
+/**
+ * CallRail's post-call webhook sends "the call object ... as specified in the
+ * call endpoint" — that endpoint's DEFAULT field set. company_id is an
+ * additional field returned only when a request asks for it, and a webhook
+ * cannot ask. So a real notification looks like this, with no company_id.
+ *
+ * Requiring one refused a genuine delivery in production on 2026-08-25.
+ */
+const REAL_POST_CALL_BODY = {
+  answered: true,
+  business_phone_number: "+12544159229",
+  customer_city: "Riverside",
+  customer_country: "US",
+  customer_name: "Phone Caller",
+  customer_phone_number: "+19515550147",
+  customer_state: "CA",
+  direction: "inbound",
+  duration: 42,
+  id: "CAL8154748ae6bd4e278a7cddd38a662f4f",
+  recording: null,
+  recording_duration: null,
+  recording_player: null,
+  start_time: "2026-08-25T20:38:31.000-05:00",
+  tracking_phone_number: "+12543823256",
+  voicemail: false,
+};
+
+test("a real post-call body is read, company_id and all", () => {
+  const envelope = readCallRailWebhook("post_call", REAL_POST_CALL_BODY);
+  assert.ok(envelope, "the delivery CallRail actually sends must be readable");
+  assert.equal(envelope.callId, "CAL8154748ae6bd4e278a7cddd38a662f4f");
+  assert.equal(envelope.kind, "post_call");
+  // Not stated is null, and null is not a fault.
+  assert.equal(envelope.companyId, null);
+  assert.equal(envelope.resourceId, null);
+});
+
+test("the call id is the only field a delivery must carry", () => {
+  assert.equal(readCallRailWebhook("post_call", { id: "CAL1234abcd" }).callId, "CAL1234abcd");
+  // call_id is accepted as well, and a legacy numeric id still works.
+  assert.equal(readCallRailWebhook("post_call", { call_id: "CAL1234abcd" }).callId, "CAL1234abcd");
+  assert.equal(readCallRailWebhook("post_call", { id: 4185551234 }).callId, "4185551234");
+
+  // Without one there is nothing to refetch, so there is nothing to do.
+  for (const body of [{}, { company_id: "COM1234abcd" }, { id: "" }, { id: "   " }, { id: null }]) {
+    assert.equal(readCallRailWebhook("post_call", body), null, JSON.stringify(body));
+  }
+});
+
+test("a stated company is carried through so it can be checked", () => {
+  const envelope = readCallRailWebhook("post_call", {
+    id: "CAL1234abcd",
+    company_id: "COM01a01bbd448f7a50ae9af08e491425f4",
+    resource_id: "CAL1234abcd",
+  });
+  assert.equal(envelope.companyId, "COM01a01bbd448f7a50ae9af08e491425f4");
+  assert.equal(envelope.resourceId, "CAL1234abcd");
+});
+
+test("a body that is not an object is still refused", () => {
+  for (const body of [null, undefined, "CAL1234abcd", 12345, [], [{ id: "CAL1" }], true]) {
+    assert.equal(readCallRailWebhook("post_call", body), null, JSON.stringify(body));
+  }
+  // And an unknown route kind is refused whatever the body says.
+  assert.equal(readCallRailWebhook("pre_call", { id: "CAL1234abcd" }), null);
+  assert.equal(readCallRailWebhook("", { id: "CAL1234abcd" }), null);
 });

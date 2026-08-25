@@ -168,8 +168,15 @@ export type CallRailWebhookEnvelope = {
   kind: CallRailWebhookKind;
   /** CallRail's own call id. The idempotency key for everything downstream. */
   callId: string;
-  /** The company the call belongs to, checked against the connection. */
-  companyId: string;
+  /**
+   * The company the call belongs to, when the body says.
+   *
+   * Null is the ordinary case for a post-call notification, not a fault:
+   * CallRail sends the call object's default field set, and company_id is
+   * only returned when a request asks for it, which a webhook cannot do.
+   * Null means "not stated" — never "wrong".
+   */
+  companyId: string | null;
   /** The resource id, when the payload carries one. */
   resourceId: string | null;
 };
@@ -210,12 +217,13 @@ export function readCallRailWebhook(
   if (!body || typeof body !== "object" || Array.isArray(body)) return null;
   const payload = body as Record<string, unknown>;
   const callId = asIdentifier(payload.id ?? payload.call_id);
-  const companyId = asIdentifier(payload.company_id);
-  if (!callId || !companyId) return null;
+  // The call id is the only thing a delivery is required to carry: it is what
+  // decides which call to refetch, and there is nothing to do without it.
+  if (!callId) return null;
   return {
     kind,
     callId,
-    companyId,
+    companyId: asIdentifier(payload.company_id) || null,
     resourceId: asIdentifier(payload.resource_id) || null,
   };
 }

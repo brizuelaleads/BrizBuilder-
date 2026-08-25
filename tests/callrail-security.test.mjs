@@ -22,6 +22,9 @@ const migrationSource = read(
 const ingestionMigrationSource = read(
   "supabase/migrations/20260825000000_callrail_ingestion.sql",
 );
+const outcomeMigrationSource = read(
+  "supabase/migrations/20260826000000_callrail_delivery_outcomes.sql",
+);
 const workerSource = read("worker/index.ts");
 const leadWorkerSource = read("lead-worker/src/index.ts");
 const connectionsUi = read("app/crm/WorkflowViews.tsx");
@@ -1853,4 +1856,142 @@ test("the stranded-cleanup state survives a reload because the server holds it",
     codeOnly(disable),
     /if \(cleanupOk\) \{[\s\S]*webhook_integration_id: null/,
   );
+});
+
+
+// ----------------------------- refusals say which refusal, and store no body
+
+test("each way a delivery can be refused is recorded as its own outcome", () => {
+  const receiver = block(ingestionSource, "async function receiveCallRailWebhook");
+  assert.ok(receiver);
+
+  // An unparseable body, a body with no call id, and a body naming somebody
+  // else's company are three different events, and the row says which.
+  const unparseableAt = receiver.indexOf('outcome: "rejected_unparseable"');
+  const missingIdAt = receiver.indexOf('outcome: "rejected_missing_call_id"');
+  const mismatchAt = receiver.indexOf('outcome: "rejected_company_mismatch"');
+  for (const [name, at] of [
+    ["rejected_unparseable", unparseableAt],
+    ["rejected_missing_call_id", missingIdAt],
+    ["rejected_company_mismatch", mismatchAt],
+  ]) {
+    assert.ok(at > -1, `${name} is emitted`);
+  }
+  // In that order: parse, then read, then compare.
+  assert.ok(unparseableAt < missingIdAt, "parsing is refused first");
+  assert.ok(missingIdAt < mismatchAt, "the id is required before the company");
+
+  // The collapsed outcome is gone from the code, though the type keeps it so
+  // rows written before the split still read back.
+  assert.equal(
+    /outcome: "rejected_payload"/.test(receiver),
+    false,
+    "nothing emits the collapsed outcome any more",
+  );
+  assert.match(ingestionSource, /\| "rejected_payload"/);
+
+  // Every refusal creates no CRM data.
+  const refusals = receiver.slice(receiver.indexOf('outcome: "rejected_unparseable"'));
+  assert.equal(
+    /from\("contacts"\)|from\("leads"\)|from\("callrail_calls"\)/.test(
+      refusals.slice(0, refusals.indexOf('outcome: "accepted"') + 1),
+    ),
+    false,
+    "a refused delivery writes nothing but its own row",
+  );
+});
+
+test("a missing company id is not a refusal", () => {
+  const receiver = block(ingestionSource, "async function receiveCallRailWebhook");
+  // The comparison is guarded on the body having stated one at all.
+  assert.match(
+    receiver,
+    /if \(envelope\.companyId && envelope\.companyId !== verifier\.companyId\)/,
+  );
+  // The old form refused whenever either side was absent.
+  assert.equal(
+    /!verifier\.companyId \|\| envelope\.companyId !== verifier\.companyId/.test(receiver),
+    false,
+    "absence must not be treated as mismatch",
+  );
+
+  // And the strict check still happens where the data is authoritative: on
+  // the call refetched from the API, which does request company_id.
+  const ingest = block(ingestionSource, "export async function ingestFetchedCall");
+  assert.match(
+    ingest,
+    /if \(!call\.companyId \|\| call\.companyId !== state\.companyId\) \{\s*\n\s*throw new Error\(/,
+  );
+  assert.match(providerSource, /"company_id",/);
+  const fields = section(providerSource, "const CALLRAIL_CALL_FIELDS = [", "];");
+  assert.match(fields, /"company_id"/);
+});
+
+test("the raw webhook body is never stored, only its digest", () => {
+  const record = block(ingestionSource, "async function recordDelivery");
+  assert.ok(record);
+  assert.match(record, /body_sha256: input\.bodySha256/);
+  // No column takes the body, the decoded text, or the parsed object.
+  for (const forbidden of ["rawBytes", "body:", "payload", "raw_body", "body_text"]) {
+    assert.equal(
+      record.includes(forbidden),
+      false,
+      `${forbidden} must not reach the delivery row`,
+    );
+  }
+  // recordDelivery is only ever handed a digest, never the bytes.
+  assert.equal(
+    /bodySha256: [^,\n]*(rawBytes|body)\b/.test(ingestionSource),
+    false,
+    "the digest is computed before it is passed, never the body itself",
+  );
+  const columns = section(
+    ingestionMigrationSource,
+    "create table if not exists public.callrail_webhook_deliveries",
+    ");",
+  );
+  assert.ok(columns);
+  assert.match(columns, /body_sha256 text not null/);
+  assert.equal(
+    /\bbody text|payload jsonb|raw_body/.test(columns),
+    false,
+    "the table has nowhere to put a raw body",
+  );
+});
+
+test("the delivery outcome constraint admits exactly the new vocabulary", () => {
+  assert.match(
+    outcomeMigrationSource,
+    /drop constraint if exists callrail_webhook_deliveries_outcome_check/,
+  );
+  const check = section(
+    outcomeMigrationSource,
+    "add constraint callrail_webhook_deliveries_outcome_check",
+    ";",
+  );
+  assert.ok(check);
+  for (const outcome of [
+    "accepted",
+    "duplicate",
+    "rejected_signature",
+    "rejected_payload",
+    "rejected_unparseable",
+    "rejected_missing_call_id",
+    "rejected_company_mismatch",
+    "rejected_unknown_client",
+    "rejected_ingest_disabled",
+    "failed",
+  ]) {
+    assert.ok(check.includes(`'${outcome}'`), `${outcome} is admitted`);
+  }
+  // The type and the constraint have to agree, or a write throws at runtime.
+  const type = section(
+    ingestionSource,
+    "type CallRailDeliveryOutcome =",
+    "type CallRailDeliveryReceipt",
+  );
+  for (const outcome of check.match(/'([a-z_]+)'/g) ?? []) {
+    const bare = outcome.replaceAll("'", "");
+    assert.ok(type.includes(`"${bare}"`), `${bare} exists in the type too`);
+  }
 });
