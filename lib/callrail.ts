@@ -184,7 +184,11 @@ export type CallRailCall = {
   leadStatus: string | null;
   callType: string | null;
   tags: string[];
+  /** Always null. See mapCall. */
   recordingUrl: string | null;
+  /** Whether CallRail reported a recording, without saying where it is. */
+  recordingAvailable: boolean;
+  recordingDurationSeconds: number | null;
   transcript: string | null;
   callSummary: string | null;
 };
@@ -643,9 +647,13 @@ function mapCall(row: Record<string, unknown>): CallRailCall {
     leadStatus: asOptionalText(row.lead_status),
     callType: asOptionalText(row.call_type),
     tags: asStringArray(row.tags),
-    // Recording URLs can be expiring and HIPAA-sensitive. Ingestion keeps the
-    // call source of truth in CallRail until media policy/storage is designed.
+    // The URL is still never kept. What is kept is whether there is one and
+    // how long it runs, which is all the interface needs to decide between
+    // offering a player and saying there is nothing to play. The audio is
+    // fetched per request, by a route that checks who is asking.
     recordingUrl: null,
+    recordingAvailable: asText(row.recording) !== "",
+    recordingDurationSeconds: asOptionalNumber(row.recording_duration),
     transcript: mapTranscript(row.transcription ?? row.conversational_transcript),
     callSummary: mapCallSummary(row.call_summary),
   };
@@ -1012,6 +1020,80 @@ export function callRailDateParam(instant: Date): string {
  * three affected which calls came back — only their order and packaging. What
  * is left is the documented default: offset pagination over a filtered window.
  */
+/**
+ * The audio for one call, streamed straight through.
+ *
+ * CallRail's `recording` field is a URL that redirects to an MP3. Both hops
+ * are made here, with the customer's API key, and the body is handed back
+ * untouched — it is never buffered into memory, written down, or given a URL
+ * a browser could reach on its own.
+ *
+ * `range` is passed along verbatim when present so a browser can seek. A
+ * server that ignores Range still plays, but scrubbing a long call means
+ * downloading all of it first.
+ */
+export async function getCallRailRecording(
+  accountId: string,
+  callId: string,
+  apiKey: string,
+  range?: string | null,
+): Promise<Response | null> {
+  const safeAccountId = assertCallRailAccountId(accountId);
+  const safeCallId = asText(callId);
+  if (!/^(CAL[A-Za-z0-9]{8,80}|[0-9]{6,24})$/u.test(safeCallId)) {
+    throw new Error("That is not a valid CallRail call ID.");
+  }
+
+  // The current URL, asked for now rather than remembered: it can expire.
+  const body = await callRailRequest(
+    `/a/${safeAccountId}/calls/${safeCallId}.json`,
+    apiKey,
+    { fields: "recording" },
+    "calls.get",
+  );
+  const recordingUrl = asText(body.recording);
+  if (!recordingUrl) return null;
+
+  let target: URL;
+  try {
+    target = new URL(recordingUrl);
+  } catch {
+    return null;
+  }
+  // Only CallRail's own host, over TLS. A redirect target is somewhere this
+  // server would otherwise follow with a credential attached.
+  if (target.protocol !== "https:" || !isCallRailHost(target.hostname)) {
+    throw new CallRailApiError("rejected", messageForStatus("rejected"));
+  }
+
+  const headers: Record<string, string> = {
+    Authorization: `Token token="${apiKey}"`,
+    "Request-From": CALLRAIL_REQUEST_FROM,
+  };
+  if (range) headers.Range = range;
+
+  const response = await fetch(target.toString(), { headers, redirect: "follow" });
+  if (response.status === 404) return null;
+  if (!response.ok && response.status !== 206) {
+    const status = statusForResponse(response);
+    console.error("CallRail request rejected.", {
+      endpoint: "calls.recording",
+      httpStatus: response.status,
+    });
+    throw new CallRailApiError(status, messageForStatus(status));
+  }
+  return response;
+}
+
+/** CallRail's own hosts, and only those. */
+function isCallRailHost(hostname: string): boolean {
+  return (
+    hostname === "api.callrail.com" ||
+    hostname === "app.callrail.com" ||
+    hostname.endsWith(".callrail.com")
+  );
+}
+
 export async function listCallRailCallIds(
   accountId: string,
   companyId: string,

@@ -1205,6 +1205,7 @@ export function CrmApp({
           <FoundationContactsView
             contacts={filteredContacts}
             clients={data.clients}
+            calls={data.calls}
             onAddContact={() => setModal("contact")}
             onImportContacts={() => setModal("contact-import")}
             canImport={data.viewer.permissions.includes("contacts.import")}
@@ -1469,6 +1470,7 @@ export function CrmApp({
           activities={data.activities}
           tasks={data.tasks}
           appointments={data.appointments}
+          calls={data.calls}
           mutate={mutate}
           onClose={() => setSelectedLeadId(null)}
         />

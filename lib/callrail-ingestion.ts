@@ -22,7 +22,6 @@ import {
 } from "./meta-eligibility";
 import {
   decideReInquiry,
-  normalizeReInquiryWindowDays,
   selectNewestLead,
 } from "./callrail-reinquiry";
 import { getSupabaseAdminClient } from "./supabase/server";
@@ -401,7 +400,7 @@ async function ingestionState(organizationId: string, clientId: string) {
   const row = await checked(
     db()
       .from("callrail_credentials")
-      .select("account_id,company_id,ingest_enabled,re_inquiry_window_days")
+      .select("account_id,company_id,ingest_enabled")
       .eq("organization_id", organizationId)
       .eq("client_id", clientId)
       .maybeSingle(),
@@ -411,11 +410,6 @@ async function ingestionState(organizationId: string, clientId: string) {
     accountId: text(data?.account_id, 80),
     companyId: text(data?.company_id, 80),
     enabled: data?.ingest_enabled === true,
-    // A misconfigured window falls back to the default rather than
-    // stopping a lead from being recorded at all.
-    reInquiryWindowDays: normalizeReInquiryWindowDays(
-      data?.re_inquiry_window_days,
-    ),
   };
 }
 
@@ -457,6 +451,8 @@ function callRowPatch(
     fbclid: call.fbclid,
     is_session_tracker: call.isSessionTracker,
     recording_url: call.recordingUrl,
+    recording_available: call.recordingAvailable,
+    recording_duration_seconds: call.recordingDurationSeconds,
     transcript: call.transcript,
     call_summary: call.callSummary,
     last_webhook_kind: kind,
@@ -656,16 +652,14 @@ async function ensureLead(
   clientId: string,
   contactId: string,
   call: CallRailCall,
-  windowDays: number,
 ) {
   if (callRow.lead_id) {
     return { leadId: String(callRow.lead_id), created: false, reused: false };
   }
 
   // Somebody ringing three times about the same job should not leave three
-  // open leads behind them. The most recent open lead for this contact is
-  // reused when the call still falls inside the client's re-enquiry window;
-  // a closed lead, or one raised before the window, starts a new one.
+  // open leads behind them. The newest lead for this contact is reused when
+  // it is still open, at any age; a closed one starts a new lead.
   //
   // The call itself is recorded either way: reuse decides which lead a call
   // attaches to, never whether the call is written down.
@@ -693,9 +687,24 @@ async function ensureLead(
       createdAt: row.created_at,
     })),
   );
-  const decision = decideReInquiry(candidate, Date.now(), windowDays);
+  const decision = decideReInquiry(candidate);
   if (decision.reuse && candidate?.id) {
-    return { leadId: String(candidate.id), created: false, reused: true };
+    const leadId = String(candidate.id);
+    // Reused, and touched so the lead surfaces as active — but nothing that
+    // describes where it came from is rewritten. The attribution and the Meta
+    // eligibility belong to the call that opened it; a later call is more
+    // contact with the same enquiry, not a new origin for it. The eligibility
+    // trigger would refuse the write in any case; not attempting it is the
+    // point.
+    await checked(
+      db()
+        .from("leads")
+        .update({ updated_at: new Date().toISOString() })
+        .eq("id", leadId)
+        .eq("organization_id", organizationId)
+        .eq("client_id", clientId),
+    );
+    return { leadId, created: false, reused: true };
   }
 
   const decisionMeta = metaDecision(call);
@@ -774,7 +783,6 @@ export async function ingestFetchedCall(
       clientId,
       contactId,
       call,
-      state.reInquiryWindowDays,
     );
     await markCall(String(snapshot.id), {
       ingest_status: "ingested",

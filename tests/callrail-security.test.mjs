@@ -36,6 +36,13 @@ const dniRoute = read("app/api/callrail/dni-test/route.ts");
 const dniSource = read("lib/callrail-dni.ts");
 const dniPage = read("lib/callrail-dni-page.ts");
 const stateSource = read("lib/callrail-ingestion-state.ts");
+const recordingRoute = read("app/api/callrail/recordings/[callId]/route.ts");
+const callsUi = read("app/crm/CallsSection.tsx");
+const leadsUi = read("app/crm/LeadsViews.tsx");
+const contactsUi = read("app/crm/FoundationViews.tsx");
+const mediaMigrationSource = read(
+  "supabase/migrations/20260827000000_callrail_call_media.sql",
+);
 
 /**
  * Source with line comments removed.
@@ -1242,11 +1249,9 @@ test("ingestion finds or creates a contact in one locked call", () => {
   );
 });
 
-test("a repeat call joins an open lead only inside the client's window", () => {
+test("a repeat call joins the newest lead when that lead is open", () => {
   const ensure = block(ingestionSource, "async function ensureLead(");
   assert.ok(ensure, "ensureLead exists");
-  // Bounded by the configured window and by the open statuses, in the query
-  // as well as in the decision.
   // The newest lead of ANY status, then judged. Filtering to open statuses
   // here would step over a more recent closed lead.
   assert.equal(
@@ -1267,9 +1272,22 @@ test("a repeat call joins an open lead only inside the client's window", () => {
   assert.match(ensure, /\.eq\("organization_id", organizationId\)/);
   assert.match(ensure, /\.eq\("client_id", clientId\)/);
   assert.match(ensure, /\.eq\("contact_id", contactId\)/);
-  // The window comes from the connection, not from a constant here.
-  assert.match(ingestionSource, /re_inquiry_window_days/);
-  assert.match(ingestionSource, /state\.reInquiryWindowDays/);
+  // Age is not consulted. An open lead is reused however old it is, so
+  // nothing here may read a window, a cutoff or a clock.
+  assert.equal(
+    /reInquiryWindowDays|reInquiryCutoff|Date\.now\(\)/.test(ensure),
+    false,
+    "the reuse decision must not depend on time",
+  );
+  const decide = block(read("lib/callrail-reinquiry.ts"), "export function decideReInquiry");
+  assert.ok(decide);
+  assert.match(decide, /isOpenLeadStatus\(candidate\.status\)/);
+  assert.match(decide, /reuse: true, reason: "open_lead"/);
+  assert.equal(
+    /windowDays|DAY_MS|now/.test(decide),
+    false,
+    "the decision takes a candidate and nothing else",
+  );
 });
 
 test("reusing a lead never skips recording the call", () => {
@@ -2464,4 +2482,358 @@ test("a partly-read window is recorded as partial, never as complete", () => {
   const walk = read("lib/callrail-pagination.ts");
   assert.match(walk, /return \{ ids, pagesRead: maxPages, truncated: true \};/);
   assert.match(walk, /return \{ ids, pagesRead: pageNumber, truncated: false \};/);
+});
+
+
+// ------------------------------------------------ calls on leads and contacts
+
+test("a recording is served only to someone entitled to that client's calls", () => {
+  const loader = block(crmSource, "export async function getSupabaseCallRailRecording");
+  assert.ok(loader, "the recording loader exists");
+  const code = codeOnly(loader);
+
+  // Who, then which client, then whether the call is theirs — in that order,
+  // and all three before CallRail is contacted.
+  const contextAt = code.indexOf("await getTenantContext(user)");
+  const permissionAt = code.indexOf('requirePermission(context, "opportunities.write")');
+  const clientAt = code.indexOf("await requireClient(context, clientId)");
+  const lookupAt = code.indexOf('.from("callrail_calls")');
+  const fetchAt = code.indexOf("getCallRailRecording(");
+  for (const [name, at] of [
+    ["tenant context", contextAt],
+    ["permission", permissionAt],
+    ["client check", clientAt],
+    ["call lookup", lookupAt],
+    ["provider fetch", fetchAt],
+  ]) {
+    assert.ok(at > -1, `${name} happens`);
+  }
+  assert.ok(contextAt < permissionAt, "the caller is identified first");
+  assert.ok(permissionAt < clientAt, "then the permission");
+  assert.ok(clientAt < lookupAt, "then the client");
+  assert.ok(lookupAt < fetchAt, "and CallRail is contacted last");
+
+  // The row is found inside the tenant, not found and then checked.
+  assert.match(code, /\.eq\("organization_id", context\.organizationId\)/);
+  assert.match(code, /\.eq\("client_id", clientId\)/);
+  assert.match(code, /\.eq\("callrail_call_id", callId\)/);
+  // A call belonging to another client is indistinguishable from one that
+  // never existed. Saying "forbidden" would confirm it exists.
+  assert.match(code, /if \(!row\) throw new Error\("Not found"\)/);
+});
+
+test("the recording route refuses before it reaches the loader", () => {
+  const code = codeOnly(recordingRoute);
+  const authAt = code.indexOf("await getChatGPTUser()");
+  const loadAt = code.indexOf("getSupabaseCallRailRecording(");
+  assert.ok(authAt > -1 && loadAt > authAt, "unauthenticated stops first");
+  assert.match(code, /if \(!user\) return refuse\(401, "Unauthorized"\)/);
+  assert.match(code, /if \(message === "Forbidden"\) return refuse\(403, message\)/);
+  assert.match(code, /if \(message === "Not found"\) return refuse\(404, "Recording unavailable"\)/);
+
+  // Nothing about the exchange is cached where another request could meet it.
+  assert.match(code, /"Cache-Control": "private, no-store, max-age=0"/);
+  // And nothing from CallRail's own response is passed through except the
+  // headers a player needs.
+  assert.equal(
+    /Set-Cookie|Authorization|apiKey|Token /.test(code),
+    false,
+    "no credential or provider header is forwarded",
+  );
+});
+
+test("seeking works, because the range is passed through both ways", () => {
+  const code = codeOnly(recordingRoute);
+  assert.match(code, /request\.headers\.get\("Range"\)/);
+  assert.match(code, /headers\.set\("Accept-Ranges", "bytes"\)/);
+  assert.match(code, /for \(const header of \["Content-Length", "Content-Range"\]\)/);
+  assert.match(code, /status: recording\.status === 206 \? 206 : 200/);
+
+  // The provider client forwards it upstream rather than fetching the whole
+  // file and slicing it here.
+  const stream = block(providerSource, "export async function getCallRailRecording");
+  assert.ok(stream, "the streamer exists");
+  assert.match(stream, /if \(range\) headers\.Range = range;/);
+  assert.match(stream, /response\.status !== 206/);
+  // The body is handed back untouched: never buffered, never stored.
+  assert.match(code, /new Response\(recording\.body,/);
+  assert.equal(
+    /await .*\.(arrayBuffer|blob|text)\(\)/.test(stream + code),
+    false,
+    "the audio is streamed, not read into memory",
+  );
+});
+
+test("the browser is never given a CallRail URL, and none is stored", () => {
+  // The player points at this server.
+  assert.match(callsUi, /src=\{`\/api\/callrail\/recordings\/\$\{encodeURIComponent\(/);
+  assert.equal(
+    /callrail\.com/.test(callsUi),
+    false,
+    "no provider host appears in anything sent to a browser",
+  );
+
+  // Ingestion still writes no URL, and the column says so.
+  const mapCall = block(providerSource, "function mapCall(row:");
+  assert.match(mapCall, /recordingUrl: null,/);
+  assert.match(mapCall, /recordingAvailable: asText\(row\.recording\) !== ""/);
+  assert.match(mediaMigrationSource, /recording_available boolean not null default false/);
+  assert.match(mediaMigrationSource, /comment on column public\.callrail_calls\.recording_url is/);
+  assert.match(mediaMigrationSource, /Always null/);
+
+  // The streamer refuses to follow a URL that is not CallRail's.
+  const stream = block(providerSource, "export async function getCallRailRecording");
+  assert.match(stream, /target\.protocol !== "https:" \|\| !isCallRailHost\(target\.hostname\)/);
+});
+
+test("a call with no recording says so instead of offering a player", () => {
+  // The server does not spend a request finding out what it already knows.
+  const loader = block(crmSource, "export async function getSupabaseCallRailRecording");
+  assert.match(loader, /if \(row\.recording_available !== true\) return null;/);
+  // The route turns that into an ordinary answer, not a failure.
+  assert.match(recordingRoute, /if \(!recording\) return refuse\(404, "Recording unavailable"\)/);
+  // And the interface says it in words rather than showing a dead player.
+  const player = section(callsUi, "function RecordingPlayer(", "function CallRow(");
+  assert.ok(player);
+  assert.match(player, /if \(!call\.recordingAvailable \|\| failed\)/);
+  assert.match(player, /Recording unavailable/);
+  // A player that fails at runtime falls back to the same message.
+  assert.match(player, /onError=\{\(\) => setFailed\(true\)\}/);
+});
+
+test("the transcript is shown in full, and only when asked for", () => {
+  const row = section(callsUi, "function CallRow(", "export function CallsSection(");
+  assert.ok(row);
+  // Collapsed by default, with the control saying which way it goes.
+  assert.match(row, /const \[openTranscript, setOpenTranscript\] = useState\(false\)/);
+  assert.match(row, /aria-expanded=\{openTranscript\}/);
+  assert.match(row, /openTranscript \? "Hide transcript" : "Show full transcript"/);
+  // Rendered as text, never as markup: a transcript is somebody's words.
+  assert.match(row, /\{openTranscript \? <pre>\{call\.transcript\}<\/pre> : null\}/);
+  assert.equal(
+    /dangerouslySetInnerHTML/.test(callsUi),
+    false,
+    "nothing from a call is rendered as HTML",
+  );
+  // No transcript is stated rather than left blank.
+  assert.match(row, /No transcript for this call\./);
+
+  // Every field the section is meant to show is there.
+  for (const shown of [
+    "when(call.startedAt)",
+    "call.direction",
+    "duration(call.durationSeconds)",
+    "phone(call.trackingPhoneNumber)",
+    "call.source",
+    "call.classification",
+    "call.callSummary",
+  ]) {
+    assert.ok(row.includes(shown), `${shown} is rendered`);
+  }
+  assert.match(row, /answered \? "Answered" : missed \? "Missed" : "Unknown"/);
+});
+
+test("calls reach the interface only through the tenant-scoped query", () => {
+  // `query` pins the organization and applies the caller's client scope, so a
+  // call cannot be loaded outside it.
+  const helper = section(crmSource, "const query = <T>(table: string", "const [");
+  assert.ok(helper);
+  assert.match(helper, /\.eq\("organization_id", context\.organizationId\)/);
+  assert.match(helper, /applyClientScope\(context, builder\)/);
+  assert.match(crmSource, /query<AnyRecord>\(\s*\n?\s*"callrail_calls",/);
+
+  // Nothing sensitive is selected into the browser payload.
+  const select = section(crmSource, '"callrail_calls",', ")\n        .order(");
+  assert.ok(select);
+  for (const forbidden of ["fbclid", "gclid", "session_uuid", "recording_url", "msclkid"]) {
+    assert.equal(
+      select.includes(forbidden),
+      false,
+      `${forbidden} must not be sent to a browser`,
+    );
+  }
+  assert.ok(select.includes("transcript"), "the transcript is shown, and is not a click id");
+});
+
+test("a lead shows its own calls; a contact shows all of theirs", () => {
+  // One person can ring about several jobs. The lead filters to itself, and
+  // the contact record is where the whole history lives.
+  assert.match(leadsUi, /const leadCalls = calls\.filter\(\(call\) => call\.leadId === lead\.id\)/);
+  assert.match(leadsUi, /<CallsSection\s*\n\s*calls=\{leadCalls\}/);
+  assert.match(contactsUi, /calls\.filter\(\(call\) => call\.contactId === contactId\)/);
+  assert.match(contactsUi, /<CallsSection calls=\{contactCalls\}/);
+
+  // Both hand the section the client the record belongs to, which is what the
+  // recording route checks against.
+  assert.match(leadsUi, /clientId=\{lead\.clientId\}/);
+  assert.match(contactsUi, /clientId=\{contact\.clientId\}/);
+});
+
+test("every call stays its own record, whichever lead it joins", () => {
+  const ingest = block(ingestionSource, "export async function ingestFetchedCall");
+  // The snapshot is written before any lead decision is made, so reuse never
+  // decides whether a call is recorded — only which lead it points at.
+  const snapshotAt = ingest.indexOf("await saveCallSnapshot(");
+  const leadAt = ingest.indexOf("await ensureLead(");
+  assert.ok(snapshotAt > -1 && leadAt > snapshotAt, "the call is saved first");
+  assert.match(ingest, /lead_id: lead\.leadId/);
+
+  // And a second call cannot overwrite the first: the row is keyed on
+  // CallRail's own call id.
+  const callsTable = section(
+    ingestionMigrationSource,
+    "create table if not exists public.callrail_calls",
+    ");",
+  );
+  assert.match(callsTable, /unique \(organization_id, client_id, callrail_call_id\)/);
+});
+
+test("reusing a lead rewrites nothing about where it came from", () => {
+  const ensure = block(ingestionSource, "async function ensureLead");
+  assert.ok(ensure);
+  const reuse = codeOnly(
+    ensure.slice(
+      ensure.indexOf("if (decision.reuse"),
+      ensure.indexOf("const decisionMeta"),
+    ),
+  );
+  assert.ok(reuse.length > 0, "the reuse branch exists");
+
+  // Touched so it reads as active, and nothing else.
+  assert.match(reuse, /\.update\(\{ updated_at: new Date\(\)\.toISOString\(\) \}\)/);
+  for (const immutable of [
+    "attribution",
+    "meta_eligible",
+    "meta_eligibility_reason",
+    "source:",
+    "campaign:",
+  ]) {
+    assert.equal(
+      reuse.includes(immutable),
+      false,
+      `${immutable} belongs to the call that opened the lead`,
+    );
+  }
+  // The update is tenant-scoped like everything else.
+  assert.match(reuse, /\.eq\("organization_id", organizationId\)/);
+  assert.match(reuse, /\.eq\("client_id", clientId\)/);
+});
+
+test("a repeat caller is matched by canonical phone inside one tenant", () => {
+  // The contact lookup is the same function as before, and still refuses a
+  // number that is not canonical E.164 rather than matching loosely.
+  const fn = section(
+    ingestionMigrationSource,
+    "create or replace function public.find_or_create_callrail_contact",
+    "revoke all on function public.find_or_create_callrail_contact",
+  );
+  assert.ok(fn);
+  assert.match(fn, /requires a canonical E\.164 phone number/);
+  assert.match(fn, /\^\\\+\[1-9\]\[0-9\]\{7,14\}\$/);
+  assert.match(fn, /where c\.organization_id = p_organization_id/);
+  assert.match(fn, /and c\.client_id = p_client_id/);
+  assert.match(fn, /and c\.phone = v_phone/);
+  // The same number in two tenants is two contacts, and both are found
+  // deterministically.
+  assert.match(fn, /order by c\.created_at asc, c\.id asc/);
+
+  // Ingestion normalizes before it asks.
+  const ensureContact = block(ingestionSource, "async function ensureContact");
+  assert.ok(ensureContact);
+  assert.match(ensureContact, /find_or_create_callrail_contact/);
+});
+
+
+test("hearing a call needs the permission to work the lead, not to configure CallRail", () => {
+  const loader = block(crmSource, "export async function getSupabaseCallRailRecording");
+  const code = codeOnly(loader);
+
+  // call_tracking.manage governs the connection — the API key, the webhooks.
+  // Gating audio on it would refuse a manager or an employee a recording of a
+  // call whose lead and contact they are already reading.
+  assert.match(code, /requirePermission\(context, "opportunities\.write"\)/);
+  assert.equal(
+    /call_tracking\.manage/.test(code),
+    false,
+    "the connection permission must not gate listening",
+  );
+
+  // And the roles bear that out: every role that reaches the CRM can work
+  // leads, while only some can configure call tracking.
+  const roles = read("db/crm.ts");
+  const table = section(roles, "const rolePermissions:", "};");
+  assert.ok(table);
+  for (const role of [
+    "CLIENT_MANAGER",
+    "CLIENT_EMPLOYEE",
+  ]) {
+    const line = table.split("\n").find((row) => row.startsWith(`  ${role}:`));
+    assert.ok(line, `${role} is in the table`);
+    assert.ok(
+      line.includes('"opportunities.write"'),
+      `${role} can work leads, so ${role} can hear their calls`,
+    );
+    assert.equal(
+      line.includes('"call_tracking.manage"'),
+      false,
+      `${role} cannot configure CallRail — which is why it must not be the gate`,
+    );
+  }
+  const teamMember = section(roles, "const lbTeamMemberPermissions:", ";");
+  assert.ok(teamMember.includes('"opportunities.write"'));
+  assert.equal(teamMember.includes('"call_tracking.manage"'), false);
+});
+
+test("call details travel under the same permission as the audio", () => {
+  // A transcript is call data. Loading it into the browser payload on weaker
+  // terms than the recording would be a way around the recording's check.
+  assert.match(
+    crmSource,
+    /!hasPermission\(context, "opportunities\.write"\)\s*\n\s*\? Promise\.resolve\(\[\] as AnyRecord\[\]\)\s*\n\s*: assertOk\(/,
+  );
+  const helper = block(crmSource, "function hasPermission(");
+  assert.ok(helper, "the non-throwing check exists");
+  assert.match(helper, /rolePermissions\[context\.role\]\.includes\(permission\)/);
+
+  // Same permission in both places, named once each and not drifting.
+  const loader = block(crmSource, "export async function getSupabaseCallRailRecording");
+  assert.match(codeOnly(loader), /requirePermission\(context, "opportunities\.write"\)/);
+});
+
+test("the re-enquiry window is deprecated, retained, and read by nothing", () => {
+  // Nothing loads it any more.
+  assert.equal(
+    /re_inquiry_window_days|reInquiryWindowDays/.test(ingestionSource),
+    false,
+    "ingestion no longer selects or normalizes the window",
+  );
+  // No interface writes it, and none ever did.
+  for (const source of [connectionsUi, leadsUi, contactsUi]) {
+    assert.equal(
+      /reInquiry|re_inquiry/i.test(source),
+      false,
+      "the window appears in no interface",
+    );
+  }
+  // No action accepts it as configuration.
+  assert.equal(
+    /re_inquiry_window_days/.test(crmSource),
+    false,
+    "no action reads or writes the window",
+  );
+
+  // The guards remain, marked, so removing them can be its own decision.
+  const reinquiry = read("lib/callrail-reinquiry.ts");
+  assert.match(reinquiry, /@deprecated The re-enquiry window no longer decides anything/);
+  assert.match(reinquiry, /export function normalizeReInquiryWindowDays/);
+
+  // And nothing destructive rides along with the feature.
+  assert.match(mediaMigrationSource, /DEPRECATED\. Unused since repeat callers/);
+  assert.equal(
+    /drop column|drop constraint callrail_credentials_re_inquiry/i.test(
+      mediaMigrationSource,
+    ),
+    false,
+    "the column is not dropped in this migration",
+  );
 });

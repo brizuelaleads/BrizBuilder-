@@ -39,6 +39,7 @@ import {
   getCallRailRuntimeStatus,
   getCallRailWebhookBaseUrl,
   listCallRailAccounts,
+  getCallRailRecording,
   listCallRailCompanies,
   restoreCallRailWebhookIntegration,
   signDniCredential,
@@ -114,6 +115,7 @@ import type {
   CrmAppointment,
   CrmAuditLog,
   CrmBootstrap,
+  CrmCall,
   CrmClient,
   CrmCompany,
   CrmContact,
@@ -701,6 +703,11 @@ function cents(value: unknown): number {
 function requirePermission(context: TenantContext, permission: CrmPermission) {
   if (!rolePermissions[context.role].includes(permission))
     throw new Error("Forbidden");
+}
+
+/** The same question requirePermission asks, without the throw. */
+function hasPermission(context: TenantContext, permission: CrmPermission) {
+  return rolePermissions[context.role].includes(permission);
 }
 
 function requireAgencyAdministrator(context: TenantContext) {
@@ -2795,6 +2802,60 @@ export async function disconnectSupabaseGoogleProfile(
   };
 }
 
+/**
+ * Audio for one call, for somebody entitled to hear it.
+ *
+ * Three things are established before CallRail is contacted, in this order:
+ * who the caller is, which client they are allowed to act for, and whether the
+ * call they named belongs to that client. The third is what stops one client
+ * reading another's recordings by guessing a call id — the row is looked up
+ * inside the tenant, never looked up first and checked afterwards.
+ *
+ * A call that is not this tenant's is reported as not found, exactly as an id
+ * that never existed would be. Saying "forbidden" would confirm it exists.
+ */
+export async function getSupabaseCallRailRecording(
+  user: ChatGPTUser,
+  input: { clientId: string; callId: string; range?: string | null },
+): Promise<Response | null> {
+  const context = await getTenantContext(user);
+  // The permission to hear a call is the permission to work the lead it
+  // belongs to, not the permission to configure CallRail. call_tracking.manage
+  // governs the connection — the API key, the webhooks — and is held by
+  // owners and admins. A manager or an employee can see the lead and the
+  // contact, so refusing them the recording and the transcript would hide
+  // part of a record they are already reading.
+  requirePermission(context, "opportunities.write");
+  const clientId = requireText(input.clientId, "Client", 100);
+  // The real boundary: which clients this person may act for at all.
+  await requireClient(context, clientId);
+
+  const callId = requireText(input.callId, "Call", 100);
+  const row = await assertOk(
+    supabase()
+      .from("callrail_calls")
+      .select("callrail_call_id,recording_available")
+      .eq("organization_id", context.organizationId)
+      .eq("client_id", clientId)
+      .eq("callrail_call_id", callId)
+      .maybeSingle(),
+  );
+  // Not this client's call, or not a call at all. One answer for both.
+  if (!row) throw new Error("Not found");
+  // Ingestion recorded that CallRail had nothing. Asking anyway would spend a
+  // request to be told the same.
+  if (row.recording_available !== true) return null;
+
+  const access = await loadCallRailApiAccess(context.organizationId, clientId);
+  if (!access.accountId) return null;
+  return getCallRailRecording(
+    access.accountId,
+    String(row.callrail_call_id),
+    access.apiKey,
+    input.range,
+  );
+}
+
 export async function getSupabaseTwilioVisibleBalance(
   user: ChatGPTUser,
   clientId: string,
@@ -3331,6 +3392,7 @@ export async function getSupabaseCrmBootstrap(
     googleCredentialRefs,
     reviewRequests,
     reviewSettings,
+    callrailCalls,
     workflows,
     workflowVersions,
     workflowRuns,
@@ -3498,6 +3560,27 @@ export async function getSupabaseCrmBootstrap(
       console.error("Review settings table is not migrated yet.", error);
       return [] as AnyRecord[];
     }),
+    // Tenant scope comes from `query`, which pins the organization and applies
+    // the caller's client scope. A call is never loaded outside it.
+    //
+    // Gated on the same permission as the recording route, so a transcript
+    // and a summary cannot arrive by a route the audio would be refused on.
+    !hasPermission(context, "opportunities.write")
+      ? Promise.resolve([] as AnyRecord[])
+      : assertOk(
+      query<AnyRecord>(
+        "callrail_calls",
+        "id,client_id,contact_id,lead_id,callrail_call_id,direction,answered," +
+          "duration_seconds,started_at,tracking_phone_number,customer_phone_e164," +
+          "customer_name,source,medium,campaign,classification,call_summary," +
+          "transcript,recording_available,recording_duration_seconds,ingest_status",
+      )
+        .order("started_at", { ascending: false })
+        .limit(500),
+    ).catch((error) => {
+      console.error("CallRail call tables are not migrated yet.", error);
+      return [] as AnyRecord[];
+    }),
     assertOk(
       query<AnyRecord>("workflows").order("updated_at", { ascending: false }),
     ),
@@ -3522,6 +3605,7 @@ export async function getSupabaseCrmBootstrap(
   const taskRows = (tasks ?? []) as AnyRecord[];
   const appointmentRows = (appointments ?? []) as AnyRecord[];
   const noteRows = (notes ?? []) as AnyRecord[];
+  const callRows = (callrailCalls ?? []) as AnyRecord[];
   const auditRows = (auditEvents ?? []) as AnyRecord[];
   const providerConnectionRows = (providerConnections ?? []) as AnyRecord[];
   const aiAuthorizationRows = (aiAuthorizations ?? []) as AnyRecord[];
@@ -3847,6 +3931,33 @@ export async function getSupabaseCrmBootstrap(
       body: String(row.body),
       authorEmail: "team",
       createdAt: String(row.created_at),
+    })),
+    calls: callRows.map((row: AnyRecord): CrmCall => ({
+      id: String(row.id),
+      clientId: String(row.client_id),
+      contactId: nullable(row.contact_id),
+      leadId: nullable(row.lead_id),
+      callrailCallId: String(row.callrail_call_id),
+      direction: nullable(row.direction),
+      answered: typeof row.answered === "boolean" ? row.answered : null,
+      durationSeconds:
+        typeof row.duration_seconds === "number" ? row.duration_seconds : null,
+      startedAt: nullable(row.started_at),
+      trackingPhoneNumber: nullable(row.tracking_phone_number),
+      customerPhone: nullable(row.customer_phone_e164),
+      customerName: nullable(row.customer_name),
+      source: nullable(row.source),
+      medium: nullable(row.medium),
+      campaign: nullable(row.campaign),
+      classification: nullable(row.classification),
+      callSummary: nullable(row.call_summary),
+      transcript: nullable(row.transcript),
+      recordingAvailable: row.recording_available === true,
+      recordingDurationSeconds:
+        typeof row.recording_duration_seconds === "number"
+          ? row.recording_duration_seconds
+          : null,
+      ingestStatus: nullable(row.ingest_status),
     })),
     team: teamMembers,
     demoData: false,

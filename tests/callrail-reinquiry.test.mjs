@@ -71,61 +71,31 @@ test("the cutoff is the oldest lead a call may still attach to", () => {
 // ------------------------------------------------------- same-day repeats
 
 test("a second call the same day joins the lead already open", () => {
-  const decision = decideReInquiry(lead("NEW", 0), NOW, 30);
-  assert.deepEqual(decision, { reuse: true, reason: "within_window" });
+  const decision = decideReInquiry(lead("NEW", 0));
+  assert.deepEqual(decision, { reuse: true, reason: "open_lead" });
 });
 
 test("a call minutes after the first joins it too", () => {
   const decision = decideReInquiry(
     { status: "NEW", createdAt: new Date(NOW - 5 * 60 * 1000).toISOString() },
-    NOW,
-    30,
   );
   assert.equal(decision.reuse, true);
 });
 
 // ---------------------------------------------------------- the boundary
 
-test("a call exactly one window after the lead was raised still joins it", () => {
-  // Inclusive by choice: a window is a period during which reuse applies, so
-  // its final instant is inside it.
-  const decision = decideReInquiry(lead("NEW", 30), NOW, 30);
-  assert.deepEqual(decision, { reuse: true, reason: "within_window" });
-});
 
-test("one millisecond past the window opens a new lead", () => {
-  const decision = decideReInquiry(
-    { status: "NEW", createdAt: new Date(NOW - (30 * DAY + 1)).toISOString() },
-    NOW,
-    30,
-  );
-  assert.deepEqual(decision, { reuse: false, reason: "outside_window" });
-});
 
-test("the boundary moves with the configured window", () => {
-  assert.equal(decideReInquiry(lead("NEW", 7), NOW, 7).reuse, true);
-  assert.equal(decideReInquiry(lead("NEW", 8), NOW, 7).reuse, false);
-  assert.equal(decideReInquiry(lead("NEW", 8), NOW, 14).reuse, true);
-});
 
 // ------------------------------------------------------- after the window
 
-test("a call long after the window opens a new lead", () => {
-  for (const days of [31, 45, 90, 400]) {
-    assert.deepEqual(
-      decideReInquiry(lead("NEW", days), NOW, 30),
-      { reuse: false, reason: "outside_window" },
-      `${days} days`,
-    );
-  }
-});
 
 test("with no open lead at all there is nothing to reuse", () => {
-  assert.deepEqual(decideReInquiry(null, NOW, 30), {
+  assert.deepEqual(decideReInquiry(null), {
     reuse: false,
     reason: "no_open_lead",
   });
-  assert.deepEqual(decideReInquiry(undefined, NOW, 30), {
+  assert.deepEqual(decideReInquiry(undefined), {
     reuse: false,
     reason: "no_open_lead",
   });
@@ -137,7 +107,7 @@ test("a WON lead is never reused, however recent", () => {
   // The job was sold. A later call is new business, not the same enquiry.
   for (const days of [0, 1, 29, 30]) {
     assert.deepEqual(
-      decideReInquiry(lead("WON", days), NOW, 30),
+      decideReInquiry(lead("WON", days)),
       { reuse: false, reason: "lead_closed" },
       `${days} days`,
     );
@@ -147,7 +117,7 @@ test("a WON lead is never reused, however recent", () => {
 test("a LOST lead is never reused, however recent", () => {
   for (const days of [0, 1, 29, 30]) {
     assert.deepEqual(
-      decideReInquiry(lead("LOST", days), NOW, 30),
+      decideReInquiry(lead("LOST", days)),
       { reuse: false, reason: "lead_closed" },
       `${days} days`,
     );
@@ -155,10 +125,10 @@ test("a LOST lead is never reused, however recent", () => {
 });
 
 test("SPAM is closed; the active statuses are not", () => {
-  assert.equal(decideReInquiry(lead("SPAM", 1), NOW, 30).reuse, false);
+  assert.equal(decideReInquiry(lead("SPAM", 1)).reuse, false);
   for (const status of CALLRAIL_OPEN_LEAD_STATUSES) {
     assert.equal(
-      decideReInquiry(lead(status, 1), NOW, 30).reuse,
+      decideReInquiry(lead(status, 1)).reuse,
       true,
       status,
     );
@@ -189,24 +159,22 @@ test("the open set is the active pipeline plus unresponsive", () => {
 
 // --------------------------------------------------------------- oddities
 
-test("a lead with an unreadable date is not reused", () => {
+test("a lead with an unreadable date is still reused when it is open", () => {
   for (const createdAt of [null, undefined, "", "not a date", {}, []]) {
     assert.deepEqual(
-      decideReInquiry({ status: "NEW", createdAt }, NOW, 30),
-      { reuse: false, reason: "unreadable_lead" },
+      decideReInquiry({ status: "NEW", createdAt }),
+      { reuse: true, reason: "open_lead" },
       String(createdAt),
     );
   }
 });
 
-test("a lead dated in the future is not reused", () => {
+test("a lead dated in the future is still reused when it is open", () => {
   // Clock skew must not let one lead capture every call that follows.
   const decision = decideReInquiry(
     { status: "NEW", createdAt: new Date(NOW + DAY).toISOString() },
-    NOW,
-    30,
   );
-  assert.deepEqual(decision, { reuse: false, reason: "outside_window" });
+  assert.deepEqual(decision, { reuse: true, reason: "open_lead" });
 });
 
 // ------------------------------------------- the newest lead, any status
@@ -223,7 +191,7 @@ test("the candidate is the newest lead, not the newest open one", () => {
   ];
   const newest = selectNewestLead(leads);
   assert.equal(newest.id, "newer-won");
-  assert.deepEqual(decideReInquiry(newest, NOW, 30), {
+  assert.deepEqual(decideReInquiry(newest), {
     reuse: false,
     reason: "lead_closed",
   });
@@ -235,7 +203,7 @@ test("an older open lead behind a newer LOST lead creates a new lead", () => {
     withId("newer-lost", "LOST", 3),
   ]);
   assert.equal(newest.id, "newer-lost");
-  assert.equal(decideReInquiry(newest, NOW, 30).reuse, false);
+  assert.equal(decideReInquiry(newest).reuse, false);
 });
 
 test("an older open lead behind a newer SPAM lead creates a new lead", () => {
@@ -244,7 +212,7 @@ test("an older open lead behind a newer SPAM lead creates a new lead", () => {
     withId("newer-spam", "SPAM", 1),
   ]);
   assert.equal(newest.id, "newer-spam");
-  assert.equal(decideReInquiry(newest, NOW, 30).reuse, false);
+  assert.equal(decideReInquiry(newest).reuse, false);
 });
 
 test("order of the rows does not change which lead is chosen", () => {
@@ -260,9 +228,9 @@ test("a newer open lead is still reused when it is genuinely newest", () => {
     withId("newer-open", "NEW", 3),
   ]);
   assert.equal(newest.id, "newer-open");
-  assert.deepEqual(decideReInquiry(newest, NOW, 30), {
+  assert.deepEqual(decideReInquiry(newest), {
     reuse: true,
-    reason: "within_window",
+    reason: "open_lead",
   });
 });
 
@@ -277,7 +245,7 @@ test("no leads at all yields no candidate", () => {
   assert.equal(selectNewestLead([]), null);
   assert.equal(selectNewestLead(null), null);
   assert.equal(selectNewestLead(undefined), null);
-  assert.deepEqual(decideReInquiry(selectNewestLead([]), NOW, 30), {
+  assert.deepEqual(decideReInquiry(selectNewestLead([])), {
     reuse: false,
     reason: "no_open_lead",
   });

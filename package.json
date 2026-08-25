@@ -10,7 +10,7 @@
     "build": "vinext build",
     "start": "vinext start",
     "test": "npm run test:security && npm run test:brand && npm run test:landing && npm run build && node --test tests/crm.integration.test.mjs",
-    "test:security": "npm run test:oauth && npm run test:ai-connector && npm run test:ai-gateway && npm run test:stripe && npm run test:google-calendar && npm run test:theme && npm run test:team && npm run test:workspace && npm run test:client-deletion && npm run test:auth && npm run test:system-email && npm run test:meta && npm run test:meta-redaction && npm run test:meta-value && npm run test:meta-eligibility && npm run test:callrail-ids && npm run test:callrail-cleanup && npm run test:callrail-dni && npm run test:callrail-dni-page && npm run test:callrail-webhook && npm run test:callrail-reinquiry && npm run test:callrail-ingestion-state && npm run test:callrail-pagination && npm run test:callrail",
+    "test:security": "npm run test:oauth && npm run test:ai-connector && npm run test:ai-gateway && npm run test:stripe && npm run test:google-calendar && npm run test:theme && npm run test:team && npm run test:workspace && npm run test:client-deletion && npm run test:auth && npm run test:system-email && npm run test:meta && npm run test:meta-redaction && npm run test:meta-value && npm run test:meta-eligibility && npm run test:callrail-ids && npm run test:callrail-cleanup && npm run test:callrail-dni && npm run test:callrail-dni-page && npm run test:callrail-webhook && npm run test:callrail-reinquiry && npm run test:callrail-ingestion-state && npm run test:callrail-pagination && npm run test:callrail-calls && npm run test:callrail",
     "test:oauth": "node --experimental-strip-types --test tests/ai-oauth-security.test.mjs",
     "test:ai-connector": "node --test tests/ai-connector-security.test.mjs",
     "test:ai-gateway": "node --experimental-strip-types --test tests/ai-gateway.test.mjs",
@@ -42,6 +42,7 @@
     "test:callrail-reinquiry": "node --experimental-strip-types --test tests/callrail-reinquiry.test.mjs",
     "test:callrail-ingestion-state": "node --experimental-strip-types --test tests/callrail-ingestion-state.test.mjs",
     "test:callrail-pagination": "node --experimental-strip-types --test tests/callrail-pagination.test.mjs",
+    "test:callrail-calls": "node --experimental-strip-types --test tests/callrail-calls-ui.test.mjs",
     "test:callrail": "node --test tests/callrail-security.test.mjs"
   },
   "dependencies": {

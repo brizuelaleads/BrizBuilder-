@@ -12609,3 +12609,25 @@ canvas {
     width: 100%;
   }
 }
+
+/* Tracked calls, on a lead drawer and on a contact record. */
+.crm-calls-section .crm-call-list { display: grid; gap: 10px; margin-top: 12px; }
+.crm-call-row { padding: 14px; border: 1px solid var(--crm-border); border-radius: 12px; background: var(--crm-surface); }
+.crm-call-row > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.crm-call-row > header > div { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.crm-call-row > header strong { font-size: 12px; }
+.crm-call-status { font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #1a7f52; }
+.crm-call-status-missed { color: #c32c42; }
+.crm-call-chip { padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; background: #f1f0fb; color: #4b3fb8; }
+.crm-call-duration { font-size: 11px; color: var(--crm-muted); font-variant-numeric: tabular-nums; }
+.crm-call-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 12px 0 0; }
+.crm-call-facts dt { font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--crm-muted); }
+.crm-call-facts dd { margin: 2px 0 0; font-size: 12px; }
+.crm-call-summary { margin: 12px 0 0; font-size: 12px; line-height: 1.5; }
+.crm-call-recording { display: block; width: 100%; margin-top: 12px; }
+.crm-call-recording-empty { margin: 12px 0 0; font-size: 11px; color: var(--crm-muted); }
+.crm-call-transcript { margin-top: 12px; }
+.crm-call-transcript button { padding: 0; border: 0; background: none; color: #6857e8; font-size: 11px; font-weight: 700; cursor: pointer; }
+.crm-call-transcript pre { margin: 10px 0 0; padding: 12px; max-height: 320px; overflow: auto; border-radius: 10px; background: #f8f8fb; font-family: inherit; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+.crm-contact-calls-toggle { margin-top: 12px; padding: 0; border: 0; background: none; color: #6857e8; font-size: 11px; font-weight: 700; cursor: pointer; }
+@media (max-width: 640px) { .crm-call-facts { grid-template-columns: 1fr; } }

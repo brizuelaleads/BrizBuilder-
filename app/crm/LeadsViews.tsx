@@ -9,8 +9,10 @@ import {
   type FormEvent,
   type MouseEvent,
 } from "react";
+import { CallsSection } from "./CallsSection";
 import type {
   CrmActivity,
+  CrmCall,
   CrmAppointment,
   CrmLead,
   CrmNote,
@@ -597,6 +599,7 @@ export function LeadDetail({
   activities,
   tasks,
   appointments,
+  calls,
   mutate,
   onClose,
 }: {
@@ -606,6 +609,7 @@ export function LeadDetail({
   activities: CrmActivity[];
   tasks: CrmTask[];
   appointments: CrmAppointment[];
+  calls: CrmCall[];
   mutate: Mutate;
   onClose: () => void;
 }) {
@@ -617,6 +621,10 @@ export function LeadDetail({
   const leadAppointments = appointments.filter(
     (appointment) => appointment.leadId === lead.id,
   );
+  // Only this lead's calls. A repeat caller's earlier jobs are their
+  // own leads, and their calls belong there; the contact record is
+  // where the whole history sits.
+  const leadCalls = calls.filter((call) => call.leadId === lead.id);
   const timeline = [
     ...leadActivities.map((item) => ({
       id: item.id,
@@ -726,6 +734,11 @@ export function LeadDetail({
           </button>
         </div>
         <div className="crm-drawer-scroll">
+          <CallsSection
+            calls={leadCalls}
+            clientId={lead.clientId}
+            emptyMessage="No tracked calls on this lead."
+          />
           <section className="crm-lead-summary">
             <div>
               <span>Pipeline stage</span>

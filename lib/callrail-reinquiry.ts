@@ -12,6 +12,14 @@
 //
 // Dependency-free so the rules can be exercised directly in tests.
 
+/**
+ * @deprecated The re-enquiry window no longer decides anything.
+ *
+ * An open lead is reused at any age, so nothing reads this to gate reuse and
+ * nothing writes it from the interface. The constant, the guards below and
+ * the stored column are all kept so that removing them can be its own change
+ * rather than a destructive edit riding along with a feature.
+ */
 export const DEFAULT_RE_INQUIRY_WINDOW_DAYS = 30;
 export const MIN_RE_INQUIRY_WINDOW_DAYS = 1;
 export const MAX_RE_INQUIRY_WINDOW_DAYS = 365;
@@ -54,6 +62,7 @@ export function isOpenLeadStatus(value: unknown): boolean {
  * than failing the call, because a misconfigured window must not stop a lead
  * being recorded.
  */
+/** @deprecated See DEFAULT_RE_INQUIRY_WINDOW_DAYS. */
 export function normalizeReInquiryWindowDays(value: unknown): number {
   const days =
     typeof value === "number"
@@ -70,6 +79,7 @@ export function normalizeReInquiryWindowDays(value: unknown): number {
   return days;
 }
 
+/** @deprecated See DEFAULT_RE_INQUIRY_WINDOW_DAYS. */
 export function isReInquiryWindowDays(value: unknown): boolean {
   return (
     typeof value === "number" &&
@@ -133,47 +143,36 @@ export type ReInquiryCandidate = {
 
 export type ReInquiryDecision = {
   reuse: boolean;
-  reason:
-    | "no_open_lead"
-    | "lead_closed"
-    | "outside_window"
-    | "within_window"
-    | "unreadable_lead";
+  /**
+   * Closed vocabulary.
+   *
+   * The window-based reasons are gone. A lead's age no longer decides
+   * anything; only whether it is still open.
+   */
+  reason: "no_open_lead" | "lead_closed" | "open_lead";
 };
 
 /**
  * Whether this call continues an existing lead.
  *
- * Measured from when the lead was raised rather than when it was last worked.
- * The setting is called a re-enquiry window, and what it bounds is how long
- * after an enquiry a further call is still part of it — an actively worked lead
- * does not become a fresh enquiry merely because somebody updated it.
+ * One question: is the newest lead for this contact still open? A repeat
+ * caller with an open lead is continuing it, however long ago it was raised
+ * — a job nobody has closed is a job still in progress. A won, lost or spam
+ * lead is a finished conversation, and the call starts a new one.
  *
- * The boundary is inclusive: a call exactly one window after the lead was
- * raised still belongs to it. A window is a period during which reuse applies,
- * so the last instant of it is inside.
+ * Which lead is "newest" is selectNewestLead's job, and it looks at every
+ * status. Filtering to open leads before choosing would step over a more
+ * recent closed one and attach today's call to last month's enquiry.
  */
 export function decideReInquiry(
   candidate: ReInquiryCandidate | null | undefined,
-  now: number,
-  windowDays: unknown,
 ): ReInquiryDecision {
   if (!candidate) return { reuse: false, reason: "no_open_lead" };
-  if (!isOpenLeadStatus(candidate.status))
-    return { reuse: false, reason: "lead_closed" };
-  const createdAt =
-    typeof candidate.createdAt === "string" ||
-    typeof candidate.createdAt === "number"
-      ? new Date(candidate.createdAt).getTime()
-      : Number.NaN;
-  if (!Number.isFinite(createdAt))
-    return { reuse: false, reason: "unreadable_lead" };
-  const days = normalizeReInquiryWindowDays(windowDays);
-  const age = now - createdAt;
-  // A lead dated in the future is not evidence of anything; treat it as
-  // outside rather than letting a clock skew capture every later call.
-  if (age < 0) return { reuse: false, reason: "outside_window" };
-  return age <= days * DAY_MS
-    ? { reuse: true, reason: "within_window" }
-    : { reuse: false, reason: "outside_window" };
+  // Open means open. Somebody ringing back about a job nobody has closed is
+  // still talking about that job, whether they last called on Tuesday or in
+  // March, so age does not enter into it. A closed lead is a finished
+  // conversation and the new call starts a new one.
+  return isOpenLeadStatus(candidate.status)
+    ? { reuse: true, reason: "open_lead" }
+    : { reuse: false, reason: "lead_closed" };
 }

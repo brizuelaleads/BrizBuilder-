@@ -1,13 +1,19 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
-import type { CrmAuditLog, CrmClient, CrmCompany, CrmContact, CrmCustomFieldDefinition, CrmCustomFieldValue, CrmCustomValue, CrmFeatureFlag, CrmLead } from "../../db/crm";
+import type { CrmAuditLog, CrmCall, CrmClient, CrmCompany, CrmContact, CrmCustomFieldDefinition, CrmCustomFieldValue, CrmCustomValue, CrmFeatureFlag, CrmLead } from "../../db/crm";
+import { CallsSection } from "./CallsSection";
 import { Badge, dateTime, EmptyState, money, shortDate } from "./ui";
 
 type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
 
-export function FoundationContactsView({ contacts, clients, onAddContact, onImportContacts, canImport }: { contacts: CrmContact[]; clients: CrmClient[]; onAddContact: () => void; onImportContacts: () => void; canImport: boolean }) {
+export function FoundationContactsView({ contacts, clients, calls, onAddContact, onImportContacts, canImport }: { contacts: CrmContact[]; clients: CrmClient[]; calls: CrmCall[]; onAddContact: () => void; onImportContacts: () => void; canImport: boolean }) {
   const [query, setQuery] = useState("");
+  // One person can ring about several jobs, so their calls hang off the
+  // contact rather than only off whichever lead each one attached to.
+  const [openContactId, setOpenContactId] = useState<string | null>(null);
+  const callsFor = (contactId: string) =>
+    calls.filter((call) => call.contactId === contactId);
   const filtered = contacts.filter((contact) => `${contact.firstName} ${contact.lastName} ${contact.phone ?? ""} ${contact.email ?? ""}`.toLowerCase().includes(query.toLowerCase()));
   const clientName = (id: string) => clients.find((client) => client.id === id)?.businessName ?? "Unknown client";
   function exportContacts() {
@@ -21,7 +27,28 @@ export function FoundationContactsView({ contacts, clients, onAddContact, onImpo
     anchor.click();
     URL.revokeObjectURL(url);
   }
-  return <div className="crm-view"><section className="crm-page-heading"><div><p>CONTACT DATABASE</p><h2>Contacts</h2><span>One customer record can connect to multiple opportunities, tasks, companies, and appointments.</span></div><div className="crm-heading-actions"><button className="crm-button-secondary" onClick={exportContacts} disabled={!filtered.length}>Export CSV</button>{canImport ? <button className="crm-button-secondary" onClick={onImportContacts}>Import CSV</button> : null}<button className="crm-button-primary" onClick={onAddContact}>+ Add Contact</button></div></section><section className="crm-filterbar"><label className="crm-search"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search contacts" aria-label="Search contacts" /></label><span>{filtered.length} contacts</span></section>{filtered.length ? <section className="crm-contact-grid">{filtered.map((contact) => <article key={contact.id}><header><span className="crm-avatar">{contact.firstName[0]}{contact.lastName[0]}</span><div><strong>{contact.firstName} {contact.lastName}</strong><small>{clientName(contact.clientId)}</small></div><Badge tone={contact.marketingConsent === "granted" ? "green" : contact.marketingConsent === "revoked" ? "red" : "neutral"}>{contact.marketingConsent}</Badge></header><dl><div><dt>Phone</dt><dd>{contact.phone ?? "Not provided"}</dd></div><div><dt>Email</dt><dd>{contact.email ?? "Not provided"}</dd></div><div><dt>Last interaction</dt><dd>{shortDate(contact.lastInteractionAt)}</dd></div><div><dt>Lifetime value</dt><dd>{money(contact.lifetimeValueCents)}</dd></div></dl><footer>{contact.tags.map((tag) => <Badge key={tag} tone="purple">{tag}</Badge>)}</footer></article>)}</section> : <EmptyState title="No contacts yet" description="Add a contact or import a CSV to build the customer database." action={<button className="crm-button-primary" onClick={onAddContact}>Add Contact</button>} />}</div>;
+  return <div className="crm-view"><section className="crm-page-heading"><div><p>CONTACT DATABASE</p><h2>Contacts</h2><span>One customer record can connect to multiple opportunities, tasks, companies, and appointments.</span></div><div className="crm-heading-actions"><button className="crm-button-secondary" onClick={exportContacts} disabled={!filtered.length}>Export CSV</button>{canImport ? <button className="crm-button-secondary" onClick={onImportContacts}>Import CSV</button> : null}<button className="crm-button-primary" onClick={onAddContact}>+ Add Contact</button></div></section><section className="crm-filterbar"><label className="crm-search"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search contacts" aria-label="Search contacts" /></label><span>{filtered.length} contacts</span></section>{filtered.length ? <section className="crm-contact-grid">{filtered.map((contact) => {
+      const contactCalls = callsFor(contact.id);
+      const open = openContactId === contact.id;
+      return <article key={contact.id} className={open ? "crm-contact-open" : ""}>
+        <header>
+          <span className="crm-avatar">{contact.firstName[0]}{contact.lastName[0]}</span>
+          <div><strong>{contact.firstName} {contact.lastName}</strong><small>{clientName(contact.clientId)}</small></div>
+          <Badge tone={contact.marketingConsent === "granted" ? "green" : contact.marketingConsent === "revoked" ? "red" : "neutral"}>{contact.marketingConsent}</Badge>
+        </header>
+        <dl>
+          <div><dt>Phone</dt><dd>{contact.phone ?? "Not provided"}</dd></div>
+          <div><dt>Email</dt><dd>{contact.email ?? "Not provided"}</dd></div>
+          <div><dt>Last interaction</dt><dd>{shortDate(contact.lastInteractionAt)}</dd></div>
+          <div><dt>Lifetime value</dt><dd>{money(contact.lifetimeValueCents)}</dd></div>
+        </dl>
+        <footer>{contact.tags.map((tag) => <Badge key={tag} tone="purple">{tag}</Badge>)}</footer>
+        <button type="button" className="crm-contact-calls-toggle" aria-expanded={open} onClick={() => setOpenContactId(open ? null : contact.id)}>
+          {contactCalls.length ? `${open ? "Hide" : "Show"} ${contactCalls.length} call${contactCalls.length === 1 ? "" : "s"}` : "No tracked calls"}
+        </button>
+        {open ? <CallsSection calls={contactCalls} clientId={contact.clientId} emptyMessage="No tracked calls from this contact yet." /> : null}
+      </article>;
+    })}</section> : <EmptyState title="No contacts yet" description="Add a contact or import a CSV to build the customer database." action={<button className="crm-button-primary" onClick={onAddContact}>Add Contact</button>} />}</div>;
 }
 
 function CompanyCard({ company, clientName, contacts, mutate }: { company: CrmCompany; clientName: string; contacts: CrmContact[]; mutate: Mutate }) {
