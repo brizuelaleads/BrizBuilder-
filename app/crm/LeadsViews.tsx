@@ -9,7 +9,19 @@ import {
   type FormEvent,
   type MouseEvent,
 } from "react";
-import { CallsSection } from "./CallsSection";
+import {
+  Activity as ActivityIcon,
+  ArrowLeft,
+  Check,
+  ClipboardList,
+  Ellipsis,
+  FileText,
+  Mail,
+  MessageCircle,
+  NotebookPen,
+  Pencil,
+  Phone,
+} from "lucide-react";
 import type {
   CrmActivity,
   CrmCall,
@@ -592,6 +604,147 @@ function EstimatedValueEditor({
   );
 }
 
+type LeadDetailTab =
+  | "overview"
+  | "activity"
+  | "notes"
+  | "tasks"
+  | "files"
+  | "transcript";
+
+function formatLeadPhone(value: string | null) {
+  if (!value) return "Not provided";
+  const digits = value.replace(/\D/gu, "");
+  const local =
+    digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  if (local.length === 10) {
+    return `(${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6)}`;
+  }
+  return value;
+}
+
+function humanizeLeadValue(value: string) {
+  return value
+    .toLowerCase()
+    .replaceAll("_", " ")
+    .replace(/^\w/u, (letter) => letter.toUpperCase());
+}
+
+function formatCallDuration(seconds: number | null) {
+  if (seconds == null || seconds < 0) return "Unknown";
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return minutes ? `${minutes}m ${remainder}s` : `${remainder}s`;
+}
+
+function parseTranscript(value: string | null) {
+  if (!value) return [];
+  return value
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => {
+      const match = line.match(/^([^:]{1,40}):\s*(.+)$/u);
+      const speaker = match?.[1]?.trim() ?? "Transcript";
+      const text = match?.[2]?.trim() ?? line;
+      const business =
+        /agent|business|company|employee|operator|representative|staff/iu.test(
+          speaker,
+        );
+      return {
+        id: `${index}-${speaker}-${text.slice(0, 20)}`,
+        speaker,
+        text,
+        business,
+      };
+    });
+}
+
+function LeadTranscriptCard({
+  call,
+  lead,
+  initials,
+  index,
+}: {
+  call: CrmCall;
+  lead: CrmLead;
+  initials: string;
+  index: number;
+}) {
+  const lines = parseTranscript(call.transcript);
+
+  return (
+    <section className="crm-lead-section-card crm-lead-transcript-card">
+      <header className="crm-lead-section-heading">
+        <div>
+          <span>{index === 0 ? "Latest call" : `Earlier call ${index + 1}`}</span>
+          <h3>Call transcript</h3>
+        </div>
+        <p>Read-only transcript view</p>
+      </header>
+
+      <div className="crm-lead-call-meta">
+        <div>
+          <span>Call started</span>
+          <strong>{dateTime(call.startedAt)}</strong>
+        </div>
+        <div>
+          <span>Duration</span>
+          <strong>{formatCallDuration(call.durationSeconds)}</strong>
+        </div>
+        <div>
+          <span>Recording</span>
+          <strong>{call.recordingAvailable ? "Available" : "Unavailable"}</strong>
+        </div>
+      </div>
+
+      {call.recordingAvailable ? (
+        <audio
+          className="crm-lead-recording"
+          controls
+          preload="none"
+          src={`/api/callrail/recordings/${encodeURIComponent(
+            call.callrailCallId,
+          )}?clientId=${encodeURIComponent(lead.clientId)}`}
+        >
+          Your browser cannot play this recording.
+        </audio>
+      ) : null}
+
+      {call.callSummary ? (
+        <div className="crm-lead-call-summary">
+          <strong>Call summary</strong>
+          <p>{call.callSummary}</p>
+        </div>
+      ) : null}
+
+      {lines.length ? (
+        <div className="crm-lead-conversation">
+          {lines.map((line) => (
+            <article
+              className={line.business ? "business" : "caller"}
+              key={line.id}
+            >
+              {!line.business ? <span>{initials.slice(0, 1)}</span> : null}
+              <div>
+                <strong>{line.business ? lead.clientName : line.speaker}</strong>
+                <p>{line.text}</p>
+              </div>
+              {line.business ? <span>B</span> : null}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="crm-lead-empty-tab compact">
+          <MessageCircle aria-hidden="true" />
+          <h3>Transcript unavailable</h3>
+          <p>This call does not have a transcript yet.</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function LeadDetail({
   lead,
   stages,
@@ -621,10 +774,13 @@ export function LeadDetail({
   const leadAppointments = appointments.filter(
     (appointment) => appointment.leadId === lead.id,
   );
-  // Only this lead's calls. A repeat caller's earlier jobs are their
-  // own leads, and their calls belong there; the contact record is
-  // where the whole history sits.
-  const leadCalls = calls.filter((call) => call.leadId === lead.id);
+  const leadCalls = calls
+    .filter((call) => call.leadId === lead.id)
+    .sort((a, b) => (b.startedAt ?? "").localeCompare(a.startedAt ?? ""));
+  const [activeTab, setActiveTab] = useState<LeadDetailTab>(
+    leadCalls.length ? "transcript" : "overview",
+  );
+  const tabListRef = useRef<HTMLElement | null>(null);
   const timeline = [
     ...leadActivities.map((item) => ({
       id: item.id,
@@ -641,6 +797,21 @@ export function LeadDetail({
       type: "note",
     })),
   ].sort((a, b) => b.time.localeCompare(a.time));
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
+  useEffect(() => {
+    const list = tabListRef.current;
+    const active = list?.querySelector<HTMLElement>("button.active");
+    if (!list || !active) return;
+    list.scrollLeft = active.offsetLeft - (list.clientWidth - active.clientWidth) / 2;
+  }, [activeTab]);
 
   async function addNote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -659,8 +830,9 @@ export function LeadDetail({
       !window.confirm(
         `Archive ${lead.firstName} ${lead.lastName}? The record will be removed from active views but retained for audit history.`,
       )
-    )
+    ) {
       return;
+    }
     await mutate(
       { action: "archive_lead", leadId: lead.id },
       "Lead archived",
@@ -668,273 +840,417 @@ export function LeadDetail({
     onClose();
   }
 
+  const tabs = [
+    { id: "overview", label: "Overview", icon: ClipboardList },
+    { id: "activity", label: "Activity", icon: ActivityIcon },
+    { id: "notes", label: "Notes", icon: NotebookPen, count: leadNotes.length },
+    { id: "tasks", label: "Tasks", icon: Check, count: leadTasks.length },
+    { id: "files", label: "Files", icon: FileText },
+    {
+      id: "transcript",
+      label: "Transcript",
+      icon: MessageCircle,
+      count: leadCalls.length,
+    },
+  ] as const;
+  const displayName =
+    [lead.firstName, lead.lastName].filter(Boolean).join(" ") || "Unknown lead";
+  const leadInitials =
+    [lead.firstName, lead.lastName]
+      .filter(Boolean)
+      .map((part) => part[0]?.toUpperCase())
+      .join("")
+      .slice(0, 2) || "L";
+
   return (
-    <div
-      className="crm-drawer-layer"
-      role="presentation"
-      onMouseDown={(event) =>
-        event.target === event.currentTarget && onClose()
-      }
-    >
-      <aside
-        className="crm-lead-drawer"
+    <div className="crm-lead-page-layer">
+      <section
+        className="crm-lead-page"
         role="dialog"
         aria-modal="true"
-        aria-label={`Lead details for ${lead.firstName} ${lead.lastName}`}
+        aria-label={`Lead details for ${displayName}`}
       >
-        <header>
-          <div>
-            <span className="crm-avatar crm-avatar-lg">
-              {lead.firstName[0]}
-              {lead.lastName[0]}
-            </span>
-            <div>
-              <p>LEAD PROFILE</p>
-              <h2>
-                {lead.firstName} {lead.lastName}
-              </h2>
-              <span>
-                {lead.serviceRequested} · {lead.clientName}
-              </span>
-            </div>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Close lead details">
-            ×
-          </button>
-        </header>
-        <div className="crm-drawer-actions">
-          <a
-            href={lead.phone ? `tel:${lead.phone}` : undefined}
-            aria-disabled={!lead.phone}
-          >
-            Call customer
-          </a>
-          <a
-            href={lead.email ? `mailto:${lead.email}` : undefined}
-            aria-disabled={!lead.email}
-          >
-            Send email
-          </a>
-          <button
-            type="button"
-            onClick={() =>
-              void mutate(
-                {
-                  action: "update_lead",
-                  leadId: lead.id,
-                  status: "WON",
-                  finalRevenueCents:
-                    lead.finalRevenueCents || lead.estimatedValueCents,
-                },
-                "Lead marked as won",
-              )
-            }
-          >
-            Mark as won
-          </button>
-        </div>
-        <div className="crm-drawer-scroll">
-          <CallsSection
-            calls={leadCalls}
-            clientId={lead.clientId}
-            emptyMessage="No tracked calls on this lead."
-          />
-          <section className="crm-lead-summary">
-            <div>
-              <span>Pipeline stage</span>
-              <select
-                value={lead.stageId}
-                onChange={(event) =>
-                  void mutate(
-                    {
-                      action: "move_lead",
-                      leadId: lead.id,
-                      stageId: event.target.value,
-                    },
-                    "Pipeline stage updated",
-                  )
-                }
+        <div className="crm-lead-page-shell">
+          <header className="crm-lead-page-toolbar">
+            <button type="button" className="crm-lead-back" onClick={onClose}>
+              <ArrowLeft aria-hidden="true" />
+              <span>Back to leads</span>
+            </button>
+            <div className="crm-lead-toolbar-actions">
+              <details className="crm-lead-more">
+                <summary aria-label="More lead actions" title="More lead actions">
+                  <Ellipsis aria-hidden="true" />
+                </summary>
+                <div>
+                  <button
+                    type="button"
+                    disabled={lead.status === "WON"}
+                    onClick={() =>
+                      void mutate(
+                        {
+                          action: "update_lead",
+                          leadId: lead.id,
+                          status: "WON",
+                          finalRevenueCents:
+                            lead.finalRevenueCents || lead.estimatedValueCents,
+                        },
+                        "Lead marked as won",
+                      )
+                    }
+                  >
+                    Mark as won
+                  </button>
+                  <button
+                    type="button"
+                    className="danger"
+                    onClick={() => void archive()}
+                  >
+                    Archive lead
+                  </button>
+                </div>
+              </details>
+              <button
+                type="button"
+                className="crm-lead-edit-button"
+                onClick={() => setActiveTab("overview")}
               >
-                {stages.map((stage) => (
-                  <option key={stage.id} value={stage.id}>
-                    {stage.name}
-                  </option>
-                ))}
-              </select>
+                <Pencil aria-hidden="true" />
+                Edit lead
+              </button>
             </div>
-            <div>
-              <span>Status</span>
-              <select
-                value={lead.status}
-                onChange={(event) =>
-                  void mutate(
-                    {
-                      action: "update_lead",
-                      leadId: lead.id,
-                      status: event.target.value,
-                    },
-                    "Lead status updated",
-                  )
-                }
-              >
-                {leadStatuses.map((status) => (
-                  <option key={status}>{status}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <span>Lead score</span>
-              <strong>{lead.leadScore}/100</strong>
-            </div>
-            <div>
-              <span>Estimated value ($)</span>
-              <EstimatedValueEditor
-                key={`${lead.id}:${lead.estimatedValueCents}`}
-                lead={lead}
-                mutate={mutate}
-              />
-            </div>
-          </section>
+          </header>
 
-          <section className="crm-detail-grid">
-            <article>
-              <h3>Contact information</h3>
-              <dl>
-                <div>
-                  <dt>Phone</dt>
-                  <dd>{lead.phone ?? "Not provided"}</dd>
-                </div>
-                <div>
-                  <dt>Email</dt>
-                  <dd>{lead.email ?? "Not provided"}</dd>
-                </div>
-                <div>
-                  <dt>Address</dt>
-                  <dd>
-                    {[lead.address, lead.city, lead.state, lead.zip]
-                      .filter(Boolean)
-                      .join(", ") || "Not provided"}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Consent</dt>
-                  <dd>{lead.consentStatus}</dd>
-                </div>
-              </dl>
-            </article>
-            <article>
-              <h3>Attribution</h3>
-              <dl>
-                <div>
-                  <dt>Source</dt>
-                  <dd>{lead.source}</dd>
-                </div>
-                <div>
-                  <dt>Campaign</dt>
-                  <dd>{lead.campaign ?? "Not captured"}</dd>
-                </div>
-                <div>
-                  <dt>Created</dt>
-                  <dd>{dateTime(lead.createdAt)}</dd>
-                </div>
-                <div>
-                  <dt>Assigned to</dt>
-                  <dd>{lead.assignedUser ?? "Unassigned"}</dd>
-                </div>
-              </dl>
-            </article>
-          </section>
-
-          <section className="crm-message-card">
-            <h3>Customer message</h3>
-            <p>{lead.message || "No message was provided."}</p>
-          </section>
-
-          <section className="crm-ai-unavailable">
-            <div>
-              <span>AI</span>
+          <section className="crm-lead-identity-card">
+            <div className="crm-lead-identity">
+              <span className="crm-lead-avatar">{leadInitials}</span>
               <div>
-                <strong>AI lead summary</strong>
-                <p>
-                  Connect an AI provider before generating summaries. Every
-                  external action still requires review.
-                </p>
+                <div className="crm-lead-title-line">
+                  <h2>{displayName}</h2>
+                  <Badge tone={statusTone(lead.status)}>
+                    {humanizeLeadValue(lead.status)}
+                  </Badge>
+                </div>
+                <strong>{lead.clientName}</strong>
+                <p>Added {dateTime(lead.createdAt)}</p>
               </div>
             </div>
-            <button disabled>Generate summary</button>
+            <div className="crm-lead-contact-actions" aria-label="Contact lead">
+              <a
+                className="primary"
+                href={lead.phone ? `tel:${lead.phone}` : undefined}
+                aria-disabled={!lead.phone}
+                aria-label="Call lead"
+                title="Call lead"
+              >
+                <Phone aria-hidden="true" />
+              </a>
+              <a
+                className="primary"
+                href={lead.phone ? `sms:${lead.phone}` : undefined}
+                aria-disabled={!lead.phone}
+                aria-label="Text lead"
+                title="Text lead"
+              >
+                <MessageCircle aria-hidden="true" />
+              </a>
+              <a
+                href={lead.email ? `mailto:${lead.email}` : undefined}
+                aria-disabled={!lead.email}
+                aria-label="Email lead"
+                title="Email lead"
+              >
+                <Mail aria-hidden="true" />
+              </a>
+            </div>
           </section>
 
-          <section className="crm-related-grid">
-            <article>
-              <header>
-                <h3>Tasks</h3>
-                <Badge tone="neutral">{leadTasks.length}</Badge>
-              </header>
-              {leadTasks.map((task) => (
-                <div key={task.id}>
-                  <strong>{task.title}</strong>
-                  <span>
-                    {task.status.replaceAll("_", " ")} · {shortDate(task.dueAt)}
-                  </span>
-                </div>
-              ))}
-              {!leadTasks.length ? <p>No tasks for this lead.</p> : null}
-            </article>
-            <article>
-              <header>
-                <h3>Appointments</h3>
-                <Badge tone="neutral">{leadAppointments.length}</Badge>
-              </header>
-              {leadAppointments.map((appointment) => (
-                <div key={appointment.id}>
-                  <strong>{appointment.serviceType}</strong>
-                  <span>
-                    {dateTime(appointment.startsAt)} · {appointment.status}
-                  </span>
-                </div>
-              ))}
-              {!leadAppointments.length ? (
-                <p>No appointments for this lead.</p>
-              ) : null}
-            </article>
+          <section className="crm-lead-fact-bar" aria-label="Lead summary">
+            <div><span>Source</span><strong>{lead.source}</strong></div>
+            <div><span>Phone</span><strong>{formatLeadPhone(lead.phone)}</strong></div>
+            <div>
+              <span>Last contact</span>
+              <strong>
+                {lead.lastContactedAt ? dateTime(lead.lastContactedAt) : "Never"}
+              </strong>
+            </div>
+            <div><span>Est. value</span><strong>{money(lead.estimatedValueCents)}</strong></div>
+            <div><span>Lead score</span><strong>{lead.leadScore}/100</strong></div>
           </section>
 
-          <section className="crm-timeline">
-            <header>
-              <h3>Activity timeline</h3>
-              <span>{timeline.length} events</span>
-            </header>
-            <form onSubmit={(event) => void addNote(event)}>
-              <textarea
-                name="body"
-                rows={3}
-                placeholder="Add an internal note..."
-                aria-label="Internal note"
-                required
-              />
-              <button className="crm-button-primary">Add note</button>
-            </form>
-            {timeline.map((item) => (
-              <div key={item.id}>
-                <i className={item.type === "note" ? "crm-timeline-note" : ""} />
-                <span>
-                  <strong>{item.title}</strong>
-                  <p>{item.detail}</p>
-                  <small>{dateTime(item.time)}</small>
-                </span>
+          <nav ref={tabListRef} className="crm-lead-tabs" aria-label="Lead details">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === tab.id}
+                  className={activeTab === tab.id ? "active" : ""}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  <Icon aria-hidden="true" />
+                  <span>{tab.label}</span>
+                  {"count" in tab && tab.count ? <small>{tab.count}</small> : null}
+                </button>
+              );
+            })}
+          </nav>
+
+          <main className="crm-lead-tab-content" role="tabpanel">
+            {activeTab === "overview" ? (
+              <div className="crm-lead-overview">
+                <section className="crm-lead-section-card crm-lead-edit-card">
+                  <header className="crm-lead-section-heading">
+                    <div><span>Lead overview</span><h3>Qualification and pipeline</h3></div>
+                    <p>Changes save as you make them.</p>
+                  </header>
+                  <div className="crm-lead-edit-grid">
+                    <label>
+                      <span>Pipeline stage</span>
+                      <select
+                        value={lead.stageId}
+                        onChange={(event) =>
+                          void mutate(
+                            {
+                              action: "move_lead",
+                              leadId: lead.id,
+                              stageId: event.target.value,
+                            },
+                            "Pipeline stage updated",
+                          )
+                        }
+                      >
+                        {stages.map((stage) => (
+                          <option key={stage.id} value={stage.id}>{stage.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span>Status</span>
+                      <select
+                        value={lead.status}
+                        onChange={(event) =>
+                          void mutate(
+                            {
+                              action: "update_lead",
+                              leadId: lead.id,
+                              status: event.target.value,
+                            },
+                            "Lead status updated",
+                          )
+                        }
+                      >
+                        {leadStatuses.map((status) => (
+                          <option key={status} value={status}>{humanizeLeadValue(status)}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span>Estimated value</span>
+                      <div className="crm-lead-money-field">
+                        <span>$</span>
+                        <EstimatedValueEditor
+                          key={`${lead.id}:${lead.estimatedValueCents}`}
+                          lead={lead}
+                          mutate={mutate}
+                        />
+                      </div>
+                    </label>
+                    <div className="crm-lead-score-field">
+                      <span>Lead score</span>
+                      <strong>{lead.leadScore}<small>/100</small></strong>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="crm-lead-detail-columns">
+                  <article className="crm-lead-section-card">
+                    <h3>Contact information</h3>
+                    <dl>
+                      <div><dt>Phone</dt><dd>{formatLeadPhone(lead.phone)}</dd></div>
+                      <div><dt>Email</dt><dd>{lead.email ?? "Not provided"}</dd></div>
+                      <div>
+                        <dt>Address</dt>
+                        <dd>
+                          {[lead.address, lead.city, lead.state, lead.zip]
+                            .filter(Boolean)
+                            .join(", ") || "Not provided"}
+                        </dd>
+                      </div>
+                      <div><dt>Consent</dt><dd>{humanizeLeadValue(lead.consentStatus)}</dd></div>
+                    </dl>
+                  </article>
+                  <article className="crm-lead-section-card">
+                    <h3>Attribution</h3>
+                    <dl>
+                      <div><dt>Source</dt><dd>{lead.source}</dd></div>
+                      <div><dt>Campaign</dt><dd>{lead.campaign ?? "Not captured"}</dd></div>
+                      <div><dt>Created</dt><dd>{dateTime(lead.createdAt)}</dd></div>
+                      <div><dt>Assigned to</dt><dd>{lead.assignedUser ?? "Unassigned"}</dd></div>
+                    </dl>
+                  </article>
+                </section>
+
+                <section className="crm-lead-section-card crm-lead-message-card">
+                  <h3>Customer message</h3>
+                  <p>{lead.message || "No message was provided."}</p>
+                </section>
+
+                <section className="crm-lead-ai-card">
+                  <span>AI</span>
+                  <div>
+                    <strong>AI lead summary</strong>
+                    <p>
+                      Connect an AI provider before generating summaries. Every
+                      external action still requires review.
+                    </p>
+                  </div>
+                  <button type="button" disabled>Generate summary</button>
+                </section>
+
+                <section className="crm-lead-related-grid">
+                  <article className="crm-lead-section-card">
+                    <header><h3>Tasks</h3><Badge tone="neutral">{leadTasks.length}</Badge></header>
+                    {leadTasks.slice(0, 3).map((task) => (
+                      <div key={task.id}>
+                        <strong>{task.title}</strong>
+                        <span>{humanizeLeadValue(task.status)} · {shortDate(task.dueAt)}</span>
+                      </div>
+                    ))}
+                    {!leadTasks.length ? <p>No tasks for this lead.</p> : null}
+                    {leadTasks.length > 3 ? (
+                      <button type="button" onClick={() => setActiveTab("tasks")}>View all tasks</button>
+                    ) : null}
+                  </article>
+                  <article className="crm-lead-section-card">
+                    <header><h3>Appointments</h3><Badge tone="neutral">{leadAppointments.length}</Badge></header>
+                    {leadAppointments.slice(0, 3).map((appointment) => (
+                      <div key={appointment.id}>
+                        <strong>{appointment.serviceType}</strong>
+                        <span>{dateTime(appointment.startsAt)} · {humanizeLeadValue(appointment.status)}</span>
+                      </div>
+                    ))}
+                    {!leadAppointments.length ? <p>No appointments for this lead.</p> : null}
+                  </article>
+                </section>
               </div>
-            ))}
-          </section>
+            ) : null}
 
-          <button
-            type="button"
-            className="crm-danger-link"
-            onClick={() => void archive()}
-          >
-            Archive lead
-          </button>
+            {activeTab === "activity" ? (
+              <section className="crm-lead-section-card crm-lead-activity-panel">
+                <header className="crm-lead-section-heading">
+                  <div><span>History</span><h3>Activity timeline</h3></div>
+                  <p>{timeline.length} event{timeline.length === 1 ? "" : "s"}</p>
+                </header>
+                {timeline.length ? (
+                  <div className="crm-lead-timeline-list">
+                    {timeline.map((item) => (
+                      <article key={item.id}>
+                        <i className={item.type === "note" ? "note" : ""} />
+                        <div>
+                          <strong>{item.title}</strong>
+                          <p>{item.detail}</p>
+                          <time>{dateTime(item.time)}</time>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="crm-lead-empty-tab"><ActivityIcon /><h3>No activity yet</h3><p>Lead events will appear here as your team works this opportunity.</p></div>
+                )}
+              </section>
+            ) : null}
+
+            {activeTab === "notes" ? (
+              <section className="crm-lead-section-card crm-lead-notes-panel">
+                <header className="crm-lead-section-heading">
+                  <div><span>Internal only</span><h3>Notes</h3></div>
+                  <p>{leadNotes.length} note{leadNotes.length === 1 ? "" : "s"}</p>
+                </header>
+                <form onSubmit={(event) => void addNote(event)}>
+                  <textarea name="body" rows={4} placeholder="Add an internal note…" aria-label="Internal note" required />
+                  <button className="crm-button-primary">Add note</button>
+                </form>
+                <div className="crm-lead-note-list">
+                  {leadNotes.map((note) => (
+                    <article key={note.id}>
+                      <NotebookPen aria-hidden="true" />
+                      <div><p>{note.body}</p><time>{dateTime(note.createdAt)}</time></div>
+                    </article>
+                  ))}
+                  {!leadNotes.length ? (
+                    <div className="crm-lead-empty-tab compact"><NotebookPen /><h3>No notes yet</h3><p>Add context your team should know about this lead.</p></div>
+                  ) : null}
+                </div>
+              </section>
+            ) : null}
+
+            {activeTab === "tasks" ? (
+              <section className="crm-lead-section-card">
+                <header className="crm-lead-section-heading">
+                  <div><span>Follow-up</span><h3>Tasks</h3></div>
+                  <p>{leadTasks.length} task{leadTasks.length === 1 ? "" : "s"}</p>
+                </header>
+                {leadTasks.length ? (
+                  <div className="crm-lead-task-list">
+                    {leadTasks.map((task) => (
+                      <article key={task.id}>
+                        <button
+                          type="button"
+                          className={task.status === "COMPLETED" ? "complete" : ""}
+                          onClick={() =>
+                            void mutate(
+                              { action: "toggle_task", taskId: task.id },
+                              task.status === "COMPLETED" ? "Task reopened" : "Task completed",
+                            )
+                          }
+                          aria-label={task.status === "COMPLETED" ? `Reopen ${task.title}` : `Complete ${task.title}`}
+                        ><Check aria-hidden="true" /></button>
+                        <div><strong>{task.title}</strong><p>Due {shortDate(task.dueAt)}</p></div>
+                        <Badge tone={task.status === "COMPLETED" ? "green" : "neutral"}>{humanizeLeadValue(task.status)}</Badge>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="crm-lead-empty-tab"><Check /><h3>No tasks yet</h3><p>Tasks connected to this lead will appear here.</p></div>
+                )}
+              </section>
+            ) : null}
+
+            {activeTab === "files" ? (
+              <section className="crm-lead-section-card">
+                <div className="crm-lead-empty-tab"><FileText /><h3>No files attached</h3><p>Quotes, photos, and signed documents will appear here when file storage is connected.</p></div>
+              </section>
+            ) : null}
+
+            {activeTab === "transcript" ? (
+              <div className="crm-lead-transcripts">
+                {leadCalls.map((call, index) => (
+                  <LeadTranscriptCard
+                    key={call.id}
+                    call={call}
+                    lead={lead}
+                    initials={leadInitials}
+                    index={index}
+                  />
+                ))}
+                {!leadCalls.length ? (
+                  <section className="crm-lead-section-card">
+                    <div className="crm-lead-empty-tab"><Phone /><h3>No tracked calls</h3><p>CallRail calls associated with this lead will appear here.</p></div>
+                  </section>
+                ) : null}
+              </div>
+            ) : null}
+          </main>
+
+          <footer className="crm-lead-page-footer">
+            <button type="button" className="crm-danger-link" onClick={() => void archive()}>
+              Archive lead
+            </button>
+          </footer>
         </div>
-      </aside>
+      </section>
     </div>
   );
 }

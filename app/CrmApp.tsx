@@ -1464,6 +1464,7 @@ export function CrmApp({
 
       {selectedLead ? (
         <LeadDetail
+          key={selectedLead.id}
           lead={selectedLead}
           stages={data.stages}
           notes={data.notes}
