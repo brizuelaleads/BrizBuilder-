@@ -10,7 +10,7 @@
     "build": "vinext build",
     "start": "vinext start",
     "test": "npm run test:security && npm run test:brand && npm run test:landing && npm run build && node --test tests/crm.integration.test.mjs",
-    "test:security": "npm run test:oauth && npm run test:ai-connector && npm run test:ai-gateway && npm run test:stripe && npm run test:google-calendar && npm run test:theme && npm run test:team && npm run test:workspace && npm run test:client-deletion && npm run test:auth && npm run test:system-email && npm run test:meta && npm run test:meta-redaction && npm run test:meta-value && npm run test:meta-eligibility && npm run test:callrail-ids && npm run test:callrail-cleanup && npm run test:callrail-dni && npm run test:callrail",
+    "test:security": "npm run test:oauth && npm run test:ai-connector && npm run test:ai-gateway && npm run test:stripe && npm run test:google-calendar && npm run test:theme && npm run test:team && npm run test:workspace && npm run test:client-deletion && npm run test:auth && npm run test:system-email && npm run test:meta && npm run test:meta-redaction && npm run test:meta-value && npm run test:meta-eligibility && npm run test:callrail-ids && npm run test:callrail-cleanup && npm run test:callrail-dni && npm run test:callrail-dni-page && npm run test:callrail",
     "test:oauth": "node --experimental-strip-types --test tests/ai-oauth-security.test.mjs",
     "test:ai-connector": "node --test tests/ai-connector-security.test.mjs",
     "test:ai-gateway": "node --experimental-strip-types --test tests/ai-gateway.test.mjs",
@@ -37,6 +37,7 @@
     "test:callrail-ids": "node --experimental-strip-types --test tests/callrail-ids.test.mjs",
     "test:callrail-cleanup": "node --experimental-strip-types --test tests/callrail-cleanup.test.mjs",
     "test:callrail-dni": "node --experimental-strip-types --test tests/callrail-dni.test.mjs",
+    "test:callrail-dni-page": "node --experimental-strip-types --test tests/callrail-dni-page.test.mjs",
     "test:callrail": "node --test tests/callrail-security.test.mjs"
   },
   "dependencies": {

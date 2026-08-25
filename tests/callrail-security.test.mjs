@@ -20,6 +20,25 @@ const migrationSource = read(
 const connectionsUi = read("app/crm/WorkflowViews.tsx");
 const dniRoute = read("app/api/callrail/dni-test/route.ts");
 const dniSource = read("lib/callrail-dni.ts");
+const dniPage = read("lib/callrail-dni-page.ts");
+
+/**
+ * Source with line comments removed.
+ *
+ * These files document what they deliberately avoid — "no async", "never sent
+ * here" — so searching the raw text finds the promise rather than a breach of
+ * it. Only comments introduced at a line start or after whitespace are cut, so
+ * a protocol-relative URL inside a string survives.
+ */
+const codeOnly = (source) =>
+  source
+    .split("\n")
+    .map((line) => {
+      const at = line.search(/(?:^|\s)\/\//);
+      if (at < 0) return line;
+      return line.slice(0, line.indexOf("//", at));
+    })
+    .join("\n");
 
 const block = (source, needle) => {
   const start = source.indexOf(needle);
@@ -538,13 +557,19 @@ test("the DNI test page refuses indexing and locks down what may run", () => {
   );
   assert.match(dniHeaders, /"Referrer-Policy": "no-referrer"/);
   assert.match(dniRoute, /const BASE_HEADERS = DNI_NO_STORE_HEADERS;/);
-  assert.match(dniRoute, /<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">/);
+  assert.match(
+    dniPage,
+    /<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">/,
+  );
   // Only CallRail may execute or be contacted from a page that deliberately
-  // carries click identifiers in its address bar.
-  assert.match(dniRoute, /default-src 'none'/);
-  assert.match(dniRoute, /script-src 'unsafe-inline' https:\/\/cdn\.callrail\.com/);
-  assert.match(dniRoute, /form-action 'none'/);
-  assert.match(dniRoute, /frame-ancestors 'none'/);
+  // carries click identifiers in its address bar. The policy is built beside
+  // the markup it admits, so it is asserted there.
+  const policy = block(dniPage, "export function buildDniCsp(");
+  assert.ok(policy, "the policy builder was found");
+  assert.match(policy, /default-src 'none'/);
+  assert.match(policy, /script-src[^\n]*DNI_SCRIPT_ORIGIN/);
+  assert.match(policy, /form-action 'none'/);
+  assert.match(policy, /frame-ancestors 'none'/);
 });
 
 test("the credential never survives in a URL", () => {
@@ -559,7 +584,7 @@ test("the credential never survives in a URL", () => {
   const dniHeaders2 = read("lib/callrail-dni.ts");
   assert.match(dniHeaders2, /"Referrer-Policy": "no-referrer"/);
   assert.match(dniRoute, /\.\.\.BASE_HEADERS/);
-  assert.match(dniRoute, /<meta name="referrer" content="no-referrer">/);
+  assert.match(dniPage, /<meta name="referrer" content="no-referrer">/);
   // The rendered page is reached by cookie, never by token.
   assert.match(dniRoute, /verifyDniCredential\(readDniCookie\(/);
   // HttpOnly is what keeps it away from CallRail's script on this very page.
@@ -572,12 +597,30 @@ test("the credential never survives in a URL", () => {
 test("same-origin fetches stay blocked alongside every other destination", () => {
   // 'self' must appear in no directive: a page carrying click identifiers must
   // not be able to post them back to us either.
-  const start = dniRoute.indexOf("Content-Security-Policy");
-  const csp = dniRoute.slice(start, dniRoute.indexOf("join", start));
-  assert.equal(/'self'/.test(csp), false, "no directive may allow self");
-  assert.match(csp, /default-src 'none'/);
-  assert.match(csp, /connect-src https:\/\/\*\.callrail\.com/);
-  assert.match(csp, /form-action 'none'/);
+  // The policy is built in the page module from the digests of what it emits,
+  // so that is where the directives live now.
+  const policy = block(dniPage, "export function buildDniCsp(");
+  assert.ok(policy, "the policy builder exists");
+  assert.equal(/'self'/.test(policy), false, "no directive may allow self");
+  assert.match(policy, /default-src 'none'/);
+  assert.match(policy, /connect-src https:\/\/\*\.callrail\.com/);
+  assert.match(policy, /form-action 'none'/);
+  // Inline blocks are admitted by hash, never by blanket allowance.
+  assert.equal(
+    /unsafe-inline|unsafe-eval|unsafe-hashes/.test(codeOnly(policy)),
+    false,
+    "no unsafe-* source expression",
+  );
+  assert.match(policy, /hashes\.bootstrap/);
+  assert.match(policy, /hashes\.main/);
+  assert.match(policy, /hashes\.style/);
+  // And the route serves exactly that policy rather than one of its own.
+  assert.match(dniRoute, /"Content-Security-Policy": page\.contentSecurityPolicy/);
+  assert.equal(
+    /unsafe-inline/.test(codeOnly(dniRoute)),
+    false,
+    "the route declares no inline allowance",
+  );
 });
 
 test("the DNI test page is gated by a signed, short-lived credential", () => {
@@ -611,13 +654,15 @@ test("a script URL is verified as CallRail's at the point it is embedded", () =>
   assert.match(dniRoute, /await loadConnection\(claim\.organizationId, claim\.clientId\)/);
   assert.match(dniRoute, /if \(!connection\) return notFound\(\)/);
   const guardAt = dniRoute.indexOf("isCallRailScriptUrl(config.scriptUrl)");
-  const renderAt = dniRoute.indexOf("renderPage(connection.scriptUrl");
+  const renderAt = dniRoute.indexOf("renderDniPage(");
   assert.ok(guardAt < renderAt, "validated before rendering");
   // Exact host match, so suffix confusion cannot pass.
   assert.match(dniSource, /parsed\.hostname === CALLRAIL_SCRIPT_HOST/);
-  // Everything interpolated into the page is escaped.
-  assert.match(dniRoute, /function escapeHtml\(/);
-  assert.match(dniRoute, /escapeHtml\(companyName\)/);
+  // Everything interpolated into the page is escaped, in the module that
+  // builds it.
+  assert.match(dniPage, /function escapeHtml\(/);
+  assert.match(dniPage, /escapeHtml\(companyName\)/);
+  assert.match(dniPage, /const safeScript = escapeHtml\(scriptUrl\)/);
 });
 
 test("the install snippet is generated from the connected company's own script", () => {
@@ -677,6 +722,42 @@ test("expiry is verified server-side rather than trusted to the browser", () => 
   assert.ok(signatureAt < expiryAt, "signature first, then the deadline");
   // Max-Age is a courtesy to the browser, not the control.
   assert.match(dni, /Max-Age=\$\{Math\.max\(0, Math\.floor\(maxAgeSeconds\)\)\}/);
+});
+
+test("the swap targets are prepared before CallRail's script runs", () => {
+  // The first version of this page created its number when someone typed,
+  // which is after swap.js has already scanned the document — it loaded, it
+  // reported attribution, and it never swapped. The ordering below is what
+  // fixed it, and these keep it fixed.
+  const linkAt = dniPage.indexOf("DNI_SWAP_LINK_ID +");
+  const bootstrapAt = dniPage.indexOf("DNI_BOOTSTRAP_ID +");
+  const scriptAt = dniPage.indexOf("DNI_SCRIPT_ID +");
+  assert.ok(linkAt > -1 && bootstrapAt > -1 && scriptAt > -1);
+  assert.ok(linkAt < bootstrapAt, "targets are emitted before the bootstrap");
+  assert.ok(bootstrapAt < scriptAt, "the bootstrap is emitted before CallRail");
+  // The absence of async on the emitted tag is proved against real rendered
+  // HTML in tests/callrail-dni-page.test.mjs, which can read the finished
+  // attribute rather than guess at the expression that produced it.
+  assert.match(dniPage, /export const DNI_SCRIPT_ORIGIN = "https:\/\/cdn\.callrail\.com"/);
+});
+
+test("the destination number never reaches the server", () => {
+  // It is typed into the browser, kept in sessionStorage and used to write the
+  // DOM before CallRail loads. A round trip would both miss that window and
+  // put a customer phone number in a request log.
+  assert.match(dniPage, /sessionStorage/);
+  for (const forbidden of ["fetch(", "XMLHttpRequest", "sendBeacon", "<form"]) {
+    assert.equal(dniPage.includes(forbidden), false, forbidden);
+  }
+  // The route reads one query parameter and no body at all.
+  assert.equal(/request\.(json|text|formData|body)/.test(dniRoute), false);
+  // Code only: the route's header comment explains that it never receives the
+  // destination, and that sentence is not a violation of itself.
+  assert.equal(
+    /destination/i.test(codeOnly(dniRoute)),
+    false,
+    "the route knows nothing of it",
+  );
 });
 
 test("the permission exists in both permission files", () => {
