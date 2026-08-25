@@ -2,7 +2,7 @@ import {
   CallRailApiError,
   callRailDateParam,
   getCallRailCall,
-  listCallRailCalls,
+  listCallRailCallIds,
   type CallRailCall,
 } from "./callrail";
 import {
@@ -1013,18 +1013,26 @@ export async function reconcileCallRailIngestion(options: {
     try {
       const access = await loadCallRailApiAccess(organizationId, clientId);
       if (!access.accountId) throw new Error("CallRail account is not selected.");
-      const page = await listCallRailCalls(accountId, companyId, access.apiKey, {
-        startDate: callRailDateParam(windowStart),
-        endDate: callRailDateParam(windowEnd),
-        maxPages: options.maxPagesPerConnection,
-      });
+      // Discovery names the calls; it does not describe them. Each one is
+      // then refetched in full, so a reconciled call is built from exactly
+      // the same record a webhook-driven one is.
+      const discovered = await listCallRailCallIds(
+        accountId,
+        companyId,
+        access.apiKey,
+        {
+          startDate: callRailDateParam(windowStart),
+          endDate: callRailDateParam(windowEnd),
+          maxPages: options.maxPagesPerConnection,
+        },
+      );
       let ingested = 0;
       let repaired = 0;
-      for (const call of page.calls) {
-        const result = await ingestFetchedCall(
+      for (const callId of discovered.callIds) {
+        const result = await ingestCallRailCall(
           organizationId,
           clientId,
-          call,
+          callId,
           "call_modified",
         );
         if (result.status === "ingested") ingested += 1;
@@ -1033,7 +1041,7 @@ export async function reconcileCallRailIngestion(options: {
       // Anything still unfinished, whatever its age. Keyed on CallRail's
       // call id, so a call the window sweep already handled converges here
       // instead of being done twice.
-      const seenIds = new Set(page.calls.map((call) => call.id));
+      const seenIds = new Set(discovered.callIds);
       for (const row of await unfinishedCalls(organizationId, clientId, 50)) {
         const callId = String(row.callrail_call_id);
         if (seenIds.has(callId)) continue;
@@ -1048,15 +1056,15 @@ export async function reconcileCallRailIngestion(options: {
         recovered += 1;
       }
 
-      summary.callsSeen += page.calls.length;
+      summary.callsSeen += discovered.callIds.length;
       summary.callsIngested += ingested;
       summary.callsRepaired += repaired;
       summary.callsRecovered += recovered;
       await finishSyncRun(runId, {
-        calls_seen: page.calls.length,
+        calls_seen: discovered.callIds.length,
         calls_ingested: ingested,
         calls_repaired: repaired,
-        status: page.truncated ? "partial" : "ok",
+        status: discovered.truncated ? "partial" : "ok",
         error: null,
       });
     } catch (error) {

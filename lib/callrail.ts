@@ -1,3 +1,4 @@
+import { collectCallRailPages } from "./callrail-pagination";
 import {
   assertCallRailAccountId,
   assertCallRailCompanyId,
@@ -188,8 +189,10 @@ export type CallRailCall = {
   callSummary: string | null;
 };
 
-export type CallRailCallPage = {
-  calls: CallRailCall[];
+export type CallRailCallIdPage = {
+  /** CallRail's own call ids, de-duplicated, in the order discovered. */
+  callIds: string[];
+  /** True when the page cap was reached with pages still unread. */
   truncated: boolean;
 };
 
@@ -995,7 +998,21 @@ export function callRailDateParam(instant: Date): string {
   return instant.toISOString().slice(0, 10);
 }
 
-export async function listCallRailCalls(
+/**
+ * Which calls exist in a window. Nothing about them.
+ *
+ * This is a discovery request and only a discovery request: it names the
+ * company, the window and the page, and reads exactly one thing back out of
+ * each row — CallRail's own call id. Every detail an ingested call is built
+ * from comes from getCallRailCall afterwards, where the full documented field
+ * list lives, so nothing here is ever treated as the source of truth.
+ *
+ * It is this narrow on purpose. Asking the list endpoint for sorting, relative
+ * pagination and a field selection was answered with a 400, and none of those
+ * three affected which calls came back — only their order and packaging. What
+ * is left is the documented default: offset pagination over a filtered window.
+ */
+export async function listCallRailCallIds(
   accountId: string,
   companyId: string,
   apiKey: string,
@@ -1004,57 +1021,38 @@ export async function listCallRailCalls(
     endDate: string;
     maxPages?: number;
   },
-): Promise<CallRailCallPage> {
+): Promise<CallRailCallIdPage> {
   const safeAccountId = assertCallRailAccountId(accountId);
   const safeCompanyId = assertCallRailCompanyId(companyId);
-  const maxPages = Math.max(1, Math.min(10, options.maxPages ?? 4));
-  let url: URL | null = new URL(`${CALLRAIL_API_URL}/a/${safeAccountId}/calls.json`);
-  const calls: CallRailCall[] = [];
-  let page = 0;
-  let truncated = false;
-  while (url && page < maxPages) {
-    const searchParams: Record<string, string> =
-      page === 0
-        ? {
-            company_id: safeCompanyId,
-            fields: CALLRAIL_CALL_FIELDS.join(","),
-            relative_pagination: "true",
-            per_page: String(CALLRAIL_CALL_PAGE_SIZE),
-            start_date: options.startDate,
-            end_date: options.endDate,
-            sort: "start_time",
-            order: "desc",
-          }
-        : {};
-    const body = await callRailUrlRequest(
-      url,
-      apiKey,
-      { searchParams },
-      "calls.list",
-    );
-    const rows = Array.isArray(body.calls) ? body.calls : [];
-    calls.push(
-      ...rows
-        .map((row) => mapCall(row as Record<string, unknown>))
-        .filter((call) => call.id !== ""),
-    );
-    page += 1;
-    const next = asOptionalText(body.next_page);
-    if (body.has_next_page === true && next) {
-      const nextUrl = new URL(next);
-      if (
-        nextUrl.protocol !== "https:" ||
-        nextUrl.hostname !== "api.callrail.com"
-      ) {
-        throw new CallRailApiError("rejected", messageForStatus("rejected"));
-      }
-      url = nextUrl;
-    } else {
-      url = null;
-    }
-  }
-  if (url) truncated = true;
-  return { calls, truncated };
+  const walk = await collectCallRailPages(
+    async (pageNumber) => {
+      const body = await callRailRequest(
+        `/a/${safeAccountId}/calls.json`,
+        apiKey,
+        {
+          company_id: safeCompanyId,
+          start_date: options.startDate,
+          end_date: options.endDate,
+          page: String(pageNumber),
+          per_page: String(CALLRAIL_CALL_PAGE_SIZE),
+        },
+        "calls.list",
+      );
+      const reported = Number(body.total_pages);
+      return {
+        rows: Array.isArray(body.calls) ? body.calls : [],
+        totalPages: Number.isFinite(reported) ? reported : null,
+      };
+    },
+    // The one value a discovery walk keeps. A row here is a pointer to a
+    // call, never a description of one.
+    (row) => asText((row as Record<string, unknown>).id),
+    {
+      perPage: CALLRAIL_CALL_PAGE_SIZE,
+      maxPages: Math.max(1, Math.min(10, options.maxPages ?? 4)),
+    },
+  );
+  return { callIds: walk.ids, truncated: walk.truncated };
 }
 
 /**

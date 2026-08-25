@@ -438,8 +438,8 @@ test("ingestion and reconciliation are idempotent around CallRail call ids", () 
     "__end_of_file__",
   );
   assert.ok(reconcile);
-  assert.match(reconcile, /listCallRailCalls\(/);
-  assert.match(reconcile, /ingestFetchedCall\(/);
+  assert.match(reconcile, /listCallRailCallIds\(/);
+  assert.match(reconcile, /ingestCallRailCall\(/);
   assert.match(ingestionSource, /callrail_sync_runs/);
 });
 
@@ -1072,13 +1072,11 @@ test("reconciliation is scoped, bounded and paginated by cursor", () => {
   assert.match(reconcile, /const clientId = String\(connection\.client_id\)/);
   assert.match(reconcile, /windowStart/);
   assert.match(reconcile, /windowEnd/);
-  // Cursor pagination, with the next page confirmed to be CallRail's own host
-  // before it is followed.
-  const list = block(providerSource, "export async function listCallRailCalls");
-  assert.match(list, /relative_pagination: "true"/);
-  assert.match(list, /body\.next_page/);
-  assert.match(list, /nextUrl\.hostname !== "api\.callrail\.com"/);
-  assert.match(list, /fields: CALLRAIL_CALL_FIELDS\.join\(","\)/);
+  // Offset pagination over a filtered window, walked to the end.
+  const list = block(providerSource, "export async function listCallRailCallIds");
+  assert.match(list, /collectCallRailPages\(/);
+  assert.match(list, /page: String\(pageNumber\)/);
+  assert.match(list, /per_page: String\(CALLRAIL_CALL_PAGE_SIZE\)/);
 });
 
 test("the webhook resolves its tenant from the path, never the payload", () => {
@@ -2158,7 +2156,7 @@ test("recovering the same call twice changes nothing the second time", () => {
 
   // And the window sweep does not redo what it just did in the same pass.
   const reconcile = block(ingestionSource, "export async function reconcileCallRailIngestion");
-  assert.match(reconcile, /const seenIds = new Set\(page\.calls\.map\(\(call\) => call\.id\)\)/);
+  assert.match(reconcile, /const seenIds = new Set\(discovered\.callIds\)/);
   assert.match(reconcile, /if \(seenIds\.has\(callId\)\) continue;/);
 });
 
@@ -2381,4 +2379,89 @@ test("an endpoint label is a fixed name, never a path", () => {
       `${label} is used at its call site`,
     );
   }
+});
+
+
+// ------------------------------- the list names calls; it never describes them
+
+test("the calls list is a discovery request and nothing more", () => {
+  const list = block(providerSource, "export async function listCallRailCallIds");
+  assert.ok(list, "the discovery request exists");
+  const code = codeOnly(list);
+
+  // Exactly the documented default: who, when, and which page.
+  for (const param of ["company_id:", "start_date:", "end_date:", "page:", "per_page:"]) {
+    assert.ok(code.includes(param), `${param} is sent`);
+  }
+
+  // And none of the four that were answered with a 400. Each changed only
+  // ordering or packaging, never which calls came back, so losing them costs
+  // nothing — and `fields` in particular belongs on the refetch.
+  for (const banned of ["sort:", "order:", "relative_pagination", "fields:"]) {
+    assert.equal(
+      code.includes(banned),
+      false,
+      `${banned} must not be sent to the list endpoint`,
+    );
+  }
+  assert.equal(
+    /CALLRAIL_CALL_FIELDS/.test(code),
+    false,
+    "the field list belongs to the single-call refetch",
+  );
+});
+
+test("only the id is read out of a list row", () => {
+  const list = block(providerSource, "export async function listCallRailCallIds");
+  // One value taken, and it is the id.
+  assert.match(list, /\(row\) => asText\(\(row as Record<string, unknown>\)\.id\)/);
+  // No row is ever turned into a call record here. mapCall builds those, and
+  // it is reachable from the single-call refetch alone.
+  assert.equal(/mapCall\(/.test(list), false, "a list row is not mapped to a call");
+  // The declaration aside, mapCall is invoked in exactly one place.
+  const mapUses = [...providerSource.matchAll(/(?<!function )mapCall\(/g)];
+  assert.equal(mapUses.length, 1, "mapCall has exactly one caller");
+  const getCall = block(providerSource, "export async function getCallRailCall");
+  assert.match(getCall, /const call = mapCall\(body\)/);
+  assert.match(getCall, /fields: CALLRAIL_CALL_FIELDS\.join\(","\)/);
+
+  // The returned shape is ids, not records, so nothing downstream can mistake
+  // a discovery result for a call.
+  const shape = section(providerSource, "export type CallRailCallIdPage = {", "};");
+  assert.ok(shape);
+  assert.match(shape, /callIds: string\[\]/);
+  assert.equal(/CallRailCall\b/.test(shape), false, "no call objects escape discovery");
+});
+
+test("every discovered call is refetched before anything is written", () => {
+  const reconcile = block(ingestionSource, "export async function reconcileCallRailIngestion");
+  assert.ok(reconcile);
+
+  // The window sweep iterates ids and refetches each one. Passing a list row
+  // to ingestFetchedCall is what would make the list a source of truth.
+  assert.match(reconcile, /for \(const callId of discovered\.callIds\)/);
+  assert.match(
+    reconcile,
+    /await ingestCallRailCall\(\s*\n\s*organizationId,\s*\n\s*clientId,\s*\n\s*callId,/,
+  );
+  assert.equal(
+    /ingestFetchedCall\(/.test(reconcile),
+    false,
+    "reconciliation must not ingest a list row directly",
+  );
+
+  // And the refetch is the one that asks for the full documented field list.
+  const refetch = block(ingestionSource, "export async function ingestCallRailCall");
+  assert.match(refetch, /await getCallRailCall\(access\.accountId, callId, access\.apiKey\)/);
+  assert.match(refetch, /return ingestFetchedCall\(/);
+});
+
+test("a partly-read window is recorded as partial, never as complete", () => {
+  const reconcile = block(ingestionSource, "export async function reconcileCallRailIngestion");
+  assert.match(reconcile, /status: discovered\.truncated \? "partial" : "ok"/);
+  assert.match(reconcile, /calls_seen: discovered\.callIds\.length/);
+  // The walk is what decides that, and it only says so when it stopped early.
+  const walk = read("lib/callrail-pagination.ts");
+  assert.match(walk, /return \{ ids, pagesRead: maxPages, truncated: true \};/);
+  assert.match(walk, /return \{ ids, pagesRead: pageNumber, truncated: false \};/);
 });
