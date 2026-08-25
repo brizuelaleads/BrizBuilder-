@@ -1,5 +1,12 @@
 import { collectCallRailPages } from "./callrail-pagination";
 import {
+  MAX_CALLRAIL_MEDIA_REDIRECTS,
+  allowedCallRailMediaUrl,
+  callRailMediaRequestHeaders,
+  decideCallRailMediaResponse,
+  readCallRailRecordingLocation,
+} from "./callrail-media";
+import {
   assertCallRailAccountId,
   assertCallRailCompanyId,
 } from "./callrail-ids";
@@ -361,6 +368,7 @@ type CallRailEndpoint =
   | "companies.get"
   | "calls.list"
   | "calls.get"
+  | "calls.recording"
   | "integrations.list"
   | "integrations.write"
   | "unknown";
@@ -1021,16 +1029,20 @@ export function callRailDateParam(instant: Date): string {
  * is left is the documented default: offset pagination over a filtered window.
  */
 /**
- * The audio for one call, streamed straight through.
+ * The audio for one call.
  *
- * CallRail's `recording` field is a URL that redirects to an MP3. Both hops
- * are made here, with the customer's API key, and the body is handed back
- * untouched — it is never buffered into memory, written down, or given a URL
- * a browser could reach on its own.
+ * Two steps, because CallRail's recording endpoint answers with JSON rather
+ * than audio. The first asks where the recording currently is; the second
+ * fetches that, following redirects by hand so every hop is judged before it
+ * is taken. Only a response that actually claims to be audio is handed back —
+ * a JSON body forwarded as media is exactly what this replaced.
  *
- * `range` is passed along verbatim when present so a browser can seek. A
- * server that ignores Range still plays, but scrubbing a long call means
- * downloading all of it first.
+ * Nothing about the exchange escapes: the location is read, used and dropped.
+ * CallRail's own documentation says never to store it, because the file moves
+ * and the endpoint is the only permanent reference to a recording.
+ *
+ * Every decision here lives in lib/callrail-media, where it can be tested
+ * without a network.
  */
 export async function getCallRailRecording(
   accountId: string,
@@ -1044,54 +1056,73 @@ export async function getCallRailRecording(
     throw new Error("That is not a valid CallRail call ID.");
   }
 
-  // The current URL, asked for now rather than remembered: it can expire.
-  const body = await callRailRequest(
-    `/a/${safeAccountId}/calls/${safeCallId}.json`,
-    apiKey,
-    { fields: "recording" },
-    "calls.get",
-  );
-  const recordingUrl = asText(body.recording);
-  if (!recordingUrl) return null;
-
-  let target: URL;
+  let body: Record<string, unknown>;
   try {
-    target = new URL(recordingUrl);
-  } catch {
-    return null;
-  }
-  // Only CallRail's own host, over TLS. A redirect target is somewhere this
-  // server would otherwise follow with a credential attached.
-  if (target.protocol !== "https:" || !isCallRailHost(target.hostname)) {
-    throw new CallRailApiError("rejected", messageForStatus("rejected"));
+    body = await callRailRequest(
+      `/a/${safeAccountId}/calls/${safeCallId}/recording.json`,
+      apiKey,
+      {},
+      "calls.recording",
+    );
+  } catch (error) {
+    // No recording is an ordinary answer here, not a failure.
+    if (error instanceof CallRailApiError && error.status === "not_found") {
+      return null;
+    }
+    throw error;
   }
 
-  const headers: Record<string, string> = {
-    Authorization: `Token token="${apiKey}"`,
-    "Request-From": CALLRAIL_REQUEST_FROM,
-  };
-  if (range) headers.Range = range;
+  const location = readCallRailRecordingLocation(body);
+  if (!location) return null;
 
-  const response = await fetch(target.toString(), { headers, redirect: "follow" });
-  if (response.status === 404) return null;
-  if (!response.ok && response.status !== 206) {
-    const status = statusForResponse(response);
-    console.error("CallRail request rejected.", {
-      endpoint: "calls.recording",
-      httpStatus: response.status,
+  let target = allowedCallRailMediaUrl(location);
+  if (!target) {
+    refuseMedia(0);
+  }
+
+  for (let hop = 0; hop <= MAX_CALLRAIL_MEDIA_REDIRECTS; hop += 1) {
+    const current: string = target as string;
+    const response = await fetch(current, {
+      // No credential on this hop, or any hop. The key was spent on the
+      // authenticated request above; the location it returned carries its
+      // own signed access.
+      headers: callRailMediaRequestHeaders({ range }),
+      redirect: "manual",
     });
-    throw new CallRailApiError(status, messageForStatus(status));
+
+    const decision = decideCallRailMediaResponse({
+      status: response.status,
+      contentType: response.headers.get("Content-Type"),
+      location: response.headers.get("Location"),
+      currentUrl: current,
+      hop,
+    });
+
+    if (decision.action === "follow") {
+      target = decision.url;
+      continue;
+    }
+    if (decision.action === "absent") return null;
+    if (decision.action === "refuse") refuseMedia(response.status);
+    return response;
   }
-  return response;
+
+  refuseMedia(0);
 }
 
-/** CallRail's own hosts, and only those. */
-function isCallRailHost(hostname: string): boolean {
-  return (
-    hostname === "api.callrail.com" ||
-    hostname === "app.callrail.com" ||
-    hostname.endsWith(".callrail.com")
-  );
+/**
+ * Refuse a recording without saying anything about why to the caller.
+ *
+ * The status is logged as a number beside a fixed endpoint label, and the
+ * error carries this codebase's own message. Nothing from CallRail's response
+ * — no URL, no body, no header — travels any further.
+ */
+function refuseMedia(httpStatus: number): never {
+  console.error("CallRail request rejected.", {
+    endpoint: "calls.recording",
+    httpStatus,
+  });
+  throw new CallRailApiError("rejected", messageForStatus("rejected"));
 }
 
 export async function listCallRailCallIds(

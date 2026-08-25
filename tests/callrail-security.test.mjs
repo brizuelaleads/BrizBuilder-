@@ -2555,8 +2555,12 @@ test("seeking works, because the range is passed through both ways", () => {
   // file and slicing it here.
   const stream = block(providerSource, "export async function getCallRailRecording");
   assert.ok(stream, "the streamer exists");
-  assert.match(stream, /if \(range\) headers\.Range = range;/);
-  assert.match(stream, /response\.status !== 206/);
+  // The range travels on the media fetch, and 206 is a success there.
+  assert.match(stream, /callRailMediaRequestHeaders\(\{ range \}\)/);
+  const headers = block(read("lib/callrail-media.ts"), "export function callRailMediaRequestHeaders");
+  assert.match(headers, /headers\.Range = input\.range/);
+  const decide = block(read("lib/callrail-media.ts"), "export function decideCallRailMediaResponse");
+  assert.match(decide, /status !== 200 && status !== 206/);
   // The body is handed back untouched: never buffered, never stored.
   assert.match(code, /new Response\(recording\.body,/);
   assert.equal(
@@ -2583,9 +2587,12 @@ test("the browser is never given a CallRail URL, and none is stored", () => {
   assert.match(mediaMigrationSource, /comment on column public\.callrail_calls\.recording_url is/);
   assert.match(mediaMigrationSource, /Always null/);
 
-  // The streamer refuses to follow a URL that is not CallRail's.
+  // The streamer refuses to fetch a URL that is not CallRail's.
   const stream = block(providerSource, "export async function getCallRailRecording");
-  assert.match(stream, /target\.protocol !== "https:" \|\| !isCallRailHost\(target\.hostname\)/);
+  assert.match(stream, /allowedCallRailMediaUrl\(location\)/);
+  const allow = block(read("lib/callrail-media.ts"), "export function allowedCallRailMediaUrl");
+  assert.match(allow, /url\.protocol !== "https:"/);
+  assert.match(allow, /!isCallRailApiHost\(url\.hostname\) && !isCallRailMediaHost\(url\.hostname\)/);
 });
 
 test("a call with no recording says so instead of offering a player", () => {
@@ -2934,4 +2941,135 @@ test("the media refresh reports what CallRail said, not that it worked", () => {
   assert.match(noteExpr, /result\?\.failed\s*\n?\s*\? ""/);
   // The toast claims only that it looked.
   assert.match(handler, /"Checked CallRail for recordings\."/);
+});
+
+
+// ------------------------------------------- the documented media-fetch flow
+
+test("a recording is fetched in the two documented steps", () => {
+  const stream = block(providerSource, "export async function getCallRailRecording");
+  assert.ok(stream);
+  const code = codeOnly(stream);
+
+  // Step one: the documented endpoint, which answers with JSON.
+  assert.match(code, /calls\/\$\{safeCallId\}\/recording\.json/);
+  assert.match(code, /"calls\.recording"/);
+  // A call with no recording answers 404 there, and that is not a failure.
+  assert.match(code, /error\.status === "not_found"[\s\S]*?return null/);
+
+  // Step two: the location it named, fetched by hand so each hop is judged.
+  assert.match(code, /readCallRailRecordingLocation\(body\)/);
+  assert.match(code, /redirect: "manual"/);
+  assert.match(code, /decideCallRailMediaResponse\(\{/);
+  assert.equal(
+    /redirect: "follow"/.test(code),
+    false,
+    "redirects must not be followed by the runtime, unchecked",
+  );
+
+  // Nothing from the provider's response travels outward.
+  const refuse = block(providerSource, "function refuseMedia(");
+  assert.ok(refuse, "refusals are centralised");
+  assert.match(refuse, /endpoint: "calls\.recording"/);
+  assert.match(refuse, /httpStatus,/);
+  for (const leak of ["location", "target", "body", "url", "Authorization", "apiKey"]) {
+    assert.equal(
+      refuse.includes(leak),
+      false,
+      `${leak} must never reach a log or an error`,
+    );
+  }
+});
+
+test("the recording location is never stored or returned", () => {
+  const stream = codeOnly(block(providerSource, "export async function getCallRailRecording"));
+  // Read, used, dropped. CallRail's own documentation says never to keep it,
+  // because the file moves and the endpoint is the permanent reference.
+  assert.equal(
+    /\.from\("callrail_calls"\)|\.update\(|\.insert\(/.test(stream),
+    false,
+    "the streamer writes nothing",
+  );
+  const loader = block(crmSource, "export async function getSupabaseCallRailRecording");
+  assert.equal(
+    /recording_url/.test(codeOnly(loader)),
+    false,
+    "the loader neither reads nor writes a provider URL",
+  );
+  // And what the route sends on carries no provider URL either.
+  assert.equal(
+    /Location|recording\.url|body\.url/.test(codeOnly(recordingRoute)),
+    false,
+    "no provider location reaches the browser",
+  );
+});
+
+test("a non-audio response cannot reach the browser as 200", () => {
+  // Refused in the provider client...
+  const decide = block(read("lib/callrail-media.ts"), "export function decideCallRailMediaResponse");
+  assert.match(decide, /isAudioContentType\(contentType\)/);
+  assert.match(decide, /reason: "not_audio"/);
+
+  // ...and refused again at the route, so a regression in one is not enough.
+  const code = codeOnly(recordingRoute);
+  assert.match(code, /if \(!isAudioContentType\(upstreamType\)\) \{\s*\n\s*return refuse\(502,/);
+  const guardAt = code.indexOf("isAudioContentType(upstreamType)");
+  const responseAt = code.indexOf("new Response(recording.body");
+  assert.ok(guardAt > -1 && responseAt > guardAt, "the guard precedes the body");
+  // And the type the browser is given is the one that was checked.
+  assert.match(code, /headers\.set\("Content-Type", upstreamType\)/);
+  assert.equal(
+    /"audio\/mpeg"/.test(code),
+    false,
+    "no default type may paper over an unchecked one",
+  );
+});
+
+
+test("nothing in the media path can carry the API key", () => {
+  const media = read("lib/callrail-media.ts");
+
+  // The helper takes no key, so it cannot pass one on. A conditional would
+  // only ever be as good as its condition.
+  const headers = block(media, "export function callRailMediaRequestHeaders");
+  assert.ok(headers);
+  for (const forbidden of ["apiKey", "Authorization", "Token", "Request-From"]) {
+    assert.equal(
+      headers.includes(forbidden),
+      false,
+      `${forbidden} must not appear in a media request's headers`,
+    );
+  }
+  assert.match(headers, /input: \{\s*\n?\s*range\?: string \| null;\s*\n?\s*\}/);
+
+  // The whole module is credential-free: it decides where a fetch may go, not
+  // what it may carry.
+  assert.equal(
+    /apiKey|Authorization|Token token/.test(codeOnly(media)),
+    false,
+    "the media policy module handles no credentials at all",
+  );
+
+  // And the fetch loop attaches nothing of its own.
+  const stream = codeOnly(
+    block(providerSource, "export async function getCallRailRecording"),
+  );
+  const loop = stream.slice(stream.indexOf("for (let hop"));
+  for (const forbidden of ["Authorization", "apiKey", "Token token", "CALLRAIL_REQUEST_FROM"]) {
+    assert.equal(
+      loop.includes(forbidden),
+      false,
+      `${forbidden} must not appear on a media hop`,
+    );
+  }
+
+  // The key is spent once, before the loop, on the authenticated request.
+  const beforeLoop = stream.slice(0, stream.indexOf("for (let hop"));
+  assert.match(beforeLoop, /callRailRequest\(/);
+  assert.match(beforeLoop, /apiKey,/);
+  const authAt = beforeLoop.indexOf("callRailRequest(");
+  assert.ok(authAt > -1, "the one authenticated request happens first");
+
+  // callRailRequest only ever addresses CallRail's API host.
+  assert.match(providerSource, /const CALLRAIL_API_URL = "https:\/\/api\.callrail\.com/);
 });

@@ -1,5 +1,6 @@
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getSupabaseCallRailRecording } from "../../../../../db/supabase-crm";
+import { isAudioContentType } from "../../../../../lib/callrail-media";
 
 export const dynamic = "force-dynamic";
 
@@ -47,11 +48,16 @@ export async function GET(
     // none. The interface says so rather than showing a broken player.
     if (!recording) return refuse(404, "Recording unavailable");
 
+    // Belt and braces. getCallRailRecording already refuses anything that is
+    // not audio; if that ever stopped being true, this must not become a 200
+    // carrying somebody's JSON to an audio element.
+    const upstreamType = recording.headers.get("Content-Type") ?? "";
+    if (!isAudioContentType(upstreamType)) {
+      return refuse(502, "The recording could not be played right now.");
+    }
+
     const headers = new Headers(NO_STORE);
-    headers.set(
-      "Content-Type",
-      recording.headers.get("Content-Type") ?? "audio/mpeg",
-    );
+    headers.set("Content-Type", upstreamType);
     // Passed through so the browser can seek. Accept-Ranges is asserted even
     // on a full response, because that is what tells it seeking is possible.
     headers.set("Accept-Ranges", "bytes");
