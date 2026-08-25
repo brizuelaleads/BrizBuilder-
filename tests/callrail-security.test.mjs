@@ -2250,3 +2250,135 @@ test("no definer function resolves a name through a writable schema", () => {
   }
   assert.ok(seen.length >= 3, `expected several definer functions, saw ${seen}`);
 });
+
+
+// ------------------------------- the request CallRail actually documents
+
+test("only field names CallRail documents as selectable are requested", () => {
+  const fields = section(providerSource, "const CALLRAIL_CALL_FIELDS = [", "] as const;");
+  assert.ok(fields, "the field list exists");
+  const requested = [...fields.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]);
+  assert.ok(requested.length > 20, `expected a real list, saw ${requested.length}`);
+
+  // CallRail validates `fields`, so one name it does not recognise takes the
+  // whole request down with a 400. These two were asked for and are not in
+  // the documented "Additional User Requested Response Fields" list.
+  for (const undocumented of ["utm_content", "utm_medium"]) {
+    assert.equal(
+      requested.includes(undocumented),
+      false,
+      `${undocumented} is not documented as selectable and must not be requested`,
+    );
+  }
+
+  // Everything the rest of the system depends on is documented, and stays.
+  for (const needed of [
+    "fbclid",
+    "session_uuid",
+    "gclid",
+    "company_id",
+    "transcription",
+    "conversational_transcript",
+    "call_summary",
+    "lead_status",
+    "tags",
+    "prior_calls",
+    "medium",
+    "utm_campaign",
+    "landing_page_url",
+    "keywords",
+  ]) {
+    assert.ok(requested.includes(needed), `${needed} must still be requested`);
+  }
+
+  // Meta eligibility reads two of these off the refetched call, so losing
+  // either would silently change what qualifies.
+  const decide = block(read("lib/meta-eligibility.ts"), "export function decideCallRailMetaEligibility");
+  assert.ok(decide);
+  assert.match(decide, /fbclid/);
+  assert.match(decide, /sessionUuid/);
+});
+
+test("the call window is sent in a shape CallRail documents", () => {
+  const format = block(providerSource, "export function callRailDateParam");
+  assert.ok(format, "the formatter exists");
+  // A plain calendar date. A full timestamp with milliseconds and a zone
+  // suffix is neither documented shape, and was rejected with a 400.
+  assert.match(format, /toISOString\(\)\.slice\(0, 10\)/);
+  assert.match(format, /Number\.isNaN\(instant\.getTime\(\)\)/);
+
+  const reconcile = block(ingestionSource, "export async function reconcileCallRailIngestion");
+  assert.match(reconcile, /startDate: callRailDateParam\(windowStart\)/);
+  assert.match(reconcile, /endDate: callRailDateParam\(windowEnd\)/);
+  assert.equal(
+    /startDate: windowStart\.toISOString\(\)/.test(reconcile),
+    false,
+    "the raw instant must not be sent as a date filter",
+  );
+});
+
+test("the request diagnostic carries an endpoint label and a number, nothing else", () => {
+  const request = block(providerSource, "async function callRailUrlRequest");
+  assert.ok(request);
+  const logs = [...request.matchAll(/console\.\w+\([\s\S]*?\);/g)].map((m) => m[0]);
+  assert.equal(logs.length, 1, "exactly one diagnostic");
+  const log = logs[0];
+
+  // Two facts, both safe: which endpoint, and the number CallRail answered.
+  assert.match(log, /endpoint,/);
+  assert.match(log, /httpStatus: response\.status/);
+
+  // Nothing that identifies anyone or echoes the exchange.
+  for (const forbidden of [
+    "apiKey",
+    "token",
+    "Authorization",
+    "url",
+    "searchParams",
+    "responseBody",
+    "body",
+    "accountId",
+    "companyId",
+    "callId",
+    "organizationId",
+    "clientId",
+    "headers",
+  ]) {
+    assert.equal(
+      log.includes(forbidden),
+      false,
+      `${forbidden} must never reach a diagnostic`,
+    );
+  }
+  // And the response is never read before the throw, so no body can leak.
+  const beforeThrow = request.slice(0, request.indexOf("console.error"));
+  assert.equal(
+    /await response\.(json|text)\(\)/.test(beforeThrow),
+    false,
+    "the body is not read on the failure path",
+  );
+});
+
+test("an endpoint label is a fixed name, never a path", () => {
+  // A real path carries the account id, which is exactly what these logs
+  // must not contain. The label set is closed, so a call site cannot invent
+  // one that interpolates something.
+  const labels = section(providerSource, "type CallRailEndpoint =", ";");
+  assert.ok(labels);
+  const allowed = [...labels.matchAll(/"([a-z.]+)"/g)].map((m) => m[1]);
+  assert.ok(allowed.includes("calls.list"), "the failing endpoint is nameable");
+  assert.ok(allowed.length >= 5, `expected a real label set, saw ${allowed}`);
+  for (const label of allowed) {
+    assert.equal(/\/|\$\{/.test(label), false, `${label} must not look like a path`);
+  }
+
+  // Every request the CallRail client makes says which endpoint it is.
+  const sites = [...providerSource.matchAll(/await callRail(?:Url)?Request\(/g)];
+  assert.ok(sites.length >= 9, `expected every call site, saw ${sites.length}`);
+  for (const label of ["accounts.list", "accounts.get", "companies.list", "companies.get", "calls.list", "calls.get"]) {
+    assert.ok(
+      providerSource.includes(`"${label}",`),
+      `${label} is used at its call site`,
+    );
+  }
+});

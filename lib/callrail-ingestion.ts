@@ -1,5 +1,6 @@
 import {
   CallRailApiError,
+  callRailDateParam,
   getCallRailCall,
   listCallRailCalls,
   type CallRailCall,
@@ -1013,8 +1014,8 @@ export async function reconcileCallRailIngestion(options: {
       const access = await loadCallRailApiAccess(organizationId, clientId);
       if (!access.accountId) throw new Error("CallRail account is not selected.");
       const page = await listCallRailCalls(accountId, companyId, access.apiKey, {
-        startDate: windowStart.toISOString(),
-        endDate: windowEnd.toISOString(),
+        startDate: callRailDateParam(windowStart),
+        endDate: callRailDateParam(windowEnd),
         maxPages: options.maxPagesPerConnection,
       });
       let ingested = 0;

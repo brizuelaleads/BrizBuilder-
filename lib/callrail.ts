@@ -36,6 +36,15 @@ const CALLRAIL_REQUEST_FROM = "brizbuilder";
 // beyond a page is reported as truncated rather than silently dropped.
 const CALLRAIL_PAGE_SIZE = 100;
 const CALLRAIL_CALL_PAGE_SIZE = 100;
+/**
+ * Exactly the field names CallRail documents as selectable.
+ *
+ * `fields` is validated by CallRail, so one name it does not recognise takes
+ * the whole request down with a 400 — which is what happened to the first
+ * reconciliation. utm_content and utm_medium were asked for and are not in the
+ * documented "Additional User Requested Response Fields" list; `medium` is,
+ * and stays. Anything added here has to be checked against the docs first.
+ */
 const CALLRAIL_CALL_FIELDS = [
   "agent_email",
   "call_summary",
@@ -66,8 +75,6 @@ const CALLRAIL_CALL_FIELDS = [
   "tracker_id",
   "transcription",
   "utm_campaign",
-  "utm_content",
-  "utm_medium",
 ] as const;
 
 export { assertCallRailAccountId, assertCallRailCompanyId };
@@ -334,6 +341,23 @@ export async function decryptCallRailSecret(
  * echoing any part of that exchange into a message that may reach a UI or a log
  * is not a risk worth taking for a diagnostic string.
  */
+/**
+ * Closed set of endpoint labels for diagnostics.
+ *
+ * A label, not a path. The real path contains the account id, and an
+ * identifier is exactly what these logs must not carry.
+ */
+type CallRailEndpoint =
+  | "accounts.list"
+  | "accounts.get"
+  | "companies.list"
+  | "companies.get"
+  | "calls.list"
+  | "calls.get"
+  | "integrations.list"
+  | "integrations.write"
+  | "unknown";
+
 type CallRailRequestOptions = {
   method?: "GET" | "POST" | "PUT";
   searchParams?: Record<string, string>;
@@ -385,6 +409,8 @@ async function callRailUrlRequest(
   url: URL,
   apiKey: string,
   options: CallRailRequestOptions | Record<string, string> = {},
+  /** A fixed label, never a path: a real path carries the account id. */
+  endpoint: CallRailEndpoint = "unknown",
 ): Promise<Record<string, unknown>> {
   const { method, searchParams, body: requestBody } = requestOptions(options);
   for (const [key, value] of Object.entries(searchParams)) {
@@ -432,6 +458,14 @@ async function callRailUrlRequest(
 
   if (!response.ok) {
     const status = statusForResponse(response);
+    // Temporary, and deliberately two facts: which endpoint, and the number
+    // CallRail answered with. No parameters, no response body, no account,
+    // company or call id, no credential, nothing about a caller. A 400 here
+    // says the request was malformed and the endpoint says which one to read.
+    console.error("CallRail request rejected.", {
+      endpoint,
+      httpStatus: response.status,
+    });
     throw new CallRailApiError(status, messageForStatus(status));
   }
   const responseBody = await response.json().catch(() => null);
@@ -445,8 +479,14 @@ async function callRailRequest(
   path: string,
   apiKey: string,
   options: CallRailRequestOptions | Record<string, string> = {},
+  endpoint: CallRailEndpoint = "unknown",
 ): Promise<Record<string, unknown>> {
-  return callRailUrlRequest(new URL(`${CALLRAIL_API_URL}${path}`), apiKey, options);
+  return callRailUrlRequest(
+    new URL(`${CALLRAIL_API_URL}${path}`),
+    apiKey,
+    options,
+    endpoint,
+  );
 }
 
 function asText(value: unknown): string {
@@ -633,9 +673,12 @@ export type CallRailCompanyPage = {
 export async function listCallRailAccounts(
   apiKey: string,
 ): Promise<CallRailAccountPage> {
-  const body = await callRailRequest("/a.json", apiKey, {
-    per_page: String(CALLRAIL_PAGE_SIZE),
-  });
+  const body = await callRailRequest(
+    "/a.json",
+    apiKey,
+    { per_page: String(CALLRAIL_PAGE_SIZE) },
+    "accounts.list",
+  );
   const rows = Array.isArray(body.accounts) ? body.accounts : [];
   const total = Number(body.total_records ?? rows.length);
   return {
@@ -652,7 +695,12 @@ export async function getCallRailAccount(
   apiKey: string,
 ): Promise<CallRailAccount> {
   const safeAccountId = assertCallRailAccountId(accountId);
-  const body = await callRailRequest(`/a/${safeAccountId}.json`, apiKey);
+  const body = await callRailRequest(
+    `/a/${safeAccountId}.json`,
+    apiKey,
+    {},
+    "accounts.get",
+  );
   const account = mapAccount(body);
   return { ...account, id: account.id || safeAccountId };
 }
@@ -666,6 +714,7 @@ export async function listCallRailCompanies(
     `/a/${safeAccountId}/companies.json`,
     apiKey,
     { per_page: String(CALLRAIL_PAGE_SIZE) },
+    "companies.list",
   );
   const rows = Array.isArray(body.companies) ? body.companies : [];
   const total = Number(body.total_records ?? rows.length);
@@ -687,6 +736,8 @@ export async function getCallRailCompany(
   const body = await callRailRequest(
     `/a/${safeAccountId}/companies/${safeCompanyId}.json`,
     apiKey,
+    {},
+    "companies.get",
   );
   const company = mapCompany(body);
   return { ...company, id: company.id || safeCompanyId };
@@ -707,6 +758,7 @@ export async function listCallRailIntegrations(
       fields: "signing_key",
       per_page: String(CALLRAIL_PAGE_SIZE),
     },
+    "integrations.list",
   );
   const rows = Array.isArray(body.integrations) ? body.integrations : [];
   const total = Number(body.total_records ?? rows.length);
@@ -732,6 +784,7 @@ export async function getCallRailIntegration(
     `/a/${safeAccountId}/integrations/${safeIntegrationId}.json`,
     apiKey,
     { fields: "signing_key" },
+    "integrations.list",
   );
   const integration = mapIntegration(body);
   return { ...integration, id: integration.id || safeIntegrationId };
@@ -756,6 +809,7 @@ export async function createCallRailWebhookIntegration(
         config,
       },
     },
+    "integrations.write",
   );
   return mapIntegration(body);
 }
@@ -781,6 +835,7 @@ export async function updateCallRailWebhookIntegration(
         config,
       },
     },
+    "integrations.write",
   );
   const integration = mapIntegration(body);
   return { ...integration, id: integration.id || safeIntegrationId };
@@ -918,9 +973,26 @@ export async function getCallRailCall(
     `/a/${safeAccountId}/calls/${safeCallId}.json`,
     apiKey,
     { fields: CALLRAIL_CALL_FIELDS.join(",") },
+    "calls.get",
   );
   const call = mapCall(body);
   return { ...call, id: call.id || safeCallId };
+}
+
+/**
+ * The calendar day of an instant, in UTC.
+ *
+ * CallRail documents start_date and end_date as ISO 8601 and shows two shapes:
+ * a plain date, and a date with minutes. A full timestamp carrying
+ * milliseconds and a zone suffix is neither, and was rejected. A plain date is
+ * the shape with no ambiguity left in it, and both bounds are inclusive, so
+ * the window can only widen — never miss the call it was opened for.
+ */
+export function callRailDateParam(instant: Date): string {
+  if (Number.isNaN(instant.getTime())) {
+    throw new Error("A CallRail date filter needs a real date.");
+  }
+  return instant.toISOString().slice(0, 10);
 }
 
 export async function listCallRailCalls(
@@ -954,9 +1026,12 @@ export async function listCallRailCalls(
             order: "desc",
           }
         : {};
-    const body = await callRailUrlRequest(url, apiKey, {
-      searchParams,
-    });
+    const body = await callRailUrlRequest(
+      url,
+      apiKey,
+      { searchParams },
+      "calls.list",
+    );
     const rows = Array.isArray(body.calls) ? body.calls : [];
     calls.push(
       ...rows
