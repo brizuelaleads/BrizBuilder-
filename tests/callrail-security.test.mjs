@@ -28,6 +28,7 @@ const connectionsUi = read("app/crm/WorkflowViews.tsx");
 const dniRoute = read("app/api/callrail/dni-test/route.ts");
 const dniSource = read("lib/callrail-dni.ts");
 const dniPage = read("lib/callrail-dni-page.ts");
+const stateSource = read("lib/callrail-ingestion-state.ts");
 
 /**
  * Source with line comments removed.
@@ -226,6 +227,7 @@ test("the API key is never returned to a caller", () => {
     'if (action === "select_callrail_company")',
     'if (action === "check_callrail_connection")',
     'if (action === "enable_callrail_ingestion")',
+    'if (action === "disable_callrail_ingestion")',
     'if (action === "disconnect_callrail")',
   ];
   for (const marker of actions) {
@@ -291,6 +293,7 @@ test("every CallRail action is permission gated and audited where it changes sta
     'if (action === "select_callrail_account")',
     'if (action === "select_callrail_company")',
     'if (action === "enable_callrail_ingestion")',
+    'if (action === "disable_callrail_ingestion")',
     'if (action === "disconnect_callrail")',
   ];
   for (const marker of stateChanging) {
@@ -1297,4 +1300,557 @@ test("the permission exists in both permission files", () => {
   // backend. A role list that drifts between the two is the failure this
   // guards against.
   assert.match(d1Source, /\|\s*"call_tracking\.manage"/);
+});
+
+
+// --------------------------------------------- switching ingestion off
+
+test("disabling ingestion withdraws only BrizBuilder's URLs", () => {
+  const disable = block(crmSource, 'if (action === "disable_callrail_ingestion")');
+  assert.ok(disable, "the disable action exists");
+  const code = codeOnly(disable);
+
+  // The same helper disconnect uses: it rebuilds this connection's own two
+  // URLs from its path id and writes every other URL back untouched, so a
+  // third party's webhook survives somebody switching ingestion off here.
+  assert.match(
+    code,
+    /removeCallRailWebhooksForClient\(context\.organizationId, clientId\)/,
+  );
+  assert.equal(
+    /method: "DELETE"|deleteCallRailIntegration|integrations\/.*delete/i.test(code),
+    false,
+    "the CallRail integration itself is never deleted",
+  );
+
+  // The API connection survives. Nothing is destroyed, and the key, account,
+  // company and path id are all absent from the update — this is reversible
+  // from the same card without re-entering anything.
+  assert.equal(/\.delete\(\)/.test(code), false, "no row is destroyed");
+  for (const kept of [
+    "api_key_ciphertext",
+    "api_key_iv",
+    "account_id",
+    "company_id",
+    "webhook_path_id",
+  ]) {
+    assert.equal(
+      new RegExp(`\\b${kept}:`).test(code),
+      false,
+      `${kept} is left alone so the connection stays usable`,
+    );
+  }
+
+  // What does change: the switch, and — once the URLs are confirmed gone —
+  // the key that only ever authenticated them.
+  assert.match(code, /ingest_enabled: false/);
+  const confirmed = code.slice(code.indexOf("if (cleanupOk) {"));
+  assert.match(confirmed, /webhook_signing_key_ciphertext: null/);
+  assert.match(confirmed, /webhook_signing_key_iv: null/);
+  assert.match(confirmed, /webhook_integration_id: null/);
+});
+
+test("ingestion is switched off locally before CallRail is called", () => {
+  const disable = block(crmSource, 'if (action === "disable_callrail_ingestion")');
+  const code = codeOnly(disable);
+  const switchAt = code.indexOf("ingest_enabled: false");
+  const providerAt = code.indexOf("removeCallRailWebhooksForClient");
+  assert.ok(switchAt > -1, "the local switch exists");
+  assert.ok(providerAt > -1, "the provider call exists");
+  assert.ok(
+    switchAt < providerAt,
+    "the row must read disabled before anything slower is attempted",
+  );
+  // It is its own awaited write against this tenant's row, not something
+  // batched in behind the network call.
+  const prefix = code.slice(0, providerAt);
+  assert.match(prefix, /await assertOk\([\s\S]*\.from\("callrail_credentials"\)/);
+  assert.match(prefix, /\.update\(\{ ingest_enabled: false, updated_at: now \}\)/);
+  assert.match(prefix, /\.eq\("organization_id", context\.organizationId\)/);
+  assert.match(prefix, /\.eq\("client_id", clientId\)/);
+});
+
+test("a failed local disable makes no CallRail request at all", () => {
+  const disable = block(crmSource, 'if (action === "disable_callrail_ingestion")');
+  const code = codeOnly(disable);
+  const switchAt = code.indexOf("ingest_enabled: false");
+  const tryAt = code.indexOf("try {");
+  const providerAt = code.indexOf("removeCallRailWebhooksForClient");
+
+  // The action has exactly one try/catch, it opens after the local write, and
+  // it wraps the provider call. So a rejected update propagates out of the
+  // action with CallRail untouched and the connection as it started.
+  assert.equal(code.split("try {").length - 1, 1, "exactly one try block");
+  assert.equal(code.split("catch").length - 1, 1, "exactly one catch");
+  assert.ok(switchAt > -1 && tryAt > -1 && providerAt > -1);
+  assert.ok(switchAt < tryAt, "the local write sits outside the catch");
+  assert.ok(tryAt < providerAt, "the catch is there for the provider call");
+  assert.match(code.slice(0, tryAt), /await assertOk\(/);
+  // assertOk is the throwing wrapper, so awaiting it really is a precondition.
+  const helper = block(crmSource, "async function assertOk");
+  assert.ok(helper, "assertOk exists");
+  assert.match(helper, /if \(error\) throw new Error\(error\.message\)/);
+});
+
+test("a failed CallRail cleanup leaves ingestion off and retryable", () => {
+  const disable = block(crmSource, 'if (action === "disable_callrail_ingestion")');
+  const code = codeOnly(disable);
+  // The catch records the failure and does nothing else: no revert, no retry
+  // of the local write, no re-enable.
+  assert.match(code, /catch \{\s*cleanupOk = false;\s*\}/);
+  assert.equal(/ingest_enabled: true/.test(code), false, "never switched back on");
+  assert.equal(
+    code.split("ingest_enabled").length - 1,
+    1,
+    "the flag is written once, before the provider call, and not revisited",
+  );
+  // The connection stays recoverable, so pressing the button again repeats
+  // only the remote step.
+  for (const kept of [
+    "api_key_ciphertext",
+    "api_key_iv",
+    "account_id",
+    "company_id",
+    "webhook_path_id",
+  ]) {
+    assert.equal(
+      new RegExp(`\\b${kept}:`).test(code),
+      false,
+      `${kept} survives a failed cleanup`,
+    );
+  }
+  assert.equal(/\.delete\(\)/.test(code), false, "no row is destroyed");
+  // The signing key is dropped only once the URLs are actually gone. While
+  // they are still live, keeping it means a delivery verifies and is refused
+  // as ingest_disabled; without it loadCallRailWebhookVerifier returns null
+  // and the same delivery is filed as rejected_unknown_client instead.
+  assert.match(
+    code,
+    /if \(cleanupOk\) \{[\s\S]*webhook_signing_key_ciphertext: null/,
+  );
+  const verifier = block(storeSource, "export async function loadCallRailWebhookVerifier");
+  assert.ok(verifier);
+  assert.match(
+    verifier,
+    /if \(!row\?\.webhook_signing_key_ciphertext \|\| !row\.webhook_signing_key_iv\) \{\s*\n\s*return null;/,
+  );
+  // Marked for attention, audited, and reported to the caller.
+  assert.match(code, /status: cleanupOk \? "connected" : "attention"/);
+  assert.match(disable, /Use Retry cleanup, or remove them there/);
+  assert.match(code, /"provider\.ingestion_disabled"/);
+  assert.match(code, /callrailCleanupConfirmed: cleanupOk/);
+  assert.match(code, /return \{ enabled: false, cleanupConfirmed: cleanupOk \}/);
+});
+
+test("a locally disabled connection is skipped wherever ingestion begins", () => {
+  // Reconciliation never selects it in the first place.
+  const enabled = block(ingestionSource, "async function enabledConnections");
+  assert.ok(enabled, "the reconciliation query exists");
+  assert.match(enabled, /\.eq\("ingest_enabled", true\)/);
+
+  // Both ingestion entry points reread the flag and stop before writing.
+  for (const name of [
+    "export async function ingestCallRailCall",
+    "export async function ingestFetchedCall",
+  ]) {
+    const fn = block(ingestionSource, name);
+    assert.ok(fn, `${name} exists`);
+    const stateAt = fn.indexOf("await ingestionState(");
+    const guardAt = fn.indexOf("if (!state.enabled");
+    assert.ok(stateAt > -1, `${name} rereads the flag`);
+    assert.ok(guardAt > stateAt, `${name} guards on what it just read`);
+    assert.match(fn.slice(guardAt), /^if \(!state\.enabled[\s\S]*?return \{ status: "skipped"/);
+    // Nothing is written, and no provider request is made, before the guard.
+    const prefix = fn.slice(0, guardAt);
+    assert.equal(
+      /\.insert\(|\.update\(|\.upsert\(|ensureContact\(|ensureLead\(|saveCallSnapshot\(|getCallRailCall\(/.test(
+        prefix,
+      ),
+      false,
+      `${name} writes nothing and fetches nothing before rechecking`,
+    );
+  }
+
+  // The flag is read from the row each time, not carried in from the caller,
+  // so a disable that landed after the delivery was accepted is still seen.
+  const state = block(ingestionSource, "async function ingestionState");
+  assert.ok(state);
+  assert.match(state, /\.from\("callrail_credentials"\)/);
+  assert.match(state, /select\("account_id,company_id,ingest_enabled/);
+  assert.match(state, /enabled: data\?\.ingest_enabled === true/);
+
+  // And intake refuses a delivery outright, before any duplicate check.
+  const receiver = block(ingestionSource, "async function receiveCallRailWebhook");
+  assert.ok(receiver);
+  const disabledAt = receiver.indexOf("if (!verifier.ingestEnabled)");
+  assert.ok(disabledAt > -1, "intake checks the flag");
+  assert.match(receiver.slice(disabledAt), /outcome: "rejected_ingest_disabled"/);
+  assert.ok(
+    disabledAt < receiver.indexOf("previousDelivery("),
+    "the refusal comes before the delivery is treated as work",
+  );
+});
+
+test("switching ingestion off preserves the rest of the public config", () => {
+  const disable = block(crmSource, 'if (action === "disable_callrail_ingestion")');
+  const code = codeOnly(disable);
+  // The account label, company name and DNI state share that JSON column.
+  // Replacing it wholesale would blank the card it is read back into.
+  assert.match(code, /\.select\("public_config"\)/);
+  assert.match(code, /public_config: \{\s*\.\.\.config,/);
+  // The ingestion flags come from the one module the card reads back through,
+  // rather than being spelled out again here where they could drift.
+  assert.match(code, /\.\.\.callRailIngestionFlags\(cleanupOk\)/);
+  const flags = block(stateSource, "export function callRailIngestionFlags");
+  assert.ok(flags, "the shared flags exist");
+  assert.match(flags, /callIngestionEnabled: false/);
+  assert.match(flags, /callIngestionConfigured: !cleanupConfirmed/);
+  assert.match(flags, /callIngestionCleanupPending: !cleanupConfirmed/);
+  assert.match(flags, /callIngestionEvents: \[\] as string\[\]/);
+});
+
+// ------------------------------------------------- the ingestion controls
+
+const ingestionSection = () =>
+  section(
+    connectionsUi,
+    "<span>Call ingestion</span>",
+    // The end of the fragment, not the next button's label: "Check
+    // connection" appears after that button's own click handler, which would
+    // otherwise be counted as one of this section's.
+    "</>\n                ) : null}",
+  );
+const ingestionHandler = () =>
+  block(connectionsUi, "const runCallRailDisable = async (");
+const ingestionUi = () => `${ingestionHandler()}\n${ingestionSection()}`;
+
+test("the CallRail card shows ingestion state and offers all three moves", () => {
+  const ui = ingestionSection();
+  assert.ok(ui, "the ingestion section is rendered in the CallRail card");
+  assert.match(ui, /callRailIngesting \? "On" : "Off"/);
+  // Each label is the content of its own button, not prose in the notes.
+  assert.match(ui, /: "Enable ingestion"\}\s*\n\s*<\/button>/);
+  assert.match(ui, /: "Disable ingestion"\}\s*\n\s*<\/button>/);
+  assert.match(ui, /: "Retry cleanup"\}\s*\n\s*<\/button>/);
+  // Only once the company is chosen: there is nothing to point a webhook at
+  // before that.
+  const before = connectionsUi.slice(0, connectionsUi.indexOf("<span>Call ingestion</span>"));
+  assert.match(before.slice(before.lastIndexOf("{callRailSetup")), /callRailSetup === "ready" \? \(/);
+});
+
+test("ingestion reads as off unless the server says it is on", () => {
+  // The card does not decide this itself: it asks the one module the server
+  // writes through, so the two cannot drift into disagreeing.
+  assert.match(connectionsUi, /callRailIngestionView\(callRailConnection\)/);
+  assert.match(
+    connectionsUi,
+    /callRailIngestion === CALLRAIL_INGESTION_ON/,
+  );
+  assert.match(
+    connectionsUi,
+    /callRailIngestion === CALLRAIL_INGESTION_CLEANUP_PENDING/,
+  );
+  assert.equal(
+    /callIngestionEnabled !== false|callIngestionEnabled \?/.test(connectionsUi),
+    false,
+    "absence of the flag is not consent to ingest",
+  );
+  // `!== false` or a plain truthiness check would read a connection made
+  // before ingestion existed — no such field stored — as switched on.
+  const decide = block(stateSource, "export function callRailIngestionView");
+  assert.ok(decide, "the shared decision exists");
+  assert.match(decide, /facts\?\.callIngestionEnabled === true/);
+});
+
+test("no ingestion button acts without an explicit confirmation", () => {
+  const ui = ingestionSection();
+  // Split on the handlers themselves rather than naming the actions, so a
+  // fourth button cannot be added later without meeting the same bar.
+  const handlers = ui.split(/onClick=\{(?:async )?\(\) => \{/).slice(1);
+  assert.equal(handlers.length, 3, "enable, disable and retry cleanup");
+  for (const handler of handlers) {
+    const confirmAt = handler.indexOf("window.confirm(");
+    assert.ok(confirmAt > -1, "the handler asks first");
+    const acts = [
+      handler.indexOf("runCallRailDisable("),
+      handler.indexOf("mutate("),
+    ].filter((at) => at > -1);
+    assert.ok(acts.length > 0, "the handler does something");
+    assert.ok(
+      Math.min(...acts) > confirmAt,
+      "it confirms before it acts, not after",
+    );
+    // And declining returns before the request is made.
+    assert.match(handler.slice(confirmAt), /\)\s*\)\s*\n\s*return;/);
+  }
+  // The confirmations say what will actually happen at CallRail.
+  assert.match(ui, /Enable call ingestion\?[\s\S]*?keeping any URLs already there/);
+  assert.match(ui, /Turn off call ingestion\?[\s\S]*?removes only its own webhook URLs/);
+  assert.match(
+    ui,
+    /Retry the webhook cleanup\?[\s\S]*?remove only its own webhook URLs/,
+  );
+});
+
+test("nothing switches ingestion on by itself", () => {
+  // No effect, no mount-time call, no retry loop: a business's calls start
+  // flowing into the CRM because somebody pressed the button and confirmed.
+  for (const fragment of connectionsUi.split("useEffect(").slice(1)) {
+    const end = fragment.indexOf("\n  }, [");
+    assert.equal(
+      /callrail/i.test(end > -1 ? fragment.slice(0, end) : fragment),
+      false,
+      "no effect in this view touches CallRail",
+    );
+  }
+  for (const action of [
+    "enable_callrail_ingestion",
+    "disable_callrail_ingestion",
+  ]) {
+    assert.equal(
+      connectionsUi.split(action).length - 1,
+      1,
+      `${action} has exactly one call site`,
+    );
+  }
+});
+
+test("every ingestion button shows progress and reports failure in place", () => {
+  const ui = ingestionUi();
+  // Disabled while any request is in flight, so a second click cannot send a
+  // second change to CallRail.
+  assert.equal(
+    ingestionSection().split("disabled={Boolean(callRail.ingestionPending)}")
+      .length - 1,
+    3,
+    "all three buttons are disabled while any is pending",
+  );
+  assert.match(ui, /ingestionPending === "enable"\s*\?\s*"Enabling/);
+  assert.match(ui, /ingestionPending === "disable"\s*\?\s*"Turning off/);
+  assert.match(ui, /ingestionPending === "retry"\s*\?\s*"Retrying/);
+
+  // A failure is announced beside the button rather than swallowed, and the
+  // pending state is cleared on every path so the button never dies.
+  assert.match(ui, /className="crm-inline-error" role="alert"/);
+  assert.equal(ui.split("catch (error)").length - 1, 2, "both paths catch");
+  assert.equal(
+    ui.split('ingestionPending: ""').length - 1,
+    4,
+    "success and failure both clear the pending state, on both paths",
+  );
+  for (const message of [
+    "Call ingestion could not be enabled.",
+    "Call ingestion could not be turned off.",
+    "The webhook cleanup could not be retried.",
+  ]) {
+    assert.ok(ui.includes(message), message);
+  }
+  // A cleanup CallRail did not confirm is surfaced, not reported as clean.
+  assert.match(ui, /cleanupConfirmed === false/);
+  assert.match(ui, /did not confirm the webhook URLs were removed/);
+});
+
+test("a successful switch refreshes the card that reads the flag", () => {
+  const app = read("app/CrmApp.tsx");
+  const mutate = block(app, "async function mutate(");
+  assert.ok(mutate, "the shared mutate helper exists");
+  // The section renders from server state, so the refresh is what turns the
+  // status from Off to On. Both handlers rely on it rather than guessing.
+  assert.match(mutate, /await refresh\(\);\s*\n\s*setToast\(success\);/);
+  // And a failure still reaches the caller, so the section can show it.
+  assert.match(mutate, /setError\(message\);\s*\n\s*throw caught;/);
+  const ui = ingestionUi();
+  assert.equal(
+    /setCallRail|callIngestionEnabled: true/.test(ui),
+    false,
+    "the card must not fake the new state locally",
+  );
+});
+
+
+test("the card never reports a cleanup CallRail did not confirm", () => {
+  const ui = ingestionUi();
+  // The toast states only what is certainly true at that point \u2014 ingestion is
+  // off \u2014 and makes no claim about CallRail, because removal is unconfirmed
+  // until the returned flag is read.
+  const toast = /"Call ingestion turned off\."/.exec(ui);
+  assert.ok(toast, "the disable toast exists");
+  assert.equal(
+    /remov|withdraw|webhook|CallRail/i.test(toast[0]),
+    false,
+    "the success toast must not assert anything about CallRail",
+  );
+  // An unconfirmed cleanup is surfaced beside the button rather than dropped.
+  assert.match(ui, /result\?\.cleanupConfirmed === false/);
+  assert.match(ui, /did not confirm the webhook URLs were removed/);
+  // The status cells render from server state, so the card cannot show a
+  // removed or not-configured state the database does not hold.
+  assert.equal(
+    /setCallRailState|callIngestionEnabled: false|callIngestionEvents: \[\]/.test(ui),
+    false,
+    "the card must not write the post-disable state locally",
+  );
+});
+
+test("the disable confirmation states the in-flight call race honestly", () => {
+  const ui = ingestionUi();
+  const confirm = /"Turn off call ingestion\?[\s\S]*?",\n/.exec(ui);
+  assert.ok(confirm, "the disable confirmation exists");
+  const text = confirm[0];
+  // A call already past the recheck will finish, and the dialog says so.
+  assert.match(text, /already being processed/i);
+  assert.match(text, /may still finish/i);
+  assert.match(text, /rechecked immediately before/i);
+  assert.match(text, /narrows that window but does not cancel/i);
+  // Cancellation must not be claimed while the race is only narrowed.
+  assert.equal(
+    /\bcancels\b|\bcancelled\b|\baborts\b|will not create|nothing further/i.test(text),
+    false,
+    "the dialog must not promise a cancellation nothing implements",
+  );
+
+  // And the claim about the recheck has to keep matching the code, or this
+  // sentence quietly becomes false.
+  const fn = block(ingestionSource, "export async function ingestFetchedCall");
+  assert.ok(fn);
+  const guardAt = fn.indexOf("if (!state.enabled");
+  assert.ok(fn.indexOf("await ingestionState(") < guardAt);
+  for (const write of ["saveCallSnapshot(", "ensureContact(", "ensureLead("]) {
+    const at = fn.indexOf(write);
+    assert.ok(at > -1, `${write} is in this function`);
+    assert.ok(guardAt < at, `the recheck precedes ${write}`);
+  }
+});
+
+
+// ------------------------------------- recovering a cleanup that did not land
+
+test("a stranded cleanup is offered as a retry, never as Enable", () => {
+  const ui = ingestionSection();
+  // The three buttons are mutually exclusive branches of one expression, so
+  // the cleanup state cannot also be showing Enable.
+  assert.match(
+    ui,
+    /\{callRailIngesting \? \([\s\S]*?\) : callRailCleanupPending \? \([\s\S]*?\) : \([\s\S]*?\)\}/,
+    "cleanup-pending is its own branch, ahead of the enable branch",
+  );
+  const cleanupBranch = ui.slice(
+    ui.indexOf(") : callRailCleanupPending ? ("),
+    ui.indexOf(") : ("),
+  );
+  assert.ok(cleanupBranch.length > 0);
+  assert.match(cleanupBranch, /"Retry cleanup"/);
+  assert.equal(
+    /Enable ingestion|enable_callrail_ingestion/.test(cleanupBranch),
+    false,
+    "the stranded state must not offer to switch ingestion back on",
+  );
+
+  // It is named on the card, not left to be inferred from a blank.
+  assert.match(ui, /"Webhook cleanup needed"/);
+  // And the note says the two things the operator most needs to know.
+  assert.match(ui, /Retry the cleanup to withdraw them/);
+  assert.match(
+    ui,
+    /Nothing needs re-enabling, and the CallRail connection does not need disconnecting/,
+  );
+});
+
+test("retry cleanup is the same idempotent action, with ingestion already off", () => {
+  const handler = ingestionHandler();
+  assert.ok(handler, "disable and retry share one handler");
+  // One request, one action name, for both buttons.
+  assert.match(handler, /action: "disable_callrail_ingestion"/);
+  assert.equal(
+    handler.split("disable_callrail_ingestion").length - 1,
+    1,
+    "retry does not get its own action to drift from",
+  );
+  assert.equal(
+    /enable_callrail_ingestion/.test(handler),
+    false,
+    "recovering a cleanup never re-enables ingestion",
+  );
+
+  // The action rewrites ingest_enabled=false unconditionally, so calling it
+  // when it is already false is meaningful work rather than a no-op refusal.
+  const disable = block(crmSource, 'if (action === "disable_callrail_ingestion")');
+  const code = codeOnly(disable);
+  assert.match(code, /\.update\(\{ ingest_enabled: false, updated_at: now \}\)/);
+  assert.equal(
+    /ingest_enabled", true\)|if \(!?\w*[Ii]ngest_?[Ee]nabled\)/.test(code),
+    false,
+    "the action must not refuse to run because ingestion is already off",
+  );
+
+  // A retry that fails again leaves the state it started in, so the same
+  // button is still there.
+  assert.match(code, /catch \{\s*cleanupOk = false;\s*\}/);
+  assert.match(code, /\.\.\.callRailIngestionFlags\(cleanupOk\)/);
+});
+
+test("the local disable proves it changed exactly one row", () => {
+  const disable = block(crmSource, 'if (action === "disable_callrail_ingestion")');
+  const code = codeOnly(disable);
+  // The update asks for the rows back, and the count is checked.
+  assert.match(
+    code,
+    /\.eq\("client_id", clientId\)\s*\n\s*\.select\("client_id"\),/,
+  );
+  assert.match(code, /if \(!isSingleAffectedRow\(disabled\)\) \{\s*\n\s*throw new Error\(/);
+
+  // A zero-row update must stop the action before CallRail is touched and
+  // before anything is reported as done.
+  const guardAt = code.indexOf("isSingleAffectedRow(disabled)");
+  assert.ok(guardAt > -1);
+  for (const later of [
+    "removeCallRailWebhooksForClient",
+    'from("provider_connections")',
+    "await audit(",
+    "return { enabled: false",
+  ]) {
+    const at = code.indexOf(later);
+    assert.ok(at > -1, `${later} is in this action`);
+    assert.ok(guardAt < at, `the row count is proven before ${later}`);
+  }
+
+  // And the count itself refuses zero and refuses two.
+  const single = block(stateSource, "export function isSingleAffectedRow");
+  assert.ok(single, "the shared row check exists");
+  assert.match(single, /Array\.isArray\(rows\) && rows\.length === 1/);
+});
+
+test("the stranded-cleanup state survives a reload because the server holds it", () => {
+  // Written on the way out...
+  const disable = block(crmSource, 'if (action === "disable_callrail_ingestion")');
+  assert.match(codeOnly(disable), /\.\.\.callRailIngestionFlags\(cleanupOk\)/);
+
+  // ...recomputed by the health check from the credential row, so a reload or
+  // a Check connection agrees with what the disable wrote.
+  const check = block(crmSource, 'if (action === "check_callrail_connection")');
+  assert.ok(check);
+  assert.match(check, /webhook_path_id &&\s*\n?\s*ingestionState\?\.webhook_integration_id/);
+  const config = block(crmSource, "function callRailPublicConfig");
+  assert.ok(config);
+  assert.match(
+    config,
+    /callIngestionCleanupPending:\s*\n?\s*ingestion\.enabled !== true && ingestion\.configured === true/,
+  );
+
+  // ...and read back into the shape the card consumes.
+  const mapped = block(crmSource, "function mapProviderConnection");
+  assert.ok(mapped);
+  assert.match(
+    mapped,
+    /callIngestionCleanupPending:\s*\n\s*typeof publicConfig\.callIngestionCleanupPending === "boolean"/,
+  );
+  assert.match(read("db/crm.ts"), /callIngestionCleanupPending: boolean \| null;/);
+
+  // The only thing that clears it is a confirmed cleanup: the integration id
+  // is nulled in the same statement as the signing key, and the health check
+  // reads configured from that id.
+  assert.match(
+    codeOnly(disable),
+    /if \(cleanupOk\) \{[\s\S]*webhook_integration_id: null/,
+  );
 });

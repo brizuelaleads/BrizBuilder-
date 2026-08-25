@@ -57,6 +57,10 @@ import {
   isCallRailWebhookPathId,
 } from "../lib/callrail-webhook";
 import {
+  callRailIngestionFlags,
+  isSingleAffectedRow,
+} from "../lib/callrail-ingestion-state";
+import {
   DNI_EXCHANGE_PARAM,
   DNI_EXCHANGE_TTL_MS,
   isCallRailScriptUrl,
@@ -436,6 +440,11 @@ function callRailPublicConfig(
     callScribeEnabled: company?.callScribeEnabled ?? null,
     callIngestionEnabled: ingestion.enabled === true,
     callIngestionConfigured: ingestion.configured === true,
+    // Off while still configured is the stranded-cleanup state. Named
+    // here rather than left for each reader to infer, because the card
+    // offers a different action in it.
+    callIngestionCleanupPending:
+      ingestion.enabled !== true && ingestion.configured === true,
     callIngestionEvents: ingestion.events ?? [],
   };
 }
@@ -3176,6 +3185,10 @@ function mapProviderConnection(row: AnyRecord): CrmProviderConnection {
       typeof publicConfig.callIngestionConfigured === "boolean"
         ? publicConfig.callIngestionConfigured
         : null,
+    callIngestionCleanupPending:
+      typeof publicConfig.callIngestionCleanupPending === "boolean"
+        ? publicConfig.callIngestionCleanupPending
+        : null,
     callIngestionEvents: Array.isArray(publicConfig.callIngestionEvents)
       ? publicConfig.callIngestionEvents.map(String)
       : [],
@@ -5411,6 +5424,126 @@ export async function executeSupabaseCrmAction(
       integrationChanged: integration.changed,
       events: ["post_call_webhook", "updated_call_webhook"],
     };
+  }
+
+  // Stops ingesting without disconnecting.
+  //
+  // The API connection is left exactly as it was — account, company, webhook
+  // path id and key all stay — so this is reversible from the same card. What
+  // is withdrawn is the pair of webhook URLs BrizBuilder added, and only those:
+  // every other URL in that integration belongs to somebody else's tool and is
+  // written back untouched.
+  if (action === "disable_callrail_ingestion") {
+    requirePermission(context, "call_tracking.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+
+    const now = new Date().toISOString();
+
+    // The local switch moves first, and on its own.
+    //
+    // Until this row reads ingest_enabled=false an arriving delivery is still
+    // accepted, so the cheap authoritative write has to land before anything
+    // slower is attempted. It is deliberately not wrapped: if it fails it
+    // throws from here, CallRail is never called, nothing has changed anywhere,
+    // and pressing the button again is safe.
+    const disabled = await assertOk(
+      supabase()
+        .from("callrail_credentials")
+        .update({ ingest_enabled: false, updated_at: now })
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .select("client_id"),
+    );
+    // An update that matched nothing is not an error to PostgREST. Without
+    // counting, a disable aimed at a business with no CallRail credential
+    // — a stale client id, a row a concurrent disconnect already removed —
+    // would report success here and then go on to change CallRail on the
+    // strength of it.
+    if (!isSingleAffectedRow(disabled)) {
+      throw new Error(
+        "CallRail ingestion could not be switched off for this business.",
+      );
+    }
+
+    // Only now, with ingestion already off, are the URLs withdrawn. A failure
+    // here must not put ingestion back on: the connection keeps its API key,
+    // account, company and path id, so the remote step alone can be retried,
+    // and until it succeeds those URLs simply deliver to an endpoint that
+    // refuses them.
+    let cleanupOk = true;
+    try {
+      await removeCallRailWebhooksForClient(context.organizationId, clientId);
+    } catch {
+      cleanupOk = false;
+    }
+
+    // The signing key only ever authenticated the URLs just withdrawn, and
+    // CallRail reissues one on re-enable, so it is dropped once they are gone.
+    // While they are still live it is kept on purpose: a delivery arriving in
+    // that window then verifies and is refused as ingest_disabled, which is
+    // what happened. Without the key the verifier cannot resolve the client at
+    // all and the same delivery would be filed as rejected_unknown_client.
+    if (cleanupOk) {
+      await assertOk(
+        supabase()
+          .from("callrail_credentials")
+          .update({
+            webhook_signing_key_ciphertext: null,
+            webhook_signing_key_iv: null,
+            webhook_integration_id: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId),
+      );
+    }
+
+    const existing = await assertOk(
+      supabase()
+        .from("provider_connections")
+        .select("public_config")
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", "callrail")
+        .maybeSingle(),
+    );
+    const config =
+      existing?.public_config && typeof existing.public_config === "object"
+        ? (existing.public_config as Record<string, unknown>)
+        : {};
+    await assertOk(
+      supabase()
+        .from("provider_connections")
+        .update({
+          status: cleanupOk ? "connected" : "attention",
+          last_error: cleanupOk
+            ? null
+            : "Ingestion is off, but BrizBuilder could not confirm its webhook URLs were removed from CallRail. Use Retry cleanup, or remove them there.",
+          last_health_check_at: now,
+          public_config: {
+            ...config,
+            // Still configured when CallRail did not confirm, because the URLs
+            // really are still over there. The card offers Retry cleanup on
+            // the strength of exactly this.
+            ...callRailIngestionFlags(cleanupOk),
+          },
+          updated_at: now,
+        })
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", "callrail"),
+    );
+
+    await audit(
+      context,
+      "provider.ingestion_disabled",
+      "provider_connection",
+      null,
+      { provider: "callrail", callrailCleanupConfirmed: cleanupOk },
+      clientId,
+    );
+    return { enabled: false, cleanupConfirmed: cleanupOk };
   }
 
   if (action === "disconnect_callrail") {

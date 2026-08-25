@@ -11,6 +11,11 @@ import type {
   CrmWorkflowNode,
   CrmWorkflowRun,
 } from "../../db/crm";
+import {
+  CALLRAIL_INGESTION_CLEANUP_PENDING,
+  CALLRAIL_INGESTION_ON,
+  callRailIngestionView,
+} from "../../lib/callrail-ingestion-state";
 import { Badge } from "./ui";
 
 type Mutate = (
@@ -23,6 +28,14 @@ type TwilioVisibleBalance = {
   currency: string | null;
   balanceStatus: "parent" | "available" | "shared" | "unavailable";
 };
+
+const CALLRAIL_EVENT_LABELS: Record<string, string> = {
+  post_call_webhook: "Completed calls",
+  updated_call_webhook: "Updated calls",
+};
+
+const callRailEventLabel = (event: string) =>
+  CALLRAIL_EVENT_LABELS[event] ?? event;
 
 function clientChoice(
   clients: CrmClient[],
@@ -85,11 +98,25 @@ export function ConnectionsView({
     callRailConnection?.status === "setup_required" ||
     callRailConnection?.status === "attention";
   const callRailSetup = callRailConnection?.setupStatus ?? null;
+  // Three states, decided in one place the server writes and this reads
+  // back: on, off, and off-but-still-registered-at-CallRail. The third is
+  // recoverable on its own and must not be offered the Enable button.
+  const callRailIngestion = callRailIngestionView(callRailConnection);
+  const callRailIngesting = callRailIngestion === CALLRAIL_INGESTION_ON;
+  const callRailCleanupPending =
+    callRailIngestion === CALLRAIL_INGESTION_CLEANUP_PENDING;
+  const callRailIngestEvents = callRailConnection?.callIngestionEvents ?? [];
   const emptyCallRail = {
     apiKey: "",
     accounts: [] as Array<{ id: string; name: string }>,
     companies: [] as Array<{ id: string; name: string }>,
     check: "",
+    // Ingestion carries its own pending and error state rather than borrowing
+    // the page-wide one. Switching it on is the moment this integration starts
+    // writing to a business's CRM, so the outcome belongs next to the button
+    // that caused it, not in a toast at the top of the page.
+    ingestionPending: "" as "" | "enable" | "disable" | "retry",
+    ingestionError: "",
   };
   const [callRailState, setCallRailState] = useState({
     clientId,
@@ -104,6 +131,39 @@ export function ConnectionsView({
       : { clientId, ...emptyCallRail };
   const patchCallRail = (patch: Partial<typeof emptyCallRail>) =>
     setCallRailState({ ...callRail, clientId, ...patch });
+
+  // Disable and Retry cleanup are the same request. The action is
+  // idempotent — it rewrites ingest_enabled=false, which is already the
+  // case on a retry, and asks CallRail again — so recovering from a
+  // stranded cleanup never means re-enabling ingestion first.
+  const runCallRailDisable = async (mode: "disable" | "retry") => {
+    patchCallRail({ ingestionPending: mode, ingestionError: "" });
+    try {
+      const result = (await mutate(
+        { action: "disable_callrail_ingestion", clientId },
+        // Says only what is certain once the request succeeded. Whether
+        // CallRail actually dropped the URLs is in the returned flag.
+        mode === "retry" ? "Cleanup retried." : "Call ingestion turned off.",
+      )) as { cleanupConfirmed?: boolean } | null;
+      patchCallRail({
+        ingestionPending: "",
+        ingestionError:
+          result?.cleanupConfirmed === false
+            ? "CallRail did not confirm the webhook URLs were removed. Ingestion stays off; use Retry cleanup to try again."
+            : "",
+      });
+    } catch (error) {
+      patchCallRail({
+        ingestionPending: "",
+        ingestionError:
+          error instanceof Error
+            ? error.message
+            : mode === "retry"
+              ? "The webhook cleanup could not be retried."
+              : "Call ingestion could not be turned off.",
+      });
+    }
+  };
   const [balanceResult, setBalanceResult] = useState<{
     key: string;
     data: TwilioVisibleBalance | null;
@@ -650,6 +710,126 @@ export function ConnectionsView({
                 ) : null}
                 {callRail.check ? (
                   <p className="crm-connection-note">{callRail.check}</p>
+                ) : null}
+                {callRailSetup === "ready" ? (
+                  <>
+                    <div className="crm-connection-details compact crm-connection-details-simple">
+                      <div>
+                        <span>Call ingestion</span>
+                        <strong>{callRailIngesting ? "On" : "Off"}</strong>
+                      </div>
+                      <div>
+                        <span>Webhooks</span>
+                        <strong>
+                          {callRailCleanupPending
+                            ? "Webhook cleanup needed"
+                            : !callRailIngesting
+                              ? "Not configured"
+                              : callRailIngestEvents.length
+                                ? callRailIngestEvents
+                                    .map(callRailEventLabel)
+                                    .join(", ")
+                                : "Configured"}
+                        </strong>
+                      </div>
+                    </div>
+                    <p className="crm-connection-note">
+                      {callRailCleanupPending
+                        ? "Ingestion is off and no calls are being recorded, but BrizBuilder’s webhook URLs are still registered at CallRail because the last cleanup did not complete. Retry the cleanup to withdraw them. Nothing needs re-enabling, and the CallRail connection does not need disconnecting."
+                        : callRailIngesting
+                          ? "Completed calls for this business become contacts and leads in the CRM. Turning ingestion off stops new calls immediately and withdraws only BrizBuilder’s own webhook URLs from CallRail: the API connection stays, and every other tool’s URLs are left exactly as they are."
+                          : "No calls are being recorded. Enabling adds BrizBuilder’s webhook URLs to this company’s CallRail Webhooks integration, alongside any URLs already there, and starts creating contacts and leads from completed calls."}
+                    </p>
+                    {callRail.ingestionError ? (
+                      <p className="crm-inline-error" role="alert">
+                        {callRail.ingestionError}
+                      </p>
+                    ) : null}
+                    <div className="crm-connection-actions">
+                      {callRailIngesting ? (
+                        <button
+                          className="danger"
+                          type="button"
+                          disabled={Boolean(callRail.ingestionPending)}
+                          onClick={() => {
+                            if (
+                              !window.confirm(
+                                "Turn off call ingestion?\n\nBrizBuilder stops recording this business’s calls, then removes only its own webhook URLs from CallRail. The CallRail connection stays, and any other tool’s webhook URLs are left alone.\n\nA call already being processed may still finish and create a contact or lead. Ingestion is rechecked immediately before anything is written to the CRM, which narrows that window but does not cancel work that is already past the check.",
+                              )
+                            )
+                              return;
+                            void runCallRailDisable("disable");
+                          }}
+                        >
+                          {callRail.ingestionPending === "disable"
+                            ? "Turning off…"
+                            : "Disable ingestion"}
+                        </button>
+                      ) : callRailCleanupPending ? (
+                        <button
+                          className="danger"
+                          type="button"
+                          disabled={Boolean(callRail.ingestionPending)}
+                          onClick={() => {
+                            if (
+                              !window.confirm(
+                                "Retry the webhook cleanup?\n\nBrizBuilder asks CallRail again to remove only its own webhook URLs. Ingestion stays off either way, the CallRail connection is untouched, and any other tool’s webhook URLs are left alone.",
+                              )
+                            )
+                              return;
+                            void runCallRailDisable("retry");
+                          }}
+                        >
+                          {callRail.ingestionPending === "retry"
+                            ? "Retrying…"
+                            : "Retry cleanup"}
+                        </button>
+                      ) : (
+                        <button
+                          className="crm-button-primary"
+                          type="button"
+                          disabled={Boolean(callRail.ingestionPending)}
+                          onClick={async () => {
+                            if (
+                              !window.confirm(
+                                "Enable call ingestion?\n\nBrizBuilder will add its webhook URLs to this company’s CallRail integration, keeping any URLs already there, and will start creating contacts and leads from completed calls.",
+                              )
+                            )
+                              return;
+                            patchCallRail({
+                              ingestionPending: "enable",
+                              ingestionError: "",
+                            });
+                            try {
+                              await mutate(
+                                {
+                                  action: "enable_callrail_ingestion",
+                                  clientId,
+                                },
+                                "Call ingestion is on.",
+                              );
+                              patchCallRail({
+                                ingestionPending: "",
+                                ingestionError: "",
+                              });
+                            } catch (error) {
+                              patchCallRail({
+                                ingestionPending: "",
+                                ingestionError:
+                                  error instanceof Error
+                                    ? error.message
+                                    : "Call ingestion could not be enabled.",
+                              });
+                            }
+                          }}
+                        >
+                          {callRail.ingestionPending === "enable"
+                            ? "Enabling…"
+                            : "Enable ingestion"}
+                        </button>
+                      )}
+                    </div>
+                  </>
                 ) : null}
                 <div className="crm-connection-actions">
                   <button

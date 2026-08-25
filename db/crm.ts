@@ -388,6 +388,10 @@ export type CrmProviderConnection = {
   scriptUrl: string | null;
   callIngestionEnabled: boolean | null;
   callIngestionConfigured: boolean | null;
+  // Ingestion is off, but BrizBuilder's webhook URLs are still
+  // registered at CallRail because the cleanup call did not complete.
+  // Recoverable on its own; see lib/callrail-ingestion-state.
+  callIngestionCleanupPending: boolean | null;
   callIngestionEvents: string[];
   chargesEnabled: boolean | null;
   payoutsEnabled: boolean | null;
