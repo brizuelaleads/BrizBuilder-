@@ -25,6 +25,10 @@ const ingestionMigrationSource = read(
 const outcomeMigrationSource = read(
   "supabase/migrations/20260826000000_callrail_delivery_outcomes.sql",
 );
+const syncClaimMigrationSource = read(
+  "supabase/migrations/20260826010000_callrail_sync_run_claim.sql",
+);
+const viteConfigSource = read("vite.config.ts");
 const workerSource = read("worker/index.ts");
 const leadWorkerSource = read("lead-worker/src/index.ts");
 const connectionsUi = read("app/crm/WorkflowViews.tsx");
@@ -231,6 +235,7 @@ test("the API key is never returned to a caller", () => {
     'if (action === "check_callrail_connection")',
     'if (action === "enable_callrail_ingestion")',
     'if (action === "disable_callrail_ingestion")',
+    'if (action === "recover_callrail_calls")',
     'if (action === "disconnect_callrail")',
   ];
   for (const marker of actions) {
@@ -297,6 +302,7 @@ test("every CallRail action is permission gated and audited where it changes sta
     'if (action === "select_callrail_company")',
     'if (action === "enable_callrail_ingestion")',
     'if (action === "disable_callrail_ingestion")',
+    'if (action === "recover_callrail_calls")',
     'if (action === "disconnect_callrail")',
   ];
   for (const marker of stateChanging) {
@@ -1570,12 +1576,16 @@ test("no ingestion button acts without an explicit confirmation", () => {
   // Split on the handlers themselves rather than naming the actions, so a
   // fourth button cannot be added later without meeting the same bar.
   const handlers = ui.split(/onClick=\{(?:async )?\(\) => \{/).slice(1);
-  assert.equal(handlers.length, 3, "enable, disable and retry cleanup");
+  assert.equal(
+    handlers.length,
+    4,
+    "enable, disable, retry cleanup and recover missed calls",
+  );
   for (const handler of handlers) {
     const confirmAt = handler.indexOf("window.confirm(");
     assert.ok(confirmAt > -1, "the handler asks first");
     const acts = [
-      handler.indexOf("runCallRailDisable("),
+      ...[...handler.matchAll(/\brunCallRail\w+\(/g)].map((m) => m.index),
       handler.indexOf("mutate("),
     ].filter((at) => at > -1);
     assert.ok(acts.length > 0, "the handler does something");
@@ -1625,8 +1635,8 @@ test("every ingestion button shows progress and reports failure in place", () =>
   assert.equal(
     ingestionSection().split("disabled={Boolean(callRail.ingestionPending)}")
       .length - 1,
-    3,
-    "all three buttons are disabled while any is pending",
+    4,
+    "every button is disabled while any is pending",
   );
   assert.match(ui, /ingestionPending === "enable"\s*\?\s*"Enabling/);
   assert.match(ui, /ingestionPending === "disable"\s*\?\s*"Turning off/);
@@ -1994,4 +2004,249 @@ test("the delivery outcome constraint admits exactly the new vocabulary", () => 
     const bare = outcome.replaceAll("'", "");
     assert.ok(type.includes(`"${bare}"`), `${bare} exists in the type too`);
   }
+});
+
+
+// --------------------------------------- recovering calls the webhooks missed
+
+test("the schedule that drives reconciliation actually exists", () => {
+  // The scheduled handler was unreachable for as long as no trigger existed:
+  // callrail_sync_runs stayed empty because nothing ever called it.
+  assert.match(viteConfigSource, /triggers: \{ crons: \["\*\/15 \* \* \* \*"\] \}/);
+  assert.match(workerSource, /async scheduled\(/);
+  const scheduled = section(workerSource, "async scheduled(", "\n};");
+  assert.ok(scheduled);
+  assert.match(scheduled, /ctx\.waitUntil\(\s*\n?\s*reconcileCallRailIngestion\(\)/);
+  // The schedule runs unscoped, across every enabled connection.
+  assert.equal(
+    /reconcileCallRailIngestion\(\{/.test(scheduled),
+    false,
+    "the scheduled pass takes no scope",
+  );
+});
+
+test("a person-triggered recovery cannot reach another client", () => {
+  const recover = block(crmSource, 'if (action === "recover_callrail_calls")');
+  assert.ok(recover, "the action exists");
+  const code = codeOnly(recover);
+  assert.match(code, /requirePermission\(context, "call_tracking\.manage"\)/);
+  assert.match(code, /await requireClient\(context, clientId\)/);
+
+  // Scoped to the client just authorized. call_tracking.manage is held per
+  // client, so an unscoped pass would let one client's owner start work
+  // against every other client in the organization.
+  assert.match(
+    code,
+    /scope: \{ organizationId: context\.organizationId, clientId \}/,
+  );
+  assert.match(code, /await audit\(/);
+  assert.match(code, /"provider\.ingestion_recovered"/);
+
+  // And the reconciler refuses a half-scope rather than widening it.
+  const reconcile = block(ingestionSource, "export async function reconcileCallRailIngestion");
+  assert.ok(reconcile);
+  assert.match(
+    reconcile,
+    /if \(options\.scope && !\(options\.scope\.organizationId && options\.scope\.clientId\)\)/,
+  );
+  assert.match(reconcile, /throw new Error\(/);
+  const connections = block(ingestionSource, "async function enabledConnections");
+  assert.match(connections, /\.eq\("organization_id", scope\.organizationId\)/);
+  assert.match(connections, /\.eq\("client_id", scope\.clientId\)/);
+  assert.match(connections, /\.eq\("ingest_enabled", true\)/);
+});
+
+test("the recovery window is a bounded whole number of days", () => {
+  const code = codeOnly(block(crmSource, 'if (action === "recover_callrail_calls")'));
+  assert.match(code, /Number\.isInteger\(lookbackDays\)/);
+  assert.match(code, /lookbackDays < 1/);
+  assert.match(code, /lookbackDays > MAX_CALLRAIL_RECOVERY_DAYS/);
+  assert.match(code, /throw new Error\(/);
+  assert.match(crmSource, /const MAX_CALLRAIL_RECOVERY_DAYS = 30;/);
+  // Truncating 2.5 into 2 would silently run a window nobody asked for.
+  assert.equal(
+    /Math\.(floor|round|trunc)\(\s*lookbackDays/.test(code),
+    false,
+    "a fractional window is refused, never rounded into a real one",
+  );
+});
+
+test("two reconciliations cannot run over the same connection at once", () => {
+  // The slot is the run row: only one can be 'running' per connection.
+  assert.match(
+    syncClaimMigrationSource,
+    /create unique index if not exists callrail_sync_runs_active_uidx\s*\n\s*on public\.callrail_sync_runs \(organization_id, client_id\)\s*\n\s*where status = 'running'/,
+  );
+  const fn = section(
+    syncClaimMigrationSource,
+    "create or replace function public.claim_callrail_sync_run",
+    "revoke all on function",
+  );
+  assert.ok(fn, "the claim function exists");
+  assert.match(fn, /on conflict do nothing/);
+  assert.match(fn, /returning id into v_run_id/);
+  // A crashed run must not hold the slot forever, and is recorded rather
+  // than deleted.
+  assert.match(fn, /started_at < pg_catalog\.now\(\) - p_stale_after/);
+  assert.match(fn, /set status = 'failed',\s*\n\s*error = 'abandoned'/);
+  // Definer, with no writable schema on its path.
+  assert.match(fn, /security definer/);
+  assert.match(fn, /set search_path = ''/);
+  assert.equal(/set search_path = public/.test(fn), false);
+  assert.match(fn, /raise exception 'claim_callrail_sync_run requires an organization and a client'/);
+  assert.match(
+    syncClaimMigrationSource,
+    /revoke all on function public\.claim_callrail_sync_run[\s\S]*from public, anon, authenticated/,
+  );
+
+  // A connection whose slot is taken is skipped, not run anyway.
+  const reconcile = block(ingestionSource, "export async function reconcileCallRailIngestion");
+  assert.match(reconcile, /const runId = await claimSyncRun\(/);
+  assert.match(reconcile, /if \(!runId\) \{\s*\n\s*summary\.skipped \+= 1;\s*\n\s*continue;\s*\n\s*\}/);
+  const claim = block(ingestionSource, "async function claimSyncRun");
+  assert.match(claim, /db\(\)\.rpc\("claim_callrail_sync_run"/);
+  assert.match(claim, /return runId \? String\(runId\) : null;/);
+});
+
+test("recovering the same call twice changes nothing the second time", () => {
+  // Reconciliation re-walks a window, so it will meet calls it has already
+  // ingested. Idempotency is what makes that safe to run every 15 minutes.
+  const ingest = block(ingestionSource, "export async function ingestFetchedCall");
+  assert.ok(ingest);
+  assert.match(ingest, /const claim = await claimCall\(String\(snapshot\.id\)\)/);
+  // Losing the claim ends the pass for that call. Without this, two
+  // reconciliations meeting the same call would both go on to write.
+  assert.match(
+    ingest,
+    /if \(!claim\) return \{ status: "busy", leadCreated: false, repaired: false \};/,
+  );
+  const afterClaim = ingest.slice(ingest.indexOf("const claim = await claimCall"));
+  assert.ok(
+    afterClaim.indexOf("if (!claim) return") <
+      Math.min(
+        ...["ensureContact(", "ensureLead("]
+          .map((needle) => afterClaim.indexOf(needle))
+          .filter((at) => at > -1),
+      ),
+    "the claim is checked before any CRM write",
+  );
+
+  // The snapshot is keyed on CallRail's own call id, so a second pass updates
+  // one row rather than adding another.
+  const callsTable = section(
+    ingestionMigrationSource,
+    "create table if not exists public.callrail_calls",
+    ");",
+  );
+  assert.ok(callsTable);
+  assert.match(
+    callsTable,
+    /unique \(organization_id, client_id, callrail_call_id\)/,
+  );
+  const claimFn = section(
+    syncClaimMigrationSource,
+    "create or replace function public.claim_callrail_call_for_ingestion",
+    "revoke all on function public.claim_callrail_call_for_ingestion",
+  );
+  assert.ok(claimFn);
+  // A conditional update, so exactly one caller can take a call: the second
+  // one's statement matches no row and it backs off as busy rather than
+  // ingesting the same call alongside the first.
+  assert.match(claimFn, /set ingest_status = 'enriching'/);
+  assert.match(claimFn, /call\.ingest_status <> 'enriching'\s*\n\s*or call\.updated_at < p_stale_before/);
+  assert.match(claimFn, /returning call\.id, call\.contact_id, call\.lead_id/);
+
+  // And the window sweep does not redo what it just did in the same pass.
+  const reconcile = block(ingestionSource, "export async function reconcileCallRailIngestion");
+  assert.match(reconcile, /const seenIds = new Set\(page\.calls\.map\(\(call\) => call\.id\)\)/);
+  assert.match(reconcile, /if \(seenIds\.has\(callId\)\) continue;/);
+});
+
+test("the recovery button reports what was found, not that it worked", () => {
+  const ui = ingestionUi();
+  const handler = block(connectionsUi, "const runCallRailRecovery = async (");
+  assert.ok(handler, "the recovery handler exists");
+
+  // Split the success patch into the expression behind each slot, so these
+  // assertions are about where a result lands rather than whether a word
+  // occurs somewhere in the handler.
+  const success = handler.slice(handler.indexOf('ingestionPending: "",'));
+  const errorAt = success.indexOf("ingestionError:");
+  const noteAt = success.indexOf("ingestionNote:");
+  assert.ok(errorAt > -1, "the success patch sets an error slot");
+  assert.ok(noteAt > errorAt, "and a separate note slot after it");
+  const errorExpr = success.slice(errorAt, noteAt);
+  const noteExpr = success.slice(noteAt);
+
+  // Finding nothing is the good outcome: it goes to the note, never the error.
+  assert.match(noteExpr, /No missed calls in the last \$\{days\}/);
+  assert.equal(
+    /No missed calls/.test(errorExpr),
+    false,
+    "a clean result must not be rendered as a failure",
+  );
+  assert.match(connectionsUi, /className="crm-connection-note" role="status"/);
+
+  // A skipped or partial pass is the error slot's business, and clears the
+  // note so it cannot read as though the pass had completed.
+  assert.match(errorExpr, /result\?\.skipped/);
+  assert.match(errorExpr, /result\?\.failures/);
+  assert.match(errorExpr, /some calls may still be missing/);
+  assert.match(noteExpr, /result\?\.skipped \|\| result\?\.failures\s*\n?\s*\? ""/);
+
+  // The toast says only that it looked, because at that point the counts have
+  // not been read.
+  assert.match(handler, /"Checked CallRail for missed calls\."/);
+  assert.equal(
+    /"Recovered [^"]*"\s*,\s*\n?\s*\)\)/.test(handler),
+    false,
+    "the toast must not claim a recovery before the counts are read",
+  );
+
+  // Offered only where it can do anything: reconciliation only looks at
+  // connections whose ingestion is on.
+  assert.match(
+    ui,
+    /\{callRailIngesting \? \([\s\S]*?"Recover missed calls"[\s\S]*?\) : null\}/,
+  );
+});
+
+
+test("no definer function resolves a name through a writable schema", () => {
+  // A SECURITY DEFINER function runs with the owner's rights, so anything it
+  // resolves through a schema other roles can write to is a way in. Every one
+  // of them is checked here rather than one at a time, which is how
+  // claim_callrail_call_for_ingestion kept `search_path = public` while the
+  // contact function next to it was hardened.
+  const migrations = [
+    ["20260825000000_callrail_ingestion.sql", ingestionMigrationSource],
+    ["20260826010000_callrail_sync_run_claim.sql", syncClaimMigrationSource],
+  ];
+  const seen = [];
+  for (const [name, source] of migrations) {
+    for (const match of source.matchAll(
+      /create or replace function (public\.\w+)[\s\S]*?\bas \$\$/g,
+    )) {
+      const header = match[0];
+      if (!/security definer/.test(header)) continue;
+      seen.push(match[1]);
+      // The newest definition of each function wins, so a later migration
+      // hardening an earlier one is what this must reflect.
+      const latest = migrations
+        .map(([, s]) => s)
+        .join("\n")
+        .lastIndexOf(`create or replace function ${match[1]}`);
+      const current = migrations
+        .map(([, s]) => s)
+        .join("\n")
+        .slice(latest);
+      const head = current.slice(0, current.indexOf("as $$"));
+      assert.match(
+        head,
+        /set search_path = ''/,
+        `${match[1]} (${name}) must not resolve through a writable schema`,
+      );
+    }
+  }
+  assert.ok(seen.length >= 3, `expected several definer functions, saw ${seen}`);
 });

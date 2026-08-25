@@ -115,8 +115,12 @@ export function ConnectionsView({
     // the page-wide one. Switching it on is the moment this integration starts
     // writing to a business's CRM, so the outcome belongs next to the button
     // that caused it, not in a toast at the top of the page.
-    ingestionPending: "" as "" | "enable" | "disable" | "retry",
+    ingestionPending: "" as "" | "enable" | "disable" | "retry" | "recover",
     ingestionError: "",
+    // A result that is neither failure nor nothing: “no missed calls” is
+    // the good outcome of a recovery, and reporting it in red would say
+    // something went wrong when nothing did.
+    ingestionNote: "",
   };
   const [callRailState, setCallRailState] = useState({
     clientId,
@@ -164,6 +168,56 @@ export function ConnectionsView({
       });
     }
   };
+  // Fetches calls the webhooks may have missed and ingests them. The schedule
+  // already does this every fifteen minutes; this is for what it cannot reach
+  // — a delivery refused before a fix, or a call older than its lookback. It
+  // reports what it actually found rather than claiming success.
+  const runCallRailRecovery = async (lookbackDays: number) => {
+    patchCallRail({
+      ingestionPending: "recover",
+      ingestionError: "",
+      ingestionNote: "",
+    });
+    try {
+      const result = (await mutate(
+        { action: "recover_callrail_calls", clientId, lookbackDays },
+        "Checked CallRail for missed calls.",
+      )) as {
+        callsSeen?: number;
+        callsIngested?: number;
+        callsRecovered?: number;
+        skipped?: number;
+        failures?: number;
+      } | null;
+      const found =
+        (result?.callsIngested ?? 0) + (result?.callsRecovered ?? 0);
+      const days = `${lookbackDays} day${lookbackDays === 1 ? "" : "s"}`;
+      patchCallRail({
+        ingestionPending: "",
+        ingestionError: result?.skipped
+          ? "A check was already running for this business, so this one did nothing. Try again in a minute."
+          : result?.failures
+            ? "CallRail could not be read in full, so some calls may still be missing. Try again."
+            : "",
+        ingestionNote:
+          result?.skipped || result?.failures
+            ? ""
+            : found === 0
+              ? `No missed calls in the last ${days}. Everything CallRail has is already recorded.`
+              : `Recovered ${found} call${found === 1 ? "" : "s"} from the last ${days}.`,
+      });
+    } catch (error) {
+      patchCallRail({
+        ingestionPending: "",
+        ingestionNote: "",
+        ingestionError:
+          error instanceof Error
+            ? error.message
+            : "CallRail could not be checked for missed calls.",
+      });
+    }
+  };
+
   const [balanceResult, setBalanceResult] = useState<{
     key: string;
     data: TwilioVisibleBalance | null;
@@ -745,6 +799,11 @@ export function ConnectionsView({
                         {callRail.ingestionError}
                       </p>
                     ) : null}
+                    {callRail.ingestionNote ? (
+                      <p className="crm-connection-note" role="status">
+                        {callRail.ingestionNote}
+                      </p>
+                    ) : null}
                     <div className="crm-connection-actions">
                       {callRailIngesting ? (
                         <button
@@ -828,6 +887,25 @@ export function ConnectionsView({
                             : "Enable ingestion"}
                         </button>
                       )}
+                      {callRailIngesting ? (
+                        <button
+                          type="button"
+                          disabled={Boolean(callRail.ingestionPending)}
+                          onClick={() => {
+                            if (
+                              !window.confirm(
+                                "Check CallRail for missed calls?\n\nBrizBuilder reads this business’s last 7 days of calls and creates contacts and leads for any that were never recorded. Calls already recorded are left as they are.",
+                              )
+                            )
+                              return;
+                            void runCallRailRecovery(7);
+                          }}
+                        >
+                          {callRail.ingestionPending === "recover"
+                            ? "Checking…"
+                            : "Recover missed calls"}
+                        </button>
+                      ) : null}
                     </div>
                   </>
                 ) : null}

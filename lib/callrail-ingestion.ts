@@ -868,38 +868,51 @@ export async function processCallRailWebhookDelivery(deliveryId: string) {
   }
 }
 
-async function enabledConnections(limit: number) {
-  const rows = await checked(
-    db()
-      .from("callrail_credentials")
-      .select("organization_id,client_id,account_id,company_id")
-      .eq("ingest_enabled", true)
-      .not("account_id", "is", null)
-      .not("company_id", "is", null)
-      .limit(limit),
-  );
+/** One connection, or every enabled one when no scope is given. */
+export type CallRailReconcileScope = {
+  organizationId: string;
+  clientId: string;
+};
+
+async function enabledConnections(limit: number, scope?: CallRailReconcileScope) {
+  let query = db()
+    .from("callrail_credentials")
+    .select("organization_id,client_id,account_id,company_id")
+    .eq("ingest_enabled", true)
+    .not("account_id", "is", null)
+    .not("company_id", "is", null);
+  if (scope) {
+    query = query
+      .eq("organization_id", scope.organizationId)
+      .eq("client_id", scope.clientId);
+  }
+  const rows = await checked(query.limit(limit));
   return Array.isArray(rows) ? (rows as Row[]) : [];
 }
 
-async function createSyncRun(
+/**
+ * Take this connection's reconciliation slot, or return null.
+ *
+ * Null means another pass is already running for it — the schedule and the
+ * button can both fire, and the caller skips rather than racing. A run whose
+ * worker died is closed out as abandoned inside the function, so a crash
+ * cannot hold the slot indefinitely.
+ */
+async function claimSyncRun(
   organizationId: string,
   clientId: string,
   windowStart: string,
   windowEnd: string,
-) {
-  const run = (await checked(
-    db()
-      .from("callrail_sync_runs")
-      .insert({
-        organization_id: organizationId,
-        client_id: clientId,
-        window_start: windowStart,
-        window_end: windowEnd,
-      })
-      .select("id")
-      .single(),
-  )) as Row;
-  return String(run.id);
+): Promise<string | null> {
+  const runId = await checked(
+    db().rpc("claim_callrail_sync_run", {
+      p_organization_id: organizationId,
+      p_client_id: clientId,
+      p_window_start: windowStart,
+      p_window_end: windowEnd,
+    }),
+  );
+  return runId ? String(runId) : null;
 }
 
 async function finishSyncRun(
@@ -949,13 +962,25 @@ export async function reconcileCallRailIngestion(options: {
   lookbackMs?: number;
   maxConnections?: number;
   maxPagesPerConnection?: number;
+  /**
+   * Restrict the pass to one connection.
+   *
+   * The schedule runs unscoped across every enabled connection. Anything a
+   * person triggers passes a scope, because the permission that lets them
+   * trigger it is held per client and must not reach another one.
+   */
+  scope?: CallRailReconcileScope;
 } = {}) {
+  if (options.scope && !(options.scope.organizationId && options.scope.clientId)) {
+    throw new Error("A scoped reconciliation needs both an organization and a client.");
+  }
   const windowEnd = new Date();
   const windowStart = new Date(
     windowEnd.getTime() - (options.lookbackMs ?? RECONCILE_LOOKBACK_MS),
   );
   const connections = await enabledConnections(
     options.maxConnections ?? RECONCILE_MAX_CONNECTIONS,
+    options.scope,
   );
   const summary = {
     connections: connections.length,
@@ -964,6 +989,8 @@ export async function reconcileCallRailIngestion(options: {
     callsRepaired: 0,
     // Calls rescued by state rather than by falling inside the window.
     callsRecovered: 0,
+    // Connections skipped because a pass was already running for them.
+    skipped: 0,
     failures: 0,
   };
   for (const connection of connections) {
@@ -971,12 +998,16 @@ export async function reconcileCallRailIngestion(options: {
     const clientId = String(connection.client_id);
     const accountId = String(connection.account_id);
     const companyId = String(connection.company_id);
-    const runId = await createSyncRun(
+    const runId = await claimSyncRun(
       organizationId,
       clientId,
       windowStart.toISOString(),
       windowEnd.toISOString(),
     );
+    if (!runId) {
+      summary.skipped += 1;
+      continue;
+    }
     let recovered = 0;
     try {
       const access = await loadCallRailApiAccess(organizationId, clientId);

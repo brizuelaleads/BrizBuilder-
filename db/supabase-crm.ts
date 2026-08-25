@@ -60,6 +60,7 @@ import {
   callRailIngestionFlags,
   isSingleAffectedRow,
 } from "../lib/callrail-ingestion-state";
+import { reconcileCallRailIngestion } from "../lib/callrail-ingestion";
 import {
   DNI_EXCHANGE_PARAM,
   DNI_EXCHANGE_TTL_MS,
@@ -410,6 +411,12 @@ function optionalText(value: unknown, max = 500): string | null {
 // setupStatus distinguishes "connected but no company chosen yet" from a
 // working connection, so a half-finished setup reads as a next step rather
 // than as a failure.
+// How far back a person-triggered recovery looks by default, and the most
+// it will accept. Wide enough to reach a call the schedule missed while a
+// fix was being written; not so wide that one press walks a year of calls.
+const DEFAULT_CALLRAIL_RECOVERY_DAYS = 1;
+const MAX_CALLRAIL_RECOVERY_DAYS = 30;
+
 function callRailPublicConfig(
   account: CallRailAccount | null,
   company: CallRailCompany | null,
@@ -5433,6 +5440,55 @@ export async function executeSupabaseCrmAction(
   // is withdrawn is the pair of webhook URLs BrizBuilder added, and only those:
   // every other URL in that integration belongs to somebody else's tool and is
   // written back untouched.
+
+  // Fetch calls this connection may have missed and ingest them.
+  //
+  // The schedule does this every fifteen minutes across every enabled
+  // connection. This is the same pass, aimed at one client and started by a
+  // person, for the cases the schedule cannot reach: a delivery refused
+  // before a fix, or a call older than the scheduled lookback.
+  if (action === "recover_callrail_calls") {
+    requirePermission(context, "call_tracking.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+
+    // Bounded, and an integer. A window is a number of days back from now;
+    // anything else is not one, and is refused rather than rounded into one.
+    const requested = input.lookbackDays;
+    const lookbackDays =
+      requested === undefined || requested === null
+        ? DEFAULT_CALLRAIL_RECOVERY_DAYS
+        : requested;
+    if (
+      typeof lookbackDays !== "number" ||
+      !Number.isInteger(lookbackDays) ||
+      lookbackDays < 1 ||
+      lookbackDays > MAX_CALLRAIL_RECOVERY_DAYS
+    ) {
+      throw new Error(
+        `Choose how many days back to look, from 1 to ${MAX_CALLRAIL_RECOVERY_DAYS}.`,
+      );
+    }
+
+    // Scoped to the client that was just authorized. call_tracking.manage is
+    // held per client, so an unscoped pass here would let one client's owner
+    // start work against every other client in the organization.
+    const summary = await reconcileCallRailIngestion({
+      scope: { organizationId: context.organizationId, clientId },
+      lookbackMs: lookbackDays * 24 * 60 * 60 * 1000,
+    });
+
+    await audit(
+      context,
+      "provider.ingestion_recovered",
+      "provider_connection",
+      null,
+      { provider: "callrail", lookbackDays, ...summary },
+      clientId,
+    );
+    return { ...summary, lookbackDays };
+  }
+
   if (action === "disable_callrail_ingestion") {
     requirePermission(context, "call_tracking.manage");
     const clientId = requireText(input.clientId, "Client", 100);

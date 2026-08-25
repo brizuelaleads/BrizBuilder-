@@ -15,6 +15,10 @@ const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const localBindingConfig = {
   main: "./worker/index.ts",
   compatibility_flags: ["nodejs_compat"],
+  // Drives the scheduled handler, which reconciles CallRail ingestion.
+  // CallRail does not reliably retry a webhook, so without a schedule a
+  // delivery that is missed or refused stays missed until somebody notices.
+  triggers: { crons: ["*/15 * * * *"] },
   d1_databases: d1 && d1DatabaseId
     ? [
         {
