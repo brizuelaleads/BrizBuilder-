@@ -243,6 +243,7 @@ test("the API key is never returned to a caller", () => {
     'if (action === "enable_callrail_ingestion")',
     'if (action === "disable_callrail_ingestion")',
     'if (action === "recover_callrail_calls")',
+    'if (action === "refresh_callrail_call_media")',
     'if (action === "disconnect_callrail")',
   ];
   for (const marker of actions) {
@@ -310,6 +311,7 @@ test("every CallRail action is permission gated and audited where it changes sta
     'if (action === "enable_callrail_ingestion")',
     'if (action === "disable_callrail_ingestion")',
     'if (action === "recover_callrail_calls")',
+    'if (action === "refresh_callrail_call_media")',
     'if (action === "disconnect_callrail")',
   ];
   for (const marker of stateChanging) {
@@ -1594,8 +1596,8 @@ test("no ingestion button acts without an explicit confirmation", () => {
   const handlers = ui.split(/onClick=\{(?:async )?\(\) => \{/).slice(1);
   assert.equal(
     handlers.length,
-    4,
-    "enable, disable, retry cleanup and recover missed calls",
+    5,
+    "enable, disable, retry cleanup, recover missed calls and refresh recordings",
   );
   for (const handler of handlers) {
     const confirmAt = handler.indexOf("window.confirm(");
@@ -1651,7 +1653,7 @@ test("every ingestion button shows progress and reports failure in place", () =>
   assert.equal(
     ingestionSection().split("disabled={Boolean(callRail.ingestionPending)}")
       .length - 1,
-    4,
+    5,
     "every button is disabled while any is pending",
   );
   assert.match(ui, /ingestionPending === "enable"\s*\?\s*"Enabling/);
@@ -2836,4 +2838,100 @@ test("the re-enquiry window is deprecated, retained, and read by nothing", () =>
     false,
     "the column is not dropped in this migration",
   );
+});
+
+
+test("a media refresh writes two columns and touches nothing else", () => {
+  const refresh = block(crmSource, 'if (action === "refresh_callrail_call_media")');
+  assert.ok(refresh, "the action exists");
+  const code = codeOnly(refresh);
+
+  // Gated like the other maintenance actions that spend the customer's API
+  // quota, and scoped to the client that was just authorized.
+  assert.match(code, /requirePermission\(context, "call_tracking\.manage"\)/);
+  assert.match(code, /await requireClient\(context, clientId\)/);
+  assert.match(code, /\.eq\("organization_id", context\.organizationId\)/);
+
+  // Each call is fetched by its own id.
+  assert.match(code, /await getCallRailCall\(\s*\n\s*access\.accountId,\s*\n\s*String\(row\.callrail_call_id\),/);
+
+  // The update carries exactly the media fields and the read timestamp.
+  const update = code.slice(code.indexOf(".update({"), code.indexOf(".eq(\"id\""));
+  assert.match(update, /recording_available: call\.recordingAvailable/);
+  assert.match(update, /recording_duration_seconds: call\.recordingDurationSeconds/);
+  assert.match(update, /updated_at: new Date\(\)\.toISOString\(\)/);
+  const allowed = ["recording_available", "recording_duration_seconds", "updated_at"];
+  const written = [...update.matchAll(/^\s*([a-z_]+):/gmu)].map((m) => m[1]);
+  assert.deepEqual(
+    written.sort(),
+    [...allowed].sort(),
+    "no other column may be written by a media refresh",
+  );
+
+  // It does not go through ingestion, so nothing downstream of a call can be
+  // created or rewritten by it.
+  for (const forbidden of [
+    "ingestCallRailCall",
+    "ingestFetchedCall",
+    "ensureContact",
+    "ensureLead",
+    'from("contacts")',
+    'from("leads")',
+    "meta_eligible",
+    "attribution",
+  ]) {
+    assert.equal(
+      code.includes(forbidden),
+      false,
+      `${forbidden} must be untouched by a media refresh`,
+    );
+  }
+
+  // Bounded, so one press cannot become a long unattended walk.
+  assert.match(code, /\.limit\(MAX_CALLRAIL_MEDIA_REFRESH\)/);
+  assert.match(crmSource, /const MAX_CALLRAIL_MEDIA_REFRESH = 200;/);
+  // One unanswerable call does not abandon the rest.
+  assert.match(code, /\} catch \{\s*\n\s*failed \+= 1;\s*\n\s*\}/);
+  assert.match(code, /"provider\.call_media_refreshed"/);
+});
+
+test("the recording player appears only when the media fields say so", () => {
+  // The flag the refresh writes is the same one the player reads, and the
+  // same one the server checks before spending a request on CallRail.
+  const player = section(callsUi, "function RecordingPlayer(", "function CallRow(");
+  assert.match(player, /if \(!call\.recordingAvailable \|\| failed\)/);
+  const loader = block(crmSource, "export async function getSupabaseCallRailRecording");
+  assert.match(loader, /if \(row\.recording_available !== true\) return null;/);
+  const mapped = block(crmSource, "function mapProviderConnection");
+  assert.ok(mapped);
+  // And it reaches the browser through the payload's own mapping.
+  assert.match(crmSource, /recordingAvailable: row\.recording_available === true/);
+});
+
+test("the media refresh reports what CallRail said, not that it worked", () => {
+  const handler = block(connectionsUi, "const runCallRailMediaRefresh = async (");
+  assert.ok(handler, "the handler exists");
+  // Split the success patch by slot, so this is about where a result lands
+  // rather than whether a word occurs somewhere in the handler.
+  const success = handler.slice(handler.indexOf('ingestionPending: "",'));
+  const errorAt = success.indexOf("ingestionError:");
+  const noteAt = success.indexOf("ingestionNote:");
+  assert.ok(errorAt > -1, "the success patch sets an error slot");
+  assert.ok(noteAt > errorAt, "and a separate note slot after it");
+  const errorExpr = success.slice(errorAt, noteAt);
+  const noteExpr = success.slice(noteAt);
+
+  // Finding no recordings is a real answer: it goes to the note, not the error.
+  assert.match(noteExpr, /CallRail has no recordings for any of them/);
+  assert.equal(
+    /no recordings/.test(errorExpr),
+    false,
+    "a clean result must not be rendered as a failure",
+  );
+  // A partial failure is the error slot's business, and clears the note.
+  assert.match(errorExpr, /result\?\.failed/);
+  assert.match(errorExpr, /did not answer for/);
+  assert.match(noteExpr, /result\?\.failed\s*\n?\s*\? ""/);
+  // The toast claims only that it looked.
+  assert.match(handler, /"Checked CallRail for recordings\."/);
 });

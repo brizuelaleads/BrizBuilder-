@@ -115,7 +115,13 @@ export function ConnectionsView({
     // the page-wide one. Switching it on is the moment this integration starts
     // writing to a business's CRM, so the outcome belongs next to the button
     // that caused it, not in a toast at the top of the page.
-    ingestionPending: "" as "" | "enable" | "disable" | "retry" | "recover",
+    ingestionPending: "" as
+      | ""
+      | "enable"
+      | "disable"
+      | "retry"
+      | "recover"
+      | "media",
     ingestionError: "",
     // A result that is neither failure nor nothing: “no missed calls” is
     // the good outcome of a recovery, and reporting it in red would say
@@ -214,6 +220,50 @@ export function ConnectionsView({
           error instanceof Error
             ? error.message
             : "CallRail could not be checked for missed calls.",
+      });
+    }
+  };
+
+  // Asks CallRail again about each call's audio, and changes nothing else.
+  // A recording is often not ready the moment a call ends, so the answer can
+  // differ from the one ingestion got.
+  const runCallRailMediaRefresh = async () => {
+    patchCallRail({
+      ingestionPending: "media",
+      ingestionError: "",
+      ingestionNote: "",
+    });
+    try {
+      const result = (await mutate(
+        { action: "refresh_callrail_call_media", clientId },
+        "Checked CallRail for recordings.",
+      )) as {
+        checked?: number;
+        withRecording?: number;
+        changed?: number;
+        failed?: number;
+      } | null;
+      const checked = result?.checked ?? 0;
+      const withRecording = result?.withRecording ?? 0;
+      patchCallRail({
+        ingestionPending: "",
+        ingestionError: result?.failed
+          ? `CallRail did not answer for ${result.failed} of ${checked + (result.failed ?? 0)} calls. Try again.`
+          : "",
+        ingestionNote: result?.failed
+          ? ""
+          : withRecording === 0
+            ? `Checked ${checked} call${checked === 1 ? "" : "s"}. CallRail has no recordings for any of them.`
+            : `Checked ${checked} call${checked === 1 ? "" : "s"}. ${withRecording} now ${withRecording === 1 ? "has" : "have"} a recording.`,
+      });
+    } catch (error) {
+      patchCallRail({
+        ingestionPending: "",
+        ingestionNote: "",
+        ingestionError:
+          error instanceof Error
+            ? error.message
+            : "CallRail could not be checked for recordings.",
       });
     }
   };
@@ -904,6 +954,25 @@ export function ConnectionsView({
                           {callRail.ingestionPending === "recover"
                             ? "Checking…"
                             : "Recover missed calls"}
+                        </button>
+                      ) : null}
+                      {callRailIngesting ? (
+                        <button
+                          type="button"
+                          disabled={Boolean(callRail.ingestionPending)}
+                          onClick={() => {
+                            if (
+                              !window.confirm(
+                                "Check CallRail for recordings?\n\nBrizBuilder asks again whether each of this business’s tracked calls has audio, and updates only that. Contacts, leads and attribution are not touched.",
+                              )
+                            )
+                              return;
+                            void runCallRailMediaRefresh();
+                          }}
+                        >
+                          {callRail.ingestionPending === "media"
+                            ? "Checking…"
+                            : "Refresh recordings"}
                         </button>
                       ) : null}
                     </div>

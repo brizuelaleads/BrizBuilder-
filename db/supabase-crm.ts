@@ -39,6 +39,7 @@ import {
   getCallRailRuntimeStatus,
   getCallRailWebhookBaseUrl,
   listCallRailAccounts,
+  getCallRailCall,
   getCallRailRecording,
   listCallRailCompanies,
   restoreCallRailWebhookIntegration,
@@ -418,6 +419,10 @@ function optionalText(value: unknown, max = 500): string | null {
 // fix was being written; not so wide that one press walks a year of calls.
 const DEFAULT_CALLRAIL_RECOVERY_DAYS = 1;
 const MAX_CALLRAIL_RECOVERY_DAYS = 30;
+// One press asks CallRail about at most this many calls. High enough to
+// cover a trial account outright, low enough that it cannot become a
+// long unattended walk of somebody's whole history.
+const MAX_CALLRAIL_MEDIA_REFRESH = 200;
 
 function callRailPublicConfig(
   account: CallRailAccount | null,
@@ -5598,6 +5603,81 @@ export async function executeSupabaseCrmAction(
       clientId,
     );
     return { ...summary, lookbackDays };
+  }
+
+  // Re-read what CallRail says about each call's audio, and write nothing else.
+  //
+  // A recording is not always ready when the call ends, and calls ingested
+  // before this column existed have never been asked about at all. This walks
+  // the client's calls, fetches each one by its own id, and updates exactly two
+  // fields. It deliberately does not go through ingestion: contacts, leads,
+  // attribution and Meta eligibility are settled by the call that created them
+  // and have no business being rewritten by a media refresh.
+  if (action === "refresh_callrail_call_media") {
+    requirePermission(context, "call_tracking.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+
+    const rows = (await assertOk(
+      supabase()
+        .from("callrail_calls")
+        .select("id,callrail_call_id,recording_available")
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .order("started_at", { ascending: false })
+        .limit(MAX_CALLRAIL_MEDIA_REFRESH),
+    )) as Array<Record<string, unknown>> | null;
+    const calls = Array.isArray(rows) ? rows : [];
+
+    const access = await loadCallRailApiAccess(context.organizationId, clientId);
+    if (!access.accountId) {
+      throw new Error("Choose the CallRail account for this business first.");
+    }
+
+    let checked = 0;
+    let withRecording = 0;
+    let changed = 0;
+    let failed = 0;
+    for (const row of calls) {
+      try {
+        const call = await getCallRailCall(
+          access.accountId,
+          String(row.callrail_call_id),
+          access.apiKey,
+        );
+        checked += 1;
+        if (call.recordingAvailable) withRecording += 1;
+        if (call.recordingAvailable !== (row.recording_available === true)) {
+          changed += 1;
+        }
+        // Two columns, and the timestamp that says when they were read.
+        await assertOk(
+          supabase()
+            .from("callrail_calls")
+            .update({
+              recording_available: call.recordingAvailable,
+              recording_duration_seconds: call.recordingDurationSeconds,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", String(row.id))
+            .eq("organization_id", context.organizationId)
+            .eq("client_id", clientId),
+        );
+      } catch {
+        // One call CallRail will not answer for does not stop the rest.
+        failed += 1;
+      }
+    }
+
+    await audit(
+      context,
+      "provider.call_media_refreshed",
+      "provider_connection",
+      null,
+      { provider: "callrail", checked, withRecording, changed, failed },
+      clientId,
+    );
+    return { checked, withRecording, changed, failed, total: calls.length };
   }
 
   if (action === "disable_callrail_ingestion") {
