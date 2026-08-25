@@ -13,10 +13,17 @@ const read = (rel) =>
 const idSource = read("lib/callrail-ids.ts");
 const providerSource = read("lib/callrail.ts");
 const storeSource = read("lib/callrail-store.ts");
+const webhookSource = read("lib/callrail-webhook.ts");
+const ingestionSource = read("lib/callrail-ingestion.ts");
 const crmSource = read("db/supabase-crm.ts");
 const migrationSource = read(
   "supabase/migrations/20260819000000_callrail_connection.sql",
 );
+const ingestionMigrationSource = read(
+  "supabase/migrations/20260825000000_callrail_ingestion.sql",
+);
+const workerSource = read("worker/index.ts");
+const leadWorkerSource = read("lead-worker/src/index.ts");
 const connectionsUi = read("app/crm/WorkflowViews.tsx");
 const dniRoute = read("app/api/callrail/dni-test/route.ts");
 const dniSource = read("lib/callrail-dni.ts");
@@ -40,18 +47,60 @@ const codeOnly = (source) =>
     })
     .join("\n");
 
+/**
+ * The body of a declaration, from its keyword to its closing brace.
+ *
+ * Skips the parameter list before it starts counting braces. A signature that
+ * declares an inline object type — `options: { startDate: string }` — closes
+ * that brace before the body opens, and a naive matcher stops there and
+ * returns the signature alone. That produced three separate false passes
+ * before it was worth fixing here rather than at each call site.
+ */
 const block = (source, needle) => {
   const start = source.indexOf(needle);
   if (start < 0) return undefined;
+
+  // Walk past the parameter list first, if there is one.
+  let index = start;
+  let parens = 0;
+  let sawParen = false;
+  for (; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "(") {
+      parens += 1;
+      sawParen = true;
+    } else if (char === ")") {
+      parens -= 1;
+      if (parens === 0) {
+        index += 1;
+        break;
+      }
+    } else if (!sawParen && char === "{") {
+      // A declaration with no parameter list at all.
+      break;
+    }
+  }
+
+  // Then find the brace that opens the body.
+  const bodyStart = source.indexOf("{", index);
+  if (bodyStart < 0) return undefined;
+
   let depth = 0;
-  for (let index = start; index < source.length; index += 1) {
-    if (source[index] === "{") depth += 1;
-    if (source[index] === "}") {
+  for (let cursor = bodyStart; cursor < source.length; cursor += 1) {
+    if (source[cursor] === "{") depth += 1;
+    if (source[cursor] === "}") {
       depth -= 1;
-      if (depth === 0) return source.slice(start, index + 1);
+      if (depth === 0) return source.slice(start, cursor + 1);
     }
   }
   return undefined;
+};
+
+const section = (source, startNeedle, endNeedle) => {
+  const start = source.indexOf(startNeedle);
+  if (start < 0) return undefined;
+  const end = source.indexOf(endNeedle, start + startNeedle.length);
+  return source.slice(start, end < 0 ? undefined : end);
 };
 
 test("the credentials table is server-only", () => {
@@ -176,6 +225,7 @@ test("the API key is never returned to a caller", () => {
     'if (action === "select_callrail_account")',
     'if (action === "select_callrail_company")',
     'if (action === "check_callrail_connection")',
+    'if (action === "enable_callrail_ingestion")',
     'if (action === "disconnect_callrail")',
   ];
   for (const marker of actions) {
@@ -240,6 +290,7 @@ test("every CallRail action is permission gated and audited where it changes sta
     'if (action === "connect_callrail")',
     'if (action === "select_callrail_account")',
     'if (action === "select_callrail_company")',
+    'if (action === "enable_callrail_ingestion")',
     'if (action === "disconnect_callrail")',
   ];
   for (const marker of stateChanging) {
@@ -258,6 +309,126 @@ test("disconnect destroys the stored credential", () => {
   const body = block(crmSource, 'if (action === "disconnect_callrail")');
   assert.ok(body);
   assert.match(body, /\.from\("callrail_credentials"\)\s*\.delete\(\)/);
+});
+
+test("webhook ingress is public only through brizbuilder-leads", () => {
+  assert.match(
+    leadWorkerSource,
+    /url\.pathname\.startsWith\("\/api\/callrail\/webhook\/"\)/,
+  );
+  assert.match(leadWorkerSource, /isCallRailWebhook[\s\S]*request\.method !== "POST"/);
+  assert.match(
+    workerSource,
+    /url\.pathname\.startsWith\("\/api\/callrail\/webhook\/"\)/,
+  );
+  assert.match(workerSource, /handleCallRailWebhook\(request, ctx\)/);
+  assert.match(workerSource, /ctx\.waitUntil\(\s*\n\s*reconcileCallRailIngestion\(\)/);
+});
+
+test("webhook path ids, not payload tenants, resolve CallRail clients", () => {
+  assert.match(ingestionMigrationSource, /webhook_path_id text/);
+  assert.match(
+    ingestionMigrationSource,
+    /callrail_credentials_webhook_path_uidx[\s\S]*where webhook_path_id is not null/,
+  );
+  assert.match(webhookSource, /crypto\.getRandomValues\(new Uint8Array/);
+  assert.match(storeSource, /\.eq\("webhook_path_id", pathId\)/);
+  const receiver = block(ingestionSource, "async function receiveCallRailWebhook");
+  assert.ok(receiver, "receiver exists");
+  assert.match(receiver, /readCallRailWebhookRoute\(request\.url\)/);
+  assert.equal(/searchParams\.get\(["'](organization|client|tenant)/.test(receiver), false);
+  assert.equal(/payload\.(organization|client|tenant)/.test(receiver), false);
+});
+
+test("CallRail signatures are verified over raw bytes before parsing", () => {
+  const receiver = block(ingestionSource, "async function receiveCallRailWebhook");
+  assert.ok(receiver);
+  const verifyAt = receiver.indexOf("verifyCallRailSignature(");
+  const parseAt = receiver.indexOf("JSON.parse(");
+  assert.ok(verifyAt > -1, "signature verification exists");
+  assert.ok(parseAt > -1, "JSON parsing exists");
+  assert.ok(verifyAt < parseAt, "verification happens before parsing");
+  assert.match(ingestionSource, /new Uint8Array\(await request\.arrayBuffer\(\)\)/);
+  assert.match(webhookSource, /crypto\.subtle\.verify/);
+});
+
+test("invalid CallRail signatures cannot create CRM records", () => {
+  const receiver = block(ingestionSource, "async function receiveCallRailWebhook");
+  assert.ok(receiver);
+  const invalid = receiver.slice(
+    receiver.indexOf("if (!signatureValid)"),
+    receiver.indexOf("let body: unknown"),
+  );
+  assert.match(invalid, /outcome: "rejected_signature"/);
+  assert.equal(/from\("contacts"\)|from\("leads"\)|from\("callrail_calls"\)/.test(invalid), false);
+});
+
+test("enabling ingestion lists integrations with signing_key and appends only", () => {
+  const enable = block(crmSource, 'if (action === "enable_callrail_ingestion")');
+  assert.ok(enable);
+  assert.match(enable, /requirePermission\(context, "call_tracking\.manage"\)/);
+  assert.match(enable, /await requireClient\(context, clientId\)/);
+  assert.match(enable, /ensureCallRailWebhookIntegration\(/);
+  assert.match(enable, /encryptCallRailSecret\(\s*\n\s*integration\.signingKey/);
+  assert.match(enable, /webhook_signing_key_ciphertext/);
+  assert.match(enable, /ingest_enabled: true/);
+  assert.match(enable, /"provider\.ingestion_enabled"/);
+
+  const list = block(providerSource, "export async function listCallRailIntegrations");
+  assert.ok(list);
+  assert.match(list, /fields: "signing_key"/);
+  assert.match(list, /company_id: safeCompanyId/);
+  const ensure = block(providerSource, "export async function ensureCallRailWebhookIntegration");
+  assert.ok(ensure);
+  assert.match(ensure, /listCallRailIntegrations\(accountId, companyId, apiKey\)/);
+  assert.match(ensure, /integration\.type === "Webhooks"/);
+  assert.match(ensure, /appendCallRailWebhookUrls\(current\.config, urls\)/);
+  assert.equal(/pre_call_webhook/.test(ensure), false, "initial enable does not configure pre-call");
+});
+
+test("disconnect removes only BrizBuilder webhook URLs before deleting the key", () => {
+  const disconnect = block(crmSource, 'if (action === "disconnect_callrail")');
+  assert.ok(disconnect);
+  const removeAt = disconnect.indexOf("removeCallRailWebhooksForClient(");
+  const deleteAt = disconnect.indexOf('.from("callrail_credentials")');
+  assert.ok(removeAt > -1, "disconnect removes URLs");
+  assert.ok(removeAt < deleteAt, "URLs are removed before the key is destroyed");
+  const helper = block(storeSource, "export async function removeCallRailWebhooksForClient");
+  assert.ok(helper);
+  assert.match(helper, /buildCallRailWebhookUrls\(getCallRailWebhookBaseUrl\(\), row\.webhook_path_id\)/);
+  assert.match(helper, /removeCallRailWebhookIntegrationUrls\(/);
+  const api = section(
+    providerSource,
+    "export async function removeCallRailWebhookIntegrationUrls",
+    "export async function getCallRailCall",
+  );
+  assert.ok(api);
+  assert.match(api, /removeCallRailWebhookUrls\(current\.config, urls\)/);
+  assert.equal(/deleteCallRail|method: "DELETE"/.test(api), false);
+});
+
+test("ingestion and reconciliation are idempotent around CallRail call ids", () => {
+  assert.match(
+    ingestionMigrationSource,
+    /unique \(organization_id, client_id, callrail_call_id\)/,
+  );
+  assert.match(ingestionMigrationSource, /claim_callrail_call_for_ingestion/);
+  assert.match(ingestionMigrationSource, /ingest_status <> 'enriching'/);
+  const ingest = block(ingestionSource, "export async function ingestFetchedCall");
+  assert.ok(ingest);
+  assert.match(ingest, /saveCallSnapshot\(organizationId, clientId, call, kind\)/);
+  assert.match(ingest, /claimCall\(String\(snapshot\.id\)\)/);
+  assert.match(ingest, /ensureContact\(/);
+  assert.match(ingest, /ensureLead\(/);
+  const reconcile = section(
+    ingestionSource,
+    "export async function reconcileCallRailIngestion",
+    "__end_of_file__",
+  );
+  assert.ok(reconcile);
+  assert.match(reconcile, /listCallRailCalls\(/);
+  assert.match(reconcile, /ingestFetchedCall\(/);
+  assert.match(ingestionSource, /callrail_sync_runs/);
 });
 
 test("account and company ids are constrained separately, at both layers", () => {
@@ -771,6 +942,350 @@ test("the destination number never reaches the server", () => {
     /destination/i.test(codeOnly(dniRoute)),
     false,
     "the route knows nothing of it",
+  );
+});
+
+test("the signing key never leaves the server", () => {
+  const enable = block(crmSource, 'if (action === "enable_callrail_ingestion")');
+  assert.ok(enable, "the enable action exists");
+  // Encrypted the moment it is in hand, tenant-bound like the API key.
+  assert.match(enable, /encryptCallRailSecret\(\s*\n?\s*integration\.signingKey,/);
+  // What is written is ciphertext, never the key.
+  assert.match(enable, /webhook_signing_key_ciphertext: encryptedSigningKey\.ciphertext/);
+  // It is in no audit payload, no return value, and no thrown message.
+  const audited = enable.slice(enable.indexOf("provider.ingestion_enabled"));
+  assert.equal(/signingKey/.test(audited), false, "not in the audit or return");
+  for (const line of enable.split("\n")) {
+    if (line.includes("throw new Error")) {
+      assert.equal(/signingKey|signing_key/.test(line), false, line.trim());
+    }
+  }
+});
+
+test("a database failure after CallRail was changed puts CallRail back", () => {
+  // The write to CallRail happens first, so a failure between the two would
+  // otherwise leave a customer posting to a URL BrizBuilder has no key for.
+  const enable = block(crmSource, 'if (action === "enable_callrail_ingestion")');
+  assert.match(enable, /try \{[\s\S]*callrail_credentials[\s\S]*\} catch \{/);
+  assert.match(enable, /restoreCallRailWebhookIntegration\(/);
+  assert.match(enable, /integration\.previousConfig/);
+  // The outcome is audited either way, and the operator is told which it was.
+  assert.match(enable, /"provider\.ingestion_enable_failed"/);
+  assert.match(enable, /callrailRestored: restored/);
+  assert.match(enable, /put back exactly as it was/);
+  assert.match(enable, /could not be put back/);
+  // And the restore itself is the previous configuration, not a guess.
+  const restore = block(
+    providerSource,
+    "export async function restoreCallRailWebhookIntegration",
+  );
+  assert.ok(restore, "the restore helper exists");
+  assert.match(restore, /if \(previousConfig\)/);
+  assert.match(restore, /removeCallRailWebhookIntegrationUrls\(/);
+});
+
+test("disconnect keeps the connection recoverable when cleanup fails", () => {
+  const disconnect = block(crmSource, 'if (action === "disconnect_callrail")');
+  assert.ok(disconnect, "the disconnect action exists");
+  // Cleanup is attempted before the credential is destroyed.
+  const cleanupAt = disconnect.indexOf("removeCallRailWebhooksForClient");
+  const deleteAt = disconnect.indexOf(".delete()");
+  assert.ok(cleanupAt > -1 && deleteAt > -1);
+  assert.ok(cleanupAt < deleteAt, "CallRail is cleaned up before the key is destroyed");
+  // A failure marks the connection and leaves it intact.
+  assert.match(disconnect, /catch \{[\s\S]*status: "attention"/);
+  assert.match(disconnect, /"provider\.disconnect_cleanup_failed"/);
+  assert.match(disconnect, /throw new Error\(/);
+  // The delete must sit after the catch, so a failed cleanup cannot reach it.
+  const catchAt = disconnect.indexOf("} catch {");
+  assert.ok(catchAt > -1 && catchAt < deleteAt);
+});
+
+test("a sync run records a reason, never a raw message", () => {
+  // A thrown message can quote a row, a URL or a provider payload; a sync run
+  // is stored and read back later.
+  assert.match(ingestionSource, /export const CALLRAIL_SYNC_FAILURES = \[/);
+  assert.match(ingestionSource, /export function classifySyncFailure/);
+  assert.match(ingestionSource, /error: classifySyncFailure\(error\)/);
+  // What is *persisted* and what is *logged* both carry the classification.
+  // An exception may still carry a message: it is held in memory and shown to
+  // the authenticated operator, never written to a sync run.
+  const finish = block(ingestionSource, "async function finishSyncRun(");
+  assert.ok(finish, "finishSyncRun exists");
+  assert.equal(
+    /error\.message/.test(finish),
+    false,
+    "a sync run never stores a raw message",
+  );
+  for (const line of ingestionSource.split("\n")) {
+    if (line.includes("error:") && line.includes("SyncRun")) {
+      assert.equal(/error\.message/.test(line), false, line.trim());
+    }
+    if (line.includes("console.")) {
+      assert.equal(
+        /error\.message|rawBytes|body/.test(line),
+        false,
+        `a log line must not carry provider material: ${line.trim()}`,
+      );
+    }
+  }
+  assert.equal(/console\.(log|info|warn)\(/.test(ingestionSource), false);
+});
+
+test("a failed background task is recoverable at any age", () => {
+  // Reconciliation re-lists a time window, so a waitUntil that died on an
+  // older call would never be retried without this.
+  assert.match(ingestionSource, /async function unfinishedCalls\(/);
+  const sweep = block(ingestionSource, "async function unfinishedCalls(");
+  assert.match(sweep, /\.eq\("organization_id", organizationId\)/);
+  assert.match(sweep, /\.eq\("client_id", clientId\)/);
+  assert.match(sweep, /\.in\("ingest_status", \["received", "enriching", "failed"\]\)/);
+  // It runs inside reconciliation, and converges with the window sweep rather
+  // than repeating its work.
+  // Sliced rather than brace-matched: the signature declares an inline object
+  // type, so the first closing brace ends the parameter, not the body.
+  const reconcile = ingestionSource.slice(
+    ingestionSource.indexOf("export async function reconcileCallRailIngestion"),
+  );
+  assert.match(reconcile, /unfinishedCalls\(organizationId, clientId/);
+  assert.match(reconcile, /seenIds\.has\(callId\)/);
+  assert.match(reconcile, /summary\.callsRecovered/);
+});
+
+test("reconciliation is scoped, bounded and paginated by cursor", () => {
+  const reconcile = ingestionSource.slice(
+    ingestionSource.indexOf("export async function reconcileCallRailIngestion"),
+  );
+  assert.match(reconcile, /const organizationId = String\(connection\.organization_id\)/);
+  assert.match(reconcile, /const clientId = String\(connection\.client_id\)/);
+  assert.match(reconcile, /windowStart/);
+  assert.match(reconcile, /windowEnd/);
+  // Cursor pagination, with the next page confirmed to be CallRail's own host
+  // before it is followed.
+  const list = block(providerSource, "export async function listCallRailCalls");
+  assert.match(list, /relative_pagination: "true"/);
+  assert.match(list, /body\.next_page/);
+  assert.match(list, /nextUrl\.hostname !== "api\.callrail\.com"/);
+  assert.match(list, /fields: CALLRAIL_CALL_FIELDS\.join\(","\)/);
+});
+
+test("the webhook resolves its tenant from the path, never the payload", () => {
+  const receive = block(ingestionSource, "async function receiveCallRailWebhook(");
+  assert.ok(receive, "the receiver exists");
+  const routeAt = receive.indexOf("readCallRailWebhookRoute(request.url)");
+  const verifyAt = receive.indexOf("verifyCallRailSignature(");
+  const parseAt = receive.indexOf("JSON.parse(");
+  assert.ok(routeAt > -1 && verifyAt > -1 && parseAt > -1);
+  // Path first, signature second, parse third. Never any other order.
+  assert.ok(routeAt < verifyAt, "the tenant comes from the path");
+  assert.ok(verifyAt < parseAt, "the raw body is verified before it is parsed");
+  // The signature covers the bytes as received.
+  assert.match(receive, /verifyCallRailSignature\(\s*\n?\s*verifier\.signingKey,\s*\n?\s*rawBytes,/);
+  // And the payload's own company is checked against the connection rather
+  // than believed.
+  assert.match(receive, /envelope\.companyId !== verifier\.companyId/);
+});
+
+test("an unauthentic delivery cannot create CRM data", () => {
+  const receive = block(ingestionSource, "async function receiveCallRailWebhook(");
+  // Every refusal returns process:false, so nothing downstream ever runs.
+  const refusals = receive.split("process: false").length - 1;
+  assert.ok(refusals >= 5, `every rejection stops processing (${refusals})`);
+  assert.match(receive, /outcome: "rejected_signature"/);
+  // The rejection is recorded, but with a digest rather than the body.
+  assert.match(ingestionSource, /body_sha256/);
+  assert.equal(
+    /raw_body|body_text|payload:/.test(ingestionSource),
+    false,
+    "no provider body is stored",
+  );
+});
+
+test("one contact per caller is enforced by a lock, not by a constraint", () => {
+  // Contacts legitimately share a number outside this path — a household, a
+  // switchboard, a spouse — so the exclusion is scoped to the operation
+  // rather than imposed on the column.
+  const fn = section(
+    ingestionMigrationSource,
+    "create or replace function public.find_or_create_callrail_contact",
+    "revoke all on function public.find_or_create_callrail_contact",
+  );
+  assert.ok(fn, "the function exists");
+
+  // Transaction-scoped, so it is released however the transaction ends.
+  assert.match(fn, /pg_advisory_xact_lock\(/);
+  // Keyed on the tenant and the number, so unrelated callers never queue.
+  assert.match(fn, /p_organization_id::text \|\| ':' \|\| p_client_id::text \|\| ':' \|\| v_phone/);
+
+  // The recheck must happen after the lock, or the lock buys nothing.
+  const lockAt = fn.indexOf("pg_advisory_xact_lock(");
+  const selectAt = fn.indexOf("select c.id");
+  const insertAt = fn.indexOf("insert into public.contacts");
+  assert.ok(lockAt > -1 && selectAt > -1 && insertAt > -1);
+  assert.ok(lockAt < selectAt, "the lock is taken before the recheck");
+  assert.ok(selectAt < insertAt, "the recheck happens before the insert");
+
+  // Scoped to the tenant on the way in and on the way out.
+  assert.match(fn, /where c\.organization_id = p_organization_id/);
+  assert.match(fn, /and c\.client_id = p_client_id/);
+  assert.match(fn, /and c\.phone = v_phone/);
+
+  // Pre-existing duplicates resolve to the same survivor every time, so a
+  // stray pair does not oscillate depending on what the planner returned.
+  assert.match(fn, /order by c\.created_at asc, c\.id asc/);
+  assert.match(fn, /limit 1/);
+
+  // A missing tenant, or a number that is not canonical E.164, is refused
+  // rather than keying the lock on one string and matching rows on another.
+  assert.match(fn, /requires an organization and a client/);
+  assert.match(fn, /requires a canonical E\.164 phone number/);
+  assert.match(fn, /\^\\\+\[1-9\]\[0-9\]\{7,14\}\$/);
+});
+
+test("the definer function resolves no name through a caller's path", () => {
+  const fn = section(
+    ingestionMigrationSource,
+    "create or replace function public.find_or_create_callrail_contact",
+    "revoke all on function public.find_or_create_callrail_contact",
+  );
+  // Empty, not 'public': a definer function runs with the owner's rights.
+  assert.match(fn, /set search_path = ''/);
+  assert.equal(
+    /set search_path = public/.test(fn),
+    false,
+    "a writable schema must not be on a definer function's path",
+  );
+  // Every table reference is qualified, and so is every function call that
+  // is not a SQL construct.
+  assert.equal(
+    /(?<!public\.)\bcontacts\b/.test(fn.replace(/--[^\n]*/g, "")),
+    false,
+    "every contacts reference is schema-qualified",
+  );
+  for (const builtin of [
+    "pg_catalog.btrim",
+    "pg_catalog.now",
+    "pg_catalog.pg_advisory_xact_lock",
+    "pg_catalog.hashtextextended",
+  ]) {
+    assert.ok(fn.includes(builtin), `${builtin} is qualified`);
+  }
+});
+
+test("shared phone numbers stay legal outside CallRail ingestion", () => {
+  // The explicit instruction was to add no unique index on the contact phone.
+  // Nothing in any CallRail migration may introduce one.
+  for (const [name, sql] of Object.entries({
+    connection: migrationSource,
+    ingestion: ingestionMigrationSource,
+  })) {
+    assert.equal(
+      /unique[\s\S]{0,80}contacts[\s\S]{0,80}phone/i.test(sql),
+      false,
+      `${name} must not constrain the contact phone`,
+    );
+    assert.equal(
+      /create unique index[^;]*on public\.contacts/i.test(sql),
+      false,
+      `${name} must not add a unique index to contacts`,
+    );
+  }
+  // And the lock is the only thing this pipeline adds: no other code path
+  // takes it, so writers elsewhere are unaffected.
+  assert.equal(
+    (ingestionMigrationSource.match(/pg_advisory_xact_lock\(/g) ?? []).length,
+    1,
+    "exactly one advisory lock, in the contact function",
+  );
+});
+
+test("the contact function is reachable only by the service role", () => {
+  assert.match(
+    ingestionMigrationSource,
+    /revoke all on function public\.find_or_create_callrail_contact\([\s\S]*?\) from public, anon, authenticated;/,
+  );
+  assert.match(
+    ingestionMigrationSource,
+    /grant execute on function public\.find_or_create_callrail_contact\([\s\S]*?\) to service_role;/,
+  );
+  // It runs as its owner, so its reach is fixed rather than the caller's.
+  const fn = section(
+    ingestionMigrationSource,
+    "create or replace function public.find_or_create_callrail_contact",
+    "revoke all on function public.find_or_create_callrail_contact",
+  );
+  assert.match(fn, /security definer/);
+  // Hardened to an empty path; the dedicated test below covers why.
+  assert.match(fn, /set search_path = ''/);
+});
+
+test("ingestion finds or creates a contact in one locked call", () => {
+  const ensure = block(ingestionSource, "async function ensureContact(");
+  assert.ok(ensure, "ensureContact exists");
+  assert.match(ensure, /rpc\("find_or_create_callrail_contact"/);
+  // The select-then-insert that could double up is gone from the keyed path.
+  const keyed = ensure.slice(0, ensure.indexOf("No usable number"));
+  assert.equal(
+    /\.from\("contacts"\)[\s\S]{0,120}\.select\(/.test(keyed),
+    false,
+    "no unlocked lookup before the insert",
+  );
+});
+
+test("a repeat call joins an open lead only inside the client's window", () => {
+  const ensure = block(ingestionSource, "async function ensureLead(");
+  assert.ok(ensure, "ensureLead exists");
+  // Bounded by the configured window and by the open statuses, in the query
+  // as well as in the decision.
+  // The newest lead of ANY status, then judged. Filtering to open statuses
+  // here would step over a more recent closed lead.
+  assert.equal(
+    /\.in\("status"/.test(ensure),
+    false,
+    "the candidate query must not filter by status",
+  );
+  assert.equal(
+    /\.gte\("created_at"/.test(ensure),
+    false,
+    "the candidate query must not filter by the window either",
+  );
+  assert.match(ensure, /\.order\("created_at", \{ ascending: false \}\)/);
+  assert.match(ensure, /\.order\("id", \{ ascending: false \}\)/);
+  assert.match(ensure, /selectNewestLead\(/);
+  assert.match(ensure, /decideReInquiry\(/);
+  // Scoped to the tenant and the matched contact.
+  assert.match(ensure, /\.eq\("organization_id", organizationId\)/);
+  assert.match(ensure, /\.eq\("client_id", clientId\)/);
+  assert.match(ensure, /\.eq\("contact_id", contactId\)/);
+  // The window comes from the connection, not from a constant here.
+  assert.match(ingestionSource, /re_inquiry_window_days/);
+  assert.match(ingestionSource, /state\.reInquiryWindowDays/);
+});
+
+test("reusing a lead never skips recording the call", () => {
+  // Reuse decides which lead a call attaches to, not whether the call is
+  // written down: the call row is saved before any lead work begins.
+  const ingest = block(ingestionSource, "export async function ingestFetchedCall(");
+  assert.ok(ingest, "ingestFetchedCall exists");
+  const snapshotAt = ingest.indexOf("saveCallSnapshot(");
+  const leadAt = ingest.indexOf("ensureLead(");
+  assert.ok(snapshotAt > -1 && leadAt > -1);
+  assert.ok(snapshotAt < leadAt, "the call is recorded before the lead decision");
+  // And every call keeps its own row, keyed on CallRail's call id.
+  assert.match(
+    ingestionMigrationSource,
+    /unique \(organization_id, client_id, callrail_call_id\)/,
+  );
+});
+
+test("the re-enquiry window is stored per connection and bounded", () => {
+  assert.match(
+    ingestionMigrationSource,
+    /add column if not exists re_inquiry_window_days integer not null default 30/,
+  );
+  assert.match(
+    ingestionMigrationSource,
+    /check \(re_inquiry_window_days between 1 and 365\)/,
   );
 });
 

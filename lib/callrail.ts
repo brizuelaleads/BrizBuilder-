@@ -9,6 +9,13 @@ import {
   verifyDniClaim,
   type DniClaim,
 } from "./callrail-dni";
+import {
+  appendCallRailWebhookUrls,
+  callRailWebhookConfigsEqual,
+  isCallRailSigningKey,
+  removeCallRailWebhookUrls,
+  type CallRailWebhookUrlSet,
+} from "./callrail-webhook";
 import { readRuntimeValue } from "./supabase/env";
 
 // Server-side CallRail API client. The customer's API key is decrypted only for
@@ -28,6 +35,40 @@ const CALLRAIL_REQUEST_FROM = "brizbuilder";
 // A key normally reaches one account and a handful of companies. Anything
 // beyond a page is reported as truncated rather than silently dropped.
 const CALLRAIL_PAGE_SIZE = 100;
+const CALLRAIL_CALL_PAGE_SIZE = 100;
+const CALLRAIL_CALL_FIELDS = [
+  "agent_email",
+  "call_summary",
+  "call_type",
+  "campaign",
+  "company_id",
+  "company_name",
+  "conversational_transcript",
+  "created_at",
+  "custom",
+  "fbclid",
+  "gclid",
+  "keywords",
+  "landing_page_url",
+  "last_requested_url",
+  "lead_status",
+  "medium",
+  "milestones",
+  "msclkid",
+  "person_id",
+  "prior_calls",
+  "referrer_domain",
+  "referring_url",
+  "session_uuid",
+  "source",
+  "source_name",
+  "tags",
+  "tracker_id",
+  "transcription",
+  "utm_campaign",
+  "utm_content",
+  "utm_medium",
+] as const;
 
 export { assertCallRailAccountId, assertCallRailCompanyId };
 
@@ -70,6 +111,79 @@ export type CallRailCompany = {
   // be worded as "enabled on this company", never as "transcripts available".
   callScribeEnabled: boolean;
   formCaptureEnabled: boolean;
+};
+
+export type CallRailIntegration = {
+  id: string;
+  type: string;
+  state: string;
+  config: Record<string, unknown>;
+  signingKey: string | null;
+};
+
+export type CallRailIntegrationPage = {
+  integrations: CallRailIntegration[];
+  truncated: boolean;
+};
+
+export type CallRailWebhookIntegrationResult = {
+  integration: CallRailIntegration;
+  created: boolean;
+  changed: boolean;
+  signingKey: string;
+  /**
+   * The configuration as it was before this call touched it.
+   *
+   * Carried back so the caller can put CallRail exactly as it found it if the
+   * work that follows fails. Enabling ingestion writes to CallRail and then to
+   * the database, and a failure between the two would otherwise leave a
+   * customer's CallRail pointing at an integration BrizBuilder has no record
+   * of.
+   */
+  previousConfig: Record<string, unknown> | null;
+};
+
+export type CallRailCall = {
+  id: string;
+  companyId: string;
+  direction: string | null;
+  answered: boolean | null;
+  durationSeconds: number | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  trackingPhoneNumber: string | null;
+  businessPhoneNumber: string | null;
+  customerPhoneE164: string | null;
+  customerName: string | null;
+  customerCity: string | null;
+  customerState: string | null;
+  customerCountry: string | null;
+  source: string | null;
+  medium: string | null;
+  campaign: string | null;
+  keywords: string | null;
+  referrerDomain: string | null;
+  landingPageUrl: string | null;
+  lastRequestedUrl: string | null;
+  gclid: string | null;
+  msclkid: string | null;
+  sessionUuid: string | null;
+  trackerId: string | null;
+  fbclid: string | null;
+  isSessionTracker: boolean;
+  personId: string | null;
+  priorCalls: number | null;
+  leadStatus: string | null;
+  callType: string | null;
+  tags: string[];
+  recordingUrl: string | null;
+  transcript: string | null;
+  callSummary: string | null;
+};
+
+export type CallRailCallPage = {
+  calls: CallRailCall[];
+  truncated: boolean;
 };
 
 export class CallRailApiError extends Error {
@@ -140,6 +254,26 @@ export function getCallRailRuntimeStatus() {
   return { ready: missing.length === 0, missing };
 }
 
+export function getCallRailWebhookBaseUrl() {
+  const value =
+    readRuntimeValue("CALLRAIL_WEBHOOK_BASE_URL") ||
+    readRuntimeValue("NEXT_PUBLIC_LEAD_CAPTURE_BASE_URL") ||
+    readRuntimeValue("TWILIO_WEBHOOK_BASE_URL");
+  if (!value) {
+    throw new Error(
+      "CallRail webhook ingress is not configured. Add CALLRAIL_WEBHOOK_BASE_URL.",
+    );
+  }
+  const url = new URL(value);
+  if (url.protocol !== "https:") {
+    throw new Error("CallRail webhook ingress must use HTTPS.");
+  }
+  url.pathname = url.pathname.replace(/\/+$/g, "");
+  url.search = "";
+  url.hash = "";
+  return url.toString().replace(/\/$/g, "");
+}
+
 // The tenant is bound into the additional authenticated data, so a key row
 // copied to another organization or client cannot be decrypted.
 function additionalData(organizationId: string, clientId: string) {
@@ -200,6 +334,12 @@ export async function decryptCallRailSecret(
  * echoing any part of that exchange into a message that may reach a UI or a log
  * is not a risk worth taking for a diagnostic string.
  */
+type CallRailRequestOptions = {
+  method?: "GET" | "POST" | "PUT";
+  searchParams?: Record<string, string>;
+  body?: Record<string, unknown>;
+};
+
 function statusForResponse(response: Response): CallRailStatus {
   if (response.status === 401 || response.status === 403) return "unauthorized";
   if (response.status === 404) return "not_found";
@@ -219,12 +359,34 @@ function messageForStatus(status: CallRailStatus): string {
   }
 }
 
-async function callRailRequest(
-  path: string,
+function requestOptions(
+  options: CallRailRequestOptions | Record<string, string>,
+): Required<CallRailRequestOptions> {
+  if (
+    Object.prototype.hasOwnProperty.call(options, "method") ||
+    Object.prototype.hasOwnProperty.call(options, "searchParams") ||
+    Object.prototype.hasOwnProperty.call(options, "body")
+  ) {
+    const typed = options as CallRailRequestOptions;
+    return {
+      method: typed.method ?? "GET",
+      searchParams: typed.searchParams ?? {},
+      body: typed.body ?? {},
+    };
+  }
+  return {
+    method: "GET",
+    searchParams: options as Record<string, string>,
+    body: {},
+  };
+}
+
+async function callRailUrlRequest(
+  url: URL,
   apiKey: string,
-  searchParams: Record<string, string> = {},
+  options: CallRailRequestOptions | Record<string, string> = {},
 ): Promise<Record<string, unknown>> {
-  const url = new URL(`${CALLRAIL_API_URL}${path}`);
+  const { method, searchParams, body: requestBody } = requestOptions(options);
   for (const [key, value] of Object.entries(searchParams)) {
     url.searchParams.set(key, value);
   }
@@ -235,17 +397,25 @@ async function callRailRequest(
   );
   let response: Response;
   try {
-    response = await fetch(url.toString(), {
-      method: "GET",
-      headers: {
-        // Token auth, not Bearer. CallRail's scheme is
-        // `Authorization: Token token="KEY"`, and it travels in the header so
-        // it cannot end up in an intermediary's request log.
-        Authorization: `Token token="${apiKey}"`,
-        "Request-From": CALLRAIL_REQUEST_FROM,
-        Accept: "application/json",
-      },
+    const headers: Record<string, string> = {
+      // Token auth, not Bearer. CallRail's scheme is
+      // `Authorization: Token token="KEY"`, and it travels in the header so
+      // it cannot end up in an intermediary's request log.
+      Authorization: `Token token="${apiKey}"`,
+      "Request-From": CALLRAIL_REQUEST_FROM,
+      Accept: "application/json",
+    };
+    const init: RequestInit = {
+      method,
+      headers,
       signal: controller.signal,
+    };
+    if (method !== "GET") {
+      headers["Content-Type"] = "application/json";
+      init.body = JSON.stringify(requestBody);
+    }
+    response = await fetch(url.toString(), {
+      ...init,
     });
   } catch {
     // A timeout and a transport failure are the same thing to a caller: no
@@ -264,11 +434,19 @@ async function callRailRequest(
     const status = statusForResponse(response);
     throw new CallRailApiError(status, messageForStatus(status));
   }
-  const body = await response.json().catch(() => null);
-  if (!body || typeof body !== "object") {
+  const responseBody = await response.json().catch(() => null);
+  if (!responseBody || typeof responseBody !== "object") {
     throw new CallRailApiError("rejected", messageForStatus("rejected"));
   }
-  return body as Record<string, unknown>;
+  return responseBody as Record<string, unknown>;
+}
+
+async function callRailRequest(
+  path: string,
+  apiKey: string,
+  options: CallRailRequestOptions | Record<string, string> = {},
+): Promise<Record<string, unknown>> {
+  return callRailUrlRequest(new URL(`${CALLRAIL_API_URL}${path}`), apiKey, options);
 }
 
 function asText(value: unknown): string {
@@ -307,6 +485,126 @@ function mapCompany(row: Record<string, unknown>): CallRailCompany {
     scriptUrl: asOptionalText(row.script_url),
     callScribeEnabled: row.callscribe_enabled === true,
     formCaptureEnabled: row.form_capture === true,
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function asOptionalNumber(value: unknown): number | null {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value
+        .map((item) => (typeof item === "string" ? item.trim() : ""))
+        .filter(Boolean)
+    : [];
+}
+
+function mapIntegration(row: Record<string, unknown>): CallRailIntegration {
+  return {
+    id: asText(row.id),
+    type: asText(row.type),
+    state: asText(row.state) || "unknown",
+    config: asRecord(row.config),
+    signingKey: asOptionalText(row.signing_key),
+  };
+}
+
+function safeIso(value: unknown): string | null {
+  const text = asOptionalText(value);
+  if (!text) return null;
+  const timestamp = Date.parse(text);
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
+}
+
+function endTime(startedAt: string | null, durationSeconds: number | null) {
+  if (!startedAt || durationSeconds == null) return null;
+  return new Date(Date.parse(startedAt) + durationSeconds * 1000).toISOString();
+}
+
+function mapCallSummary(value: unknown): string | null {
+  if (typeof value === "string") return value.trim().slice(0, 2400) || null;
+  if (!Array.isArray(value)) return null;
+  return value
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 2400) || null;
+}
+
+function mapTranscript(value: unknown): string | null {
+  if (typeof value === "string") return value.trim().slice(0, 20_000) || null;
+  if (!Array.isArray(value)) return null;
+  const lines = value
+    .map((item) => {
+      const row = asRecord(item);
+      const phrase = asText(row.phrase);
+      if (!phrase) return "";
+      const speaker = asText(row.speaker) || "speaker";
+      return `${speaker}: ${phrase}`;
+    })
+    .filter(Boolean);
+  return lines.join("\n").slice(0, 20_000) || null;
+}
+
+function mapCall(row: Record<string, unknown>): CallRailCall {
+  const durationSeconds = asOptionalNumber(row.duration);
+  const startedAt = safeIso(row.start_time);
+  const landingPageUrl = asOptionalText(row.landing_page_url);
+  const lastRequestedUrl = asOptionalText(row.last_requested_url);
+  const gclid = asOptionalText(row.gclid);
+  const msclkid = asOptionalText(row.msclkid);
+  const sessionUuid = asOptionalText(row.session_uuid);
+  const fbclid = asOptionalText(row.fbclid);
+  return {
+    id: asText(row.id),
+    companyId: asText(row.company_id),
+    direction: asOptionalText(row.direction),
+    answered: asOptionalBoolean(row.answered),
+    durationSeconds,
+    startedAt,
+    endedAt: safeIso(row.end_time) ?? endTime(startedAt, durationSeconds),
+    trackingPhoneNumber: asOptionalText(row.tracking_phone_number),
+    businessPhoneNumber: asOptionalText(row.business_phone_number),
+    customerPhoneE164: asOptionalText(row.customer_phone_number),
+    customerName:
+      asOptionalText(row.customer_name) ??
+      asOptionalText(row.formatted_customer_name_or_phone_number),
+    customerCity: asOptionalText(row.customer_city),
+    customerState: asOptionalText(row.customer_state),
+    customerCountry: asOptionalText(row.customer_country),
+    source: asOptionalText(row.source),
+    medium: asOptionalText(row.medium) ?? asOptionalText(row.utm_medium),
+    campaign: asOptionalText(row.campaign) ?? asOptionalText(row.utm_campaign),
+    keywords: asOptionalText(row.keywords),
+    referrerDomain: asOptionalText(row.referrer_domain),
+    landingPageUrl,
+    lastRequestedUrl,
+    gclid,
+    msclkid,
+    sessionUuid,
+    trackerId: asOptionalText(row.tracker_id),
+    fbclid,
+    isSessionTracker: Boolean(
+      sessionUuid || landingPageUrl || lastRequestedUrl || fbclid || gclid || msclkid,
+    ),
+    personId: asOptionalText(row.person_id),
+    priorCalls: asOptionalNumber(row.prior_calls),
+    leadStatus: asOptionalText(row.lead_status),
+    callType: asOptionalText(row.call_type),
+    tags: asStringArray(row.tags),
+    // Recording URLs can be expiring and HIPAA-sensitive. Ingestion keeps the
+    // call source of truth in CallRail until media policy/storage is designed.
+    recordingUrl: null,
+    transcript: mapTranscript(row.transcription ?? row.conversational_transcript),
+    callSummary: mapCallSummary(row.call_summary),
   };
 }
 
@@ -392,6 +690,296 @@ export async function getCallRailCompany(
   );
   const company = mapCompany(body);
   return { ...company, id: company.id || safeCompanyId };
+}
+
+export async function listCallRailIntegrations(
+  accountId: string,
+  companyId: string,
+  apiKey: string,
+): Promise<CallRailIntegrationPage> {
+  const safeAccountId = assertCallRailAccountId(accountId);
+  const safeCompanyId = assertCallRailCompanyId(companyId);
+  const body = await callRailRequest(
+    `/a/${safeAccountId}/integrations.json`,
+    apiKey,
+    {
+      company_id: safeCompanyId,
+      fields: "signing_key",
+      per_page: String(CALLRAIL_PAGE_SIZE),
+    },
+  );
+  const rows = Array.isArray(body.integrations) ? body.integrations : [];
+  const total = Number(body.total_records ?? rows.length);
+  return {
+    integrations: rows
+      .map((row) => mapIntegration(row as Record<string, unknown>))
+      .filter((integration) => integration.id !== ""),
+    truncated: Number.isFinite(total) && total > rows.length,
+  };
+}
+
+export async function getCallRailIntegration(
+  accountId: string,
+  integrationId: string,
+  apiKey: string,
+): Promise<CallRailIntegration> {
+  const safeAccountId = assertCallRailAccountId(accountId);
+  const safeIntegrationId = asText(integrationId);
+  if (!/^[A-Za-z0-9_-]{1,80}$/u.test(safeIntegrationId)) {
+    throw new Error("That is not a valid CallRail integration ID.");
+  }
+  const body = await callRailRequest(
+    `/a/${safeAccountId}/integrations/${safeIntegrationId}.json`,
+    apiKey,
+    { fields: "signing_key" },
+  );
+  const integration = mapIntegration(body);
+  return { ...integration, id: integration.id || safeIntegrationId };
+}
+
+export async function createCallRailWebhookIntegration(
+  accountId: string,
+  companyId: string,
+  apiKey: string,
+  config: Record<string, unknown>,
+): Promise<CallRailIntegration> {
+  const safeAccountId = assertCallRailAccountId(accountId);
+  const safeCompanyId = assertCallRailCompanyId(companyId);
+  const body = await callRailRequest(
+    `/a/${safeAccountId}/integrations.json`,
+    apiKey,
+    {
+      method: "POST",
+      body: {
+        type: "Webhooks",
+        company_id: safeCompanyId,
+        config,
+      },
+    },
+  );
+  return mapIntegration(body);
+}
+
+export async function updateCallRailWebhookIntegration(
+  accountId: string,
+  integrationId: string,
+  apiKey: string,
+  config: Record<string, unknown>,
+): Promise<CallRailIntegration> {
+  const safeAccountId = assertCallRailAccountId(accountId);
+  const safeIntegrationId = asText(integrationId);
+  if (!/^[A-Za-z0-9_-]{1,80}$/u.test(safeIntegrationId)) {
+    throw new Error("That is not a valid CallRail integration ID.");
+  }
+  const body = await callRailRequest(
+    `/a/${safeAccountId}/integrations/${safeIntegrationId}.json`,
+    apiKey,
+    {
+      method: "PUT",
+      body: {
+        state: "active",
+        config,
+      },
+    },
+  );
+  const integration = mapIntegration(body);
+  return { ...integration, id: integration.id || safeIntegrationId };
+}
+
+export async function ensureCallRailWebhookIntegration(
+  accountId: string,
+  companyId: string,
+  apiKey: string,
+  urls: CallRailWebhookUrlSet,
+): Promise<CallRailWebhookIntegrationResult> {
+  const page = await listCallRailIntegrations(accountId, companyId, apiKey);
+  const existing =
+    page.integrations.find((integration) => integration.type === "Webhooks") ??
+    null;
+  if (!existing) {
+    const config = appendCallRailWebhookUrls({}, urls);
+    const integration = await createCallRailWebhookIntegration(
+      accountId,
+      companyId,
+      apiKey,
+      config,
+    );
+    const signingKey = integration.signingKey;
+    if (!isCallRailSigningKey(signingKey)) {
+      throw new CallRailApiError("rejected", messageForStatus("rejected"));
+    }
+    return {
+      integration,
+      created: true,
+      changed: true,
+      signingKey,
+      // Nothing existed before, so undoing means withdrawing what was added.
+      previousConfig: null,
+    };
+  }
+
+  const current = existing.signingKey
+    ? existing
+    : await getCallRailIntegration(accountId, existing.id, apiKey);
+  const signingKey = current.signingKey;
+  if (!isCallRailSigningKey(signingKey)) {
+    throw new CallRailApiError("rejected", messageForStatus("rejected"));
+  }
+
+  const config = appendCallRailWebhookUrls(current.config, urls);
+  const changed =
+    current.state !== "active" || !callRailWebhookConfigsEqual(config, current.config);
+  const integration = changed
+    ? await updateCallRailWebhookIntegration(accountId, current.id, apiKey, config)
+    : current;
+  return {
+    integration,
+    created: false,
+    changed,
+    signingKey,
+    previousConfig: (current.config ?? {}) as Record<string, unknown>,
+  };
+}
+
+/**
+ * Puts a webhook integration back the way it was.
+ *
+ * Used when enabling ingestion succeeded at CallRail and then failed at the
+ * database. Best effort by design: it already runs on a failure path, so it
+ * reports whether it worked rather than throwing a second error over the
+ * first. A caller that cannot restore says so, because a silent half-state in
+ * someone else's CallRail account is worse than a loud one.
+ */
+export async function restoreCallRailWebhookIntegration(
+  accountId: string,
+  integrationId: string,
+  apiKey: string,
+  previousConfig: Record<string, unknown> | null,
+  addedUrls: CallRailWebhookUrlSet,
+): Promise<boolean> {
+  try {
+    if (previousConfig) {
+      await updateCallRailWebhookIntegration(
+        accountId,
+        integrationId,
+        apiKey,
+        previousConfig,
+      );
+      return true;
+    }
+    // The integration did not exist before, so the closest thing to undoing is
+    // withdrawing the URLs that were added to it.
+    const result = await removeCallRailWebhookIntegrationUrls(
+      accountId,
+      integrationId,
+      apiKey,
+      addedUrls,
+    );
+    return result.changed;
+  } catch {
+    return false;
+  }
+}
+
+export async function removeCallRailWebhookIntegrationUrls(
+  accountId: string,
+  integrationId: string,
+  apiKey: string,
+  urls: CallRailWebhookUrlSet,
+): Promise<{ changed: boolean; integration: CallRailIntegration }> {
+  const current = await getCallRailIntegration(accountId, integrationId, apiKey);
+  if (current.type !== "Webhooks") return { changed: false, integration: current };
+  const config = removeCallRailWebhookUrls(current.config, urls);
+  if (callRailWebhookConfigsEqual(config, current.config)) {
+    return { changed: false, integration: current };
+  }
+  return {
+    changed: true,
+    integration: await updateCallRailWebhookIntegration(
+      accountId,
+      current.id,
+      apiKey,
+      config,
+    ),
+  };
+}
+
+export async function getCallRailCall(
+  accountId: string,
+  callId: string,
+  apiKey: string,
+): Promise<CallRailCall> {
+  const safeAccountId = assertCallRailAccountId(accountId);
+  const safeCallId = asText(callId);
+  if (!/^(CAL[A-Za-z0-9]{8,80}|[0-9]{6,24})$/u.test(safeCallId)) {
+    throw new Error("That is not a valid CallRail call ID.");
+  }
+  const body = await callRailRequest(
+    `/a/${safeAccountId}/calls/${safeCallId}.json`,
+    apiKey,
+    { fields: CALLRAIL_CALL_FIELDS.join(",") },
+  );
+  const call = mapCall(body);
+  return { ...call, id: call.id || safeCallId };
+}
+
+export async function listCallRailCalls(
+  accountId: string,
+  companyId: string,
+  apiKey: string,
+  options: {
+    startDate: string;
+    endDate: string;
+    maxPages?: number;
+  },
+): Promise<CallRailCallPage> {
+  const safeAccountId = assertCallRailAccountId(accountId);
+  const safeCompanyId = assertCallRailCompanyId(companyId);
+  const maxPages = Math.max(1, Math.min(10, options.maxPages ?? 4));
+  let url: URL | null = new URL(`${CALLRAIL_API_URL}/a/${safeAccountId}/calls.json`);
+  const calls: CallRailCall[] = [];
+  let page = 0;
+  let truncated = false;
+  while (url && page < maxPages) {
+    const searchParams: Record<string, string> =
+      page === 0
+        ? {
+            company_id: safeCompanyId,
+            fields: CALLRAIL_CALL_FIELDS.join(","),
+            relative_pagination: "true",
+            per_page: String(CALLRAIL_CALL_PAGE_SIZE),
+            start_date: options.startDate,
+            end_date: options.endDate,
+            sort: "start_time",
+            order: "desc",
+          }
+        : {};
+    const body = await callRailUrlRequest(url, apiKey, {
+      searchParams,
+    });
+    const rows = Array.isArray(body.calls) ? body.calls : [];
+    calls.push(
+      ...rows
+        .map((row) => mapCall(row as Record<string, unknown>))
+        .filter((call) => call.id !== ""),
+    );
+    page += 1;
+    const next = asOptionalText(body.next_page);
+    if (body.has_next_page === true && next) {
+      const nextUrl = new URL(next);
+      if (
+        nextUrl.protocol !== "https:" ||
+        nextUrl.hostname !== "api.callrail.com"
+      ) {
+        throw new CallRailApiError("rejected", messageForStatus("rejected"));
+      }
+      url = nextUrl;
+    } else {
+      url = null;
+    }
+  }
+  if (url) truncated = true;
+  return { calls, truncated };
 }
 
 /**

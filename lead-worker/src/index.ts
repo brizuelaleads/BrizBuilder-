@@ -20,10 +20,11 @@ const worker = {
     const isTwilioWebhook = url.pathname.startsWith("/api/twilio/");
     const isTwilioDeauthorize = url.pathname === "/api/integrations/twilio/deauthorize";
     const isStripeWebhook = url.pathname === "/api/integrations/stripe/webhook";
-    if (!isLeadCapture && !isTwilioWebhook && !isTwilioDeauthorize && !isStripeWebhook) {
+    const isCallRailWebhook = url.pathname.startsWith("/api/callrail/webhook/");
+    if (!isLeadCapture && !isTwilioWebhook && !isTwilioDeauthorize && !isStripeWebhook && !isCallRailWebhook) {
       return Response.json({ error: "Not found." }, { status: 404, headers: { "Cache-Control": "no-store" } });
     }
-    if (!["GET", "POST", "OPTIONS"].includes(request.method) || ((isTwilioWebhook || isTwilioDeauthorize || isStripeWebhook) && request.method !== "POST")) {
+    if (!["GET", "POST", "OPTIONS"].includes(request.method) || ((isTwilioWebhook || isTwilioDeauthorize || isStripeWebhook || isCallRailWebhook) && request.method !== "POST")) {
       return Response.json({ error: "Method not allowed." }, { status: 405, headers: { "Allow": "GET, POST, OPTIONS", "Cache-Control": "no-store" } });
     }
     return securityHeaders(await env.BRIZBUILDER.fetch(request));

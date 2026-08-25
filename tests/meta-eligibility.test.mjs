@@ -6,6 +6,9 @@ import {
   isValidFbclid,
   META_ELIGIBILITY_REASONS,
 } from "../lib/meta-eligibility.ts";
+import {
+  decideCallRailMetaEligibility,
+} from "../lib/meta-eligibility.ts";
 import { normalizeAttribution } from "../lib/meta-eligibility.ts";
 
 // The capture endpoint is public, so these run the real rules against payloads
@@ -132,4 +135,79 @@ test("isValidFbclid accepts only well-formed values", () => {
   for (const bad of ["A".repeat(15), "", null, undefined, 12345, {}, [], "a b c d e f g h"]) {
     assert.equal(isValidFbclid(bad), false, `rejects ${String(bad)}`);
   }
+});
+
+// ------------------------------------------------- calls, not form submissions
+
+const VALID_CALL_FBCLID = "IwAR0abcdefghijklmnopqrstuvwxyz0123456789";
+const SESSION = "8154748a-e6bd-4e27-8a7c-ddd38a662f4f";
+
+test("a tracked session carrying a valid Meta click id qualifies", () => {
+  assert.deepEqual(
+    decideCallRailMetaEligibility({
+      sessionUuid: SESSION,
+      fbclid: VALID_CALL_FBCLID,
+    }),
+    { eligible: true, reason: "meta_fbclid" },
+  );
+});
+
+test("a click id without a validated session never qualifies", () => {
+  // The regression this guards: isSessionTracker is derived partly from the
+  // click ids themselves, so using it here would let a click id vouch for its
+  // own provenance. Only a session identifier is independent evidence.
+  for (const sessionUuid of [undefined, null, "", "   "]) {
+    assert.deepEqual(
+      decideCallRailMetaEligibility({ sessionUuid, fbclid: VALID_CALL_FBCLID }),
+      { eligible: false, reason: "callrail_no_session_tracker" },
+      String(sessionUuid),
+    );
+  }
+});
+
+test("a tracked session with no click id is explained, not guessed at", () => {
+  assert.deepEqual(
+    decideCallRailMetaEligibility({ sessionUuid: SESSION, fbclid: null }),
+    { eligible: false, reason: "callrail_no_click_id" },
+  );
+});
+
+test("a malformed click id on a real session is rejected, not trusted", () => {
+  for (const fbclid of ["short", "not a click id", "!!!!!!!!!!!!!!!!!!!!"]) {
+    assert.deepEqual(
+      decideCallRailMetaEligibility({ sessionUuid: SESSION, fbclid }),
+      { eligible: false, reason: "invalid_fbclid" },
+      fbclid,
+    );
+  }
+});
+
+test("every call reason is in the closed vocabulary", () => {
+  const inputs = [
+    { sessionUuid: SESSION, fbclid: VALID_CALL_FBCLID },
+    { sessionUuid: SESSION, fbclid: null },
+    { sessionUuid: SESSION, fbclid: "short" },
+    { sessionUuid: null, fbclid: VALID_CALL_FBCLID },
+    {},
+  ];
+  for (const input of inputs) {
+    const decision = decideCallRailMetaEligibility(input);
+    assert.ok(
+      META_ELIGIBILITY_REASONS.includes(decision.reason),
+      `${decision.reason} must be a known reason`,
+    );
+    // Eligibility still has exactly one justification, as the database
+    // constraint requires.
+    if (decision.eligible) assert.equal(decision.reason, "meta_fbclid");
+  }
+});
+
+test("a call cannot become eligible by any route other than a click id", () => {
+  // No label, campaign name or source can reach this function at all: it takes
+  // two fields, and neither of them is a label.
+  const decision = decideCallRailMetaEligibility({
+    sessionUuid: SESSION,
+    fbclid: "",
+  });
+  assert.equal(decision.eligible, false);
 });

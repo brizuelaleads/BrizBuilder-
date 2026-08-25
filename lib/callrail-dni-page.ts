@@ -453,7 +453,14 @@ export async function renderDniPage(
     '<p class="note">Plain text on the page: <span id="' +
       DNI_SWAP_TEXT_ID +
       '">&mdash;</span></p>',
-    "<table><tbody>",
+    // data-calltrk-noswap excludes this element and everything inside it from
+    // CallRail's scan. Without it the report is itself a swap target: the
+    // destination is printed here as a plain number, CallRail rewrites it to
+    // the tracking number like any other occurrence on the page, and the
+    // reference the verdict is read against silently becomes the thing it was
+    // supposed to be compared with. The swap targets above are deliberately
+    // left scannable; only the readout is protected.
+    '<table data-calltrk-noswap><tbody>',
     '<tr><td>Placed before swap.js</td><td id="prepared">&mdash;</td></tr>',
     '<tr><td>Destination</td><td id="swap-destination">&mdash;</td></tr>',
     '<tr><td>Visible text</td><td id="swap-text-digits">&mdash;</td></tr>',

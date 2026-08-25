@@ -4,10 +4,17 @@ import {
   decryptCallRailSecret,
   getCallRailAccount,
   getCallRailCompany,
+  getCallRailWebhookBaseUrl,
+  removeCallRailWebhookIntegrationUrls,
   type CallRailAccount,
   type CallRailCompany,
   type CallRailStatus,
 } from "./callrail";
+import {
+  buildCallRailWebhookUrls,
+  isCallRailSigningKey,
+  isCallRailWebhookPathId,
+} from "./callrail-webhook";
 import { getSupabaseAdminClient } from "./supabase/server";
 
 // Loading and using a customer's CallRail API key. Kept separate from the
@@ -22,6 +29,16 @@ type CallRailCredentialRow = {
   company_name: string | null;
   api_key_ciphertext: string;
   api_key_iv: string;
+};
+
+type CallRailWebhookCredentialRow = CallRailCredentialRow & {
+  organization_id: string;
+  client_id: string;
+  ingest_enabled: boolean | null;
+  webhook_path_id: string | null;
+  webhook_integration_id: string | null;
+  webhook_signing_key_ciphertext: string | null;
+  webhook_signing_key_iv: string | null;
 };
 
 /** Where a connection is in the account-then-company setup sequence. */
@@ -83,6 +100,15 @@ export type CallRailApiAccess = {
   apiKey: string;
 };
 
+export type CallRailWebhookVerifier = {
+  organizationId: string;
+  clientId: string;
+  accountId: string | null;
+  companyId: string | null;
+  ingestEnabled: boolean;
+  signingKey: string;
+};
+
 /**
  * Decrypts this client's API key for a single caller.
  *
@@ -109,6 +135,77 @@ export async function loadCallRailApiAccess(
     companyName: row.company_name ? String(row.company_name) : null,
     apiKey,
   };
+}
+
+export async function loadCallRailWebhookVerifier(
+  pathId: string,
+): Promise<CallRailWebhookVerifier | null> {
+  if (!isCallRailWebhookPathId(pathId)) return null;
+  const result = await getSupabaseAdminClient()
+    .from("callrail_credentials")
+    .select(
+      "organization_id,client_id,account_id,company_id,api_key_ciphertext,api_key_iv,ingest_enabled,webhook_path_id,webhook_integration_id,webhook_signing_key_ciphertext,webhook_signing_key_iv",
+    )
+    .eq("webhook_path_id", pathId)
+    .maybeSingle();
+  if (result.error) throw new Error(result.error.message);
+  const row = (result.data as CallRailWebhookCredentialRow | null) ?? null;
+  if (!row?.webhook_signing_key_ciphertext || !row.webhook_signing_key_iv) {
+    return null;
+  }
+  const signingKey = await decryptCallRailSecret(
+    {
+      ciphertext: row.webhook_signing_key_ciphertext,
+      iv: row.webhook_signing_key_iv,
+    },
+    row.organization_id,
+    row.client_id,
+  );
+  if (!isCallRailSigningKey(signingKey)) return null;
+  return {
+    organizationId: row.organization_id,
+    clientId: row.client_id,
+    accountId: row.account_id ? String(row.account_id) : null,
+    companyId: row.company_id ? String(row.company_id) : null,
+    ingestEnabled: row.ingest_enabled === true,
+    signingKey,
+  };
+}
+
+export async function removeCallRailWebhooksForClient(
+  organizationId: string,
+  clientId: string,
+): Promise<boolean> {
+  const result = await getSupabaseAdminClient()
+    .from("callrail_credentials")
+    .select(
+      "organization_id,client_id,account_id,account_name,company_id,company_name,api_key_ciphertext,api_key_iv,ingest_enabled,webhook_path_id,webhook_integration_id,webhook_signing_key_ciphertext,webhook_signing_key_iv",
+    )
+    .eq("organization_id", organizationId)
+    .eq("client_id", clientId)
+    .maybeSingle();
+  if (result.error) throw new Error(result.error.message);
+  const row = (result.data as CallRailWebhookCredentialRow | null) ?? null;
+  if (
+    !row?.account_id ||
+    !row.company_id ||
+    !row.webhook_path_id ||
+    !row.webhook_integration_id
+  ) {
+    return false;
+  }
+  const apiKey = await decryptCallRailSecret(
+    { ciphertext: row.api_key_ciphertext, iv: row.api_key_iv },
+    organizationId,
+    clientId,
+  );
+  await removeCallRailWebhookIntegrationUrls(
+    row.account_id,
+    row.webhook_integration_id,
+    apiKey,
+    buildCallRailWebhookUrls(getCallRailWebhookBaseUrl(), row.webhook_path_id),
+  );
+  return true;
 }
 
 /**

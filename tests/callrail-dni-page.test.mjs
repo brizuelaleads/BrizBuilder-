@@ -651,3 +651,33 @@ test("the page reports why, not just whether", () => {
     assert.ok(html.includes(`id="${id}"`), `${id} is on the page`);
   }
 });
+
+test("the readout is excluded from CallRail's scan, the targets are not", () => {
+  // The report prints the destination as a plain number. Without this,
+  // CallRail rewrites that occurrence like any other on the page, and the
+  // reference the verdict compares against becomes the tracking number —
+  // which reads as "still the destination number" for a swap that worked.
+  const noswapAt = html.indexOf("data-calltrk-noswap");
+  assert.ok(noswapAt > -1, "the readout is marked noswap");
+
+  // It sits on the table, so it covers every cell inside it: swap.js stops
+  // recursing at an element carrying the attribute.
+  assert.match(html, /<table data-calltrk-noswap>/);
+  for (const id of ["swap-destination", "swap-text-digits", "swap-href-digits"]) {
+    assert.ok(html.indexOf(`id="${id}"`) > noswapAt, `${id} is inside it`);
+  }
+
+  // And the actual swap targets are left scannable, or there is nothing to
+  // observe.
+  assert.ok(html.indexOf(`id="${DNI_SWAP_LINK_ID}"`) < noswapAt);
+  assert.ok(html.indexOf(`id="${DNI_SWAP_TEXT_ID}"`) < noswapAt);
+  const linkTag = html.slice(
+    html.indexOf(`id="${DNI_SWAP_LINK_ID}"`) - 60,
+    html.indexOf(`id="${DNI_SWAP_LINK_ID}"`) + 60,
+  );
+  assert.equal(
+    linkTag.includes("data-calltrk-noswap"),
+    false,
+    "the tel: anchor must stay swappable",
+  );
+});

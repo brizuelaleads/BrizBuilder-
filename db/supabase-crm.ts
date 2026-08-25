@@ -33,11 +33,14 @@ import {
   assertCallRailAccountId,
   assertCallRailCompanyId,
   encryptCallRailSecret,
+  ensureCallRailWebhookIntegration,
   getCallRailAccount,
   getCallRailCompany,
   getCallRailRuntimeStatus,
+  getCallRailWebhookBaseUrl,
   listCallRailAccounts,
   listCallRailCompanies,
+  restoreCallRailWebhookIntegration,
   signDniCredential,
   type CallRailAccount,
   type CallRailCompany,
@@ -46,7 +49,13 @@ import {
   checkCallRailConnection,
   loadCallRailApiAccess,
   purgeAbandonedCallRailSetup,
+  removeCallRailWebhooksForClient,
 } from "../lib/callrail-store";
+import {
+  buildCallRailWebhookUrls,
+  createCallRailWebhookPathId,
+  isCallRailWebhookPathId,
+} from "../lib/callrail-webhook";
 import {
   DNI_EXCHANGE_PARAM,
   DNI_EXCHANGE_TTL_MS,
@@ -400,6 +409,11 @@ function optionalText(value: unknown, max = 500): string | null {
 function callRailPublicConfig(
   account: CallRailAccount | null,
   company: CallRailCompany | null,
+  ingestion: {
+    enabled?: boolean;
+    configured?: boolean;
+    events?: string[];
+  } = {},
 ) {
   return {
     setupStatus: !account ? "needs_account" : !company ? "needs_company" : "ready",
@@ -420,6 +434,9 @@ function callRailPublicConfig(
     // subscription permitting transcript retrieval through the API. The field
     // name says what the flag actually proves so no consumer can overstate it.
     callScribeEnabled: company?.callScribeEnabled ?? null,
+    callIngestionEnabled: ingestion.enabled === true,
+    callIngestionConfigured: ingestion.configured === true,
+    callIngestionEvents: ingestion.events ?? [],
   };
 }
 
@@ -3151,6 +3168,17 @@ function mapProviderConnection(row: AnyRecord): CrmProviderConnection {
         ? publicConfig.callScribeEnabled
         : null,
     scriptUrl: nullable(publicConfig.scriptUrl),
+    callIngestionEnabled:
+      typeof publicConfig.callIngestionEnabled === "boolean"
+        ? publicConfig.callIngestionEnabled
+        : null,
+    callIngestionConfigured:
+      typeof publicConfig.callIngestionConfigured === "boolean"
+        ? publicConfig.callIngestionConfigured
+        : null,
+    callIngestionEvents: Array.isArray(publicConfig.callIngestionEvents)
+      ? publicConfig.callIngestionEvents.map(String)
+      : [],
     chargesEnabled:
       typeof publicConfig.chargesEnabled === "boolean"
         ? publicConfig.chargesEnabled
@@ -5152,15 +5180,25 @@ export async function executeSupabaseCrmAction(
     // The other place cleanup is driven from: opening the card for this
     // business clears its own abandoned setup. No other client is touched.
     await purgeAbandonedCallRailSetupForClient(context, clientId);
-    const previous = await assertOk(
-      supabase()
-        .from("provider_connections")
-        .select("status")
-        .eq("organization_id", context.organizationId)
-        .eq("client_id", clientId)
-        .eq("provider", "callrail")
-        .maybeSingle(),
-    );
+    const [previous, ingestionState] = await Promise.all([
+      assertOk(
+        supabase()
+          .from("provider_connections")
+          .select("status")
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId)
+          .eq("provider", "callrail")
+          .maybeSingle(),
+      ),
+      assertOk(
+        supabase()
+          .from("callrail_credentials")
+          .select("ingest_enabled,webhook_path_id,webhook_integration_id")
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId)
+          .maybeSingle(),
+      ),
+    ]);
     const outcome = await checkCallRailConnection(
       context.organizationId,
       clientId,
@@ -5190,6 +5228,17 @@ export async function executeSupabaseCrmAction(
       patch.public_config = callRailPublicConfig(
         outcome.account,
         outcome.company,
+        {
+          enabled: ingestionState?.ingest_enabled === true,
+          configured: Boolean(
+            ingestionState?.webhook_path_id &&
+              ingestionState?.webhook_integration_id,
+          ),
+          events:
+            ingestionState?.ingest_enabled === true
+              ? ["post_call_webhook", "updated_call_webhook"]
+              : [],
+        },
       );
     }
     await assertOk(
@@ -5224,18 +5273,188 @@ export async function executeSupabaseCrmAction(
     };
   }
 
+  if (action === "enable_callrail_ingestion") {
+    requirePermission(context, "call_tracking.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const runtime = getCallRailRuntimeStatus();
+    if (!runtime.ready)
+      throw new Error(
+        `CallRail is not configured. Missing ${runtime.missing.join(", ")}.`,
+      );
+    const access = await loadCallRailApiAccess(context.organizationId, clientId);
+    if (!access.accountId || !access.companyId)
+      throw new Error(
+        "Finish choosing a CallRail account and company before enabling ingestion.",
+      );
+
+    const current = await assertOk(
+      supabase()
+        .from("callrail_credentials")
+        .select("webhook_path_id")
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .maybeSingle(),
+    );
+    const pathId = isCallRailWebhookPathId(current?.webhook_path_id)
+      ? String(current.webhook_path_id)
+      : createCallRailWebhookPathId();
+    const urls = buildCallRailWebhookUrls(getCallRailWebhookBaseUrl(), pathId);
+    const integration = await ensureCallRailWebhookIntegration(
+      access.accountId,
+      access.companyId,
+      access.apiKey,
+      urls,
+    );
+    // Encrypted the moment it is in hand. The plaintext signing key exists
+    // only as an argument from here on: it is never returned, audited, or put
+    // in an error message.
+    const encryptedSigningKey = await encryptCallRailSecret(
+      integration.signingKey,
+      context.organizationId,
+      clientId,
+    );
+    const [account, company] = await Promise.all([
+      getCallRailAccount(access.accountId, access.apiKey),
+      getCallRailCompany(access.accountId, access.companyId, access.apiKey),
+    ]);
+    const now = new Date().toISOString();
+    // CallRail has already been changed by this point. A failure to record
+    // that would leave a customer's CallRail posting to a URL BrizBuilder has
+    // no key for, so the change is undone before the failure is reported.
+    try {
+      await assertOk(
+        supabase()
+          .from("callrail_credentials")
+          .update({
+            ingest_enabled: true,
+            webhook_path_id: pathId,
+            webhook_signing_key_ciphertext: encryptedSigningKey.ciphertext,
+            webhook_signing_key_iv: encryptedSigningKey.iv,
+            webhook_integration_id: integration.integration.id,
+            account_id: account.id,
+            account_name: account.name,
+            company_id: company.id,
+            company_name: company.name,
+            last_checked_at: now,
+            last_status: "ok",
+            updated_at: now,
+          })
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId),
+      );
+    } catch {
+      const restored = await restoreCallRailWebhookIntegration(
+        access.accountId,
+        integration.integration.id,
+        access.apiKey,
+        integration.previousConfig,
+        urls,
+      );
+      await audit(
+        context,
+        "provider.ingestion_enable_failed",
+        "provider_connection",
+        null,
+        {
+          provider: "callrail",
+          integrationId: integration.integration.id,
+          integrationCreated: integration.created,
+          callrailRestored: restored,
+        },
+        clientId,
+      );
+      throw new Error(
+        restored
+          ? "Ingestion could not be saved, so the CallRail configuration was put back exactly as it was. Nothing was changed."
+          : "Ingestion could not be saved, and the CallRail configuration could not be put back. Check the Webhooks integration in CallRail before trying again.",
+      );
+    }
+    await assertOk(
+      supabase()
+        .from("provider_connections")
+        .update({
+          status: "connected",
+          external_account_id: account.id,
+          external_account_name: account.name,
+          last_error: null,
+          last_health_check_at: now,
+          public_config: callRailPublicConfig(account, company, {
+            enabled: true,
+            configured: true,
+            events: ["post_call_webhook", "updated_call_webhook"],
+          }),
+          updated_at: now,
+        })
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", "callrail"),
+    );
+    await audit(
+      context,
+      "provider.ingestion_enabled",
+      "provider_connection",
+      null,
+      {
+        provider: "callrail",
+        integrationId: integration.integration.id,
+        integrationCreated: integration.created,
+        integrationChanged: integration.changed,
+        events: ["post_call_webhook", "updated_call_webhook"],
+      },
+      clientId,
+    );
+    return {
+      enabled: true,
+      configured: true,
+      integrationCreated: integration.created,
+      integrationChanged: integration.changed,
+      events: ["post_call_webhook", "updated_call_webhook"],
+    };
+  }
+
   if (action === "disconnect_callrail") {
     requirePermission(context, "call_tracking.manage");
     const clientId = requireText(input.clientId, "Client", 100);
     await requireClient(context, clientId);
     const now = new Date().toISOString();
+    // CallRail is cleaned up first and the stored credentials are destroyed
+    // only once it confirms. A failure here leaves the connection intact and
+    // recoverable rather than stranding BrizBuilder's URLs in someone's
+    // CallRail with no key left to remove them with.
+    try {
+      await removeCallRailWebhooksForClient(context.organizationId, clientId);
+    } catch {
+      const failedAt = new Date().toISOString();
+      await assertOk(
+        supabase()
+          .from("provider_connections")
+          .update({
+            status: "attention",
+            last_error:
+              "BrizBuilder could not remove its webhook URLs from CallRail. The connection is still active, so this can be retried.",
+            last_health_check_at: failedAt,
+            updated_at: failedAt,
+          })
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId)
+          .eq("provider", "callrail"),
+      );
+      await audit(
+        context,
+        "provider.disconnect_cleanup_failed",
+        "provider_connection",
+        null,
+        { provider: "callrail" },
+        clientId,
+      );
+      throw new Error(
+        "CallRail did not confirm that BrizBuilder's webhook URLs were removed, so nothing was disconnected. The connection is marked for attention; try again.",
+      );
+    }
     // The key row is deleted outright rather than flagged, so disconnecting
-    // actually destroys the stored credential.
-    //
-    // Nothing is changed inside the customer's CallRail account here: no
-    // webhook is removed, because BrizBuilder has not created one yet. Once
-    // webhook registration ships, disconnecting must also withdraw this
-    // integration's URLs while leaving any other tool's URLs in place.
+    // actually destroys the stored credential after BrizBuilder's URLs have
+    // been withdrawn from CallRail.
     await assertOk(
       supabase()
         .from("callrail_credentials")

@@ -386,6 +386,9 @@ export type CrmProviderConnection = {
   // it is loaded by every visitor's browser — and the source the install
   // snippet is generated from.
   scriptUrl: string | null;
+  callIngestionEnabled: boolean | null;
+  callIngestionConfigured: boolean | null;
+  callIngestionEvents: string[];
   chargesEnabled: boolean | null;
   payoutsEnabled: boolean | null;
   detailsSubmitted: boolean | null;

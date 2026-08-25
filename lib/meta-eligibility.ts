@@ -24,6 +24,8 @@ export const META_ELIGIBILITY_REASONS = [
   "unverified_label",
   "no_meta_attribution",
   "backfill_no_evidence",
+  "callrail_no_session_tracker",
+  "callrail_no_click_id",
 ] as const;
 
 export type MetaEligibilityReason = (typeof META_ELIGIBILITY_REASONS)[number];
@@ -92,6 +94,51 @@ export function decideMetaEligibility(input: unknown): MetaEligibilityDecision {
   if (hasMetaUtm(source)) return { eligible: false, reason: "utm_only" };
   if (claimsMeta(source)) return { eligible: false, reason: "unverified_label" };
   return { eligible: false, reason: "no_meta_attribution" };
+}
+
+export type CallRailEligibilityInput = {
+  /**
+   * CallRail's session identifier. Present only when CallRail actually tracked
+   * a web visit, which is what makes it evidence rather than a label.
+   */
+  sessionUuid?: string | null;
+  /** The Meta click id CallRail recorded against that session. */
+  fbclid?: string | null;
+};
+
+/**
+ * Decides whether a tracked phone call may ever be reported to Meta.
+ *
+ * Two pieces of evidence, and both are required.
+ *
+ * The click id alone is not enough here, even though it is enough for a web
+ * form. A form submission arrives on a page BrizBuilder served, so a click id
+ * in that payload was carried by a visit we can see. A call arrives from
+ * CallRail with whatever fields the tracker happened to populate, and only a
+ * session identifier establishes that CallRail observed a web visit at all.
+ *
+ * `isSessionTracker` deliberately is not used for this: it is derived partly
+ * from the presence of the click ids themselves, so it would corroborate the
+ * very thing it was being asked to confirm.
+ *
+ * The cost is under-reporting — a genuine Meta-driven call whose session was
+ * not recorded is never reported. That is the same trade the web rule makes,
+ * for the same reason: teaching Meta's optimizer from calls it did not produce
+ * is worse than missing some it did.
+ */
+export function decideCallRailMetaEligibility(
+  input: CallRailEligibilityInput,
+): MetaEligibilityDecision {
+  const sessionUuid = asText(input.sessionUuid);
+  const fbclid = asText(input.fbclid);
+  // No session: a Source or offline tracker, or a visit CallRail never saw.
+  if (!sessionUuid)
+    return { eligible: false, reason: "callrail_no_session_tracker" };
+  // A tracked session that carried no Meta click id.
+  if (!fbclid) return { eligible: false, reason: "callrail_no_click_id" };
+  return isValidFbclid(fbclid)
+    ? { eligible: true, reason: "meta_fbclid" }
+    : { eligible: false, reason: "invalid_fbclid" };
 }
 
 // Only these keys are ever persisted from a landing page URL. Anything else the

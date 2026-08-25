@@ -300,10 +300,31 @@ test("the public gateway exposes only the exact Stripe webhook path and POST met
     gatewaySource,
     /url\.pathname === "\/api\/integrations\/stripe\/webhook"/,
   );
+  // Every webhook path the gateway forwards must be POST-only. Asserted per
+  // flag rather than as one frozen string, so adding a webhook stays a
+  // deliberate act that still has to satisfy the rule.
+  const postOnlyClause = gatewaySource
+    .split("\n")
+    .find((line) => line.includes('request.method !== "POST"'));
+  assert.ok(postOnlyClause, "the POST-only guard is present");
+  for (const flag of [
+    "isTwilioWebhook",
+    "isTwilioDeauthorize",
+    "isStripeWebhook",
+    "isCallRailWebhook",
+  ]) {
+    assert.ok(
+      postOnlyClause.includes(flag),
+      `${flag} must be POST-only at the gateway`,
+    );
+  }
+  // The gateway still denies by default: anything not explicitly recognized is
+  // a 404 before it can reach the application.
   assert.match(
     gatewaySource,
-    /\(isTwilioWebhook \|\| isTwilioDeauthorize \|\| isStripeWebhook\) && request\.method !== "POST"/,
+    /if \(!isLeadCapture && !isTwilioWebhook && !isTwilioDeauthorize && !isStripeWebhook && !isCallRailWebhook\)/,
   );
+  assert.match(gatewaySource, /status: 404/);
   assert.doesNotMatch(
     gatewaySource,
     /startsWith\("\/api\/integrations\/stripe\/"\)/,
