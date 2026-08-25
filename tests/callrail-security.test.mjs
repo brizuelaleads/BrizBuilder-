@@ -567,7 +567,21 @@ test("the DNI test page refuses indexing and locks down what may run", () => {
   const policy = block(dniPage, "export function buildDniCsp(");
   assert.ok(policy, "the policy builder was found");
   assert.match(policy, /default-src 'none'/);
-  assert.match(policy, /script-src[^\n]*DNI_SCRIPT_ORIGIN/);
+  assert.match(policy, /script-src[^\n]*DNI_SCRIPT_HOSTS/);
+  // Exactly two CallRail hosts, named in full rather than covered by a
+  // wildcard. The precise list, and the absence of every broader
+  // permission, are asserted against the rendered policy in
+  // tests/callrail-dni-page.test.mjs.
+  assert.match(dniPage, /"https:\/\/js\.callrail\.com"/);
+  // Scoped to the script-src line: connect-src and img-src legitimately
+  // carry a wildcard, and only executable code is restricted this tightly.
+  const scriptLine = policy
+    .split("\n")
+    .find((line) => line.includes("script-src"));
+  assert.ok(scriptLine, "the script-src line was found");
+  assert.equal(/\*/.test(scriptLine), false, "no wildcard in script-src");
+  assert.equal(scriptLine.includes("strict-dynamic"), false);
+  assert.equal(scriptLine.includes("unsafe-"), false);
   assert.match(policy, /form-action 'none'/);
   assert.match(policy, /frame-ancestors 'none'/);
 });

@@ -34,8 +34,25 @@ export const DNI_SWAP_TEXT_ID = "dni-swap-text";
 export const DNI_BOOTSTRAP_ID = "dni-bootstrap";
 export const DNI_SCRIPT_ID = "callrail-swap";
 
-/** The only host permitted to serve script to this page. */
+/** The origin the page's own script tag points at. */
 export const DNI_SCRIPT_ORIGIN = "https://cdn.callrail.com";
+
+/**
+ * Every host permitted to serve executable code to this page. Exactly two.
+ *
+ * swap.js is served from the CDN and then loads further resources through its
+ * own `getScript`, which reaches js.callrail.com. Without that second host the
+ * script loads and then quietly fails to do the one thing it is here for.
+ *
+ * Named in full rather than covered by a wildcard: `https://*.callrail.com`
+ * would admit every present and future CallRail subdomain, which is a larger
+ * grant than the evidence supports. Two exact hosts can be checked against the
+ * script that actually needs them.
+ */
+export const DNI_SCRIPT_HOSTS = [
+  DNI_SCRIPT_ORIGIN,
+  "https://js.callrail.com",
+] as const;
 
 export type DniFormattedNumber = { display: string; tel: string };
 
@@ -59,6 +76,95 @@ export function formatDniNumber(raw: unknown): DniFormattedNumber | null {
     display: `(${national.slice(0, 3)}) ${national.slice(3, 6)}-${national.slice(6)}`,
     tel: `+1${national}`,
   };
+}
+
+/** CallRail's globals. Present once its script has executed, absent if it did
+ * not load, was blocked, or failed. Checked rather than inferred from a load
+ * event: the script is a classic one placed before this check, so its load
+ * event has already fired by the time any later listener could attach — which
+ * is why the status previously sat at "checking…" forever. */
+export const DNI_CALLRAIL_GLOBALS = ["CallTrk", "CallTrkSwap"] as const;
+
+/**
+ * Ten national digits, or nothing.
+ *
+ * Every comparison in the swap check runs on this, so a number that has only
+ * been reformatted — dots for dashes, spaces added, a +1 gained — normalizes to
+ * the same value and cannot be mistaken for a replacement.
+ */
+export function normalizeDniDigits(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const digits = value.replace(/\D+/gu, "");
+  const national =
+    digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  return national.length === 10 ? national : "";
+}
+
+export type DniSwapState = {
+  /** Whether CallRail's script actually executed. */
+  loaded: boolean;
+  /** The destination, normalized. */
+  destination: string;
+  /** The link's visible text, normalized. */
+  text: string;
+  /** The link's tel: target, normalized. */
+  href: string;
+};
+
+export type DniSwapVerdict = { swapped: boolean; reason: string };
+
+/**
+ * Decides whether a swap really happened.
+ *
+ * The previous check asked only whether the visible digits differed from the
+ * destination, and reported success when they did not — it announced a swap
+ * for (254) 382-3256 against a destination of (254) 382-3256, while CallRail
+ * had not even finished loading. Every clause below exists because that
+ * verdict has to be earned:
+ *
+ *  - CallRail must have loaded, or nothing could have swapped anything.
+ *  - Both the visible text and the tel: target must carry a number, since
+ *    CallRail rewrites both and half a rewrite is not a swap.
+ *  - The two must agree, or the page is in an inconsistent state rather than a
+ *    swapped one.
+ *  - And the result must differ from the destination, compared on normalized
+ *    digits so reformatting alone can never qualify.
+ */
+export function evaluateDniSwap(state: DniSwapState): DniSwapVerdict {
+  if (!state.loaded)
+    return { swapped: false, reason: "CallRail's script has not loaded" };
+  if (!state.text || !state.href)
+    return { swapped: false, reason: "no usable number on the page yet" };
+  if (state.text !== state.href)
+    return {
+      swapped: false,
+      reason: "the visible number and the tel: link disagree",
+    };
+  if (!state.destination)
+    return { swapped: false, reason: "no destination to compare against" };
+  if (state.text === state.destination)
+    return { swapped: false, reason: "still the destination number" };
+  return { swapped: true, reason: "replaced with a different number" };
+}
+
+/**
+ * The same rule as JavaScript for the page.
+ *
+ * Emitted as a string so a test can execute this exact source and check it
+ * against `evaluateDniSwap`, rather than trusting two implementations to stay
+ * in step by inspection.
+ */
+export function buildDniSwapEvaluatorSource(): string {
+  return [
+    "function evaluateSwap(state){",
+    "if(!state.loaded)return{swapped:false,reason:\"CallRail's script has not loaded\"};",
+    'if(!state.text||!state.href)return{swapped:false,reason:"no usable number on the page yet"};',
+    'if(state.text!==state.href)return{swapped:false,reason:"the visible number and the tel: link disagree"};',
+    'if(!state.destination)return{swapped:false,reason:"no destination to compare against"};',
+    'if(state.text===state.destination)return{swapped:false,reason:"still the destination number"};',
+    'return{swapped:true,reason:"replaced with a different number"};',
+    "}",
+  ].join("");
 }
 
 function escapeHtml(value: string): string {
@@ -157,7 +263,18 @@ export function buildDniMainSource(reportedParams: readonly string[]): string {
     "(function(){",
     `var REPORTED=${JSON.stringify(reportedParams)};`,
     `var STORAGE_KEY=${JSON.stringify(DNI_DESTINATION_STORAGE_KEY)};`,
+    `var GLOBALS=${JSON.stringify(DNI_CALLRAIL_GLOBALS)};`,
     "var params=new URLSearchParams(window.location.search);",
+
+    // The shared rule, byte-identical to the exported one.
+    buildDniSwapEvaluatorSource(),
+    "function norm(v){var d=(v||'').replace(/[^0-9]/g,'');",
+    "if(d.length===11&&d.charAt(0)==='1'){d=d.slice(1);}",
+    "return d.length===10?d:'';}",
+    "function telDigits(a){var h=(a&&a.getAttribute('href'))||'';",
+    "return norm(h.replace(/^tel:/i,''));}",
+    "function callrailLoaded(){for(var i=0;i<GLOBALS.length;i++){",
+    "if(typeof window[GLOBALS[i]]!=='undefined')return true;}return false;}",
 
     'var rows=document.getElementById("params");var seen=0;',
     "REPORTED.forEach(function(key){",
@@ -176,21 +293,12 @@ export function buildDniMainSource(reportedParams: readonly string[]): string {
     'document.getElementById("landing").textContent=window.location.origin+window.location.pathname;',
     'document.getElementById("referrer").textContent=document.referrer||"(none)";',
 
-    'var status=document.getElementById("script-status");',
-    `var tag=document.getElementById(${JSON.stringify(DNI_SCRIPT_ID)});`,
-    'function ok(){status.textContent="loaded";status.className="ok";}',
-    'tag.addEventListener("load",ok);',
-    'tag.addEventListener("error",function(){status.textContent="did not load - check the company script URL";status.className="no";});',
-
     'var input=document.getElementById("destination");',
     'var arm=document.getElementById("arm");',
     'var error=document.getElementById("destination-error");',
-    "function digits(v){return (v||'').replace(/[^0-9]/g,'');}",
-    "function national(v){var d=digits(v);",
-    "if(d.length===11&&d.charAt(0)==='1'){d=d.slice(1);}return d;}",
     "if(arm){arm.addEventListener('click',function(){",
-    "var d=national(input.value);",
-    "if(d.length!==10||d.charAt(0)==='0'||d.charAt(0)==='1'){",
+    "var d=norm(input.value);",
+    "if(!d){",
     'error.textContent="Enter a ten-digit US number, the one the tracker forwards to.";',
     'error.className="note no";return;}',
     "try{window.sessionStorage.setItem(STORAGE_KEY,d);}catch(e){",
@@ -199,21 +307,36 @@ export function buildDniMainSource(reportedParams: readonly string[]): string {
     "window.location.reload();});}",
 
     `var link=document.getElementById(${JSON.stringify(DNI_SWAP_LINK_ID)});`,
+    'var status=document.getElementById("script-status");',
     'var prepared=document.getElementById("prepared");',
-    'var current=document.getElementById("swap-current");',
+    'var destCell=document.getElementById("swap-destination");',
+    'var textCell=document.getElementById("swap-text-digits");',
+    'var hrefCell=document.getElementById("swap-href-digits");',
     'var result=document.getElementById("swap-result");',
-    "var original='';",
-    "try{original=window.sessionStorage.getItem(STORAGE_KEY)||'';}catch(e){}",
-    "if(original&&link){",
-    'prepared.textContent="yes - written by the inline bootstrap";',
-    'prepared.className="ok";',
-    "window.setInterval(function(){",
-    "var shown=(link.textContent||'').trim();",
-    "current.textContent=shown;",
-    "if(digits(shown)&&digits(shown)!==digits(original)){",
-    'result.textContent="yes - replaced with "+shown;result.className="ok";',
-    '}else{result.textContent="not yet - no swap for this visit";result.className="no";}',
-    "},1000);}",
+    'var reason=document.getElementById("swap-reason");',
+    "var stored='';",
+    "try{stored=window.sessionStorage.getItem(STORAGE_KEY)||'';}catch(e){}",
+    "var destination=norm(stored);",
+
+    "function tick(){",
+    "var loaded=callrailLoaded();",
+    'status.textContent=loaded?"loaded":"not loaded - blocked, unreachable, or still fetching";',
+    'status.className=loaded?"ok":"no";',
+    "if(!link)return;",
+    "var text=norm(link.textContent);",
+    "var href=telDigits(link);",
+    'destCell.textContent=destination||"(none)";',
+    'textCell.textContent=text||"(none)";',
+    'hrefCell.textContent=href||"(none)";',
+    'prepared.textContent=destination?"yes - written by the inline bootstrap":"no";',
+    'prepared.className=destination?"ok":"no";',
+    "var verdict=evaluateSwap({loaded:loaded,destination:destination,text:text,href:href});",
+    'result.textContent=verdict.swapped?"yes":"no";',
+    'result.className=verdict.swapped?"ok":"no";',
+    "reason.textContent=verdict.reason;",
+    "}",
+    "tick();",
+    "window.setInterval(tick,1000);",
 
     'var reset=document.getElementById("reset");',
     "if(reset){reset.addEventListener('click',function(){",
@@ -240,10 +363,15 @@ export type DniScriptHashes = {
 export function buildDniCsp(hashes: DniScriptHashes): string {
   return [
     "default-src 'none'",
-    // Two exact digests plus one exact origin. No 'unsafe-inline': with a hash
+    // Two exact digests plus two exact hosts. No 'unsafe-inline' — with a hash
     // present browsers ignore it anyway, and stating it would misdescribe the
-    // policy to anyone reading the header.
-    `script-src '${hashes.bootstrap}' '${hashes.main}' ${DNI_SCRIPT_ORIGIN}`,
+    // policy — and no 'strict-dynamic', which would let anything swap.js loads
+    // go on to load anything else.
+    `script-src '${hashes.bootstrap}' '${hashes.main}' ${DNI_SCRIPT_HOSTS.join(" ")}`,
+    // Hash only, no host: swap.js injects a stylesheet that hides .phoneswap
+    // elements, and blocking it is deliberate. This page uses no such element,
+    // the rule is cosmetic, and the narrower policy is worth more than the
+    // rule is.
     `style-src '${hashes.style}'`,
     "connect-src https://*.callrail.com",
     "img-src data: https://*.callrail.com",
@@ -327,8 +455,11 @@ export async function renderDniPage(
       '">&mdash;</span></p>',
     "<table><tbody>",
     '<tr><td>Placed before swap.js</td><td id="prepared">&mdash;</td></tr>',
-    '<tr><td>Shown now</td><td id="swap-current">&mdash;</td></tr>',
+    '<tr><td>Destination</td><td id="swap-destination">&mdash;</td></tr>',
+    '<tr><td>Visible text</td><td id="swap-text-digits">&mdash;</td></tr>',
+    '<tr><td>tel: link</td><td id="swap-href-digits">&mdash;</td></tr>',
     '<tr><td>Swapped</td><td id="swap-result">watching&hellip;</td></tr>',
+    '<tr><td>Why</td><td id="swap-reason">&mdash;</td></tr>',
     "</tbody></table>",
     '<p><button id="reset" type="button">Use a different number</button></p>',
     "</div>",

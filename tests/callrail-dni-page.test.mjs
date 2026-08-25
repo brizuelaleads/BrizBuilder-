@@ -4,13 +4,19 @@ import test from "node:test";
 
 import {
   DNI_BOOTSTRAP_ID,
+  DNI_CALLRAIL_GLOBALS,
   DNI_DESTINATION_STORAGE_KEY,
   DNI_SCRIPT_ID,
+  DNI_SCRIPT_HOSTS,
   DNI_SCRIPT_ORIGIN,
   DNI_SWAP_LINK_ID,
   DNI_SWAP_TEXT_ID,
   buildDniBootstrapSource,
+  buildDniMainSource,
+  buildDniSwapEvaluatorSource,
+  evaluateDniSwap,
   formatDniNumber,
+  normalizeDniDigits,
   renderDniPage,
 } from "../lib/callrail-dni-page.ts";
 import { DNI_REPORTED_PARAMS } from "../lib/callrail-dni.ts";
@@ -364,22 +370,76 @@ test("no inline execution is permitted by blanket allowance", () => {
   );
 });
 
-test("the external script stays restricted to CallRail's CDN alone", () => {
+/** The host tokens in a directive — everything that is not a quoted keyword. */
+function hostsIn(sourceList) {
+  return sourceList
+    .split(/\s+/)
+    .slice(1)
+    .filter((token) => token && !token.startsWith("'"));
+}
+
+test("script may come from exactly two CallRail hosts and nowhere else", () => {
   const scriptSrc = directive(csp, "script-src");
-  assert.ok(scriptSrc.includes(DNI_SCRIPT_ORIGIN), "the CDN origin is allowed");
-  assert.equal(DNI_SCRIPT_ORIGIN, "https://cdn.callrail.com");
-  // One origin, not a wildcard, and not the page's own origin.
-  assert.equal(/\*/.test(scriptSrc), false, "no wildcard host in script-src");
-  assert.equal(scriptSrc.includes("'self'"), false, "not even self");
-  assert.equal(/http:/.test(scriptSrc), false, "https only");
-  // Wider hosts are allowed to be contacted, but never to execute.
-  assert.match(directive(csp, "connect-src"), /https:\/\/\*\.callrail\.com/);
-  assert.equal(
-    directive(csp, "script-src").includes("*.callrail.com"),
-    false,
-    "connect-src is wider than script-src on purpose",
+  assert.deepEqual(
+    hostsIn(scriptSrc),
+    ["https://cdn.callrail.com", "https://js.callrail.com"],
+    `exactly two hosts\nactual: ${scriptSrc}`,
   );
-  // And the tag really does point at that origin.
+  // swap.js is served from the first and reaches the second through its own
+  // getScript; without that, it loads and then silently does nothing.
+  assert.deepEqual(
+    [...DNI_SCRIPT_HOSTS],
+    ["https://cdn.callrail.com", "https://js.callrail.com"],
+  );
+  assert.equal(DNI_SCRIPT_ORIGIN, "https://cdn.callrail.com");
+});
+
+test("no broader permission is granted to reach those hosts", () => {
+  const scriptSrc = directive(csp, "script-src");
+  // A wildcard would admit every present and future CallRail subdomain.
+  assert.equal(
+    /\*/.test(scriptSrc),
+    false,
+    "no wildcard host in script-src",
+  );
+  assert.equal(scriptSrc.includes("*.callrail.com"), false);
+  // strict-dynamic would let anything swap.js loads go on to load anything.
+  assert.equal(scriptSrc.includes("strict-dynamic"), false);
+  assert.equal(scriptSrc.includes("'self'"), false, "not even self");
+  assert.equal(/\bhttp:/.test(scriptSrc), false, "https only");
+  assert.equal(scriptSrc.includes("'unsafe-inline'"), false);
+  assert.equal(scriptSrc.includes("'unsafe-eval'"), false);
+  assert.equal(scriptSrc.includes("'unsafe-hashes'"), false);
+  assert.equal(scriptSrc.includes("data:"), false);
+  assert.equal(scriptSrc.includes("blob:"), false);
+  // Nowhere else in the policy either.
+  for (const keyword of [
+    "unsafe-inline",
+    "unsafe-eval",
+    "unsafe-hashes",
+    "strict-dynamic",
+  ]) {
+    assert.equal(csp.includes(keyword), false, `${keyword} must not appear`);
+  }
+});
+
+test("connect-src stays wider than script-src, deliberately", () => {
+  // CallRail may talk to its other hosts; none of them may execute.
+  assert.match(directive(csp, "connect-src"), /https:\/\/\*\.callrail\.com/);
+  assert.equal(directive(csp, "script-src").includes("*"), false);
+});
+
+test("the injected CallRail stylesheet stays blocked", () => {
+  // swap.js calls injectCss() to add `.crjs .phoneswap { visibility: hidden }`.
+  // This page has no such element, so the rule is cosmetic and the narrower
+  // policy is worth more. style-src therefore carries a hash and no host.
+  const styleSrc = directive(csp, "style-src");
+  assert.deepEqual(hostsIn(styleSrc), [], "no host may serve style");
+  assert.equal(styleSrc.includes("unsafe-inline"), false);
+  assert.match(styleSrc, /'sha256-[A-Za-z0-9+/=]+'/);
+});
+
+test("the script tag still points at the CDN origin", () => {
   const tag = html.slice(html.indexOf(`id="${DNI_SCRIPT_ID}"`) - 220);
   assert.match(tag, /src="https:\/\/cdn\.callrail\.com\//);
 });
@@ -429,4 +489,165 @@ test("the hash covers the bytes exactly, with no stray whitespace", () => {
   );
   assert.equal(body, body.trim(), "no leading or trailing whitespace");
   assert.equal(body, buildDniBootstrapSource(), "served bytes are the built bytes");
+});
+
+// ------------------------------------------------------------ the swap rule
+
+// The reported failure, exactly: the page announced a swap while the
+// destination and the displayed number were both (254) 382-3256, and CallRail
+// had not even finished loading.
+const REGRESSION = "2543823256";
+
+test("(254) 382-3256 against itself is not a swap", () => {
+  const verdict = evaluateDniSwap({
+    loaded: true,
+    destination: REGRESSION,
+    text: REGRESSION,
+    href: REGRESSION,
+  });
+  assert.equal(verdict.swapped, false);
+  assert.match(verdict.reason, /still the destination/);
+});
+
+test("(254) 382-3256 written any other way is still not a swap", () => {
+  // Formatting alone must never qualify. Each of these is the same number.
+  for (const written of [
+    "(254) 382-3256",
+    "254-382-3256",
+    "254.382.3256",
+    "+1 254 382 3256",
+    "12543823256",
+    " 2543823256 ",
+  ]) {
+    const normalized = normalizeDniDigits(written);
+    assert.equal(normalized, REGRESSION, written);
+    const verdict = evaluateDniSwap({
+      loaded: true,
+      destination: REGRESSION,
+      text: normalized,
+      href: normalized,
+    });
+    assert.equal(verdict.swapped, false, written);
+  }
+});
+
+test("a swap is refused while CallRail has not loaded", () => {
+  // The reported run sat at "checking..." and still claimed success.
+  const verdict = evaluateDniSwap({
+    loaded: false,
+    destination: REGRESSION,
+    text: "8005550111",
+    href: "8005550111",
+  });
+  assert.equal(verdict.swapped, false);
+  assert.match(verdict.reason, /has not loaded/);
+});
+
+test("both the visible text and the tel: link must carry a number", () => {
+  for (const state of [
+    { text: "", href: "8005550111" },
+    { text: "8005550111", href: "" },
+    { text: "", href: "" },
+  ]) {
+    const verdict = evaluateDniSwap({
+      loaded: true,
+      destination: REGRESSION,
+      ...state,
+    });
+    assert.equal(verdict.swapped, false, JSON.stringify(state));
+    assert.match(verdict.reason, /no usable number/);
+  }
+});
+
+test("the visible text and the tel: link must agree", () => {
+  // Half a rewrite is not a swap.
+  const verdict = evaluateDniSwap({
+    loaded: true,
+    destination: REGRESSION,
+    text: "8005550111",
+    href: REGRESSION,
+  });
+  assert.equal(verdict.swapped, false);
+  assert.match(verdict.reason, /disagree/);
+});
+
+test("with no destination there is nothing to compare against", () => {
+  const verdict = evaluateDniSwap({
+    loaded: true,
+    destination: "",
+    text: "8005550111",
+    href: "8005550111",
+  });
+  assert.equal(verdict.swapped, false);
+  assert.match(verdict.reason, /no destination/);
+});
+
+test("a genuine swap is reported, and only then", () => {
+  const verdict = evaluateDniSwap({
+    loaded: true,
+    destination: REGRESSION,
+    text: "8005550111",
+    href: "8005550111",
+  });
+  assert.equal(verdict.swapped, true);
+  assert.match(verdict.reason, /replaced/);
+});
+
+test("normalization collapses formatting and refuses non-numbers", () => {
+  assert.equal(normalizeDniDigits("(254) 382-3256"), REGRESSION);
+  assert.equal(normalizeDniDigits("+1 254 382 3256"), REGRESSION);
+  assert.equal(normalizeDniDigits("12543823256"), REGRESSION);
+  for (const bad of ["", "254382", "abc", null, undefined, 2543823256, "1234567890123"]) {
+    assert.equal(normalizeDniDigits(bad), "", String(bad));
+  }
+});
+
+test("the page's rule and the exported rule are the same rule", () => {
+  // Two implementations of one decision, checked against each other across the
+  // whole matrix rather than trusted to stay in step.
+  const inline = new Function(
+    `${buildDniSwapEvaluatorSource()} return evaluateSwap;`,
+  )();
+  const values = ["", REGRESSION, "8005550111"];
+  for (const loaded of [true, false]) {
+    for (const destination of values) {
+      for (const text of values) {
+        for (const href of values) {
+          const state = { loaded, destination, text, href };
+          assert.deepEqual(
+            inline(state),
+            evaluateDniSwap(state),
+            JSON.stringify(state),
+          );
+        }
+      }
+    }
+  }
+});
+
+test("the page decides loaded by looking for CallRail, not by a load event", () => {
+  // swap.js is a classic script placed before this check, so its load event has
+  // already fired by the time any listener could attach — which is why the
+  // status previously never left "checking...".
+  const main = buildDniMainSource(["fbclid"]);
+  assert.deepEqual([...DNI_CALLRAIL_GLOBALS], ["CallTrk", "CallTrkSwap"]);
+  assert.match(main, /function callrailLoaded\(\)/);
+  assert.match(main, /typeof window\[GLOBALS\[i\]\]!=='undefined'/);
+  assert.equal(
+    /addEventListener\("load"/.test(main),
+    false,
+    "no reliance on a load event that has already fired",
+  );
+  // And the status is driven from that check on every tick.
+  assert.match(main, /status\.textContent=loaded\?"loaded"/);
+});
+
+test("the page reports why, not just whether", () => {
+  const main = buildDniMainSource(["fbclid"]);
+  assert.match(main, /reason\.textContent=verdict\.reason/);
+  // The normalized values it compared are shown, so a disputed verdict can be
+  // checked by eye rather than argued about.
+  for (const id of ["swap-destination", "swap-text-digits", "swap-href-digits"]) {
+    assert.ok(html.includes(`id="${id}"`), `${id} is on the page`);
+  }
 });
