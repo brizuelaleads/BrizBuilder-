@@ -18,6 +18,8 @@ const migrationSource = read(
   "supabase/migrations/20260819000000_callrail_connection.sql",
 );
 const connectionsUi = read("app/crm/WorkflowViews.tsx");
+const dniRoute = read("app/api/callrail/dni-test/route.ts");
+const dniSource = read("lib/callrail-dni.ts");
 
 const block = (source, needle) => {
   const start = source.indexOf(needle);
@@ -476,6 +478,205 @@ test("one CallRail company can serve only one client", () => {
   // Reconnecting must not silently re-claim a company someone else now holds.
   const connect = block(crmSource, 'if (action === "connect_callrail")');
   assert.match(connect, /callRailCompanyConflict\([\s\S]*?keptCompany = null;/);
+});
+
+test("the DNI test page cannot create a lead or report a conversion", () => {
+  // Nothing on this page may capture. The guarantee is structural: there is no
+  // code here that could, and these assertions keep it that way.
+  for (const forbidden of [
+    "dispatchMetaConversion",
+    "meta-conversions",
+    "decideMetaEligibility",
+    "normalizeAttribution",
+    "from(\"leads\")",
+    "from(\"contacts\")",
+    ".insert(",
+    ".upsert(",
+    ".update(",
+    ".delete(",
+  ]) {
+    assert.equal(
+      dniRoute.includes(forbidden),
+      false,
+      `the DNI page must not contain ${forbidden}`,
+    );
+  }
+  // No outbound path from the rendered page either.
+  for (const forbidden of ["fetch(", "XMLHttpRequest", "sendBeacon", "<form"]) {
+    assert.equal(
+      dniRoute.includes(forbidden),
+      false,
+      `the DNI page must not contain ${forbidden}`,
+    );
+  }
+  // Only GET is served.
+  assert.match(dniRoute, /export async function GET\(/);
+  assert.equal(/export async function (POST|PUT|PATCH|DELETE)\(/.test(dniRoute), false);
+});
+
+test("the DNI test page reads only its token from the query string", () => {
+  // Click identifiers arrive in the address bar. The server must never parse
+  // them, so exactly one parameter may ever be read here.
+  const reads = [...dniRoute.matchAll(/searchParams\.get\(([^)]*)\)/g)].map(
+    (match) => match[1].trim(),
+  );
+  assert.deepEqual(
+    reads,
+    ["DNI_EXCHANGE_PARAM"],
+    "only the exchange token is read",
+  );
+  // And nothing is written to a log.
+  assert.equal(/console\.(log|info|warn|error|debug)/.test(dniRoute), false);
+});
+
+test("the DNI test page refuses indexing and locks down what may run", () => {
+  // The header values live in the shared constant every response spreads.
+  const dniHeaders = read("lib/callrail-dni.ts");
+  assert.match(
+    dniHeaders,
+    /"X-Robots-Tag": "noindex, nofollow, noarchive, nosnippet"/,
+  );
+  assert.match(dniHeaders, /"Referrer-Policy": "no-referrer"/);
+  assert.match(dniRoute, /const BASE_HEADERS = DNI_NO_STORE_HEADERS;/);
+  assert.match(dniRoute, /<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">/);
+  // Only CallRail may execute or be contacted from a page that deliberately
+  // carries click identifiers in its address bar.
+  assert.match(dniRoute, /default-src 'none'/);
+  assert.match(dniRoute, /script-src 'unsafe-inline' https:\/\/cdn\.callrail\.com/);
+  assert.match(dniRoute, /form-action 'none'/);
+  assert.match(dniRoute, /frame-ancestors 'none'/);
+});
+
+test("the credential never survives in a URL", () => {
+  // The exchange trades the token for a cookie and redirects to a URL without
+  // it, so it reaches neither the address bar, the history entry, nor a
+  // referrer.
+  assert.match(dniRoute, /status: 303/);
+  assert.match(dniRoute, /Location: cleanDniRedirect\(request\.url\)/);
+  assert.match(dniRoute, /"Set-Cookie": buildDniCookie\(/);
+  // Referrer-Policy rides on every response, not only the page: it is part of
+  // the shared header set the route spreads everywhere.
+  const dniHeaders2 = read("lib/callrail-dni.ts");
+  assert.match(dniHeaders2, /"Referrer-Policy": "no-referrer"/);
+  assert.match(dniRoute, /\.\.\.BASE_HEADERS/);
+  assert.match(dniRoute, /<meta name="referrer" content="no-referrer">/);
+  // The rendered page is reached by cookie, never by token.
+  assert.match(dniRoute, /verifyDniCredential\(readDniCookie\(/);
+  // HttpOnly is what keeps it away from CallRail's script on this very page.
+  const dni = read("lib/callrail-dni.ts");
+  assert.match(dni, /"HttpOnly"/);
+  assert.match(dni, /"Secure"/);
+  assert.match(dni, /"SameSite=Strict"/);
+});
+
+test("same-origin fetches stay blocked alongside every other destination", () => {
+  // 'self' must appear in no directive: a page carrying click identifiers must
+  // not be able to post them back to us either.
+  const start = dniRoute.indexOf("Content-Security-Policy");
+  const csp = dniRoute.slice(start, dniRoute.indexOf("join", start));
+  assert.equal(/'self'/.test(csp), false, "no directive may allow self");
+  assert.match(csp, /default-src 'none'/);
+  assert.match(csp, /connect-src https:\/\/\*\.callrail\.com/);
+  assert.match(csp, /form-action 'none'/);
+});
+
+test("the DNI test page is gated by a signed, short-lived credential", () => {
+  assert.match(dniRoute, /verifyDniCredential\(/);
+  // A forged token, an expired one and an unknown client are all one answer.
+  assert.match(dniRoute, /if \(!claim\) return notFound\(\)/);
+  const notFoundBody = block(dniRoute, "function notFound()");
+  assert.match(notFoundBody, /status: 404/);
+
+  const mint = block(crmSource, 'if (action === "create_callrail_dni_test_link")');
+  assert.ok(mint, "the mint action exists");
+  assert.match(mint, /DNI_EXCHANGE_TTL_MS/);
+  assert.match(mint, /requirePermission\(context, "call_tracking\.manage"\)/);
+  assert.match(mint, /await requireClient\(context, clientId\)/);
+  assert.match(mint, /config\.setupStatus !== "ready"/);
+  assert.match(mint, /await audit\(/);
+  // Auditing the token itself would outlive the fifteen minutes it is worth.
+  assert.equal(/metadata[\s\S]{0,80}token/.test(mint), false);
+});
+
+test("a script URL is verified as CallRail's at the point it is embedded", () => {
+  // Stored data, not a constant, by the time it reaches a script tag. The
+  // check lives in the loader, so every path that obtains a script URL passes
+  // through it — there is no way to reach renderPage with an unchecked value.
+  assert.match(dniRoute, /isCallRailScriptUrl\(config\.scriptUrl\)/);
+  const loader = block(dniRoute, "async function loadConnection(");
+  assert.ok(loader, "the connection loader exists");
+  assert.match(loader, /isCallRailScriptUrl\(config\.scriptUrl\)/);
+  assert.match(loader, /return null/);
+  // Both entry paths refuse before doing anything with an unusable connection.
+  assert.match(dniRoute, /await loadConnection\(claim\.organizationId, claim\.clientId\)/);
+  assert.match(dniRoute, /if \(!connection\) return notFound\(\)/);
+  const guardAt = dniRoute.indexOf("isCallRailScriptUrl(config.scriptUrl)");
+  const renderAt = dniRoute.indexOf("renderPage(connection.scriptUrl");
+  assert.ok(guardAt < renderAt, "validated before rendering");
+  // Exact host match, so suffix confusion cannot pass.
+  assert.match(dniSource, /parsed\.hostname === CALLRAIL_SCRIPT_HOST/);
+  // Everything interpolated into the page is escaped.
+  assert.match(dniRoute, /function escapeHtml\(/);
+  assert.match(dniRoute, /escapeHtml\(companyName\)/);
+});
+
+test("the install snippet is generated from the connected company's own script", () => {
+  const ui = read("app/crm/WebsitesView.tsx");
+  assert.match(ui, /buildDniSnippet\(connection\.scriptUrl as string\)/);
+  assert.match(ui, /isCallRailScriptUrl\(connection\.scriptUrl\)/);
+  // Only a finished connection offers install instructions.
+  assert.match(ui, /connection\.setupStatus !== "ready"/);
+  // script_url has to survive to the UI for any of this to work.
+  assert.match(crmSource, /scriptUrl: company\?\.scriptUrl \?\? null/);
+  assert.match(crmSource, /scriptUrl: nullable\(publicConfig\.scriptUrl\)/);
+});
+
+test("every DNI response is uncacheable, including the refusals", () => {
+  // One header set, spread into every response the route can produce, so a new
+  // response cannot be added without it.
+  assert.match(dniRoute, /const BASE_HEADERS = DNI_NO_STORE_HEADERS;/);
+  const responses = dniRoute.split("new Response(").length - 1;
+  const spreads = dniRoute.split("...BASE_HEADERS").length - 1;
+  assert.equal(
+    spreads,
+    responses,
+    "every Response carries the no-store headers",
+  );
+  assert.ok(responses >= 3, "exchange, redirect and page are all covered");
+  // And the values themselves are asserted in the DNI unit tests.
+  const dni = read("lib/callrail-dni.ts");
+  assert.match(
+    dni,
+    /"Cache-Control": "private, no-store, no-cache, max-age=0, must-revalidate"/,
+  );
+  assert.match(dni, /Pragma: "no-cache"/);
+});
+
+test("the credential is bound to a tenant and read back scoped to it", () => {
+  const dni = read("lib/callrail-dni.ts");
+  // Both halves travel inside the signature.
+  assert.match(dni, /export type DniClaim = \{\s*\n\s*organizationId: string;\s*\n\s*clientId: string;/);
+  // And the row lookup is constrained by both.
+  const loader = block(dniRoute, "async function loadConnection(");
+  assert.ok(loader, "the connection loader exists");
+  assert.match(loader, /\.eq\("organization_id", organizationId\)/);
+  assert.match(loader, /\.eq\("client_id", clientId\)/);
+  // The mint action binds the organization the operator was authorized for.
+  const mint = block(crmSource, 'if (action === "create_callrail_dni_test_link")');
+  assert.match(mint, /signDniCredential\(\s*\n?\s*context\.organizationId,\s*\n?\s*clientId,/);
+});
+
+test("expiry is verified server-side rather than trusted to the browser", () => {
+  const dni = read("lib/callrail-dni.ts");
+  const verify = block(dni, "export async function verifyDniClaim(");
+  assert.ok(verify, "the verifier exists");
+  // The deadline is checked after the signature, against the signed value.
+  assert.match(verify, /isDniClaimExpired\(claim, now\)/);
+  const signatureAt = verify.indexOf("crypto.subtle.verify");
+  const expiryAt = verify.indexOf("isDniClaimExpired");
+  assert.ok(signatureAt < expiryAt, "signature first, then the deadline");
+  // Max-Age is a courtesy to the browser, not the control.
+  assert.match(dni, /Max-Age=\$\{Math\.max\(0, Math\.floor\(maxAgeSeconds\)\)\}/);
 });
 
 test("the permission exists in both permission files", () => {

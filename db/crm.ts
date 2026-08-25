@@ -382,6 +382,10 @@ export type CrmProviderConnection = {
   companyName: string | null;
   dniActive: boolean | null;
   callScribeEnabled: boolean | null;
+  // CallRail's own swap-script URL for the selected company. Public by nature —
+  // it is loaded by every visitor's browser — and the source the install
+  // snippet is generated from.
+  scriptUrl: string | null;
   chargesEnabled: boolean | null;
   payoutsEnabled: boolean | null;
   detailsSubmitted: boolean | null;

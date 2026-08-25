@@ -1268,6 +1268,7 @@ export function CrmApp({
             websites={filteredWebsites}
             clients={data.clients}
             leads={filteredLeads}
+            connections={data.providerConnections}
             mutate={mutate}
             canManage={data.viewer.permissions.includes("websites.manage")}
           />

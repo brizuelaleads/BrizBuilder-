@@ -38,6 +38,7 @@ import {
   getCallRailRuntimeStatus,
   listCallRailAccounts,
   listCallRailCompanies,
+  signDniCredential,
   type CallRailAccount,
   type CallRailCompany,
 } from "../lib/callrail";
@@ -46,6 +47,12 @@ import {
   loadCallRailApiAccess,
   purgeAbandonedCallRailSetup,
 } from "../lib/callrail-store";
+import {
+  DNI_EXCHANGE_PARAM,
+  DNI_EXCHANGE_TTL_MS,
+  isCallRailScriptUrl,
+} from "../lib/callrail-dni";
+import { buildAppLink } from "../lib/system-tokens";
 import {
   encryptMetaSecret,
   getMetaConversionsRuntimeStatus,
@@ -406,6 +413,9 @@ function callRailPublicConfig(
     companyName: company?.name ?? null,
     companyTimeZone: company?.timeZone ?? null,
     dniActive: company?.dniActive ?? null,
+    // Stored so the install snippet can be generated without another API call,
+    // and so it survives for the Websites module after setup is finished.
+    scriptUrl: company?.scriptUrl ?? null,
     // CallScribe being switched on for a company is not the same claim as the
     // subscription permitting transcript retrieval through the API. The field
     // name says what the flag actually proves so no consumer can overstate it.
@@ -3140,6 +3150,7 @@ function mapProviderConnection(row: AnyRecord): CrmProviderConnection {
       typeof publicConfig.callScribeEnabled === "boolean"
         ? publicConfig.callScribeEnabled
         : null,
+    scriptUrl: nullable(publicConfig.scriptUrl),
     chargesEnabled:
       typeof publicConfig.chargesEnabled === "boolean"
         ? publicConfig.chargesEnabled
@@ -5081,6 +5092,56 @@ export async function executeSupabaseCrmAction(
       companies: page.companies,
       companiesTruncated: page.truncated,
       selectedCompanyId: access.companyId,
+    };
+  }
+
+  if (action === "create_callrail_dni_test_link") {
+    requirePermission(context, "call_tracking.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const connection = await assertOk(
+      supabase()
+        .from("provider_connections")
+        .select("public_config")
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", "callrail")
+        .maybeSingle(),
+    );
+    const config =
+      connection?.public_config && typeof connection.public_config === "object"
+        ? (connection.public_config as Record<string, unknown>)
+        : {};
+    if (config.setupStatus !== "ready")
+      throw new Error(
+        "Finish choosing a CallRail account and company before testing the tracking script.",
+      );
+    if (!isCallRailScriptUrl(config.scriptUrl))
+      throw new Error(
+        "CallRail has not returned a tracking script for this company yet. Run the connection check, then try again.",
+      );
+
+    // The link is the credential: minting one is an access grant, so it is
+    // recorded. The token itself is never audited — writing it down would
+    // outlive the fifteen minutes it is supposed to be worth.
+    const token = await signDniCredential(
+      context.organizationId,
+      clientId,
+      DNI_EXCHANGE_TTL_MS,
+    );
+    await audit(
+      context,
+      "provider.dni_test_link_created",
+      "provider_connection",
+      null,
+      { provider: "callrail", expiresInMinutes: DNI_EXCHANGE_TTL_MS / 60000 },
+      clientId,
+    );
+    // The link is spent on first use: opening it trades the token for a cookie
+    // and redirects to a URL that no longer carries it.
+    return {
+      url: buildAppLink("/api/callrail/dni-test", { [DNI_EXCHANGE_PARAM]: token }),
+      expiresInMinutes: DNI_EXCHANGE_TTL_MS / 60000,
     };
   }
 

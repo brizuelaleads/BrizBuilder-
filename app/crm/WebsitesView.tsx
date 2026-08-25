@@ -1,7 +1,13 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
-import type { CrmClient, CrmLead, CrmWebsite } from "../../db/crm";
+import type {
+  CrmClient,
+  CrmLead,
+  CrmProviderConnection,
+  CrmWebsite,
+} from "../../db/crm";
+import { buildDniSnippet, isCallRailScriptUrl } from "../../lib/callrail-dni";
 import { Badge, EmptyState, Field, getFormValue, Modal, shortDate } from "./ui";
 
 type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
@@ -105,7 +111,8 @@ function WebsiteModal({ clients, website, mutate, onClose }: { clients: CrmClien
   </Modal>;
 }
 
-export function WebsitesView({ websites, clients, leads, mutate, canManage }: { websites: CrmWebsite[]; clients: CrmClient[]; leads: CrmLead[]; mutate: Mutate; canManage: boolean }) {
+export function WebsitesView({ websites, clients, leads, connections, mutate, canManage }: { websites: CrmWebsite[]; clients: CrmClient[]; leads: CrmLead[]; connections: CrmProviderConnection[]; mutate: Mutate; canManage: boolean }) {
+  const [dniLink, setDniLink] = useState("");
   const [editing, setEditing] = useState<CrmWebsite | null | undefined>(undefined);
   const [selectedId, setSelectedId] = useState<string | null>(websites[0]?.id ?? null);
   const [copied, setCopied] = useState("");
@@ -169,6 +176,17 @@ export function WebsitesView({ websites, clients, leads, mutate, canManage }: { 
           </div>
           <div className="crm-owner-handoff"><div><strong>Message for your website person</strong><p>Everything they need—including the special connection URL—is already included.</p></div><button onClick={() => void copyText(handoffMessage(selected), () => markCopied("message"))}>{copied === "message" ? "Message copied!" : "Copy Message to Send"}</button></div>
           <div className="crm-help-note"><span>?</span><p><strong>Not sure who manages the website?</strong> Ask the person or company you pay for website updates, hosting, or online marketing. Send them the copied message.</p></div>
+          <CallRailDniSetup
+            connection={connections.find((item) => item.clientId === selected.clientId && item.provider === "callrail") ?? null}
+            canManage={canManage}
+            copied={copied}
+            onCopy={(text, label) => void copyText(text, () => markCopied(label))}
+            dniLink={dniLink}
+            onTestLink={async () => {
+              const result = (await mutate({ action: "create_callrail_dni_test_link", clientId: selected.clientId }, "Test link ready — it expires shortly.")) as { url?: string } | null;
+              setDniLink(result?.url ?? "");
+            }}
+          />
           <details><summary>For website professionals only</summary><p>Lead-capture URL:</p><div className="crm-copy-row"><code>{endpointFor(selected.id)}</code><button onClick={() => void copyText(endpointFor(selected.id), () => markCopied("url"))}>{copied === "url" ? "Copied" : "Copy URL"}</button></div><p>Send a JSON POST request with at least a phone number or email. Supported fields: firstName, lastName, name, phone, email, service, message, address, city, state, zip, campaign, and consent. For paid traffic also send pageUrl, fbclid and any utm_ values from the landing page URL, plus eventId if the page runs a Meta Pixel.</p><pre>{captureSnippet(selected.id)}</pre><button className="crm-button-secondary" onClick={() => void copyText(captureSnippet(selected.id), () => markCopied("code"))}>{copied === "code" ? "Code copied" : "Copy example code"}</button></details>
         </section>
         <footer><span>Connected {shortDate(selected.createdAt)}</span>{canManage ? <div className="crm-website-footer-actions">{selected.status === "connected" ? <button onClick={() => void disconnect(selected)}>Disconnect</button> : null}<button className="danger" onClick={() => void remove(selected)}>Delete website</button></div> : null}</footer>
@@ -177,4 +195,85 @@ export function WebsitesView({ websites, clients, leads, mutate, canManage }: { 
 
     {editing !== undefined ? <WebsiteModal clients={clients} website={editing} mutate={mutate} onClose={() => setEditing(undefined)} /> : null}
   </div>;
+}
+
+/**
+ * Call tracking install instructions for a website whose client has CallRail
+ * connected.
+ *
+ * The snippet is generated from the script URL CallRail returned for the
+ * chosen company, so nobody has to go and copy it out of the CallRail
+ * dashboard and nobody can paste the wrong company's script by mistake.
+ */
+function CallRailDniSetup({
+  connection,
+  canManage,
+  copied,
+  onCopy,
+  dniLink,
+  onTestLink,
+}: {
+  connection: CrmProviderConnection | null;
+  canManage: boolean;
+  copied: string;
+  onCopy: (text: string, label: string) => void;
+  dniLink: string;
+  onTestLink: () => void | Promise<void>;
+}) {
+  if (!connection || connection.setupStatus !== "ready") return null;
+  if (!isCallRailScriptUrl(connection.scriptUrl)) return null;
+  const snippet = buildDniSnippet(connection.scriptUrl as string);
+  return (
+    <details className="crm-callrail-dni">
+      <summary>Call tracking (CallRail)</summary>
+      <p>
+        This snippet swaps the phone number on the site for a tracking number,
+        so a call can be matched to the ad, campaign or search that produced it.
+        It belongs just before the closing &lt;/body&gt; tag on every page.
+      </p>
+      <div className="crm-copy-row">
+        <code>{snippet}</code>
+        <button onClick={() => onCopy(snippet, "dni")}>
+          {copied === "dni" ? "Copied" : "Copy snippet"}
+        </button>
+      </div>
+      <p>
+        Numbers on the page are replaced only for visits CallRail can attribute.
+        A visitor CallRail has no tracker for keeps seeing the original number,
+        which is the intended behaviour rather than a fault.
+      </p>
+      <p>
+        Installed on: <strong>{connection.companyName ?? "the connected company"}</strong>
+        {" · "}
+        Script seen on the site:{" "}
+        <strong>
+          {connection.dniActive === true
+            ? "yes"
+            : connection.dniActive === false
+              ? "not yet"
+              : "never"}
+        </strong>
+      </p>
+      {canManage ? (
+        <>
+          <p>
+            Before touching the live site, check the swap on a private test page.
+            The link below needs no login, expires in fifteen minutes, is not
+            indexed, and cannot create a lead or a conversion.
+          </p>
+          <button className="crm-button-secondary" onClick={() => void onTestLink()}>
+            Create a test-page link
+          </button>
+          {dniLink ? (
+            <div className="crm-copy-row">
+              <code>{dniLink}</code>
+              <button onClick={() => onCopy(dniLink, "dnilink")}>
+                {copied === "dnilink" ? "Copied" : "Copy link"}
+              </button>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+    </details>
+  );
 }

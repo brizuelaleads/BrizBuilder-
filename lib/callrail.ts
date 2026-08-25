@@ -2,6 +2,13 @@ import {
   assertCallRailAccountId,
   assertCallRailCompanyId,
 } from "./callrail-ids";
+import {
+  DNI_EXCHANGE_TTL_MS,
+  deriveDniSigningKey,
+  signDniClaim,
+  verifyDniClaim,
+  type DniClaim,
+} from "./callrail-dni";
 import { readRuntimeValue } from "./supabase/env";
 
 // Server-side CallRail API client. The customer's API key is decrypted only for
@@ -385,4 +392,35 @@ export async function getCallRailCompany(
   );
   const company = mapCompany(body);
   return { ...company, id: company.id || safeCompanyId };
+}
+
+/**
+ * Diagnostic-page credentials.
+ *
+ * The signing, the tenant binding and the expiry all live in callrail-dni.ts,
+ * which depends on nothing but WebCrypto so those rules can be tested directly
+ * against a fixed key. This file's only job is supplying the runtime secret.
+ */
+async function dniKey(): Promise<CryptoKey> {
+  return deriveDniSigningKey(keyBytes("CALLRAIL_CREDENTIAL_ENCRYPTION_KEY"));
+}
+
+export async function signDniCredential(
+  organizationId: string,
+  clientId: string,
+  ttlMs: number = DNI_EXCHANGE_TTL_MS,
+  now: number = Date.now(),
+): Promise<string> {
+  return signDniClaim(await dniKey(), {
+    organizationId,
+    clientId,
+    expiresAt: now + ttlMs,
+  });
+}
+
+export async function verifyDniCredential(
+  token: unknown,
+  now: number = Date.now(),
+): Promise<DniClaim | null> {
+  return verifyDniClaim(await dniKey(), token, now);
 }
