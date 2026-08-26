@@ -226,36 +226,76 @@ function bucketSeries<T>(
   return buckets;
 }
 
-function sparklinePoints(values: number[]) {
-  const width = 96;
-  const height = 32;
+function sparklineGeometry(values: number[]) {
+  const width = 120;
+  const height = 48;
+  const horizontalPadding = 2;
+  const verticalPadding = 6;
   const max = Math.max(...values, 1);
   const min = Math.min(...values, 0);
   const range = Math.max(1, max - min);
-  return values
-    .map((value, index) => {
-      const x = (index / Math.max(1, values.length - 1)) * width;
-      const y = height - 5 - ((value - min) / range) * 22;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
+  const points = values.map((value, index) => ({
+    x:
+      horizontalPadding +
+      (index / Math.max(1, values.length - 1)) *
+        (width - horizontalPadding * 2),
+    y:
+      height -
+      verticalPadding -
+      ((value - min) / range) * (height - verticalPadding * 2),
+  }));
+
+  if (!points.length) {
+    return {
+      line: `M ${horizontalPadding} ${height - verticalPadding} L ${width - horizontalPadding} ${height - verticalPadding}`,
+      area: `M ${horizontalPadding} ${height - verticalPadding} L ${width - horizontalPadding} ${height - verticalPadding} L ${width - horizontalPadding} ${height} L ${horizontalPadding} ${height} Z`,
+    };
+  }
+
+  const line = points.slice(1).reduce((path, point, index) => {
+    const previous = points[index];
+    const controlX = (previous.x + point.x) / 2;
+    return `${path} C ${controlX.toFixed(1)} ${previous.y.toFixed(1)}, ${controlX.toFixed(1)} ${point.y.toFixed(1)}, ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
+  }, `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`);
+  const first = points[0];
+  const last = points.at(-1) ?? first;
+
+  return {
+    line,
+    area: `${line} L ${last.x.toFixed(1)} ${height} L ${first.x.toFixed(1)} ${height} Z`,
+  };
 }
 
 function DashboardSparkline({
   values,
   tone,
+  id,
 }: {
   values: number[];
   tone: KpiTone;
+  id: string;
 }) {
+  const geometry = sparklineGeometry(values);
+  const gradientId = `crm-dashboard-area-${id.replace(/[^a-z0-9_-]/gi, "-").toLowerCase()}`;
   return (
     <svg
       className={`crm-dashboard-sparkline is-${tone}`}
-      viewBox="0 0 96 32"
+      viewBox="0 0 120 48"
       preserveAspectRatio="none"
       aria-hidden="true"
     >
-      <polyline points={sparklinePoints(values)} />
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="currentColor" stopOpacity="0.3" />
+          <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path
+        className="crm-dashboard-sparkline-area"
+        d={geometry.area}
+        fill={`url(#${gradientId})`}
+      />
+      <path className="crm-dashboard-sparkline-line" d={geometry.line} />
     </svg>
   );
 }
@@ -542,13 +582,13 @@ export function DashboardView({
         roas == null
           ? [0, 0, 0, 0, 0, 0, 0, 0]
           : [
-              roas * 0.72,
-              roas * 0.8,
-              roas * 0.76,
-              roas * 0.9,
-              roas,
-              roas * 0.94,
-              roas * 1.05,
+              roas * 0.64,
+              roas * 0.7,
+              roas * 0.74,
+              roas * 0.82,
+              roas * 0.86,
+              roas * 0.92,
+              roas * 0.96,
               roas,
             ],
     },
@@ -610,7 +650,7 @@ export function DashboardView({
               </div>
               <strong>{value}</strong>
               <small>{support}</small>
-              <DashboardSparkline values={sparkline} tone={tone} />
+              <DashboardSparkline values={sparkline} tone={tone} id={label} />
             </article>
           ),
         )}
@@ -650,7 +690,11 @@ export function DashboardView({
                   : "No appointments today"
                 : "No appointments booked"}
             </small>
-            <DashboardSparkline values={appointmentTrend} tone="green" />
+            <DashboardSparkline
+              values={appointmentTrend}
+              tone="green"
+              id="appointments-booked"
+            />
           </article>
           <article className="crm-dashboard-marketing-card is-sources">
             <span>Lead Sources</span>
