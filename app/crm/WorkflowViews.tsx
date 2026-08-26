@@ -1,6 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  Database,
+  Funnel,
+  History,
+  KeyRound,
+  LayoutDashboard,
+  MessageSquareText,
+  PhoneCall,
+  Plug,
+  Search,
+  Settings,
+  Sparkles,
+} from "lucide-react";
 import type {
   CrmAiAuthorization,
   CrmClient,
@@ -37,6 +50,22 @@ const CALLRAIL_EVENT_LABELS: Record<string, string> = {
 const callRailEventLabel = (event: string) =>
   CALLRAIL_EVENT_LABELS[event] ?? event;
 
+type IntegrationStatus = "connected" | "setup" | "available";
+
+function integrationSyncLabel(value: string | null | undefined) {
+  if (!value) return "—";
+  const normalized = value.includes("T") ? value : `${value.replace(" ", "T")}Z`;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return "—";
+  const time = date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return date.toDateString() === new Date().toDateString()
+    ? `Today at ${time}`
+    : `${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })} at ${time}`;
+}
+
 function clientChoice(
   clients: CrmClient[],
   selectedClientId: string,
@@ -55,6 +84,7 @@ export function ConnectionsView({
   mutate,
   canReadSharedBilling,
   onOpenAiConnector,
+  onViewCalls,
 }: {
   clients: CrmClient[];
   connections: CrmProviderConnection[];
@@ -63,8 +93,16 @@ export function ConnectionsView({
   mutate: Mutate;
   canReadSharedBilling: boolean;
   onOpenAiConnector: (clientId: string) => void;
+  onViewCalls: () => void;
 }) {
   const [localClient, setLocalClient] = useState(clients[0]?.id ?? "");
+  const [integrationQuery, setIntegrationQuery] = useState("");
+  const [integrationFilter, setIntegrationFilter] =
+    useState<"all" | IntegrationStatus>("all");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [expandedIntegration, setExpandedIntegration] = useState<
+    "twilio" | "callrail" | "meta" | null
+  >(null);
   const clientId = clientChoice(clients, selectedClientId, localClient);
   const client = clients.find((item) => item.id === clientId);
   const connection = connections.find(
@@ -83,6 +121,7 @@ export function ConnectionsView({
   );
   const metaLinked = Boolean(metaConnection?.isLinked);
   const metaLive = metaConnection?.mode === "live";
+  const metaModeLabel = metaLive ? "Live" : "Test mode";
   const [metaDatasetId, setMetaDatasetId] = useState("");
   const [metaAccessToken, setMetaAccessToken] = useState("");
   const [metaTestEventCode, setMetaTestEventCode] = useState("");
@@ -352,32 +391,165 @@ export function ConnectionsView({
     displayedBalance != null &&
     displayedBalance < 10;
 
+  useEffect(() => {
+    const focusSearch = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        document
+          .querySelector<HTMLInputElement>("#crm-integrations-search")
+          ?.focus();
+      }
+    };
+    window.addEventListener("keydown", focusSearch);
+    return () => window.removeEventListener("keydown", focusSearch);
+  }, []);
+
+  const twilioStatus: IntegrationStatus = isLinked ? "connected" : "setup";
+  const aiStatus: IntegrationStatus = aiConnected ? "connected" : "setup";
+  const callRailStatus: IntegrationStatus =
+    callRailStored &&
+    callRailSetup === "ready" &&
+    callRailConnection?.status !== "attention"
+      ? "connected"
+      : "setup";
+  const metaStatus: IntegrationStatus = metaLinked ? "connected" : "available";
+  const integrationStatuses = [
+    twilioStatus,
+    aiStatus,
+    callRailStatus,
+    metaStatus,
+  ];
+  const statusCount = (status: IntegrationStatus) =>
+    integrationStatuses.filter((item) => item === status).length;
+  const integrationMatches = (
+    name: string,
+    description: string,
+    status: IntegrationStatus,
+  ) => {
+    const needle = integrationQuery.trim().toLowerCase();
+    return (
+      (integrationFilter === "all" || integrationFilter === status) &&
+      (!needle || `${name} ${description}`.toLowerCase().includes(needle))
+    );
+  };
+  const twilioVisible = integrationMatches(
+    "Twilio",
+    "Business phone system calls and two-way texting",
+    twilioStatus,
+  );
+  const aiVisible = integrationMatches(
+    "AI Connector",
+    "Let your AI account safely work with this CRM",
+    aiStatus,
+  );
+  const callRailVisible = integrationMatches(
+    "CallRail",
+    "Track calls and analyze phone conversations",
+    callRailStatus,
+  );
+  const metaVisible = integrationMatches(
+    "Meta Conversions",
+    "Report web and ads conversions and analyze customers",
+    metaStatus,
+  );
+  const visibleIntegrationCount = [
+    twilioVisible,
+    aiVisible,
+    callRailVisible,
+    metaVisible,
+  ].filter(Boolean).length;
+  const showAllIntegrations = () => {
+    setIntegrationQuery("");
+    setIntegrationFilter("all");
+    setFiltersOpen(false);
+    window.setTimeout(
+      () =>
+        document
+          .querySelector("#crm-your-integrations")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      0,
+    );
+  };
+
   return (
     <div className="crm-view crm-connections-view">
-      <section className="crm-page-heading">
-        <div>
-          <p>EXTERNAL INTEGRATIONS</p>
-          <h2>Connections</h2>
-          <span>
-            Connect and monitor every outside service used by this business in
-            one place.
-          </span>
+      <section className="crm-integrations-header">
+        <div className="crm-integrations-title">
+          <h2>Integrations</h2>
+          <p>Connect and manage the tools that power your business.</p>
+          {selectedClientId === "all" ? (
+            <label className="crm-integrations-client-picker">
+              <span>Business</span>
+              <select
+                value={clientId}
+                onChange={(event) => setLocalClient(event.target.value)}
+              >
+                {clients.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.businessName}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
         </div>
-        {selectedClientId === "all" ? (
-          <label className="crm-phone-client-picker">
-            <span>Business</span>
-            <select
-              value={clientId}
-              onChange={(event) => setLocalClient(event.target.value)}
-            >
-              {clients.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.businessName}
-                </option>
-              ))}
-            </select>
+        <div className="crm-integrations-toolbar">
+          <label className="crm-integrations-search" htmlFor="crm-integrations-search">
+            <Search aria-hidden="true" />
+            <input
+              id="crm-integrations-search"
+              type="search"
+              value={integrationQuery}
+              onChange={(event) => setIntegrationQuery(event.target.value)}
+              placeholder="Search integrations..."
+            />
+            <kbd>Ctrl K</kbd>
           </label>
-        ) : null}
+          <div className="crm-integrations-filter-wrap">
+            <button
+              className={integrationFilter !== "all" ? "active" : ""}
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={filtersOpen}
+              onClick={() => setFiltersOpen((open) => !open)}
+            >
+              <Funnel aria-hidden="true" />
+              Filters
+            </button>
+            {filtersOpen ? (
+              <div className="crm-integrations-filter-menu" role="menu">
+                {(
+                  [
+                    ["all", "All integrations"],
+                    ["connected", "Connected"],
+                    ["setup", "Needs setup"],
+                    ["available", "Available"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={integrationFilter === value ? "active" : ""}
+                    onClick={() => {
+                      setIntegrationFilter(value);
+                      setFiltersOpen(false);
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <button
+            className="crm-integrations-browse"
+            type="button"
+            onClick={showAllIntegrations}
+          >
+            <LayoutDashboard aria-hidden="true" />
+            Browse all integrations
+          </button>
+        </div>
       </section>
       {!client ? (
         <section className="crm-empty-state">
@@ -388,18 +560,78 @@ export function ConnectionsView({
           </p>
         </section>
       ) : (
-        <div className="crm-connection-grid">
-          <article className="crm-connection-card featured">
+        <div className="crm-integrations-content">
+          <section className="crm-integrations-summary" aria-label="Integration summary">
+            <article>
+              <span className="crm-integrations-summary-icon connected"><Plug /></span>
+              <strong>{statusCount("connected")}</strong>
+              <div><b>Connected</b><small>Active and syncing</small></div>
+            </article>
+            <article>
+              <span className="crm-integrations-summary-icon setup"><Settings /></span>
+              <strong>{statusCount("setup")}</strong>
+              <div><b>Needs setup</b><small>Finish configuration</small></div>
+            </article>
+            <article>
+              <span className="crm-integrations-summary-icon available"><LayoutDashboard /></span>
+              <strong>{statusCount("available")}</strong>
+              <div><b>Available</b><small>Ready to connect</small></div>
+            </article>
+            <article>
+              <span className="crm-integrations-summary-icon total"><Database /></span>
+              <strong>{integrationStatuses.length}</strong>
+              <div><b>Total</b><small>All integrations</small></div>
+            </article>
+          </section>
+          <div className="crm-integrations-section-heading" id="crm-your-integrations">
+            <h3>Your integrations</h3>
+            {integrationFilter !== "all" || integrationQuery ? (
+              <button type="button" onClick={showAllIntegrations}>Clear filters</button>
+            ) : null}
+          </div>
+          <div className="crm-integration-card-grid">
+          {twilioVisible ? (
+          <article className={`crm-connection-card crm-integration-card featured ${expandedIntegration === "twilio" ? "expanded" : ""}`}>
             <header>
-              <span className="crm-provider-logo twilio">T</span>
+              <span className="crm-twilio-mark" aria-hidden="true">
+                <svg viewBox="0 0 42 42">
+                  <circle cx="21" cy="21" r="17" />
+                  <circle cx="16" cy="16" r="3" />
+                  <circle cx="26" cy="16" r="3" />
+                  <circle cx="16" cy="26" r="3" />
+                  <circle cx="26" cy="26" r="3" />
+                </svg>
+                <b>twilio</b>
+              </span>
               <div>
                 <h3>Twilio</h3>
-                <p>Business phone system, calls and two-way texting</p>
+                <p>Business phone system, calls, and two-way texting.</p>
               </div>
               <Badge tone={isLinked ? "green" : "orange"}>
-                {isLinked ? "Connected" : "Not connected"}
+                {isLinked ? "Connected" : "Needs setup"}
               </Badge>
+              <span className="crm-integration-chevron" aria-hidden="true">›</span>
             </header>
+            <div className="crm-integration-facts">
+              <div><PhoneCall /><span>Phone &amp; calling<strong>{isActive ? "On" : "—"}</strong></span></div>
+              <div><MessageSquareText /><span>Two-way texting<strong>{isActive ? "On" : "—"}</strong></span></div>
+              <div><History /><span>Last synced<strong>{integrationSyncLabel(connection?.lastHealthCheckAt ?? connection?.connectedAt)}</strong></span></div>
+            </div>
+            <div className="crm-integration-footer">
+              {isLinked ? (
+                <>
+                  <button type="button" className="crm-integration-secondary" aria-expanded={expandedIntegration === "twilio"} onClick={() => setExpandedIntegration((current) => current === "twilio" ? null : "twilio")}><Settings />Manage connection</button>
+                  <button type="button" className="crm-integration-secondary" onClick={onViewCalls}><PhoneCall />View calls</button>
+                  <button type="button" className="crm-integration-more" aria-label="More Twilio actions" onClick={() => setExpandedIntegration((current) => current === "twilio" ? null : "twilio")}>•••</button>
+                </>
+              ) : (
+                <>
+                  <a className="crm-integration-primary" href={`/api/integrations/twilio/connect?clientId=${encodeURIComponent(clientId)}`}>Connect</a>
+                  <button type="button" className="crm-integration-learn" aria-expanded={expandedIntegration === "twilio"} onClick={() => setExpandedIntegration((current) => current === "twilio" ? null : "twilio")}>Learn more <span aria-hidden="true">↗</span></button>
+                </>
+              )}
+            </div>
+            <div className="crm-integration-advanced">
             <div className="crm-connection-details crm-connection-details-simple">
               <div className="crm-twilio-balance"><span>Available balance</span><strong>{connection?.balanceStatus === "restricted" ? "Restricted" : balanceLoading ? "Loading..." : balanceError ? "Not available" : displayedBalanceStatus === "shared" ? "Shared balance" : money(displayedBalance, displayedCurrency)}</strong></div>
               <div><span>Calls this month</span><strong>{connection?.monthCalls ?? (isLinked ? "—" : "Not connected")}</strong></div>
@@ -454,25 +686,34 @@ export function ConnectionsView({
                 </a>
               )}
             </div>
+            </div>
           </article>
-          <article className="crm-connection-card ai">
+          ) : null}
+          {aiVisible ? (
+          <article className="crm-connection-card crm-integration-card ai">
             <header>
-              <span className="crm-provider-logo ai">AI</span>
+              <span className="crm-ai-mark" aria-hidden="true"><Sparkles /><Sparkles /></span>
               <div>
                 <h3>AI Connector</h3>
-                <p>Let your own AI account safely work with this CRM</p>
+                <p>Let your AI account safely work with this CRM.</p>
               </div>
               <Badge tone={aiConnected ? "green" : "orange"}>
-                {aiConnected ? "Connected" : "Not connected"}
+                {aiConnected ? "Connected" : "Needs setup"}
               </Badge>
+              <span className="crm-integration-chevron" aria-hidden="true">›</span>
             </header>
+            <div className="crm-integration-facts">
+              <div><Sparkles /><span>Connected apps<strong>{activeAiAuthorizations.length}</strong></span></div>
+              <div><History /><span>Last synced<strong>{integrationSyncLabel(activeAiAuthorizations[0]?.lastSuccessAt ?? activeAiAuthorizations[0]?.connectedAt)}</strong></span></div>
+              <div><Database /><span>Data status<strong>{aiConnected ? "Active" : "—"}</strong></span></div>
+            </div>
             <div className="crm-connection-details compact crm-connection-details-simple">
               <div><span>Status</span><strong>{aiConnected ? "Active" : "Not connected"}</strong></div>
               <div><span>Connected apps</span><strong>{activeAiAuthorizations.length}</strong></div>
             </div>
-            <div className="crm-connection-actions">
+            <div className="crm-integration-footer">
               <button
-                className="crm-button-primary"
+                className="crm-integration-primary"
                 type="button"
                 onClick={() => onOpenAiConnector(clientId)}
               >
@@ -503,29 +744,39 @@ export function ConnectionsView({
                   Disconnect
                 </button>
               ) : null}
+              <button type="button" className="crm-integration-learn" onClick={() => onOpenAiConnector(clientId)}>Learn more <span aria-hidden="true">↗</span></button>
             </div>
           </article>
-          <article className="crm-connection-card meta">
+          ) : null}
+          {metaVisible ? (
+          <article className={`crm-connection-card crm-integration-card meta ${expandedIntegration === "meta" ? "expanded" : ""}`}>
             <header>
-              <span className="crm-provider-logo meta">M</span>
+              <span className="crm-meta-mark" aria-hidden="true">∞</span>
               <div>
                 <h3>Meta Conversions</h3>
-                <p>Report which ad clicks became leads and paying customers</p>
+                <p>Report web and ad conversions and analyze customers.</p>
               </div>
-              <Badge tone={!metaLinked ? "orange" : metaLive ? "green" : "purple"}>
-                {!metaLinked ? "Not connected" : metaLive ? "Live" : "Test mode"}
+              <Badge tone={metaLinked ? "green" : "blue"}>
+                {metaLinked ? "Connected" : "Available"}
               </Badge>
+              <span className="crm-integration-chevron" aria-hidden="true">›</span>
             </header>
+            <div className="crm-integration-facts">
+              <div><Database /><span>Dataset<strong>{metaConnection?.accountLabel ?? "—"}</strong></span></div>
+              <div><KeyRound /><span>Access token<strong>{metaLinked ? "Active" : "—"}</strong></span></div>
+              <div><Sparkles /><span>Test event code<strong>{metaLinked && !metaLive ? "Enabled" : "—"}</strong></span></div>
+            </div>
+            <div className="crm-integration-footer">
+              <button type="button" className="crm-integration-primary" aria-expanded={expandedIntegration === "meta"} onClick={() => setExpandedIntegration((current) => current === "meta" ? null : "meta")}>{metaLinked ? "Manage" : "Configure"}</button>
+              <button type="button" className="crm-integration-learn" onClick={() => setExpandedIntegration((current) => current === "meta" ? null : "meta")}>Learn more <span aria-hidden="true">↗</span></button>
+            </div>
+            <div className="crm-integration-advanced">
             <div className="crm-connection-details compact crm-connection-details-simple">
               <div><span>Dataset</span><strong>{metaConnection?.accountLabel ?? "Not connected"}</strong></div>
               <div>
                 <span>Mode</span>
                 <strong>
-                  {!metaLinked
-                    ? "Not connected"
-                    : metaLive
-                      ? "Live"
-                      : "Test mode"}
+                  {metaLinked ? metaModeLabel : "Not connected"}
                 </strong>
               </div>
             </div>
@@ -646,13 +897,16 @@ export function ConnectionsView({
                 </button>
               </form>
             )}
+            </div>
           </article>
-          <article className="crm-connection-card callrail">
+          ) : null}
+          {callRailVisible ? (
+          <article className={`crm-connection-card callrail crm-integration-card ${expandedIntegration === "callrail" ? "expanded" : ""}`}>
             <header>
-              <span className="crm-provider-logo callrail">CR</span>
+              <span className="crm-callrail-mark" aria-hidden="true">CallRail</span>
               <div>
                 <h3>CallRail</h3>
-                <p>See which ads and pages produce phone calls</p>
+                <p>Track calls and analyze phone conversations.</p>
               </div>
               <Badge
                 tone={
@@ -666,14 +920,32 @@ export function ConnectionsView({
                 }
               >
                 {!callRailStored
-                  ? "Not connected"
+                  ? "Needs setup"
                   : callRailConnection?.status === "attention"
                     ? "Needs attention"
                     : callRailSetup === "ready"
                       ? "Connected"
                       : "Finish setup"}
               </Badge>
+              <span className="crm-integration-chevron" aria-hidden="true">›</span>
             </header>
+            <div className="crm-integration-facts">
+              <div><PhoneCall /><span>Recording sync<strong className={callRailIngesting ? "active" : ""}>{callRailIngesting ? "On" : "—"}</strong></span></div>
+              <div><Plug /><span>Webhooks<strong>{callRailIngesting ? "Active" : callRailCleanupPending ? "Cleanup needed" : "—"}</strong></span></div>
+              <div><History /><span>Last synced<strong>{integrationSyncLabel(callRailConnection?.lastHealthCheckAt ?? callRailConnection?.connectedAt)}</strong></span></div>
+            </div>
+            <div className="crm-integration-footer">
+              {callRailStatus === "connected" ? (
+                <>
+                  <button type="button" className="crm-integration-secondary" aria-expanded={expandedIntegration === "callrail"} onClick={() => setExpandedIntegration((current) => current === "callrail" ? null : "callrail")}><Settings />Manage connection</button>
+                  <button type="button" className="crm-integration-secondary" onClick={onViewCalls}><PhoneCall />View calls</button>
+                  <button type="button" className="crm-integration-more" aria-label="More CallRail actions" onClick={() => setExpandedIntegration((current) => current === "callrail" ? null : "callrail")}>•••</button>
+                </>
+              ) : (
+                <button type="button" className="crm-integration-primary" aria-expanded={expandedIntegration === "callrail"} onClick={() => setExpandedIntegration((current) => current === "callrail" ? null : "callrail")}>{callRailStored ? "Finish setup" : "Connect"}</button>
+              )}
+            </div>
+            <div className="crm-integration-advanced">
             {callRailStored ? (
               <>
                 <div className="crm-connection-details compact crm-connection-details-simple">
@@ -1068,7 +1340,28 @@ export function ConnectionsView({
                 </button>
               </form>
             )}
+            </div>
           </article>
+          ) : null}
+          {visibleIntegrationCount === 0 ? (
+            <section className="crm-integrations-no-results">
+              <Search aria-hidden="true" />
+              <h3>No integrations found</h3>
+              <p>Try another search or clear the current filter.</p>
+              <button type="button" onClick={showAllIntegrations}>Clear filters</button>
+            </section>
+          ) : null}
+          </div>
+          <section className="crm-integrations-banner">
+            <span><Sparkles aria-hidden="true" /></span>
+            <div>
+              <h3>Don&rsquo;t see the integration you need?</h3>
+              <p>Browse our full library of integrations or request a custom integration.</p>
+            </div>
+            <button type="button" onClick={showAllIntegrations}>
+              Browse all integrations <b aria-hidden="true">›</b>
+            </button>
+          </section>
         </div>
       )}
     </div>

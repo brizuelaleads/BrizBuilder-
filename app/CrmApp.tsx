@@ -1331,6 +1331,7 @@ export function CrmApp({
               "billing.read_shared",
             )}
             onOpenAiConnector={openAiConnector}
+            onViewCalls={() => navigate("conversations")}
           />
         )}
         {view === "phone-system" && (
