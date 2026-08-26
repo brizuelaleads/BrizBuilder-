@@ -765,6 +765,12 @@ export function LeadDetail({
   const [activeTab, setActiveTab] = useState<LeadDetailTab>("overview");
   const tabListRef = useRef<HTMLElement | null>(null);
   const activeStageIndex = stages.findIndex((stage) => stage.id === lead.stageId);
+  const activeStageName =
+    stages.find((stage) => stage.id === lead.stageId)?.name ?? "Unassigned";
+  const pipelinePercent =
+    activeStageIndex >= 0 && stages.length
+      ? ((activeStageIndex + 1) / stages.length) * 100
+      : 0;
   const timeline = [
     ...leadActivities.map((item) => ({
       id: item.id,
@@ -1028,7 +1034,6 @@ export function LeadDetail({
                           ))}
                         </select>
                       </div>
-                      <small>Current outcome and follow-up state</small>
                     </label>
 
                     <label className="crm-lead-stage-control">
@@ -1051,45 +1056,31 @@ export function LeadDetail({
                           <option key={stage.id} value={stage.id}>{stage.name}</option>
                         ))}
                       </select>
-                      <small>Position in your sales process</small>
                     </label>
                   </div>
 
                   <div className="crm-lead-pipeline-progress">
-                    <div>
+                    <div className="crm-lead-pipeline-summary">
                       <span>Pipeline progress</span>
-                      <strong>
-                        {stages.find((stage) => stage.id === lead.stageId)?.name ?? "Unassigned"}
-                      </strong>
+                      <strong>{activeStageName}</strong>
+                      <small>
+                        {activeStageIndex >= 0 ? activeStageIndex + 1 : 0} of {stages.length}
+                      </small>
                     </div>
-                    <div className="crm-lead-pipeline-steps">
-                      {stages.map((stage, index) => (
-                        <button
-                          key={stage.id}
-                          type="button"
-                          className={
-                            index === activeStageIndex
-                              ? "active"
-                              : index < activeStageIndex
-                                ? "complete"
-                                : ""
-                          }
-                          aria-pressed={index === activeStageIndex}
-                          onClick={() =>
-                            void mutate(
-                              {
-                                action: "move_lead",
-                                leadId: lead.id,
-                                stageId: stage.id,
-                              },
-                              "Pipeline stage updated",
-                            )
-                          }
-                        >
-                          <i aria-hidden="true">{index + 1}</i>
-                          <span>{stage.name}</span>
-                        </button>
-                      ))}
+                    <div
+                      className="crm-lead-pipeline-meter"
+                      role="progressbar"
+                      aria-label={`Pipeline progress: ${activeStageName}`}
+                      aria-valuemin={0}
+                      aria-valuemax={stages.length}
+                      aria-valuenow={activeStageIndex >= 0 ? activeStageIndex + 1 : 0}
+                    >
+                      <i
+                        style={
+                          { "--pipeline-progress": `${pipelinePercent}%` } as CSSProperties
+                        }
+                        aria-hidden="true"
+                      />
                     </div>
                   </div>
 
@@ -1118,37 +1109,39 @@ export function LeadDetail({
                   </div>
                 </section>
 
-                <section className="crm-lead-detail-columns">
-                  <article className="crm-lead-section-card">
-                    <h3>Contact information</h3>
-                    <dl>
-                      <div><dt>Phone</dt><dd>{formatLeadPhone(lead.phone)}</dd></div>
-                      <div><dt>Email</dt><dd>{lead.email ?? "Not provided"}</dd></div>
-                      <div>
-                        <dt>Address</dt>
-                        <dd>
-                          {[lead.address, lead.city, lead.state, lead.zip]
-                            .filter(Boolean)
-                            .join(", ") || "Not provided"}
-                        </dd>
-                      </div>
-                      <div><dt>Consent</dt><dd>{humanizeLeadValue(lead.consentStatus)}</dd></div>
-                    </dl>
-                  </article>
-                  <article className="crm-lead-section-card">
-                    <h3>Attribution</h3>
-                    <dl>
-                      <div><dt>Source</dt><dd>{lead.source}</dd></div>
-                      <div><dt>Campaign</dt><dd>{lead.campaign ?? "Not captured"}</dd></div>
-                      <div><dt>Created</dt><dd>{dateTime(lead.createdAt)}</dd></div>
-                      <div><dt>Assigned to</dt><dd>{lead.assignedUser ?? "Unassigned"}</dd></div>
-                    </dl>
-                  </article>
-                </section>
-
-                <section className="crm-lead-section-card crm-lead-message-card">
-                  <h3>Customer message</h3>
-                  <p>{lead.message || "No message was provided."}</p>
+                <section className="crm-lead-section-card crm-lead-details-card">
+                  <h3>Lead details</h3>
+                  <div className="crm-lead-details-groups">
+                    <div className="crm-lead-details-group">
+                      <h4>Contact</h4>
+                      <dl>
+                        <div><dt>Phone</dt><dd>{formatLeadPhone(lead.phone)}</dd></div>
+                        <div><dt>Email</dt><dd>{lead.email ?? "Not provided"}</dd></div>
+                        <div>
+                          <dt>Address</dt>
+                          <dd>
+                            {[lead.address, lead.city, lead.state, lead.zip]
+                              .filter(Boolean)
+                              .join(", ") || "Not provided"}
+                          </dd>
+                        </div>
+                        <div><dt>Consent</dt><dd>{humanizeLeadValue(lead.consentStatus)}</dd></div>
+                      </dl>
+                    </div>
+                    <div className="crm-lead-details-group">
+                      <h4>Attribution</h4>
+                      <dl>
+                        <div><dt>Source</dt><dd>{lead.source}</dd></div>
+                        <div><dt>Campaign</dt><dd>{lead.campaign ?? "Not captured"}</dd></div>
+                        <div><dt>Created</dt><dd>{dateTime(lead.createdAt)}</dd></div>
+                        <div><dt>Assigned to</dt><dd>{lead.assignedUser ?? "Unassigned"}</dd></div>
+                      </dl>
+                    </div>
+                  </div>
+                  <div className="crm-lead-inline-message">
+                    <h4>Customer message</h4>
+                    <p>{lead.message || "No message was provided."}</p>
+                  </div>
                 </section>
 
                 <section className="crm-lead-ai-card">
