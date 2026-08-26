@@ -31,6 +31,7 @@ import type {
   CrmStage,
   CrmTask,
 } from "../../db/crm";
+import { parseCallTranscript } from "../../lib/callrail-transcript";
 import { Badge, dateTime, EmptyState, money, shortDate } from "./ui";
 
 type Mutate = (
@@ -637,29 +638,6 @@ function formatCallDuration(seconds: number | null) {
   return minutes ? `${minutes}m ${remainder}s` : `${remainder}s`;
 }
 
-function parseTranscript(value: string | null) {
-  if (!value) return [];
-  return value
-    .split(/\r?\n/u)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line, index) => {
-      const match = line.match(/^([^:]{1,40}):\s*(.+)$/u);
-      const speaker = match?.[1]?.trim() ?? "Transcript";
-      const text = match?.[2]?.trim() ?? line;
-      const business =
-        /agent|business|company|employee|operator|representative|staff/iu.test(
-          speaker,
-        );
-      return {
-        id: `${index}-${speaker}-${text.slice(0, 20)}`,
-        speaker,
-        text,
-        business,
-      };
-    });
-}
-
 function LeadTranscriptCard({
   call,
   lead,
@@ -671,7 +649,7 @@ function LeadTranscriptCard({
   initials: string;
   index: number;
 }) {
-  const lines = parseTranscript(call.transcript);
+  const lines = parseCallTranscript(call.transcript);
 
   return (
     <section className="crm-lead-section-card crm-lead-transcript-card">
@@ -720,17 +698,20 @@ function LeadTranscriptCard({
 
       {lines.length ? (
         <div className="crm-lead-conversation">
-          {lines.map((line) => (
+          {lines.map((line, lineIndex) => (
             <article
-              className={line.business ? "business" : "caller"}
-              key={line.id}
+              aria-label={`${line.speaker} message`}
+              className={line.role}
+              key={`${lineIndex}-${line.role}-${line.text.slice(0, 20)}`}
             >
-              {!line.business ? <span>{initials.slice(0, 1)}</span> : null}
+              {line.role !== "agent" ? (
+                <span>{line.role === "caller" ? initials.slice(0, 1) : "T"}</span>
+              ) : null}
               <div>
-                <strong>{line.business ? lead.clientName : line.speaker}</strong>
+                <strong>{line.speaker}</strong>
                 <p>{line.text}</p>
               </div>
-              {line.business ? <span>B</span> : null}
+              {line.role === "agent" ? <span>A</span> : null}
             </article>
           ))}
         </div>
@@ -774,8 +755,7 @@ export function LeadDetail({
   const leadAppointments = appointments.filter(
     (appointment) => appointment.leadId === lead.id,
   );
-  const leadCalls = calls
-    .filter((call) => call.leadId === lead.id)
+  const leadCalls = calls.filter((call) => call.leadId === lead.id)
     .sort((a, b) => (b.startedAt ?? "").localeCompare(a.startedAt ?? ""));
   const [activeTab, setActiveTab] = useState<LeadDetailTab>(
     leadCalls.length ? "transcript" : "overview",

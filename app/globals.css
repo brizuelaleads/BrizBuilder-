@@ -13517,7 +13517,7 @@ canvas {
   gap: 13px;
 }
 
-.crm-lead-conversation article.business {
+.crm-lead-conversation article.agent {
   justify-content: flex-end;
 }
 
@@ -13541,7 +13541,7 @@ canvas {
   gap: 7px;
 }
 
-.crm-lead-conversation article.business > div {
+.crm-lead-conversation article.agent > div {
   justify-items: end;
 }
 
@@ -13561,7 +13561,7 @@ canvas {
   white-space: pre-wrap;
 }
 
-.crm-lead-conversation article.business p {
+.crm-lead-conversation article.agent p {
   border-radius: 14px 14px 4px 14px;
   color: var(--crm-accent);
   background: var(--crm-accent-soft);

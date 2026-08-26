@@ -24,6 +24,7 @@ import {
   removeCallRailWebhookUrls,
   type CallRailWebhookUrlSet,
 } from "./callrail-webhook";
+import { selectCallRailTranscript } from "./callrail-transcript";
 import { readRuntimeValue } from "./supabase/env";
 
 // Server-side CallRail API client. The customer's API key is decrypted only for
@@ -594,21 +595,6 @@ function mapCallSummary(value: unknown): string | null {
     .slice(0, 2400) || null;
 }
 
-function mapTranscript(value: unknown): string | null {
-  if (typeof value === "string") return value.trim().slice(0, 20_000) || null;
-  if (!Array.isArray(value)) return null;
-  const lines = value
-    .map((item) => {
-      const row = asRecord(item);
-      const phrase = asText(row.phrase);
-      if (!phrase) return "";
-      const speaker = asText(row.speaker) || "speaker";
-      return `${speaker}: ${phrase}`;
-    })
-    .filter(Boolean);
-  return lines.join("\n").slice(0, 20_000) || null;
-}
-
 function mapCall(row: Record<string, unknown>): CallRailCall {
   const durationSeconds = asOptionalNumber(row.duration);
   const startedAt = safeIso(row.start_time);
@@ -662,7 +648,10 @@ function mapCall(row: Record<string, unknown>): CallRailCall {
     recordingUrl: null,
     recordingAvailable: asText(row.recording) !== "",
     recordingDurationSeconds: asOptionalNumber(row.recording_duration),
-    transcript: mapTranscript(row.transcription ?? row.conversational_transcript),
+    transcript: selectCallRailTranscript(
+      row.conversational_transcript,
+      row.transcription,
+    ),
     callSummary: mapCallSummary(row.call_summary),
   };
 }

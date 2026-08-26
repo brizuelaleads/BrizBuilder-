@@ -2668,13 +2668,14 @@ test("a lead shows its own calls; a contact shows all of theirs", () => {
   // One person can ring about several jobs. The lead filters to itself, and
   // the contact record is where the whole history lives.
   assert.match(leadsUi, /const leadCalls = calls\.filter\(\(call\) => call\.leadId === lead\.id\)/);
-  assert.match(leadsUi, /<CallsSection\s*\n\s*calls=\{leadCalls\}/);
+  assert.match(leadsUi, /\{leadCalls\.map\(\(call, index\) => \(/);
+  assert.match(leadsUi, /<LeadTranscriptCard\s*\n\s*key=\{call\.id\}\s*\n\s*call=\{call\}\s*\n\s*lead=\{lead\}/);
   assert.match(contactsUi, /calls\.filter\(\(call\) => call\.contactId === contactId\)/);
   assert.match(contactsUi, /<CallsSection calls=\{contactCalls\}/);
 
   // Both hand the section the client the record belongs to, which is what the
   // recording route checks against.
-  assert.match(leadsUi, /clientId=\{lead\.clientId\}/);
+  assert.match(leadsUi, /call\.callrailCallId,[\s\S]*lead\.clientId/);
   assert.match(contactsUi, /clientId=\{contact\.clientId\}/);
 });
 
