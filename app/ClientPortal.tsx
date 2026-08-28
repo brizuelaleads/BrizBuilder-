@@ -1,13 +1,32 @@
 import type { ClientIdentity, ClientPortalData } from "../db/access";
+import type { TenantBranding } from "../db/branding";
+import { DEFAULT_BRANDING } from "../db/branding";
 import { BrandLogo } from "./components/BrandLogo";
+import { PushOptIn } from "./components/PushOptIn";
+
+export type ClientPortalPushRuntime = {
+  configured: boolean;
+  vapidPublicKey: string | null;
+  subscribedDevices: number;
+};
+
 type ClientPortalProps = {
   session: { name: string; email: string; role: "client" };
   signOutPath: string;
   client: ClientIdentity;
   data: ClientPortalData;
+  branding?: TenantBranding;
+  push?: ClientPortalPushRuntime;
 };
 
-export function ClientPortal({ session, signOutPath, client, data }: ClientPortalProps) {
+export function ClientPortal({
+  session,
+  signOutPath,
+  client,
+  data,
+  branding = DEFAULT_BRANDING,
+  push,
+}: ClientPortalProps) {
   const initials = session.name
     .split(/\s+/)
     .slice(0, 2)
@@ -18,7 +37,14 @@ export function ClientPortal({ session, signOutPath, client, data }: ClientPorta
     <div className="client-portal">
       <header className="client-portal-header">
         <div className="client-portal-brand">
-          <BrandLogo className="client-portal-logo" size={124} decorative priority />
+          <BrandLogo
+            className="client-portal-logo"
+            size={124}
+            decorative
+            priority
+            logoUrl={branding.logoUrl}
+            brandName={branding.businessName}
+          />
           <small>Client portal</small>
         </div>
         <div className="client-portal-account">
@@ -42,6 +68,21 @@ export function ClientPortal({ session, signOutPath, client, data }: ClientPorta
           </div>
           <span className="client-role-badge">Client access</span>
         </section>
+
+        {/*
+          This screen is the fallback when the full CRM cannot load, so it is
+          the last place a client could otherwise be stranded without any way
+          to turn alerts on.
+        */}
+        {push ? (
+          <div className="client-portal-push">
+            <PushOptIn
+              configured={push.configured}
+              vapidPublicKey={push.vapidPublicKey}
+              initialDeviceCount={push.subscribedDevices}
+            />
+          </div>
+        ) : null}
 
         <div className="client-privacy-banner">
           <span>◉</span>

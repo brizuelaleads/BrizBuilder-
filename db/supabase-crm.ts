@@ -29,6 +29,7 @@ import {
   syncGoogleCalendarAppointment,
   verifyGoogleCalendarAccess,
 } from "../lib/google-calendar";
+import { syncStoredAppointmentToGoogleCalendar } from "../lib/google-calendar-store";
 import {
   assertCallRailAccountId,
   assertCallRailCompanyId,
@@ -146,6 +147,18 @@ import type {
   CrmTheme,
 } from "./crm";
 import { CRM_THEMES } from "./crm";
+import type { TenantBranding } from "./branding";
+import { resolveBranding } from "./branding";
+import { saveClientBranding } from "./supabase-branding";
+import { subscriptionCountForEmail } from "./supabase-push";
+import { hostBasedRoutingEnabled, tenantRootDomains } from "../lib/tenant-host";
+import {
+  dispatchPushEvent,
+  maybeNotifyHotLead,
+  newLeadEvent,
+  pushConfigured,
+  vapidPublicKey,
+} from "../lib/push-notifications";
 
 type TenantContext = {
   organizationId: string;
@@ -1816,40 +1829,6 @@ async function googleCredential(
   );
 }
 
-async function googleCalendarAccessToken(
-  organizationId: string,
-  clientId: string,
-) {
-  const [connection, credential] = await Promise.all([
-    assertOk(
-      supabase()
-        .from("provider_connections")
-        .select("status")
-        .eq("organization_id", organizationId)
-        .eq("client_id", clientId)
-        .eq("provider", GOOGLE_CALENDAR_PROVIDER)
-        .maybeSingle(),
-    ),
-    googleCredential(organizationId, clientId),
-  ]);
-  if (String(connection?.status ?? "") !== "connected" || !credential) {
-    return null;
-  }
-  const scopes = Array.isArray(credential.scopes)
-    ? credential.scopes.map(String)
-    : [];
-  if (!scopes.includes(GOOGLE_CALENDAR_SCOPE)) return null;
-  const refreshToken = await decryptGoogleSecret(
-    {
-      ciphertext: String(credential.refresh_token_ciphertext),
-      iv: String(credential.refresh_token_iv),
-    },
-    organizationId,
-    clientId,
-  );
-  return (await refreshGoogleAccessToken(refreshToken)).accessToken;
-}
-
 async function syncAppointmentToGoogleCalendar(
   organizationId: string,
   clientId: string,
@@ -1863,46 +1842,11 @@ async function syncAppointmentToGoogleCalendar(
     status: string;
   },
 ) {
-  try {
-    const accessToken = await googleCalendarAccessToken(
-      organizationId,
-      clientId,
-    );
-    if (!accessToken) return;
-    await syncGoogleCalendarAppointment(accessToken, appointment);
-    const now = new Date().toISOString();
-    await assertOk(
-      supabase()
-        .from("provider_connections")
-        .update({
-          status: "connected",
-          last_error: null,
-          last_health_check_at: now,
-          updated_at: now,
-        })
-        .eq("organization_id", organizationId)
-        .eq("client_id", clientId)
-        .eq("provider", GOOGLE_CALENDAR_PROVIDER),
-    );
-  } catch (error) {
-    const now = new Date().toISOString();
-    await assertOk(
-      supabase()
-        .from("provider_connections")
-        .update({
-          status: "attention",
-          last_error:
-            error instanceof Error
-              ? error.message.slice(0, 500)
-              : "Google Calendar sync failed.",
-          last_health_check_at: now,
-          updated_at: now,
-        })
-        .eq("organization_id", organizationId)
-        .eq("client_id", clientId)
-        .eq("provider", GOOGLE_CALENDAR_PROVIDER),
-    );
-  }
+  await syncStoredAppointmentToGoogleCalendar(
+    organizationId,
+    clientId,
+    appointment,
+  );
 }
 
 async function authorizedGoogleLocations(
@@ -3102,11 +3046,16 @@ function mapLead(row: AnyRecord): CrmLead {
     estimatedValueCents: Number(row.estimated_value_cents ?? 0),
     finalRevenueCents: Number(row.final_revenue_cents ?? 0),
     appointmentDate: nullable(row.appointment_date),
+    appointmentStatus: String(row.appointment_status ?? "none"),
+    appointmentStart: nullable(row.appointment_start),
+    appointmentEnd: nullable(row.appointment_end),
+    appointmentTimeZone: nullable(row.appointment_timezone),
     leadScore: Number(row.lead_score ?? 50),
     tags: tags(row.tags),
     consentStatus: String(row.consent_status ?? "unknown"),
     lostReason: nullable(row.lost_reason),
     lastContactedAt: nullable(row.last_contacted_at),
+    firstContactedAt: nullable(row.first_contacted_at),
     nextFollowUpAt: nullable(row.next_follow_up_at),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
@@ -3576,9 +3525,10 @@ export async function getSupabaseCrmBootstrap(
       query<AnyRecord>(
         "callrail_calls",
         "id,client_id,contact_id,lead_id,callrail_call_id,direction,answered," +
-          "duration_seconds,started_at,tracking_phone_number,customer_phone_e164," +
-          "customer_name,source,medium,campaign,classification,call_summary," +
-          "transcript,recording_available,recording_duration_seconds,ingest_status",
+          "duration_seconds,started_at,ended_at,tracking_phone_number,business_phone_number," +
+          "customer_phone_e164,customer_name,source,source_name,medium,campaign," +
+          "classification,call_summary,transcript,transcript_status,appointment_status," +
+          "recording_available,recording_duration_seconds,ingest_status",
       )
         .order("started_at", { ascending: false })
         .limit(500),
@@ -3727,6 +3677,61 @@ export async function getSupabaseCrmBootstrap(
     console.error("User theme preference could not be loaded.", error);
   }
 
+  // Fault-isolated for the same reason as the theme read above: white-label
+  // branding is cosmetic, and a hiccup here must not bubble up and trip the
+  // silent whole-bootstrap fallback to D1.
+  //
+  // Loaded for every client already in `clientRows`, which is tenant-scoped,
+  // so a client user only ever sees their own branding.
+  let brandingList: TenantBranding[] = [];
+  try {
+    const clientIds = clientRows.map((row) => String(row.id));
+    if (clientIds.length) {
+      const rows = (await assertOk(
+        supabase()
+          .from("client_branding")
+          .select(
+            "client_id,app_name,logo_url,icon_url,primary_color,accent_color,subdomain,notification_preferences",
+          )
+          .in("client_id", clientIds),
+      )) as AnyRecord[] | null;
+      const stored = new Map(
+        (rows ?? []).map((row) => [String(row.client_id), row]),
+      );
+      brandingList = clientRows.map((row) => {
+        const id = String(row.id);
+        const businessName = String(row.business_name ?? "");
+        const saved = stored.get(id);
+        return resolveBranding({
+          clientId: id,
+          businessName,
+          appName: saved?.app_name ? String(saved.app_name) : businessName,
+          logoUrl: saved?.logo_url ?? null,
+          iconUrl: saved?.icon_url ?? null,
+          primaryColor: saved?.primary_color ?? null,
+          accentColor: saved?.accent_color ?? null,
+          subdomain: saved?.subdomain ?? null,
+          notifications: saved?.notification_preferences ?? null,
+        });
+      });
+    }
+  } catch (error) {
+    console.error("Tenant branding could not be loaded.", error);
+  }
+
+  // Fault-isolated for the same reason as the reads above. Only a client user
+  // has a tenant to register devices against; an agency viewer sees no count.
+  let subscribedDevices = 0;
+  try {
+    if (context.clientId)
+      subscribedDevices = await subscriptionCountForEmail(
+        context.clientId,
+        context.email,
+      );
+  } catch (error) {
+    console.error("Push subscription count could not be loaded.", error);
+  }
+
   return {
     viewer: {
       name: context.name,
@@ -3743,6 +3748,16 @@ export async function getSupabaseCrmBootstrap(
       name: ORGANIZATION_NAME,
     },
     clients: clientRows.map(mapClient),
+    branding: brandingList,
+    pwaRuntime: {
+      tenantRootDomain: tenantRootDomains()[0] ?? null,
+      hostRoutingEnabled: hostBasedRoutingEnabled(),
+    },
+    pushRuntime: {
+      configured: pushConfigured(),
+      vapidPublicKey: vapidPublicKey(),
+      subscribedDevices,
+    },
     leads: leadRows.map(mapLead),
     contacts: contactRows.map(mapContact),
     companies: companyRows.map(mapCompany),
@@ -3948,10 +3963,13 @@ export async function getSupabaseCrmBootstrap(
       durationSeconds:
         typeof row.duration_seconds === "number" ? row.duration_seconds : null,
       startedAt: nullable(row.started_at),
+      endedAt: nullable(row.ended_at),
       trackingPhoneNumber: nullable(row.tracking_phone_number),
+      businessPhoneNumber: nullable(row.business_phone_number),
       customerPhone: nullable(row.customer_phone_e164),
       customerName: nullable(row.customer_name),
       source: nullable(row.source),
+      sourceName: nullable(row.source_name),
       medium: nullable(row.medium),
       campaign: nullable(row.campaign),
       classification: nullable(row.classification),
@@ -3963,6 +3981,8 @@ export async function getSupabaseCrmBootstrap(
           ? row.recording_duration_seconds
           : null,
       ingestStatus: nullable(row.ingest_status),
+      transcriptStatus: nullable(row.transcript_status),
+      appointmentStatus: nullable(row.appointment_status),
     })),
     team: teamMembers,
     demoData: false,
@@ -4093,6 +4113,36 @@ export async function executeSupabaseCrmAction(
         ),
     );
     return { saved: true, theme };
+  }
+
+  if (action === "save_client_branding") {
+    // White-labelling is an agency decision, so it rides on clients.manage
+    // rather than on a client-side permission. requireClient then pins the
+    // write to a sub-account this context actually reaches -- a clientId from
+    // the request body is never trusted on its own.
+    requirePermission(context, "clients.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+
+    const branding = await saveClientBranding(clientId, context.organizationId, {
+      appName: input.appName,
+      logoUrl: input.logoUrl,
+      iconUrl: input.iconUrl,
+      primaryColor: input.primaryColor,
+      accentColor: input.accentColor,
+      subdomain: input.subdomain,
+      notifications: input.notifications,
+    });
+
+    await audit(
+      context,
+      "client_branding.updated",
+      "client",
+      clientId,
+      { subdomain: branding.subdomain, appName: branding.appName },
+      clientId,
+    );
+    return { saved: true, branding };
   }
 
   if (action === "revoke_ai_authorization") {
@@ -6975,23 +7025,43 @@ export async function executeSupabaseCrmAction(
     requirePermission(context, "contacts.write");
     const clientId = requireText(input.clientId, "Client", 80);
     await requireClient(context, clientId);
+    const createdAt = new Date().toISOString();
+    const firstName = requireText(input.firstName, "First name", 80);
+    const lastName = requireText(input.lastName, "Last name", 80);
+    const phone = optionalText(input.phone, 40);
+    const email = optionalText(input.email, 160)?.toLowerCase() ?? null;
+    const address = optionalText(input.address, 200);
+    const city = optionalText(input.city, 80);
+    const state = optionalText(input.state, 30);
+    const zip = optionalText(input.zip, 20);
     const contact = await assertOk(
       supabase()
         .from("contacts")
         .insert({
           organization_id: context.organizationId,
           client_id: clientId,
-          first_name: requireText(input.firstName, "First name", 80),
-          last_name: requireText(input.lastName, "Last name", 80),
-          phone: optionalText(input.phone, 40),
-          email: optionalText(input.email, 160)?.toLowerCase() ?? null,
-          address: optionalText(input.address, 200),
-          city: optionalText(input.city, 80),
-          state: optionalText(input.state, 30),
-          zip: optionalText(input.zip, 20),
+          first_name: firstName,
+          last_name: lastName,
+          phone,
+          email,
+          address,
+          city,
+          state,
+          zip,
           marketing_consent:
             input.marketingConsent === "granted" ? "granted" : "unknown",
-          last_interaction_at: new Date().toISOString(),
+          last_interaction_at: createdAt,
+          field_provenance: Object.fromEntries(
+            [
+              ["first_name", firstName], ["last_name", lastName], ["phone", phone],
+              ["email", email], ["address", address], ["city", city],
+              ["state", state], ["zip", zip],
+            ]
+              .filter(([, value]) => Boolean(value))
+              .map(([field]) => [field, {
+                source: "manual", confidence: 1, verified: true, updatedAt: createdAt,
+              }]),
+          ),
         })
         .select("id")
         .single(),
@@ -7015,6 +7085,7 @@ export async function executeSupabaseCrmAction(
     const lastName = requireText(input.lastName, "Last name", 80);
     const phone = optionalText(input.phone, 40);
     const email = optionalText(input.email, 160)?.toLowerCase() ?? null;
+    const createdAt = new Date().toISOString();
     if (!phone && !email)
       throw new Error("A phone number or email is required.");
 
@@ -7062,7 +7133,29 @@ export async function executeSupabaseCrmAction(
             zip: optionalText(input.zip, 20),
             marketing_consent:
               input.consentStatus === "granted" ? "granted" : "unknown",
-            last_interaction_at: new Date().toISOString(),
+            last_interaction_at: createdAt,
+            field_provenance: Object.fromEntries(
+              [
+                ["first_name", firstName],
+                ["last_name", lastName],
+                ["phone", phone],
+                ["email", email],
+                ["address", optionalText(input.address, 200)],
+                ["city", optionalText(input.city, 80)],
+                ["state", optionalText(input.state, 30)],
+                ["zip", optionalText(input.zip, 20)],
+              ]
+                .filter(([, value]) => Boolean(value))
+                .map(([field]) => [
+                  field,
+                  {
+                    source: "manual",
+                    confidence: 1,
+                    verified: true,
+                    updatedAt: createdAt,
+                  },
+                ]),
+            ),
           })
           .select("id")
           .single(),
@@ -7096,6 +7189,25 @@ export async function executeSupabaseCrmAction(
           tags: tags(input.tags),
           consent_status:
             input.consentStatus === "granted" ? "granted" : "unknown",
+          first_contacted_at: createdAt,
+          last_contacted_at: createdAt,
+          field_provenance: {
+            service_requested: {
+              source: "manual", confidence: 1, verified: true, updatedAt: createdAt,
+            },
+            ...(optionalText(input.message, 1200)
+              ? { message: { source: "manual", confidence: 1, verified: true, updatedAt: createdAt } }
+              : {}),
+            source: {
+              source: "manual", confidence: 1, verified: true, updatedAt: createdAt,
+            },
+            ...(optionalText(input.campaign, 160)
+              ? { campaign: { source: "manual", confidence: 1, verified: true, updatedAt: createdAt } }
+              : {}),
+            ...(cents(input.estimatedValueCents) > 0
+              ? { estimated_value_cents: { source: "manual", confidence: 1, verified: true, updatedAt: createdAt } }
+              : {}),
+          },
         })
         .select("id")
         .single(),
@@ -7110,6 +7222,30 @@ export async function executeSupabaseCrmAction(
       contactId,
       businessName: context.organizationName,
       serviceRequested: requireText(input.serviceRequested, "Service", 160),
+    });
+
+    const leadScore = Math.max(0, Math.min(100, Number(input.leadScore ?? 50)));
+    const contactName = `${optionalText(input.firstName, 80) ?? ""} ${
+      optionalText(input.lastName, 80) ?? ""
+    }`.trim();
+    // Fire-and-forget: dispatchPushEvent never throws, so a notification
+    // problem cannot fail the lead the person just created.
+    await dispatchPushEvent(
+      newLeadEvent({
+        organizationId: context.organizationId,
+        clientId,
+        leadId: createdLead.id,
+        contactName,
+        serviceRequested: optionalText(input.serviceRequested, 160),
+        source: optionalText(input.source, 60),
+      }),
+    );
+    await maybeNotifyHotLead({
+      organizationId: context.organizationId,
+      clientId,
+      leadId: createdLead.id,
+      score: leadScore,
+      contactName,
     });
     return { id: createdLead.id };
   }
@@ -7170,6 +7306,20 @@ export async function executeSupabaseCrmAction(
       );
       if (stage) syncedStageId = String(stage.id);
     }
+    const fieldProvenance =
+      lead.field_provenance &&
+      typeof lead.field_provenance === "object" &&
+      !Array.isArray(lead.field_provenance)
+        ? { ...(lead.field_provenance as Record<string, unknown>) }
+        : {};
+    if (input.estimatedValueCents !== undefined) {
+      fieldProvenance.estimated_value_cents = {
+        source: "manual",
+        confidence: 1,
+        verified: true,
+        updatedAt: new Date().toISOString(),
+      };
+    }
     await assertOk(
       supabase()
         .from("leads")
@@ -7199,6 +7349,7 @@ export async function executeSupabaseCrmAction(
           ].includes(status)
             ? new Date().toISOString()
             : lead.last_contacted_at,
+          field_provenance: fieldProvenance,
           updated_at: new Date().toISOString(),
         })
         .eq("id", leadId)

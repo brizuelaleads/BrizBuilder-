@@ -5520,6 +5520,286 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   font-size: 14px;
 }
 
+/* White-label branding form. Every colour comes from a theme token so the
+   form itself stays readable in classic, cyberpunk, and midnight; the only
+   raw colours on screen are the tenant's own, in the preview tile. */
+.crm-branding-form {
+  display: grid;
+  gap: 0;
+}
+
+.crm-branding-form .crm-settings-section p {
+  margin: -10px 0 16px;
+  color: var(--crm-muted);
+  font-size: 12px;
+}
+
+.crm-branding-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.crm-branding-colors {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.crm-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.crm-field > span {
+  color: var(--crm-ink);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.crm-field input,
+.crm-field select {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--crm-line);
+  border-radius: 7px;
+  color: var(--crm-ink);
+  background: var(--crm-card);
+  font-size: 13px;
+}
+
+.crm-field input:focus-visible,
+.crm-field select:focus-visible {
+  outline: 2px solid var(--crm-accent);
+  outline-offset: 1px;
+}
+
+.crm-field small {
+  color: var(--crm-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.crm-color-input {
+  display: flex;
+  gap: 8px;
+}
+
+.crm-color-input input[type="color"] {
+  width: 46px;
+  min-height: 38px;
+  padding: 3px;
+  cursor: pointer;
+}
+
+/* Home-screen preview: shows the icon, the truncated short_name, and the
+   accent, on the exact colour the manifest will use for theme_color. */
+.crm-branding-preview {
+  margin-top: 18px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-radius: 12px;
+}
+
+.crm-branding-preview-icon {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 14px;
+  background: rgb(255 255 255 / 22%);
+}
+
+.crm-branding-preview-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.crm-branding-preview-icon span {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.crm-branding-preview strong {
+  font-size: 14px;
+}
+
+.crm-branding-preview em {
+  width: 34px;
+  height: 6px;
+  margin-left: auto;
+  border-radius: 999px;
+}
+
+.crm-branding-notifications {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  list-style: none;
+}
+
+.crm-branding-notifications label {
+  min-height: 42px;
+  padding: 10px 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border-top: 1px solid var(--crm-line);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.crm-branding-notifications li:first-child label {
+  border-top: 0;
+}
+
+.crm-branding-notifications label > div {
+  display: grid;
+  gap: 2px;
+}
+
+.crm-branding-notifications strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.crm-branding-notifications small {
+  color: var(--crm-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.crm-branding-notifications input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  flex: 0 0 auto;
+  accent-color: var(--crm-accent);
+}
+
+/* Inline number setting shown only while its alert is switched on. */
+.crm-threshold {
+  margin: 0 0 12px 26px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 8px;
+  background: var(--crm-accent-soft);
+  color: var(--crm-muted);
+  font-size: 12px;
+}
+
+.crm-threshold input {
+  width: 72px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--crm-line);
+  border-radius: 6px;
+  color: var(--crm-ink);
+  background: var(--crm-card);
+  font-size: 13px;
+}
+
+/* Client-facing opt-in card on the dashboard. It sits above the dashboard
+   view, so it borrows crm-view's width and side padding but drops the tall
+   bottom padding that would otherwise separate it from the content below. */
+.crm-push-optin-shell {
+  padding-bottom: 0;
+}
+
+.crm-push-optin {
+  margin-top: 0;
+}
+
+.crm-push-optin p {
+  margin: 0;
+  color: var(--crm-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.crm-push-actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 8px;
+}
+
+/* The client portal is styled independently of the CRM shell, so the tokens
+   the alerts card relies on are defined here rather than inherited. The brand
+   accent tokens already come from BrandHead on :root. */
+.client-portal-push {
+  --crm-line: #e4e1dc;
+  --crm-muted: #6f737b;
+  --crm-ink: #1b2034;
+  --crm-card: #ffffff;
+  margin-bottom: 18px;
+}
+
+.client-portal-push .crm-settings-section {
+  margin-top: 0;
+  background: #ffffff;
+}
+
+/* The tenant's colour rather than the platform purple: this button is the
+   most client-facing control in a white-labelled workspace. */
+.crm-push-optin .crm-button-primary {
+  border-color: var(--crm-brand-primary, #6857e8);
+  color: var(--crm-on-accent, #ffffff);
+  background: var(--crm-brand-primary, #6857e8);
+  box-shadow: none;
+}
+
+.crm-push-notice {
+  margin: 14px 0 0;
+  padding: 10px 13px;
+  border-radius: 8px;
+  color: var(--crm-ink);
+  background: var(--crm-accent-soft);
+  font-size: 12px;
+}
+
+.crm-push-actions button:not(.crm-button-primary) {
+  padding: 9px 16px;
+  border: 1px solid var(--crm-line);
+  border-radius: 8px;
+  color: var(--crm-ink);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.crm-branding-actions {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.crm-form-error {
+  margin: 16px 0 0;
+  padding: 11px 13px;
+  border: 1px solid rgb(200 60 60 / 35%);
+  border-radius: 8px;
+  color: #b23b3b;
+  background: rgb(200 60 60 / 8%);
+  font-size: 12px;
+}
+
+@media (width <= 720px) {
+  .crm-branding-grid,
+  .crm-branding-colors {
+    grid-template-columns: 1fr;
+  }
+}
+
 .crm-settings-facts {
   margin: 0;
   display: grid;

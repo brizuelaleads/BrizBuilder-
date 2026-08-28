@@ -31,6 +31,7 @@ const syncClaimMigrationSource = read(
 const viteConfigSource = read("vite.config.ts");
 const workerSource = read("worker/index.ts");
 const leadWorkerSource = read("lead-worker/src/index.ts");
+const leadWorkerConfigSource = read("lead-worker/wrangler.jsonc");
 const connectionsUi = read("app/crm/WorkflowViews.tsx");
 const dniRoute = read("app/api/callrail/dni-test/route.ts");
 const dniSource = read("lib/callrail-dni.ts");
@@ -338,6 +339,9 @@ test("webhook ingress is public only through brizbuilder-leads", () => {
     /url\.pathname\.startsWith\("\/api\/callrail\/webhook\/"\)/,
   );
   assert.match(leadWorkerSource, /isCallRailWebhook[\s\S]*request\.method !== "POST"/);
+  assert.match(leadWorkerSource, /BRIZBUILDER_ORIGIN = "https:\/\/brizbuilder\.com"/);
+  assert.match(leadWorkerSource, /fetch\(upstreamRequest\(request\)\)/);
+  assert.doesNotMatch(leadWorkerConfigSource, /"service"\s*:\s*"brizbuilder"/);
   assert.match(
     workerSource,
     /url\.pathname\.startsWith\("\/api\/callrail\/webhook\/"\)/,
@@ -1050,7 +1054,9 @@ test("a sync run records a reason, never a raw message", () => {
       );
     }
   }
-  assert.equal(/console\.(log|info|warn)\(/.test(ingestionSource), false);
+  // Structured informational events are permitted for webhook/retry diagnosis;
+  // the loop above still forbids raw bodies and exception messages.
+  assert.match(ingestionSource, /console\.info\(JSON\.stringify\(\{ system: "callrail", event/);
 });
 
 test("a failed background task is recoverable at any age", () => {
@@ -1061,6 +1067,15 @@ test("a failed background task is recoverable at any age", () => {
   assert.match(sweep, /\.eq\("organization_id", organizationId\)/);
   assert.match(sweep, /\.eq\("client_id", clientId\)/);
   assert.match(sweep, /\.in\("ingest_status", \["received", "enriching", "failed"\]\)/);
+  assert.match(sweep, /\.eq\("transcript_status", "pending"\)/);
+  const enrichmentSweep = block(
+    ingestionSource,
+    "async function unfinishedEnrichments(",
+  );
+  assert.match(
+    enrichmentSweep,
+    /\.in\("enrichment_status", \["pending", "processing", "failed"\]\)/,
+  );
   // It runs inside reconciliation, and converges with the window sweep rather
   // than repeating its work.
   // Sliced rather than brace-matched: the signature declares an inline object
@@ -2709,8 +2724,11 @@ test("reusing a lead rewrites nothing about where it came from", () => {
   );
   assert.ok(reuse.length > 0, "the reuse branch exists");
 
-  // Touched so it reads as active, and nothing else.
-  assert.match(reuse, /\.update\(\{ updated_at: new Date\(\)\.toISOString\(\) \}\)/);
+  // Contact history advances, while the attribution that opened the lead does
+  // not change.
+  assert.match(reuse, /first_contacted_at: earliestIso/);
+  assert.match(reuse, /last_contacted_at: latestIso/);
+  assert.match(reuse, /updated_at: new Date\(\)\.toISOString\(\)/);
   for (const immutable of [
     "attribution",
     "meta_eligible",

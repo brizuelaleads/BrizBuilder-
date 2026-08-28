@@ -1,10 +1,16 @@
 interface Env {
-  BRIZBUILDER: Fetcher;
+  // Test-only injection. Production has no service binding: all application
+  // traffic goes to the one Sites-owned BrizBuilder origin.
+  BRIZBUILDER?: Fetcher;
 }
 
-const MAIN_ORIGIN = "https://brizbuilder.brizuelaleads.workers.dev";
+const APP_ORIGIN = "https://brizbuilder.com";
+// Keep the original resource identifier so existing connector grants and
+// refresh tokens remain valid across the hosting cutover. It is an OAuth
+// identifier after cutover, not a network destination.
+const MAIN_RESOURCE_ORIGIN = "https://brizbuilder.brizuelaleads.workers.dev";
 const PUBLIC_ORIGIN = "https://brizbuilder-ai.brizuelaleads.workers.dev";
-const MAIN_RESOURCE = `${MAIN_ORIGIN}/mcp`;
+const MAIN_RESOURCE = `${MAIN_RESOURCE_ORIGIN}/mcp`;
 const PUBLIC_RESOURCE = `${PUBLIC_ORIGIN}/mcp`;
 const SCOPES = [
   "crm:read",
@@ -45,7 +51,7 @@ function publicMetadata(pathname: string): Response {
       authorization_servers: [PUBLIC_ORIGIN],
       scopes_supported: SCOPES,
       bearer_methods_supported: ["header"],
-      resource_documentation: `${MAIN_ORIGIN}/?view=ai`,
+      resource_documentation: `${APP_ORIGIN}/?view=ai`,
     });
   }
   return json({
@@ -70,7 +76,7 @@ function authorizationRedirect(request: Request): Response {
     return json({ error: "invalid_target", error_description: "The requested resource is unknown." }, 400);
   }
   source.searchParams.set("resource", MAIN_RESOURCE);
-  const target = new URL("/oauth/authorize", MAIN_ORIGIN);
+  const target = new URL("/oauth/authorize", APP_ORIGIN);
   target.search = source.search;
   return new Response(null, {
     status: 302,
@@ -82,6 +88,8 @@ function downstreamRequest(
   request: Request,
   body?: BodyInit | null,
 ): Request {
+  const source = new URL(request.url);
+  const target = new URL(source.pathname + source.search, APP_ORIGIN);
   const headers = new Headers(request.headers);
   headers.delete("host");
   headers.delete("cookie");
@@ -90,10 +98,16 @@ function downstreamRequest(
   headers.delete("cf-access-client-id");
   headers.delete("cf-access-client-secret");
   if (body !== undefined) headers.delete("content-length");
-  return new Request(request, {
+  const init: RequestInit & { duplex?: "half" } = {
+    method: request.method,
     headers,
-    ...(body === undefined ? {} : { body }),
-  });
+    body: body === undefined ? request.body : body,
+    redirect: "manual",
+  };
+  // Node's fetch implementation requires this for a streamed request body;
+  // Workers accepts it and keeps the proxy streaming instead of buffering.
+  if (init.body) init.duplex = "half";
+  return new Request(target, init);
 }
 
 function rewriteDownstreamHeaders(headers: Headers): Headers {
@@ -103,7 +117,14 @@ function rewriteDownstreamHeaders(headers: Headers): Headers {
   rewritten.delete("CF-Access-Authenticated-User-Email");
   for (const name of ["WWW-Authenticate", "Link", "Location"]) {
     const value = rewritten.get(name);
-    if (value) rewritten.set(name, value.replaceAll(MAIN_ORIGIN, PUBLIC_ORIGIN));
+    if (value) {
+      rewritten.set(
+        name,
+        value
+          .replaceAll(MAIN_RESOURCE_ORIGIN, PUBLIC_ORIGIN)
+          .replaceAll(APP_ORIGIN, PUBLIC_ORIGIN),
+      );
+    }
   }
   return rewritten;
 }
@@ -112,7 +133,10 @@ async function passThrough(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const response = await env.BRIZBUILDER.fetch(downstreamRequest(request));
+  const downstream = downstreamRequest(request);
+  const response = env.BRIZBUILDER
+    ? await env.BRIZBUILDER.fetch(downstream)
+    : await fetch(downstream);
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -141,9 +165,10 @@ async function tokenExchange(request: Request, env: Env): Promise<Response> {
     return json({ error: "invalid_target", error_description: "The requested resource is unknown." }, 400);
   }
   form.set("resource", MAIN_RESOURCE);
-  const response = await env.BRIZBUILDER.fetch(
-    downstreamRequest(request, form.toString()),
-  );
+  const downstream = downstreamRequest(request, form.toString());
+  const response = env.BRIZBUILDER
+    ? await env.BRIZBUILDER.fetch(downstream)
+    : await fetch(downstream);
   const headers = rewriteDownstreamHeaders(response.headers);
   const responseType = response.headers.get("content-type")?.toLowerCase() ?? "";
   if (!responseType.includes("application/json")) {
@@ -174,7 +199,8 @@ async function tokenExchange(request: Request, env: Env): Promise<Response> {
 }
 
 export const gatewayConfig = {
-  mainOrigin: MAIN_ORIGIN,
+  appOrigin: APP_ORIGIN,
+  mainOrigin: MAIN_RESOURCE_ORIGIN,
   publicOrigin: PUBLIC_ORIGIN,
   mainResource: MAIN_RESOURCE,
   publicResource: PUBLIC_RESOURCE,

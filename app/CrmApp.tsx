@@ -45,6 +45,9 @@ import { BrandLogo } from "./components/BrandLogo";
 import type { CrmBootstrap, CrmLead, CrmPermission, CrmRole } from "../db/crm";
 import type { CrmTheme } from "../db/theme";
 import { CRM_THEMES } from "../db/theme";
+import type { TenantBranding } from "../db/branding";
+import { DEFAULT_BRANDING, brandingCssVariables } from "../db/branding";
+import { PushOptIn } from "./components/PushOptIn";
 import { DashboardView } from "./crm/DashboardView";
 import { LeadDetail, LeadsView, PipelineView } from "./crm/LeadsViews";
 import {
@@ -313,9 +316,11 @@ function subscribeToViewChange(onStoreChange: () => void) {
 export function CrmApp({
   initialData,
   signOutPath,
+  branding = DEFAULT_BRANDING,
 }: {
   initialData: CrmBootstrap;
   signOutPath: string;
+  branding?: TenantBranding;
 }) {
   const [data, setData] = useState(initialData);
   const requestedView = useSyncExternalStore(
@@ -773,14 +778,21 @@ export function CrmApp({
   );
 
   return (
-    <div className="crm-shell" data-theme={theme === "classic" ? undefined : theme}>
+    // The brand tokens ride on an inline style because `.crm-shell` and the
+    // per-theme blocks both declare `--crm-accent` themselves; a `:root` rule
+    // would lose to them on specificity. Inline wins over every one.
+    <div
+      className="crm-shell"
+      data-theme={theme === "classic" ? undefined : theme}
+      style={brandingCssVariables(branding) as React.CSSProperties}
+    >
       <aside className={`crm-sidebar ${mobileNav ? "crm-sidebar-open" : ""}`}>
         <div className="crm-brand">
           <button
             type="button"
             className="crm-brand-home"
             onClick={() => navigate("dashboard")}
-            aria-label="Open BrizBuilder dashboard"
+            aria-label={`Open ${branding.appName} dashboard`}
           >
             <BrandLogo
               className="crm-brand-logo"
@@ -788,6 +800,8 @@ export function CrmApp({
               tone={theme === "classic" ? "dark" : "light"}
               decorative
               priority
+              logoUrl={branding.logoUrl}
+              brandName={branding.businessName}
             />
           </button>
           <button
@@ -1167,6 +1181,24 @@ export function CrmApp({
             </select>
           ) : null}
         </div>
+        {/*
+          Client users have no Settings tab, so the alert opt-in lives on the
+          dashboard where they will actually meet it. Agency viewers are
+          excluded: alerts are registered against a single tenant, and the
+          subscribe endpoint refuses an account that spans several.
+        */}
+        {view === "dashboard" && !data.viewer.isAgency && (
+          // Wrapped in the same width/padding container the views use, so the
+          // card lines up with the dashboard content instead of sitting flush
+          // against the edges of crm-main.
+          <div className="crm-view crm-push-optin-shell">
+            <PushOptIn
+              configured={data.pushRuntime.configured}
+              vapidPublicKey={data.pushRuntime.vapidPublicKey}
+              initialDeviceCount={data.pushRuntime.subscribedDevices}
+            />
+          </div>
+        )}
         {view === "dashboard" && (
           <DashboardView
             leads={filteredLeads}
@@ -1413,6 +1445,9 @@ export function CrmApp({
             organizationName={data.organization.name}
             viewerRole={data.viewer.role}
             clients={data.clients}
+            branding={data.branding}
+            mutate={mutate}
+            tenantRootDomain={data.pwaRuntime.tenantRootDomain}
           />
         )}
       </main>

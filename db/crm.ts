@@ -193,11 +193,16 @@ export type CrmLead = {
   estimatedValueCents: number;
   finalRevenueCents: number;
   appointmentDate: string | null;
+  appointmentStatus: string;
+  appointmentStart: string | null;
+  appointmentEnd: string | null;
+  appointmentTimeZone: string | null;
   leadScore: number;
   tags: string[];
   consentStatus: string;
   lostReason: string | null;
   lastContactedAt: string | null;
+  firstContactedAt: string | null;
   nextFollowUpAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -380,10 +385,13 @@ export type CrmCall = {
   answered: boolean | null;
   durationSeconds: number | null;
   startedAt: string | null;
+  endedAt: string | null;
   trackingPhoneNumber: string | null;
+  businessPhoneNumber: string | null;
   customerPhone: string | null;
   customerName: string | null;
   source: string | null;
+  sourceName: string | null;
   medium: string | null;
   campaign: string | null;
   classification: string | null;
@@ -392,6 +400,8 @@ export type CrmCall = {
   recordingAvailable: boolean;
   recordingDurationSeconds: number | null;
   ingestStatus: string | null;
+  transcriptStatus: string | null;
+  appointmentStatus: string | null;
 };
 
 export type CrmProviderConnection = {
@@ -571,6 +581,8 @@ export type { CrmTheme } from "./theme";
 export { CRM_THEMES } from "./theme";
 import { CRM_THEMES } from "./theme";
 import type { CrmTheme } from "./theme";
+export type { TenantBranding } from "./branding";
+import type { TenantBranding } from "./branding";
 
 export type CrmBootstrap = {
   viewer: {
@@ -617,6 +629,28 @@ export type CrmBootstrap = {
   notes: CrmNote[];
   calls: CrmCall[];
   team: CrmTeamMember[];
+  /**
+   * White-label branding for every sub-account the viewer can reach, so the
+   * settings screen can edit a tenant's app identity without a second fetch.
+   * Empty on the D1 backend, which stores no branding.
+   */
+  branding: TenantBranding[];
+  /**
+   * Host-routing configuration, so the branding form can show the real
+   * install address instead of guessing at one. Null root domain means
+   * subdomain routing is not configured for this deployment.
+   */
+  pwaRuntime: { tenantRootDomain: string | null; hostRoutingEnabled: boolean };
+  /**
+   * What the browser needs to register for push, plus how many devices this
+   * viewer already has. `vapidPublicKey` is a public value by design -- it is
+   * what the subscription is created against.
+   */
+  pushRuntime: {
+    configured: boolean;
+    vapidPublicKey: string | null;
+    subscribedDevices: number;
+  };
   demoData: boolean;
   generatedAt: string;
 };
@@ -961,6 +995,12 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
     calls: [],
     team: teamRows.results.map((row) => ({ id: String(row.id), email: String(row.email), displayName: String(row.display_name), role: String(row.role) as CrmRole, status: String(row.status), lastLoginAt: nullable(row.last_login_at), clientId: null, clientName: null })),
     auditLogs: auditRows.results.map((row) => ({ id: String(row.id), actorEmail: String(row.actor_email), action: String(row.action), recordType: String(row.record_type), recordId: nullable(row.record_id), metadata: (() => { try { return JSON.parse(String(row.metadata_json ?? "{}")) as Record<string, unknown>; } catch { return {}; } })(), createdAt: String(row.created_at) })),
+    // White-label branding lives only in Supabase; this backend has no rows
+    // to hand over and says so rather than leaving the field absent.
+    branding: [],
+    pwaRuntime: { tenantRootDomain: null, hostRoutingEnabled: false },
+    // Push subscriptions live only in Supabase.
+    pushRuntime: { configured: false, vapidPublicKey: null, subscribedDevices: 0 },
     demoData: false,
     generatedAt: new Date().toISOString(),
   };
@@ -975,7 +1015,7 @@ function mapContact(row: Record<string, unknown>): CrmContact {
 }
 
 function mapLead(row: Record<string, unknown>): CrmLead {
-  return { id: String(row.id), clientId: String(row.client_id), clientName: String(row.client_name), contactId: String(row.contact_id), firstName: String(row.first_name), lastName: String(row.last_name), phone: nullable(row.phone), email: nullable(row.email), address: nullable(row.address), city: nullable(row.city), state: nullable(row.state), zip: nullable(row.zip), stageId: String(row.stage_id), stageName: String(row.stage_name), stageColor: String(row.stage_color), serviceRequested: String(row.service_requested), message: String(row.message ?? ""), source: String(row.source), campaign: nullable(row.campaign), status: String(row.status), assignedUser: nullable(row.assigned_user), estimatedValueCents: Number(row.estimated_value_cents ?? 0), finalRevenueCents: Number(row.final_revenue_cents ?? 0), appointmentDate: nullable(row.appointment_date), leadScore: Number(row.lead_score ?? 0), tags: parseStringArray(row.tags_json), consentStatus: String(row.consent_status), lostReason: nullable(row.lost_reason), lastContactedAt: nullable(row.last_contacted_at), nextFollowUpAt: nullable(row.next_follow_up_at), createdAt: String(row.created_at), updatedAt: String(row.updated_at) };
+  return { id: String(row.id), clientId: String(row.client_id), clientName: String(row.client_name), contactId: String(row.contact_id), firstName: String(row.first_name), lastName: String(row.last_name), phone: nullable(row.phone), email: nullable(row.email), address: nullable(row.address), city: nullable(row.city), state: nullable(row.state), zip: nullable(row.zip), stageId: String(row.stage_id), stageName: String(row.stage_name), stageColor: String(row.stage_color), serviceRequested: String(row.service_requested), message: String(row.message ?? ""), source: String(row.source), campaign: nullable(row.campaign), status: String(row.status), assignedUser: nullable(row.assigned_user), estimatedValueCents: Number(row.estimated_value_cents ?? 0), finalRevenueCents: Number(row.final_revenue_cents ?? 0), appointmentDate: nullable(row.appointment_date), appointmentStatus: "none", appointmentStart: null, appointmentEnd: null, appointmentTimeZone: null, leadScore: Number(row.lead_score ?? 0), tags: parseStringArray(row.tags_json), consentStatus: String(row.consent_status), lostReason: nullable(row.lost_reason), lastContactedAt: nullable(row.last_contacted_at), firstContactedAt: String(row.created_at), nextFollowUpAt: nullable(row.next_follow_up_at), createdAt: String(row.created_at), updatedAt: String(row.updated_at) };
 }
 
 function nullable(value: unknown): string | null {
@@ -1106,6 +1146,16 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
     const theme = requireText(input.theme, "Theme", 20) as CrmTheme;
     if (!CRM_THEMES.includes(theme)) throw new Error("Unknown theme.");
     return { saved: true, persisted: false, theme };
+  }
+
+  if (action === "save_client_branding") {
+    // D1 has no client_branding table. Permission and tenant scope are still
+    // enforced so the fallback backend can never be used to sidestep them,
+    // and the honest "not persisted" answer keeps the settings form working.
+    requirePermission(context, "clients.manage");
+    const clientId = requireText(input.clientId, "Client", 80);
+    await requireClient(context, clientId);
+    return { saved: true, persisted: false, branding: null };
   }
 
   if (action === "save_google_profile_settings") {

@@ -7,7 +7,7 @@ Phase 1 is implemented as a production-quality MVP. Records are stored in Cloudf
 ## Current architecture
 
 - Vinext / Next.js App Router, React 19, and TypeScript strict mode
-- Cloudflare Worker deployment target
+- Cloudflare Worker-compatible Vinext runtime, versioned and deployed to production through ChatGPT Sites
 - Cloudflare D1 with Drizzle schema and generated migrations
 - Cloudflare Access application JWT authentication with origin-side signature, issuer, audience, algorithm, and expiry verification
 - Independent administrator cookie-session fallback backed by Cloudflare secrets
@@ -76,7 +76,7 @@ database. The dated migrations are authoritative for every change after that
 baseline. If you use the Supabase CLI instead, apply the complete
 `supabase/migrations` directory to an empty database and skip `schema.sql`.
 
-4. Add these environment variables in Cloudflare/Vercel:
+4. Add these environment variables in Sites environment settings:
 
 ```txt
 NEXT_PUBLIC_SUPABASE_URL=
@@ -221,10 +221,11 @@ npm run build
   call. Disconnecting an app revokes both access and refresh tokens.
 - Production uses the separate `brizbuilder-ai` machine gateway. It exposes only
   OAuth discovery/registration/token routes and `/mcp`; the dashboard and human
-  approval screen remain on the Cloudflare Access-protected `brizbuilder` Worker.
-- Deploy the gateway with
-  `npx wrangler deploy --config ai-gateway/wrangler.jsonc`. Its service binding
-  reaches the protected Worker without duplicating Supabase or OAuth secrets.
+  approval screen remain on the Sites-owned `brizbuilder.com` application.
+- The gateway reaches `brizbuilder.com` over HTTPS. It intentionally keeps the
+  original Workers URL as the internal OAuth resource identifier so existing
+  connector grants survive the hosting cutover; that identifier is not a second
+  application deployment.
 
 ## Not implemented yet
 
@@ -247,8 +248,16 @@ See [the phased roadmap](docs/ROADMAP.md) and [feature parity matrix](docs/FEATU
 
 1. Run `npm test`.
 2. Confirm `.openai/hosting.json` contains the existing Sites `project_id` and `"d1": "DB"`.
-3. Package and publish through the Sites hosting workflow.
-4. Keep the site private or explicitly configure an allowlist before sharing it.
-5. Verify Cloudflare Access sign-in, origin JWT validation, the D1 migration, and one agency/client isolation check after deployment.
+3. Confirm the Sites environment settings contain the production Supabase and
+   provider values before saving a version.
+4. Package, save, and publish through the Sites hosting workflow. Do not deploy
+   the main application with Wrangler; `brizbuilder.com` has one application
+   owner, Sites.
+5. Before moving the domain, verify the Sites URL, API routes, static PWA files,
+   and the 15-minute scheduled handler. The schedule is required for CallRail
+   recovery and notification sweeps.
+6. Attach `brizbuilder.com` to the approved Sites version, then detach the same
+   hostname and schedule from the legacy `brizbuilder` Worker. Keep the Worker
+   undeleted as a rollback artifact until the cutover is accepted.
 
 Runtime secrets belong in Sites environment settings, never in the repository.

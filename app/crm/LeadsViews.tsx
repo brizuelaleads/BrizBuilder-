@@ -727,7 +727,11 @@ function LeadTranscriptCard({
         <div className="crm-lead-empty-tab compact">
           <MessageCircle aria-hidden="true" />
           <h3>Transcript unavailable</h3>
-          <p>This call does not have a transcript yet.</p>
+          <p>
+            {call.transcriptStatus === "pending"
+              ? "CallRail is still processing this transcript. BrizBuilder will retry automatically."
+              : "This call does not have a transcript."}
+          </p>
         </div>
       )}
     </section>
@@ -765,6 +769,7 @@ export function LeadDetail({
   );
   const leadCalls = calls.filter((call) => call.leadId === lead.id)
     .sort((a, b) => (b.startedAt ?? "").localeCompare(a.startedAt ?? ""));
+  const latestCall = leadCalls[0] ?? null;
   const [activeTab, setActiveTab] = useState<LeadDetailTab>("overview");
   const tabListRef = useRef<HTMLElement | null>(null);
   const activeStageIndex = stages.findIndex((stage) => stage.id === lead.stageId);
@@ -1020,7 +1025,7 @@ export function LeadDetail({
             <div>
               <span>Last contact</span>
               <strong>
-                {lead.lastContactedAt ? dateTime(lead.lastContactedAt) : "Never"}
+                {lead.lastContactedAt ? dateTime(lead.lastContactedAt) : "Not provided"}
               </strong>
             </div>
             <div className="crm-lead-value-inline">
@@ -1111,7 +1116,14 @@ export function LeadDetail({
                     <dl className="crm-lead-attribution-list">
                       <div><dt>Source</dt><dd>{lead.source}</dd></div>
                       <div><dt>Campaign</dt><dd>{lead.campaign ?? "Not captured"}</dd></div>
-                      <div><dt>Created</dt><dd>{dateTime(lead.createdAt)}</dd></div>
+                      <div><dt>Requested service</dt><dd>{lead.serviceRequested || "Not provided"}</dd></div>
+                      <div><dt>First contact</dt><dd>{dateTime(lead.firstContactedAt ?? lead.createdAt)}</dd></div>
+                      <div><dt>Last contact</dt><dd>{lead.lastContactedAt ? dateTime(lead.lastContactedAt) : "Not provided"}</dd></div>
+                      <div><dt>Appointment status</dt><dd>{humanizeLeadValue(lead.appointmentStatus)}</dd></div>
+                      <div><dt>Appointment</dt><dd>{lead.appointmentStart ? dateTime(lead.appointmentStart) : "Not provided"}</dd></div>
+                      <div><dt>Tracking number</dt><dd>{latestCall ? formatLeadPhone(latestCall.trackingPhoneNumber) : "Not provided"}</dd></div>
+                      <div><dt>Number called</dt><dd>{latestCall ? formatLeadPhone(latestCall.businessPhoneNumber) : "Not provided"}</dd></div>
+                      <div><dt>Latest call</dt><dd>{latestCall ? `${latestCall.answered === true ? "Answered" : latestCall.answered === false ? "Missed" : "Unknown"} · ${formatCallDuration(latestCall.durationSeconds)}` : "Not provided"}</dd></div>
                       <div><dt>Assigned to</dt><dd>{lead.assignedUser ?? "Unassigned"}</dd></div>
                     </dl>
                   </div>
@@ -1121,7 +1133,7 @@ export function LeadDetail({
                   <MessageCircle aria-hidden="true" />
                   <div>
                     <h3>Customer message</h3>
-                    <p>{lead.message || "No message was provided."}</p>
+                    <p>{lead.message || "No customer message available"}</p>
                   </div>
                 </section>
 

@@ -2,7 +2,16 @@
 
 ## Decision summary
 
-BrizBuilder begins as a modular monolith deployed to a Cloudflare Worker. The UI, authenticated route handlers, CRM application service, and D1 persistence live in one deployable unit, but module boundaries and provider adapters are explicit. This keeps Phase 1 operable by a small team without locking later communications, automation, and publishing workloads into synchronous HTTP requests.
+BrizBuilder is a modular monolith built as a Cloudflare Worker-compatible
+Vinext application. ChatGPT Sites owns the production application versions,
+deployments, runtime environment, and `brizbuilder.com` custom domain. The UI,
+authenticated route handlers, CRM application service, and persistence live in
+one deployable unit, but module boundaries and provider adapters are explicit.
+
+The `brizbuilder-leads` and `brizbuilder-ai` Workers are narrow public gateways,
+not alternate application deployments. They forward allowed requests to
+`brizbuilder.com` over HTTPS and must not service-bind to a separately deployed
+copy of the main application.
 
 ```mermaid
 flowchart LR

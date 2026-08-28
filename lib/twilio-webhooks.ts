@@ -8,6 +8,7 @@ import {
   validateTwilioFormRequest,
 } from "./twilio";
 import { runPublishedWorkflowsForEvent } from "./workflow-engine";
+import { dispatchPushEvent, missedCallEvent } from "./push-notifications";
 
 type Row = Record<string, unknown>;
 
@@ -231,6 +232,25 @@ export async function handleVoiceStatus(request: Request) {
         fromNumber: from,
       })
     : 0;
+  if (missed) {
+    // Never throws, so a push problem cannot fail the webhook and make Twilio
+    // retry a call we have already recorded.
+    await dispatchPushEvent(
+      missedCallEvent({
+        organizationId: String(config.organization_id),
+        clientId: String(config.client_id),
+        callId: callSid,
+        fromNumber: from,
+        // "Phone Caller" is the placeholder findOrCreateContact assigns to an
+        // unknown number; showing the number itself is more use on a lock screen.
+        contactName:
+          `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() ===
+          "Phone Caller"
+            ? null
+            : `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim(),
+      }),
+    );
+  }
   // A published visual workflow replaces the legacy missed-call rule so the
   // customer never receives two automatic replies for the same call.
   if (advancedWorkflowCount > 0) return xml();

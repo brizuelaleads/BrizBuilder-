@@ -6,12 +6,6 @@
   "account_id": "3268cb062bb706cd47aaebe1e36411ef",
   "workers_dev": true,
   "preview_urls": false,
-  "services": [
-    {
-      "binding": "BRIZBUILDER",
-      "service": "brizbuilder"
-    }
-  ],
   "observability": {
     "enabled": true
   }

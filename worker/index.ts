@@ -2,9 +2,11 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import {
+  classifySyncFailure,
   handleCallRailWebhook,
   reconcileCallRailIngestion,
 } from "../lib/callrail-ingestion";
+import { runNotificationSweeps } from "../lib/notification-sweeps";
 
 interface Env {
   ASSETS: Fetcher;
@@ -89,9 +91,18 @@ const worker = {
   ): Promise<void> {
     ctx.waitUntil(
       reconcileCallRailIngestion().catch((error) => {
-        console.error("CallRail reconciliation failed.", error);
+        // Never hand a provider/database exception to the log sink: those can
+        // contain request URLs, payload fragments, or customer data.
+        console.error(
+          "CallRail reconciliation failed.",
+          classifySyncFailure(error),
+        );
       }),
     );
+    // Stale-lead and appointment reminders are found by scanning, not by an
+    // event, so they ride the same tick. Kept as a separate waitUntil so
+    // neither job can delay or fail the other.
+    ctx.waitUntil(runNotificationSweeps());
   },
 };
 

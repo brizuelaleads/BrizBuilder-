@@ -105,14 +105,15 @@ export async function POST(request: Request, context: RouteContext) {
     if (!phone && !email) return Response.json({ error: "Phone or email is required." }, { status: 400, headers });
 
     const supabase = getSupabaseAdminClient();
-    let contact: { id: string } | null = null;
+    const submittedAt = new Date().toISOString();
+    let contact: Record<string, unknown> | null = null;
     if (email) {
-      const result = await supabase.from("contacts").select("id").eq("organization_id", site.organization_id).eq("client_id", site.client_id).eq("email", email).is("archived_at", null).limit(1).maybeSingle();
+      const result = await supabase.from("contacts").select("id,first_name,last_name,phone,email,address,city,state,zip,field_provenance,last_interaction_at").eq("organization_id", site.organization_id).eq("client_id", site.client_id).eq("email", email).is("archived_at", null).limit(1).maybeSingle();
       if (result.error) throw new Error(result.error.message);
       contact = result.data;
     }
     if (!contact && phone) {
-      const result = await supabase.from("contacts").select("id").eq("organization_id", site.organization_id).eq("client_id", site.client_id).eq("phone", phone).is("archived_at", null).limit(1).maybeSingle();
+      const result = await supabase.from("contacts").select("id,first_name,last_name,phone,email,address,city,state,zip,field_provenance,last_interaction_at").eq("organization_id", site.organization_id).eq("client_id", site.client_id).eq("phone", phone).is("archived_at", null).limit(1).maybeSingle();
       if (result.error) throw new Error(result.error.message);
       contact = result.data;
     }
@@ -130,10 +131,58 @@ export async function POST(request: Request, context: RouteContext) {
         zip: cleanText(input.zip, 20),
         tags: ["website-lead"],
         marketing_consent: input.consent === true || input.consent === "granted" ? "granted" : "unknown",
-        last_interaction_at: new Date().toISOString(),
+        last_interaction_at: submittedAt,
+        field_provenance: Object.fromEntries(
+          [
+            ["first_name", firstName], ["last_name", lastName], ["phone", phone],
+            ["email", email], ["address", cleanText(input.address, 200)],
+            ["city", cleanText(input.city, 80)], ["state", cleanText(input.state, 30)],
+            ["zip", cleanText(input.zip, 20)],
+          ].filter(([, value]) => Boolean(value)).map(([field]) => [field, {
+            source: "form", confidence: 1, verified: true, updatedAt: submittedAt,
+          }]),
+        ),
       }).select("id").single();
       if (result.error) throw new Error(result.error.message);
       contact = result.data;
+    } else {
+      const formValues: Record<string, string | null> = {
+        first_name: firstName,
+        last_name: lastName || null,
+        phone,
+        email,
+        address: cleanText(input.address, 200),
+        city: cleanText(input.city, 80),
+        state: cleanText(input.state, 30),
+        zip: cleanText(input.zip, 20),
+      };
+      const fields =
+        contact.field_provenance && typeof contact.field_provenance === "object"
+          ? { ...(contact.field_provenance as Record<string, unknown>) }
+          : {};
+      const patch: Record<string, unknown> = {
+        last_interaction_at: submittedAt,
+        updated_at: submittedAt,
+      };
+      for (const [field, value] of Object.entries(formValues)) {
+        const metadata = fields[field] as { source?: string; verified?: boolean } | undefined;
+        const current = String(contact[field] ?? "").trim();
+        const placeholder =
+          (field === "first_name" && /^(?:phone|unknown|caller)$/iu.test(current)) ||
+          (field === "last_name" && /^(?:caller|contact|unknown)$/iu.test(current));
+        const lowerPriority = ["callrail", "transcript", "ai_summary"].includes(
+          String(metadata?.source ?? ""),
+        );
+        if (value && (!current || placeholder || lowerPriority)) {
+          patch[field] = value;
+          fields[field] = {
+            source: "form", confidence: 1, verified: true, updatedAt: submittedAt,
+          };
+        }
+      }
+      patch.field_provenance = fields;
+      const update = await supabase.from("contacts").update(patch).eq("id", String(contact.id));
+      if (update.error) throw new Error(update.error.message);
     }
 
     const [pipelineResult, stageResult] = await Promise.all([
@@ -145,7 +194,7 @@ export async function POST(request: Request, context: RouteContext) {
     if (!pipelineResult.data?.id || !stageResult.data?.id) throw new Error("The CRM lead pipeline is not configured.");
 
     const service = cleanText(input.service, 160) ?? cleanText(input.serviceRequested, 160) ?? "Website inquiry";
-    const now = new Date().toISOString();
+    const now = submittedAt;
     // Ad click identifiers forwarded by the landing page. Unknown keys are
     // dropped, so a page can post its whole query string without risk.
     const attribution = normalizeAttribution(input);
@@ -171,6 +220,18 @@ export async function POST(request: Request, context: RouteContext) {
       attribution,
       meta_eligible: eligibility.eligible,
       meta_eligibility_reason: eligibility.reason,
+      first_contacted_at: now,
+      last_contacted_at: now,
+      field_provenance: {
+        service_requested: { source: "form", confidence: 1, verified: true, updatedAt: now },
+        ...(cleanText(input.message, 1200)
+          ? { message: { source: "form", confidence: 1, verified: true, updatedAt: now } }
+          : {}),
+        source: { source: "form", confidence: 1, verified: true, updatedAt: now },
+        ...(cleanText(input.campaign, 160)
+          ? { campaign: { source: "form", confidence: 1, verified: true, updatedAt: now } }
+          : {}),
+      },
     }).select("id").single();
     if (leadResult.error) throw new Error(leadResult.error.message);
 

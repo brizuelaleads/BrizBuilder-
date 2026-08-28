@@ -10,6 +10,8 @@ import type {
   CrmTask,
   CrmTeamMember,
 } from "../../db/crm";
+import type { TenantBranding } from "../../db/branding";
+import { BrandingSettings } from "./BrandingSettings";
 import { Badge, dateTime, EmptyState, Modal, money, shortDate } from "./ui";
 
 type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
@@ -516,10 +518,25 @@ export function TeamView({ team, onInvite, mutate }: { team: CrmTeamMember[]; on
   </div>;
 }
 
-export function SettingsView({ organizationName, viewerRole, clients }: { organizationName: string; viewerRole: string; clients: CrmClient[] }) {
-  const [section, setSection] = useState<"workspace" | "security" | "integrations" | "privacy">("workspace");
+export function SettingsView({
+  organizationName,
+  viewerRole,
+  clients,
+  branding,
+  mutate,
+  tenantRootDomain,
+}: {
+  organizationName: string;
+  viewerRole: string;
+  clients: CrmClient[];
+  branding: TenantBranding[];
+  mutate: Mutate;
+  tenantRootDomain: string | null;
+}) {
+  const [section, setSection] = useState<"workspace" | "branding" | "security" | "integrations" | "privacy">("workspace");
   const sections = [
     { id: "workspace" as const, label: "Workspace", icon: "B" },
+    { id: "branding" as const, label: "Branding & app", icon: "W" },
     { id: "security" as const, label: "Access & security", icon: "A" },
     { id: "integrations" as const, label: "Integrations", icon: "I" },
     { id: "privacy" as const, label: "Privacy", icon: "P" },
@@ -570,6 +587,23 @@ export function SettingsView({ organizationName, viewerRole, clients }: { organi
                   <div><dt>Active sub-accounts</dt><dd>{clients.length}</dd></div>
                 </dl>
               </article>
+            </>
+          ) : null}
+          {section === "branding" ? (
+            <>
+              <header>
+                <h3>Branding &amp; app</h3>
+                <p>
+                  How this sub-account&apos;s workspace looks, and what it is
+                  called once someone adds it to their phone home screen.
+                </p>
+              </header>
+              <BrandingSettings
+                clients={clients}
+                branding={branding}
+                mutate={mutate}
+                tenantRootDomain={tenantRootDomain}
+              />
             </>
           ) : null}
           {section === "security" ? (

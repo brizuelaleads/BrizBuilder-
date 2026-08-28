@@ -1,5 +1,18 @@
-interface Env {
-  BRIZBUILDER: Fetcher;
+const BRIZBUILDER_ORIGIN = "https://brizbuilder.com";
+
+function upstreamRequest(request: Request) {
+  const source = new URL(request.url);
+  const target = new URL(source.pathname + source.search, BRIZBUILDER_ORIGIN);
+  const headers = new Headers(request.headers);
+  headers.delete("host");
+  const init: RequestInit & { duplex?: "half" } = {
+    method: request.method,
+    headers,
+    body: request.body,
+    redirect: "manual",
+  };
+  if (init.body) init.duplex = "half";
+  return new Request(target, init);
 }
 
 function securityHeaders(response: Response) {
@@ -11,7 +24,7 @@ function securityHeaders(response: Response) {
 }
 
 const worker = {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/health" && request.method === "GET") {
       return Response.json({ ok: true, service: "brizbuilder-leads" }, { headers: { "Cache-Control": "no-store" } });
@@ -27,7 +40,7 @@ const worker = {
     if (!["GET", "POST", "OPTIONS"].includes(request.method) || ((isTwilioWebhook || isTwilioDeauthorize || isStripeWebhook || isCallRailWebhook) && request.method !== "POST")) {
       return Response.json({ error: "Method not allowed." }, { status: 405, headers: { "Allow": "GET, POST, OPTIONS", "Cache-Control": "no-store" } });
     }
-    return securityHeaders(await env.BRIZBUILDER.fetch(request));
+    return securityHeaders(await fetch(upstreamRequest(request)));
   },
 };
 

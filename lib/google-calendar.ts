@@ -15,6 +15,11 @@ type GoogleCalendarEvent = {
   id?: string;
 };
 
+export type GoogleCalendarSyncResult = {
+  action: "created" | "updated" | "cancelled" | "unchanged";
+  eventId: string | null;
+};
+
 async function googleCalendarRequest(
   accessToken: string,
   url: string | URL,
@@ -88,19 +93,19 @@ export async function verifyGoogleCalendarAccess(accessToken: string) {
 export async function syncGoogleCalendarAppointment(
   accessToken: string,
   appointment: GoogleCalendarAppointment,
-) {
+): Promise<GoogleCalendarSyncResult> {
   const eventId = await findGoogleCalendarEvent(
     accessToken,
     appointment.id,
   );
   if (appointment.status === "CANCELED") {
-    if (!eventId) return;
+    if (!eventId) return { action: "unchanged", eventId: null };
     const url = new URL(
       `${GOOGLE_CALENDAR_API}/calendars/primary/events/${encodeURIComponent(eventId)}`,
     );
     url.searchParams.set("sendUpdates", "none");
     await googleCalendarRequest(accessToken, url, { method: "DELETE" });
-    return;
+    return { action: "cancelled", eventId: null };
   }
 
   const start = new Date(appointment.startsAt);
@@ -125,9 +130,15 @@ export async function syncGoogleCalendarAppointment(
       )
     : new URL(`${GOOGLE_CALENDAR_API}/calendars/primary/events`);
   url.searchParams.set("sendUpdates", "none");
-  await googleCalendarRequest(accessToken, url, {
+  const response = await googleCalendarRequest(accessToken, url, {
     method: eventId ? "PUT" : "POST",
     body,
   });
+  if (eventId) return { action: "updated", eventId };
+  const created = (await response.json()) as GoogleCalendarEvent;
+  return {
+    action: "created",
+    eventId: typeof created.id === "string" && created.id ? created.id : null,
+  };
 }
 

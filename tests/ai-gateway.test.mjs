@@ -23,7 +23,7 @@ test("gateway exposes only public OAuth and MCP metadata", async () => {
     authorization_servers: [publicOrigin],
     scopes_supported: gatewayConfig.scopes,
     bearer_methods_supported: ["header"],
-    resource_documentation: `${gatewayConfig.mainOrigin}/?view=ai`,
+    resource_documentation: `${gatewayConfig.appOrigin}/?view=ai`,
   });
 
   const authorizationMetadata = await worker.fetch(
@@ -48,7 +48,7 @@ test("authorization redirects to the protected consent screen with an internal r
   const response = await worker.fetch(new Request(source), mockEnv(() => new Response()),);
   assert.equal(response.status, 302);
   const location = new URL(response.headers.get("location"));
-  assert.equal(location.origin, gatewayConfig.mainOrigin);
+  assert.equal(location.origin, gatewayConfig.appOrigin);
   assert.equal(location.pathname, "/oauth/authorize");
   assert.equal(location.searchParams.get("client_id"), "client-1");
   assert.equal(location.searchParams.get("resource"), gatewayConfig.mainResource);
@@ -88,7 +88,7 @@ test("token exchange translates only the exact public resource", async () => {
   );
   assert.equal(response.status, 200);
   const sent = new URLSearchParams(await downstreamRequest.text());
-  assert.equal(new URL(downstreamRequest.url).origin, gatewayConfig.publicOrigin);
+  assert.equal(new URL(downstreamRequest.url).origin, gatewayConfig.appOrigin);
   assert.equal(sent.get("resource"), gatewayConfig.mainResource);
   assert.equal((await response.json()).resource, gatewayConfig.publicResource);
 

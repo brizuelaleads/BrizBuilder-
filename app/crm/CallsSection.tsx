@@ -120,7 +120,7 @@ function CallRow({ call, clientId }: { call: CrmCall; clientId: string }) {
         </div>
         <div>
           <dt>Source</dt>
-          <dd>{call.source ?? "Unknown"}</dd>
+          <dd>{call.sourceName ?? call.source ?? "Unknown"}</dd>
         </div>
       </dl>
 
@@ -142,7 +142,11 @@ function CallRow({ call, clientId }: { call: CrmCall; clientId: string }) {
           {openTranscript ? <pre>{call.transcript}</pre> : null}
         </div>
       ) : (
-        <p className="crm-call-recording-empty">No transcript for this call.</p>
+        <p className="crm-call-recording-empty">
+          {call.transcriptStatus === "pending"
+            ? "Transcript processing — BrizBuilder will retry automatically."
+            : "No transcript for this call."}
+        </p>
       )}
     </article>
   );

@@ -3,12 +3,6 @@
   "name": "brizbuilder-leads",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-18",
-  "services": [
-    {
-      "binding": "BRIZBUILDER",
-      "service": "brizbuilder"
-    }
-  ],
   "observability": {
     "enabled": true
   }

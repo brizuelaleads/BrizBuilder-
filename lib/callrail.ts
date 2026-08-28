@@ -175,6 +175,7 @@ export type CallRailCall = {
   customerState: string | null;
   customerCountry: string | null;
   source: string | null;
+  sourceName: string | null;
   medium: string | null;
   campaign: string | null;
   keywords: string | null;
@@ -622,6 +623,7 @@ function mapCall(row: Record<string, unknown>): CallRailCall {
     customerState: asOptionalText(row.customer_state),
     customerCountry: asOptionalText(row.customer_country),
     source: asOptionalText(row.source),
+    sourceName: asOptionalText(row.source_name),
     medium: asOptionalText(row.medium) ?? asOptionalText(row.utm_medium),
     campaign: asOptionalText(row.campaign) ?? asOptionalText(row.utm_campaign),
     keywords: asOptionalText(row.keywords),
