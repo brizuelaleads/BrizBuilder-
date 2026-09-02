@@ -2,7 +2,7 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import {
-  classifySyncFailure,
+  describeSyncFailure,
   handleCallRailWebhook,
   reconcileCallRailIngestion,
 } from "../lib/callrail-ingestion";
@@ -96,7 +96,7 @@ const worker = {
         // contain request URLs, payload fragments, or customer data.
         console.error(
           "CallRail reconciliation failed.",
-          classifySyncFailure(error),
+          describeSyncFailure(error),
         );
       }),
     );
