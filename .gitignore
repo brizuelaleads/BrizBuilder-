@@ -45,3 +45,10 @@ next-env.d.ts
 # Deploys use the generated dist/server/wrangler.json. A root config here gets
 # picked up by a bare `wrangler deploy` and would ship the wrong entrypoint.
 /wrangler.jsonc
+
+# Local Supabase CLI state (contains project ref and pooler URL)
+supabase/.branches/
+supabase/.temp/
+
+# Codex reconciliation scratch
+.codex-reconcile/

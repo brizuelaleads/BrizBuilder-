@@ -346,6 +346,17 @@ create table if not exists public.audit_events (
 );
 
 create index if not exists clients_org_status_idx on public.clients (organization_id, status);
+-- The composite key every tenant-scoped child table proves itself against: a
+-- row carrying (organization_id, client_id) can only reference a client that
+-- actually belongs to that organization. Postgres requires a unique index on
+-- the referenced columns, so this has to exist before the first such foreign
+-- key -- which is reviews_workspace, two migrations later.
+--
+-- schema.sql, the baseline this file transcribes, has always created it. Its
+-- omission here is why production (bootstrapped from schema.sql) was fine while
+-- a rebuild from migrations alone failed on the first composite foreign key.
+create unique index if not exists clients_organization_id_id_uidx
+  on public.clients (organization_id, id);
 create index if not exists client_members_profile_idx on public.client_members (profile_id);
 create index if not exists contacts_client_idx on public.contacts (organization_id, client_id);
 create index if not exists companies_client_idx on public.companies (organization_id, client_id);
