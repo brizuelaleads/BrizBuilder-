@@ -549,6 +549,16 @@ export function CrmApp({
         call.clientId === effectiveSelectedClientId) &&
       (!rangeCutoff || crmTimestamp(call.startedAt) >= rangeCutoff),
   );
+  // Ad spend follows the same client and date filters as everything else on the
+  // dashboard, so a cost-per-lead figure is always spend and leads measured
+  // over the same window rather than a month-to-date total beside a week of
+  // leads.
+  const filteredMetaAdInsights = data.metaAdInsights.filter(
+    (insight) =>
+      (effectiveSelectedClientId === "all" ||
+        insight.clientId === effectiveSelectedClientId) &&
+      (!rangeCutoff || crmTimestamp(insight.date) >= rangeCutoff),
+  );
   const filteredClients = data.clients.filter(
     (client) =>
       effectiveSelectedClientId === "all" ||
@@ -1208,6 +1218,7 @@ export function CrmApp({
             clients={filteredClients}
             phoneCalls={filteredPhoneCalls}
             providerConnections={filteredProviderConnections}
+            metaAdInsights={filteredMetaAdInsights}
             stages={data.stages}
             range={range}
             generatedAt={data.generatedAt}
@@ -1508,6 +1519,7 @@ export function CrmApp({
           tasks={data.tasks}
           appointments={data.appointments}
           calls={data.calls}
+          metaAdInsights={data.metaAdInsights}
           mutate={mutate}
           onClose={() => setSelectedLeadId(null)}
         />

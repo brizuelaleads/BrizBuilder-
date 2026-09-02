@@ -78,6 +78,14 @@ import {
 } from "../lib/meta-conversions";
 import { dispatchMetaConversion } from "../lib/meta-conversions-store";
 import {
+  getMetaAdsRuntimeStatus,
+  listMetaAdAccounts,
+  normalizeAdAccountId,
+  verifyMetaAdAccount,
+} from "../lib/meta-ads";
+import { syncMetaAdsForClient } from "../lib/meta-ads-sync";
+import { metaCampaignIdFromAttribution } from "../lib/meta-ads-ids";
+import {
   resolveWonValueCents,
   wonValueCustomData,
 } from "../lib/meta-conversion-value";
@@ -136,6 +144,7 @@ import type {
   CrmAutomationRule,
   CrmAutomationRun,
   CrmProviderConnection,
+  CrmMetaAdInsight,
   CrmAiAuthorization,
   CrmAiActivity,
   CrmWorkflow,
@@ -3041,6 +3050,7 @@ function mapLead(row: AnyRecord): CrmLead {
     message: String(row.message ?? ""),
     source: String(row.source ?? "Manual"),
     campaign: nullable(row.campaign),
+    metaCampaignId: metaCampaignIdFromAttribution(row.attribution),
     status: String(row.status ?? "NEW"),
     assignedUser: nullable(row.assigned_user),
     estimatedValueCents: Number(row.estimated_value_cents ?? 0),
@@ -3167,6 +3177,34 @@ function mapAutomationRun(row: AnyRecord): CrmAutomationRun {
     error: nullable(row.error),
     startedAt: String(row.started_at),
     completedAt: nullable(row.completed_at),
+  };
+}
+
+/**
+ * How far back the bootstrap carries daily ad rows.
+ *
+ * Ninety days covers every range the dashboard offers with room for a
+ * month-over-month comparison. Older spend stays in the table for reports that
+ * ask for it; it is simply not shipped on every page load.
+ */
+function metaInsightsWindowStart(): string {
+  const start = new Date();
+  start.setUTCDate(start.getUTCDate() - 90);
+  return start.toISOString().slice(0, 10);
+}
+
+function mapMetaAdInsight(row: AnyRecord): CrmMetaAdInsight {
+  return {
+    clientId: String(row.client_id),
+    date: String(row.date_start),
+    campaignId: String(row.campaign_id ?? ""),
+    campaignName: String(row.campaign_name ?? ""),
+    adsetId: String(row.adset_id ?? ""),
+    adId: String(row.ad_id ?? ""),
+    adName: String(row.ad_name ?? ""),
+    spendCents: Number(row.spend_cents ?? 0),
+    impressions: Number(row.impressions ?? 0),
+    clicks: Number(row.clicks ?? 0),
   };
 }
 
@@ -3350,6 +3388,7 @@ export async function getSupabaseCrmBootstrap(
     workflows,
     workflowVersions,
     workflowRuns,
+    metaAdInsights,
   ] = await Promise.all([
     (() => {
       let builder = query<AnyRecord>("clients")
@@ -3549,6 +3588,23 @@ export async function getSupabaseCrmBootstrap(
         .order("started_at", { ascending: false })
         .limit(200),
     ),
+    // Ninety days of daily ad rows: enough for every range the dashboard
+    // offers, small enough to ship in the bootstrap alongside everything else.
+    // Wrapped in its own catch like the other late tables, so an environment
+    // that has not run the migration still loads the rest of the workspace.
+    assertOk(
+      query<AnyRecord>(
+        "meta_ad_insights",
+        "client_id,date_start,campaign_id,campaign_name,adset_id,ad_id,ad_name," +
+          "spend_cents,impressions,clicks",
+      )
+        .gte("date_start", metaInsightsWindowStart())
+        .order("date_start", { ascending: false })
+        .limit(5000),
+    ).catch((error) => {
+      console.error("Meta Ads insight tables are not migrated yet.", error);
+      return [] as AnyRecord[];
+    }),
   ]);
 
   const clientRows = (clients ?? []) as AnyRecord[];
@@ -3778,6 +3834,9 @@ export async function getSupabaseCrmBootstrap(
           mapProviderConnection(row),
           rolePermissions[context.role].includes("billing.read_shared"),
         ),
+    ),
+    metaAdInsights: ((metaAdInsights ?? []) as AnyRecord[]).map(
+      mapMetaAdInsight,
     ),
     aiAuthorizations: aiAuthorizationRows.map(
       (row: AnyRecord): CrmAiAuthorization => {
@@ -4927,6 +4986,158 @@ export async function executeSupabaseCrmAction(
       "provider_connection",
       null,
       { provider: "meta" },
+      clientId,
+    );
+    return { disconnected: true };
+  }
+
+  // Meta Ads is the read side: spend and delivery pulled out of an ad account.
+  // A separate connection from Conversions above, because a dataset-scoped
+  // token cannot read ads and an ads_read token cannot post conversions.
+
+  if (action === "list_meta_ad_accounts") {
+    requirePermission(context, "websites.manage");
+    const accessToken = requireText(input.accessToken, "Access token", 500);
+    // Nothing is saved here. The token is used once to populate the account
+    // picker, so an admin chooses an account instead of transcribing an id.
+    const accounts = await listMetaAdAccounts(accessToken);
+    return { accounts };
+  }
+
+  if (action === "connect_meta_ads") {
+    requirePermission(context, "websites.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const runtime = getMetaAdsRuntimeStatus();
+    if (!runtime.ready)
+      throw new Error(
+        `Meta Ads is not configured. Missing ${runtime.missing.join(", ")}.`,
+      );
+    const adAccountId = normalizeAdAccountId(input.adAccountId);
+    const accessToken = requireText(input.accessToken, "Access token", 500);
+    // Proven before it is stored: a token that cannot read this account fails
+    // here, in front of the person who can fix it, rather than silently on
+    // every scheduled sync from now on.
+    const account = await verifyMetaAdAccount(adAccountId, accessToken);
+    const encrypted = await encryptMetaSecret(
+      accessToken,
+      context.organizationId,
+      clientId,
+    );
+    const now = new Date().toISOString();
+    await assertOk(
+      supabase()
+        .from("meta_ads_credentials")
+        .upsert(
+          {
+            organization_id: context.organizationId,
+            client_id: clientId,
+            ad_account_id: adAccountId,
+            access_token_ciphertext: encrypted.ciphertext,
+            access_token_iv: encrypted.iv,
+            account_name: account.name,
+            currency: account.currency,
+            connected_by_email: context.email,
+            // A reconnection starts clean: the previous connection's last
+            // failure must not be shown against a token that has just been
+            // proven to work.
+            sync_started_at: null,
+            last_status: null,
+            last_error: null,
+            updated_at: now,
+          },
+          { onConflict: "organization_id,client_id" },
+        ),
+    );
+    await assertOk(
+      supabase()
+        .from("provider_connections")
+        .upsert(
+          {
+            organization_id: context.organizationId,
+            client_id: clientId,
+            provider: "meta_ads",
+            status: "connected",
+            billing_owner: "customer",
+            external_account_id: adAccountId,
+            external_account_name: account.name,
+            scopes: ["ads_read"],
+            public_config: { currency: account.currency },
+            connected_by_email: context.email,
+            connected_at: now,
+            disconnected_at: null,
+            last_health_check_at: now,
+            last_error: null,
+            updated_at: now,
+          },
+          { onConflict: "organization_id,client_id,provider" },
+        ),
+    );
+    await audit(
+      context,
+      "provider.connected",
+      "provider_connection",
+      null,
+      { provider: "meta_ads", adAccountId },
+      clientId,
+    );
+    // Filled immediately rather than at the next tick, so the connection card
+    // shows real numbers while the admin is still looking at it.
+    const outcome = await syncMetaAdsForClient(context.organizationId, clientId);
+    return {
+      connected: true,
+      adAccountId,
+      accountName: account.name,
+      currency: account.currency,
+      syncStatus: outcome.status,
+    };
+  }
+
+  if (action === "sync_meta_ads") {
+    requirePermission(context, "websites.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const outcome = await syncMetaAdsForClient(context.organizationId, clientId);
+    return { status: outcome.status, rows: outcome.rows };
+  }
+
+  if (action === "disconnect_meta_ads") {
+    requirePermission(context, "websites.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const now = new Date().toISOString();
+    // The token row is deleted outright rather than flagged, so disconnecting
+    // actually destroys the stored credential.
+    await assertOk(
+      supabase()
+        .from("meta_ads_credentials")
+        .delete()
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId),
+    );
+    // Insights are deliberately kept. They are this client's own spend history,
+    // and a report of last quarter must not change because a token was rotated
+    // today. Reconnecting resumes into the same rows.
+    await assertOk(
+      supabase()
+        .from("provider_connections")
+        .update({
+          status: "disconnected",
+          external_account_id: null,
+          disconnected_at: now,
+          last_error: null,
+          updated_at: now,
+        })
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .eq("provider", "meta_ads"),
+    );
+    await audit(
+      context,
+      "provider.disconnected",
+      "provider_connection",
+      null,
+      { provider: "meta_ads" },
       clientId,
     );
     return { disconnected: true };

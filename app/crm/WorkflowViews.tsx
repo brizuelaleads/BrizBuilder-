@@ -29,7 +29,7 @@ import {
   CALLRAIL_INGESTION_ON,
   callRailIngestionView,
 } from "../../lib/callrail-ingestion-state";
-import { Badge } from "./ui";
+import { Badge, dateTime } from "./ui";
 
 type Mutate = (
   input: Record<string, unknown>,
@@ -51,6 +51,25 @@ const callRailEventLabel = (event: string) =>
   CALLRAIL_EVENT_LABELS[event] ?? event;
 
 type IntegrationStatus = "connected" | "setup" | "available";
+
+/**
+ * Ad spend in the ad account's own currency.
+ *
+ * A Meta ad account bills in one currency and it is not always the operator's,
+ * so the code Meta reports is used rather than assumed. An unknown code falls
+ * back to a plain number instead of silently labelling euros as dollars.
+ */
+function formatAdSpend(value: number, currency: string | null) {
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency ?? "USD",
+      maximumFractionDigits: 0,
+    }).format(value);
+  } catch {
+    return value.toFixed(0);
+  }
+}
 
 function integrationSyncLabel(value: string | null | undefined) {
   if (!value) return "—";
@@ -101,7 +120,7 @@ export function ConnectionsView({
     useState<"all" | IntegrationStatus>("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [expandedIntegration, setExpandedIntegration] = useState<
-    "twilio" | "callrail" | "meta" | null
+    "twilio" | "callrail" | "meta" | "meta-ads" | null
   >(null);
   const clientId = clientChoice(clients, selectedClientId, localClient);
   const client = clients.find((item) => item.id === clientId);
@@ -125,6 +144,18 @@ export function ConnectionsView({
   const [metaDatasetId, setMetaDatasetId] = useState("");
   const [metaAccessToken, setMetaAccessToken] = useState("");
   const [metaTestEventCode, setMetaTestEventCode] = useState("");
+  // Meta Ads is the read side: spend and delivery out of an ad account. A
+  // separate connection from Conversions above, because the tokens carry
+  // different permissions and a business may well have one without the other.
+  const metaAdsConnection = connections.find(
+    (item) => item.clientId === clientId && item.provider === "meta_ads",
+  );
+  const metaAdsLinked = Boolean(metaAdsConnection?.isLinked);
+  const [metaAdsToken, setMetaAdsToken] = useState("");
+  const [metaAdsAccountId, setMetaAdsAccountId] = useState("");
+  const [metaAdsAccounts, setMetaAdsAccounts] = useState<
+    Array<{ id: string; name: string; currency: string | null }>
+  >([]);
   const callRailConnection = connections.find(
     (item) => item.clientId === clientId && item.provider === "callrail",
   );
@@ -413,11 +444,15 @@ export function ConnectionsView({
       ? "connected"
       : "setup";
   const metaStatus: IntegrationStatus = metaLinked ? "connected" : "available";
+  const metaAdsStatus: IntegrationStatus = metaAdsLinked
+    ? "connected"
+    : "available";
   const integrationStatuses = [
     twilioStatus,
     aiStatus,
     callRailStatus,
     metaStatus,
+    metaAdsStatus,
   ];
   const statusCount = (status: IntegrationStatus) =>
     integrationStatuses.filter((item) => item === status).length;
@@ -452,11 +487,17 @@ export function ConnectionsView({
     "Report web and ads conversions and analyze customers",
     metaStatus,
   );
+  const metaAdsVisible = integrationMatches(
+    "Meta Ads",
+    "Pull campaign spend clicks and cost per lead into reporting",
+    metaAdsStatus,
+  );
   const visibleIntegrationCount = [
     twilioVisible,
     aiVisible,
     callRailVisible,
     metaVisible,
+    metaAdsVisible,
   ].filter(Boolean).length;
   const showAllIntegrations = () => {
     setIntegrationQuery("");
@@ -893,6 +934,166 @@ export function ConnectionsView({
                   business&rsquo;s real reporting.
                 </p>
                 <button className="crm-button-primary" type="submit">
+                  Connect
+                </button>
+              </form>
+            )}
+            </div>
+          </article>
+          ) : null}
+          {metaAdsVisible ? (
+          <article className={`crm-connection-card crm-integration-card meta ${expandedIntegration === "meta-ads" ? "expanded" : ""}`}>
+            <header>
+              <span className="crm-meta-mark" aria-hidden="true">∞</span>
+              <div>
+                <h3>Meta Ads</h3>
+                <p>Pull campaign spend, clicks, and cost per lead into reporting.</p>
+              </div>
+              <Badge tone={metaAdsLinked ? "green" : "blue"}>
+                {metaAdsLinked ? "Connected" : "Available"}
+              </Badge>
+            </header>
+            <div className="crm-integration-facts">
+              <div><Database /><span>Ad account<strong>{metaAdsConnection?.accountLabel ?? "—"}</strong></span></div>
+              <div><KeyRound /><span>Access token<strong>{metaAdsLinked ? "Active" : "—"}</strong></span></div>
+              <div><Sparkles /><span>Spend this month<strong>{metaAdsConnection?.monthSpend != null ? formatAdSpend(metaAdsConnection.monthSpend, metaAdsConnection.currency) : "—"}</strong></span></div>
+            </div>
+            <div className="crm-integration-actions">
+              <button type="button" className="crm-integration-primary" aria-expanded={expandedIntegration === "meta-ads"} onClick={() => setExpandedIntegration((current) => current === "meta-ads" ? null : "meta-ads")}>{metaAdsLinked ? "Manage" : "Configure"}</button>
+              <button type="button" className="crm-integration-learn" onClick={() => setExpandedIntegration((current) => current === "meta-ads" ? null : "meta-ads")}>Learn more <span aria-hidden="true">↗</span></button>
+            </div>
+            <div className="crm-integration-detail" hidden={expandedIntegration !== "meta-ads"}>
+            <div className="crm-connection-grid">
+              <div><span>Ad account</span><strong>{metaAdsConnection?.accountLabel ?? "Not connected"}</strong></div>
+              <div><span>Last updated</span><strong>{metaAdsConnection?.lastHealthCheckAt ? dateTime(metaAdsConnection.lastHealthCheckAt) : "Not connected"}</strong></div>
+            </div>
+            {metaAdsLinked ? (
+              <>
+                <p>
+                  Spend refreshes automatically every fifteen minutes. Meta keeps
+                  adjusting the last few days after the fact, so recent numbers
+                  settle on their own rather than staying frozen at whatever was
+                  first reported.
+                </p>
+                {metaAdsConnection?.lastError ? (
+                  <p className="crm-connection-error">{metaAdsConnection.lastError}</p>
+                ) : null}
+                <div className="crm-connection-actions">
+                  <button
+                    className="crm-button-secondary"
+                    type="button"
+                    onClick={() =>
+                      mutate({ action: "sync_meta_ads", clientId }, "Ad spend refreshed.")
+                    }
+                  >
+                    Refresh now
+                  </button>
+                  <button
+                    className="crm-button-danger"
+                    type="button"
+                    onClick={() => {
+                      if (
+                        !window.confirm(
+                          "Disconnect Meta Ads? Spend and cost-per-lead stop updating. Figures already reported stay as they are.",
+                        )
+                      )
+                        return;
+                      void mutate(
+                        { action: "disconnect_meta_ads", clientId },
+                        "Meta Ads disconnected.",
+                      );
+                    }}
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              </>
+            ) : (
+              <form
+                className="crm-connection-connect-form"
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  await mutate(
+                    {
+                      action: "connect_meta_ads",
+                      clientId,
+                      adAccountId: metaAdsAccountId,
+                      accessToken: metaAdsToken,
+                    },
+                    "Meta Ads connected.",
+                  );
+                  // Never keep the customer's token in browser state after use.
+                  setMetaAdsToken("");
+                  setMetaAdsAccounts([]);
+                  setMetaAdsAccountId("");
+                }}
+              >
+                <p>
+                  Create a System User in your Business Manager, give it{" "}
+                  <code>ads_read</code> on this business&rsquo;s ad account, and
+                  generate a token. That token never expires and needs no app
+                  review. BrizBuilder stores it encrypted.
+                </p>
+                <label>
+                  System User access token
+                  <input
+                    type="password"
+                    value={metaAdsToken}
+                    onChange={(event) => setMetaAdsToken(event.target.value)}
+                    autoComplete="off"
+                    required
+                  />
+                </label>
+                {metaAdsAccounts.length > 0 ? (
+                  <label>
+                    Ad account
+                    <select
+                      value={metaAdsAccountId}
+                      onChange={(event) => setMetaAdsAccountId(event.target.value)}
+                      required
+                    >
+                      <option value="">Choose an ad account</option>
+                      {metaAdsAccounts.map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.name}
+                          {account.currency ? ` · ${account.currency}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  // The picker is filled from the token itself, so nobody has to
+                  // transcribe an act_ id out of Ads Manager and get it wrong.
+                  <button
+                    className="crm-button-secondary"
+                    type="button"
+                    disabled={!metaAdsToken}
+                    onClick={async () => {
+                      const result = (await mutate(
+                        { action: "list_meta_ad_accounts", accessToken: metaAdsToken },
+                        "Ad accounts loaded.",
+                      )) as {
+                        accounts?: Array<{
+                          id: string;
+                          name: string;
+                          currency: string | null;
+                        }>;
+                      } | null;
+                      setMetaAdsAccounts(result?.accounts ?? []);
+                    }}
+                  >
+                    Choose an ad account
+                  </button>
+                )}
+                <p>
+                  Connecting checks the token can read the account, then pulls the
+                  last three days so the numbers are there straight away.
+                </p>
+                <button
+                  className="crm-button-primary"
+                  type="submit"
+                  disabled={!metaAdsAccountId}
+                >
                   Connect
                 </button>
               </form>

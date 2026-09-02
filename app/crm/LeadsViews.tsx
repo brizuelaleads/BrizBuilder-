@@ -31,6 +31,7 @@ import type {
   CrmCall,
   CrmAppointment,
   CrmLead,
+  CrmMetaAdInsight,
   CrmNote,
   CrmStage,
   CrmTask,
@@ -746,6 +747,7 @@ export function LeadDetail({
   tasks,
   appointments,
   calls,
+  metaAdInsights,
   mutate,
   onClose,
 }: {
@@ -756,6 +758,7 @@ export function LeadDetail({
   tasks: CrmTask[];
   appointments: CrmAppointment[];
   calls: CrmCall[];
+  metaAdInsights: CrmMetaAdInsight[];
   mutate: Mutate;
   onClose: () => void;
 }) {
@@ -769,6 +772,15 @@ export function LeadDetail({
   );
   const leadCalls = calls.filter((call) => call.leadId === lead.id)
     .sort((a, b) => (b.startedAt ?? "").localeCompare(a.startedAt ?? ""));
+  // The ad this lead came from, resolved from the campaign id its click
+  // carried. The newest row wins so a campaign renamed in Ads Manager shows its
+  // current name rather than whatever it was called on the day of the click.
+  const metaAd = lead.metaCampaignId
+    ? metaAdInsights
+        .filter((insight) => insight.campaignId === lead.metaCampaignId)
+        .sort((first, second) => second.date.localeCompare(first.date))[0] ??
+      null
+    : null;
   const latestCall = leadCalls[0] ?? null;
   const [activeTab, setActiveTab] = useState<LeadDetailTab>("overview");
   const tabListRef = useRef<HTMLElement | null>(null);
@@ -1115,7 +1127,10 @@ export function LeadDetail({
                     </div>
                     <dl className="crm-lead-attribution-list">
                       <div><dt>Source</dt><dd>{lead.source}</dd></div>
-                      <div><dt>Campaign</dt><dd>{lead.campaign ?? "Not captured"}</dd></div>
+                      <div><dt>Campaign</dt><dd>{metaAd?.campaignName || lead.campaign || "Not captured"}</dd></div>
+                      {lead.metaCampaignId ? (
+                        <div><dt>Meta ad</dt><dd>{metaAd?.adName || "Awaiting next ad sync"}</dd></div>
+                      ) : null}
                       <div><dt>Requested service</dt><dd>{lead.serviceRequested || "Not provided"}</dd></div>
                       <div><dt>First contact</dt><dd>{dateTime(lead.firstContactedAt ?? lead.createdAt)}</dd></div>
                       <div><dt>Last contact</dt><dd>{lead.lastContactedAt ? dateTime(lead.lastContactedAt) : "Not provided"}</dd></div>

@@ -7,6 +7,7 @@ import {
   reconcileCallRailIngestion,
 } from "../lib/callrail-ingestion";
 import { runNotificationSweeps } from "../lib/notification-sweeps";
+import { syncMetaAdsInsights } from "../lib/meta-ads-sync";
 
 interface Env {
   ASSETS: Fetcher;
@@ -103,6 +104,17 @@ const worker = {
     // event, so they ride the same tick. Kept as a separate waitUntil so
     // neither job can delay or fail the other.
     ctx.waitUntil(runNotificationSweeps());
+    // Meta reports spend on its own schedule and offers no webhook, so the only
+    // way to have it is to ask. Same tick, its own waitUntil: an ad platform
+    // being slow or throttled must never hold up call ingestion.
+    // Per-client failures are already caught, recorded against the connection,
+    // and never rethrown, so anything arriving here is the enumerating query
+    // itself. Logged without the exception: it can carry connection details.
+    ctx.waitUntil(
+      syncMetaAdsInsights().catch(() => {
+        console.error("Meta Ads sync could not enumerate connected clients.");
+      }),
+    );
   },
 };
 

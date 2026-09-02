@@ -18,6 +18,7 @@ import type {
   CrmAppointment,
   CrmClient,
   CrmLead,
+  CrmMetaAdInsight,
   CrmPhoneCall,
   CrmProviderConnection,
   CrmStage,
@@ -323,6 +324,7 @@ export function DashboardView({
   clients,
   phoneCalls,
   providerConnections,
+  metaAdInsights,
   stages,
   range,
   generatedAt,
@@ -336,6 +338,7 @@ export function DashboardView({
   clients: CrmClient[];
   phoneCalls: CrmPhoneCall[];
   providerConnections: CrmProviderConnection[];
+  metaAdInsights: CrmMetaAdInsight[];
   stages: CrmStage[];
   range: string;
   generatedAt: string;
@@ -385,19 +388,38 @@ export function DashboardView({
     (sum, client) => sum + client.monthlyAdBudgetCents,
     0,
   );
-  const reportedAdSpend = providerConnections
-    .filter(
-      (connection) =>
-        providerIsAdReporting(connection) &&
-        (connection.isActive || connection.isLinked) &&
-        connection.monthSpend != null,
-    )
-    .reduce((sum, connection) => sum + (connection.monthSpend ?? 0), 0);
-  const hasReportedAdSpend = reportedAdSpend > 0;
+  // Spend comes from the synced daily ad rows rather than a rollup cached on
+  // the connection, so it answers for the range the viewer selected and lines
+  // up with the leads and revenue it is divided against.
+  const reportedAdSpendCents = metaAdInsights.reduce(
+    (sum, insight) => sum + insight.spendCents,
+    0,
+  );
+  const reportedAdSpend = reportedAdSpendCents / 100;
+  const hasReportedAdSpend = reportedAdSpendCents > 0;
+  const adReportingConnected = providerConnections.some(
+    (connection) =>
+      providerIsAdReporting(connection) &&
+      (connection.isActive || connection.isLinked),
+  );
   const roas =
     hasReportedAdSpend && revenue > 0
       ? revenue / 100 / reportedAdSpend
       : null;
+
+  // Only leads carrying a campaign id can be costed. Counting all of them
+  // against Meta spend would credit Meta with referrals and organic calls, so
+  // the attributed subset is tracked separately and shown as its own number.
+  const attributedLeads = leads.filter((lead) => Boolean(lead.metaCampaignId));
+  const costPerLeadCents = attributedLeads.length
+    ? Math.round(reportedAdSpendCents / attributedLeads.length)
+    : null;
+  const attributedWonLeads = attributedLeads.filter(
+    (lead) => lead.status === "WON",
+  );
+  const costPerWonCents = attributedWonLeads.length
+    ? Math.round(reportedAdSpendCents / attributedWonLeads.length)
+    : null;
 
   const activeAppointments = appointments.filter(
     (appointment) => !["CANCELED", "CANCELLED"].includes(appointment.status),
@@ -557,7 +579,13 @@ export function DashboardView({
     {
       label: "Revenue",
       value: money(revenue),
-      support: revenue ? `${wonLeads.length} won leads` : "No revenue recorded",
+      // Cost per won customer only appears once both halves are real: spend
+      // that was actually reported, and a win that carried a campaign id.
+      support: revenue
+        ? costPerWonCents == null
+          ? `${wonLeads.length} won leads`
+          : `${wonLeads.length} won · ${money(costPerWonCents, true)} to win one`
+        : "No revenue recorded",
       icon: CircleDollarSign,
       tone: "green",
       sparkline: bucketSeries(
@@ -569,28 +597,35 @@ export function DashboardView({
       ),
     },
     {
-      label: "ROAS",
-      value: roas == null ? "-" : `${roas.toFixed(1)}x`,
+      label: "Ad spend",
+      value: hasReportedAdSpend ? formatProviderSpend(reportedAdSpend) : "-",
+      // The headline number is spend, because that is the one this tile can
+      // always answer for. ROAS and cost per lead ride underneath, and each
+      // appears only once the figures behind it exist -- a ratio with no spend
+      // or no revenue is not a zero, it is a question nobody has answered yet.
       support: hasReportedAdSpend
-        ? `${formatProviderSpend(reportedAdSpend)} spend`
-        : configuredBudgetCents
-          ? `${money(configuredBudgetCents, true)} budget set`
-          : "No ad spend connected",
+        ? [
+            roas == null ? null : `${roas.toFixed(1)}x ROAS`,
+            costPerLeadCents == null
+              ? null
+              : `${money(costPerLeadCents, true)} per lead`,
+          ]
+            .filter(Boolean)
+            .join(" · ") || "No revenue recorded yet"
+        : adReportingConnected
+          ? "No spend in this range"
+          : configuredBudgetCents
+            ? `${money(configuredBudgetCents, true)} budget set`
+            : "No ad account connected",
       icon: TrendingUp,
       tone: "purple",
-      sparkline:
-        roas == null
-          ? [0, 0, 0, 0, 0, 0, 0, 0]
-          : [
-              roas * 0.64,
-              roas * 0.7,
-              roas * 0.74,
-              roas * 0.82,
-              roas * 0.86,
-              roas * 0.92,
-              roas * 0.96,
-              roas,
-            ],
+      sparkline: bucketSeries(
+        metaAdInsights,
+        generatedAtTimestamp,
+        range,
+        (insight) => insight.date,
+        (insight) => insight.spendCents / 100,
+      ),
     },
   ];
 
