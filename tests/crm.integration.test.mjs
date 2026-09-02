@@ -61,7 +61,7 @@ function authHeaders(
 
 test("Reviews migration preserves tenant boundaries without storing Google reviews", () => {
   const migration = fs.readFileSync(
-    path.join(root, "supabase/migrations/20260722130000_reviews_workspace.sql"),
+    path.join(root, "supabase/migrations/20260722161713_reviews_workspace.sql"),
     "utf8",
   );
 
@@ -130,7 +130,7 @@ test("Reviews sending keeps the approved preview exact and never uses BrizBuilde
 
 test("AI Connector stores only hashed OAuth credentials and exposes bounded CRM tools", () => {
   const migration = fs.readFileSync(
-    path.join(root, "supabase/migrations/20260722200000_ai_connector.sql"),
+    path.join(root, "supabase/migrations/20260723022904_ai_connector.sql"),
     "utf8",
   );
   const mcpSource = fs.readFileSync(

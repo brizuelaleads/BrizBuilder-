@@ -24,6 +24,7 @@ create table if not exists public.phone_system_configs (
   updated_at timestamptz not null default now(),
   unique (organization_id, client_id)
 );
+
 create table if not exists public.conversations (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -38,6 +39,7 @@ create table if not exists public.conversations (
   updated_at timestamptz not null default now(),
   unique (client_id, contact_id, channel)
 );
+
 create table if not exists public.phone_calls (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -59,6 +61,7 @@ create table if not exists public.phone_calls (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
 create table if not exists public.messages (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -80,6 +83,7 @@ create table if not exists public.messages (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
 create table if not exists public.automation_rules (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -92,6 +96,7 @@ create table if not exists public.automation_rules (
   updated_at timestamptz not null default now(),
   unique (client_id, trigger_key)
 );
+
 create table if not exists public.automation_runs (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -106,6 +111,7 @@ create table if not exists public.automation_runs (
   completed_at timestamptz,
   unique (client_id, trigger_event_id)
 );
+
 create index if not exists phone_configs_number_idx on public.phone_system_configs(phone_number);
 create index if not exists conversations_scope_time_idx on public.conversations(organization_id, client_id, last_message_at desc);
 create index if not exists phone_calls_scope_time_idx on public.phone_calls(organization_id, client_id, started_at desc);
@@ -113,12 +119,14 @@ create index if not exists phone_calls_contact_time_idx on public.phone_calls(co
 create index if not exists messages_conversation_time_idx on public.messages(conversation_id, created_at);
 create index if not exists messages_scope_time_idx on public.messages(organization_id, client_id, created_at desc);
 create index if not exists automation_runs_scope_time_idx on public.automation_runs(organization_id, client_id, started_at desc);
+
 alter table public.phone_system_configs enable row level security;
 alter table public.conversations enable row level security;
 alter table public.phone_calls enable row level security;
 alter table public.messages enable row level security;
 alter table public.automation_rules enable row level security;
 alter table public.automation_runs enable row level security;
+
 do $$
 declare table_name text;
 begin
@@ -130,6 +138,7 @@ begin
     execute format('create policy "agency manage" on public.%I for all using (public.is_agency_member(organization_id)) with check (public.is_agency_member(organization_id))', table_name);
   end loop;
 end $$;
+
 -- Client users can update conversation assignment/read state and reply through
 -- the authenticated application. Provider credentials remain server-only.
 drop policy if exists "client members manage conversations" on public.conversations;
@@ -137,10 +146,12 @@ create policy "client members manage conversations"
 on public.conversations for update
 using (public.is_client_member(client_id))
 with check (public.is_client_member(client_id));
+
 drop policy if exists "client members create messages" on public.messages;
 create policy "client members create messages"
 on public.messages for insert
 with check (public.is_client_member(client_id));
+
 insert into public.automation_rules (organization_id, client_id, name, trigger_key, enabled, config)
 select c.organization_id, c.id, 'Missed call text back', 'call.missed', false,
   jsonb_build_object(
@@ -150,3 +161,5 @@ select c.organization_id, c.id, 'Missed call text back', 'call.missed', false,
 from public.clients c
 where c.status <> 'archived'
 on conflict (client_id, trigger_key) do nothing;
+
+;

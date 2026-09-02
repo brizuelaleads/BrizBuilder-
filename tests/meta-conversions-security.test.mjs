@@ -14,10 +14,10 @@ const providerSource = read("lib/meta-conversions.ts");
 const storeSource = read("lib/meta-conversions-store.ts");
 const crmSource = read("db/supabase-crm.ts");
 const captureSource = read("app/api/website-leads/[key]/route.ts");
-const migrationSource = read("supabase/migrations/20260814000000_meta_conversions.sql");
-const testModeMigration = read("supabase/migrations/20260816000000_meta_test_mode.sql");
-const pendingPurchaseMigration = read("supabase/migrations/20260817000000_pending_purchase.sql");
-const eligibilityMigration = read("supabase/migrations/20260818000000_meta_eligibility.sql");
+const migrationSource = read("supabase/migrations/20260815032107_meta_conversions.sql");
+const testModeMigration = read("supabase/migrations/20260815234045_meta_test_mode.sql");
+const pendingPurchaseMigration = read("supabase/migrations/20260816000106_pending_purchase.sql");
+const eligibilityMigration = read("supabase/migrations/20260818155202_meta_eligibility.sql");
 const eligibilitySource = read("lib/meta-eligibility.ts");
 const connectionsUi = read("app/crm/WorkflowViews.tsx");
 

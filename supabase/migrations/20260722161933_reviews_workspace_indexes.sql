@@ -17,4 +17,4 @@ create index if not exists review_requests_tenant_contact_idx
 create index if not exists review_requests_tenant_consent_idx
   on public.review_requests(organization_id, client_id, consent_id);
 create index if not exists review_requests_tenant_message_idx
-  on public.review_requests(organization_id, client_id, message_id);
+  on public.review_requests(organization_id, client_id, message_id);;

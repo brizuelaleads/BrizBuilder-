@@ -4,7 +4,6 @@
 -- see records assigned to their client workspace.
 
 create extension if not exists pgcrypto;
-
 create type public.app_role as enum (
   'SUPER_ADMIN',
   'AGENCY_OWNER',
@@ -14,7 +13,6 @@ create type public.app_role as enum (
   'CLIENT_MANAGER',
   'CLIENT_EMPLOYEE'
 );
-
 create type public.record_status as enum ('active', 'paused', 'archived');
 create type public.lead_status as enum (
   'NEW',
@@ -27,7 +25,6 @@ create type public.lead_status as enum (
   'SPAM',
   'UNRESPONSIVE'
 );
-
 create table if not exists public.organizations (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -36,7 +33,6 @@ create table if not exists public.organizations (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text not null unique,
@@ -46,7 +42,6 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -69,12 +64,10 @@ begin
   return new;
 end;
 $$;
-
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
 after insert or update on auth.users
 for each row execute function public.handle_new_user();
-
 create table if not exists public.organization_members (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -84,7 +77,6 @@ create table if not exists public.organization_members (
   created_at timestamptz not null default now(),
   unique (organization_id, profile_id)
 );
-
 create table if not exists public.clients (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -109,7 +101,6 @@ create table if not exists public.clients (
   archived_at timestamptz,
   unique (organization_id, slug)
 );
-
 create table if not exists public.client_members (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -120,7 +111,6 @@ create table if not exists public.client_members (
   created_at timestamptz not null default now(),
   unique (client_id, profile_id)
 );
-
 create table if not exists public.contacts (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -143,7 +133,6 @@ create table if not exists public.contacts (
   updated_at timestamptz not null default now(),
   archived_at timestamptz
 );
-
 create table if not exists public.companies (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -163,7 +152,6 @@ create table if not exists public.companies (
   updated_at timestamptz not null default now(),
   archived_at timestamptz
 );
-
 create table if not exists public.pipelines (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -172,7 +160,6 @@ create table if not exists public.pipelines (
   is_default boolean not null default true,
   created_at timestamptz not null default now()
 );
-
 create table if not exists public.pipeline_stages (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -185,7 +172,6 @@ create table if not exists public.pipeline_stages (
   is_lost boolean not null default false,
   unique (pipeline_id, slug)
 );
-
 create table if not exists public.leads (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -212,7 +198,6 @@ create table if not exists public.leads (
   updated_at timestamptz not null default now(),
   archived_at timestamptz
 );
-
 create table if not exists public.notes (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -223,7 +208,6 @@ create table if not exists public.notes (
   author_profile_id uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now()
 );
-
 create table if not exists public.tasks (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -240,7 +224,6 @@ create table if not exists public.tasks (
   created_at timestamptz not null default now(),
   completed_at timestamptz
 );
-
 create table if not exists public.appointments (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -255,7 +238,6 @@ create table if not exists public.appointments (
   notes text not null default '',
   created_at timestamptz not null default now()
 );
-
 create table if not exists public.websites (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -269,7 +251,6 @@ create table if not exists public.websites (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create table if not exists public.website_pages (
   id uuid primary key default gen_random_uuid(),
   website_id uuid not null references public.websites(id) on delete cascade,
@@ -285,7 +266,6 @@ create table if not exists public.website_pages (
   updated_at timestamptz not null default now(),
   unique (website_id, slug)
 );
-
 create table if not exists public.forms (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -296,7 +276,6 @@ create table if not exists public.forms (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create table if not exists public.form_submissions (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -306,7 +285,6 @@ create table if not exists public.form_submissions (
   lead_id uuid references public.leads(id) on delete set null,
   created_at timestamptz not null default now()
 );
-
 create table if not exists public.assets (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -318,7 +296,6 @@ create table if not exists public.assets (
   created_by uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now()
 );
-
 create table if not exists public.integrations (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -331,7 +308,6 @@ create table if not exists public.integrations (
   updated_at timestamptz not null default now(),
   unique (organization_id, client_id, provider)
 );
-
 create table if not exists public.audit_events (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid references public.organizations(id) on delete cascade,
@@ -344,7 +320,6 @@ create table if not exists public.audit_events (
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
-
 create index if not exists clients_org_status_idx on public.clients (organization_id, status);
 -- The composite key every tenant-scoped child table proves itself against: a
 -- row carrying (organization_id, client_id) can only reference a client that
@@ -365,7 +340,6 @@ create index if not exists leads_stage_idx on public.leads (stage_id);
 create index if not exists tasks_client_status_idx on public.tasks (organization_id, client_id, status, due_at);
 create index if not exists appointments_client_time_idx on public.appointments (organization_id, client_id, starts_at);
 create index if not exists audit_events_org_time_idx on public.audit_events (organization_id, created_at desc);
-
 create or replace function public.is_agency_member(target_org_id uuid)
 returns boolean
 language sql
@@ -382,7 +356,6 @@ as $$
       and om.role in ('SUPER_ADMIN', 'AGENCY_OWNER', 'AGENCY_ADMIN', 'AGENCY_MEMBER')
   );
 $$;
-
 create or replace function public.is_client_member(target_client_id uuid)
 returns boolean
 language sql
@@ -398,7 +371,6 @@ as $$
       and cm.status = 'active'
   );
 $$;
-
 alter table public.organizations enable row level security;
 alter table public.profiles enable row level security;
 alter table public.organization_members enable row level security;
@@ -419,156 +391,121 @@ alter table public.form_submissions enable row level security;
 alter table public.assets enable row level security;
 alter table public.integrations enable row level security;
 alter table public.audit_events enable row level security;
-
 create policy "profiles read own profile"
 on public.profiles for select
 using (id = auth.uid());
-
 create policy "profiles update own profile"
 on public.profiles for update
 using (id = auth.uid())
 with check (id = auth.uid());
-
 create policy "organizations read agency members"
 on public.organizations for select
 using (public.is_agency_member(id));
-
 create policy "organization members read agency members"
 on public.organization_members for select
 using (public.is_agency_member(organization_id));
-
 create policy "clients read agency or assigned client"
 on public.clients for select
 using (public.is_agency_member(organization_id) or public.is_client_member(id));
-
 create policy "client members read agency or self"
 on public.client_members for select
 using (public.is_agency_member(organization_id) or profile_id = auth.uid());
-
 create policy "contacts read scoped users"
 on public.contacts for select
 using (public.is_agency_member(organization_id) or public.is_client_member(client_id));
-
 create policy "companies read scoped users"
 on public.companies for select
 using (public.is_agency_member(organization_id) or public.is_client_member(client_id));
-
 create policy "pipelines read scoped users"
 on public.pipelines for select
 using (public.is_agency_member(organization_id) or client_id is null or public.is_client_member(client_id));
-
 create policy "pipeline stages read scoped users"
 on public.pipeline_stages for select
 using (public.is_agency_member(organization_id));
-
 create policy "leads read scoped users"
 on public.leads for select
 using (public.is_agency_member(organization_id) or public.is_client_member(client_id));
-
 create policy "notes read scoped users"
 on public.notes for select
 using (public.is_agency_member(organization_id) or public.is_client_member(client_id));
-
 create policy "tasks read scoped users"
 on public.tasks for select
 using (public.is_agency_member(organization_id) or public.is_client_member(client_id));
-
 create policy "appointments read scoped users"
 on public.appointments for select
 using (public.is_agency_member(organization_id) or public.is_client_member(client_id));
-
 create policy "websites read scoped users"
 on public.websites for select
 using (public.is_agency_member(organization_id) or public.is_client_member(client_id));
-
 create policy "website pages read scoped users"
 on public.website_pages for select
 using (public.is_agency_member(organization_id) or public.is_client_member(client_id));
-
 create policy "forms read scoped users"
 on public.forms for select
 using (public.is_agency_member(organization_id) or public.is_client_member(client_id));
-
 create policy "form submissions read scoped users"
 on public.form_submissions for select
 using (public.is_agency_member(organization_id) or public.is_client_member(client_id));
-
 create policy "assets read scoped users"
 on public.assets for select
 using (public.is_agency_member(organization_id) or client_id is null or public.is_client_member(client_id));
-
 create policy "integrations read agency members"
 on public.integrations for select
 using (public.is_agency_member(organization_id));
-
 create policy "audit events read agency members"
 on public.audit_events for select
 using (organization_id is null or public.is_agency_member(organization_id));
-
 create policy "agency members manage clients"
 on public.clients for all
 using (public.is_agency_member(organization_id))
 with check (public.is_agency_member(organization_id));
-
 create policy "agency members manage contacts"
 on public.contacts for all
 using (public.is_agency_member(organization_id))
 with check (public.is_agency_member(organization_id));
-
 create policy "agency members manage companies"
 on public.companies for all
 using (public.is_agency_member(organization_id))
 with check (public.is_agency_member(organization_id));
-
 create policy "agency members manage leads"
 on public.leads for all
 using (public.is_agency_member(organization_id))
 with check (public.is_agency_member(organization_id));
-
 create policy "agency members manage tasks"
 on public.tasks for all
 using (public.is_agency_member(organization_id))
 with check (public.is_agency_member(organization_id));
-
 create policy "agency members manage appointments"
 on public.appointments for all
 using (public.is_agency_member(organization_id))
 with check (public.is_agency_member(organization_id));
-
 create policy "agency members manage websites"
 on public.websites for all
 using (public.is_agency_member(organization_id))
 with check (public.is_agency_member(organization_id));
-
 create policy "agency members manage website pages"
 on public.website_pages for all
 using (public.is_agency_member(organization_id))
 with check (public.is_agency_member(organization_id));
-
 create policy "agency members manage forms"
 on public.forms for all
 using (public.is_agency_member(organization_id))
 with check (public.is_agency_member(organization_id));
-
 create policy "agency members manage form submissions"
 on public.form_submissions for all
 using (public.is_agency_member(organization_id))
 with check (public.is_agency_member(organization_id));
-
 create policy "agency members manage assets"
 on public.assets for all
 using (public.is_agency_member(organization_id))
 with check (public.is_agency_member(organization_id));
-
 create policy "agency members manage integrations"
 on public.integrations for all
 using (public.is_agency_member(organization_id))
 with check (public.is_agency_member(organization_id));
-
 create policy "agency members write audit events"
 on public.audit_events for insert
 with check (organization_id is null or public.is_agency_member(organization_id));
-
 -- Storage buckets for logos, client photos, generated sites, and imports.
 insert into storage.buckets (id, name, public)
 values

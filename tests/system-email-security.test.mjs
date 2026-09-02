@@ -23,7 +23,7 @@ const acceptRoute = read("app/api/auth/accept-invite/route.ts");
 const verifyRoute = read("app/api/auth/verify-email/route.ts");
 const envExample = read(".env.example");
 const packageJson = read("package.json");
-const supabaseMigration = read("supabase/migrations/20260730000000_system_email_tokens.sql");
+const supabaseMigration = read("supabase/migrations/20260812212413_system_email_tokens.sql");
 
 test("system email is transactional-only and stays server-side", () => {
   assert.match(emailSource, /RESEND_API_KEY/);

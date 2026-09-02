@@ -107,4 +107,4 @@ comment on column public.callrail_credentials.account_id is
 comment on column public.callrail_credentials.company_id is
   'Selected CallRail company resource id. Null until an account is chosen and a company picked under it.';
 comment on column public.callrail_credentials.last_status is
-  'Outcome of the most recent health check. Never store raw provider responses here.';
+  'Outcome of the most recent health check. Never store raw provider responses here.';;

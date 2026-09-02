@@ -763,4 +763,4 @@ grant execute on function public.ai_move_opportunity_stage(
 ) to service_role;
 
 comment on table public.ai_mutation_idempotency is
-  'Stores only bounded mutation results so retries return the original result without repeating CRM writes.';
+  'Stores only bounded mutation results so retries return the original result without repeating CRM writes.';;

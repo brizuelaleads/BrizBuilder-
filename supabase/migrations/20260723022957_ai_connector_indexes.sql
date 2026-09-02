@@ -19,4 +19,4 @@ create index if not exists ai_oauth_refresh_client_idx
   on public.ai_oauth_refresh_tokens(oauth_client_id);
 create index if not exists ai_oauth_refresh_replacement_idx
   on public.ai_oauth_refresh_tokens(replacement_token_id)
-  where replacement_token_id is not null;
+  where replacement_token_id is not null;;

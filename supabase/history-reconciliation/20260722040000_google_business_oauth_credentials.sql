@@ -1,3 +1,7 @@
+-- Archived production schema drift: these statements are reflected in the
+-- production schema snapshot but are absent from production migration history.
+-- This file is evidence only and is not executed by Supabase migration commands.
+--
 -- Google refresh tokens are encrypted by the Worker before storage. This table
 -- intentionally has no RLS policies and no anon/authenticated grants, so only
 -- the server-side Supabase service role can access credential material.

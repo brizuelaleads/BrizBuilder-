@@ -138,4 +138,4 @@ comment on table public.ai_authorizations is
 comment on table public.ai_oauth_access_tokens is
   'Short-lived opaque MCP access tokens stored only as SHA-256 hashes.';
 comment on table public.ai_oauth_refresh_tokens is
-  'Rotating opaque MCP refresh tokens stored only as SHA-256 hashes.';
+  'Rotating opaque MCP refresh tokens stored only as SHA-256 hashes.';;

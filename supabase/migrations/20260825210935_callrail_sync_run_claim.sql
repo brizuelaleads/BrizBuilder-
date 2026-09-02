@@ -1,26 +1,7 @@
--- One reconciliation per connection at a time.
---
--- Reconciliation is about to run on a fifteen-minute schedule as well as from
--- a button somebody can press. Two passes over the same connection would fetch
--- the same calls and race each other into the same rows. Ingestion itself is
--- idempotent — claim_callrail_call_for_ingestion and the unique call id see to
--- that — so the damage would be wasted CallRail API quota and confusing sync
--- history rather than duplicate leads. Still not worth allowing.
---
--- The slot is the run row itself: a partial unique index means only one row
--- per connection can be 'running', so the second claim simply gets nothing
--- back and skips that connection.
-
 create unique index if not exists callrail_sync_runs_active_uidx
   on public.callrail_sync_runs (organization_id, client_id)
   where status = 'running';
 
--- Claim the slot, or return null when another run holds it.
---
--- A run whose worker died would otherwise hold the slot forever, so anything
--- older than the staleness window is closed out first. It is recorded as
--- abandoned rather than deleted: a run that never finished is a fact worth
--- keeping, and the closed vocabulary already has a place for it.
 create or replace function public.claim_callrail_sync_run(
   p_organization_id uuid,
   p_client_id uuid,
@@ -63,14 +44,6 @@ revoke all on function public.claim_callrail_sync_run(
   uuid, uuid, timestamptz, timestamptz, interval
 ) from public, anon, authenticated;
 
--- While here: take a writable schema off a definer function's path.
---
--- claim_callrail_call_for_ingestion runs with the owner's rights and had
--- `search_path = public`, so an unqualified name inside it resolved through a
--- schema other roles can create objects in. Its table reference was already
--- qualified; now() was not, which is why the path was not empty to begin with.
--- The behaviour is unchanged — this is the same hardening the contact
--- function already carries.
 create or replace function public.claim_callrail_call_for_ingestion(
   p_call_row_id uuid,
   p_stale_before timestamptz
@@ -100,4 +73,4 @@ end
 $$;
 
 revoke all on function public.claim_callrail_call_for_ingestion(uuid, timestamptz)
-  from public, anon, authenticated;
+  from public, anon, authenticated;;

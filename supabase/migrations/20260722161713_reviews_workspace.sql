@@ -270,4 +270,4 @@ revoke all on table public.contact_message_consents from anon, authenticated;
 revoke all on table public.review_requests from anon, authenticated;
 
 comment on table public.review_requests is
-  'BrizBuilder-owned review invitation delivery history; contains no Google review content.';
+  'BrizBuilder-owned review invitation delivery history; contains no Google review content.';;

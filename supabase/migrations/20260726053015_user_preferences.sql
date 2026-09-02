@@ -15,4 +15,4 @@ alter table public.user_preferences enable row level security;
 revoke all on table public.user_preferences from anon, authenticated;
 
 comment on table public.user_preferences is
-  'Server-only per-user UI preferences; writes go through the CRM action API using the authenticated context email.';
+  'Server-only per-user UI preferences; writes go through the CRM action API using the authenticated context email.';;

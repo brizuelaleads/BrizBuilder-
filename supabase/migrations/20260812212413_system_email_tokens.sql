@@ -61,3 +61,5 @@ comment on table public.password_reset_tokens is
   'Server-only password reset token hashes for transactional account email links.';
 comment on table public.email_verification_tokens is
   'Server-only email verification token hashes for transactional account email links.';
+
+;

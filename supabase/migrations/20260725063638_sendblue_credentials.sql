@@ -1,8 +1,7 @@
 -- Sendblue API keys (Key ID + Secret) are encrypted by the Worker before
 -- storage. Like google_business_credentials, this table has no RLS policies and
 -- no anon/authenticated grants, so only the server-side service role can touch
--- the credential material. The connection's non-secret status lives in
--- provider_connections (provider = 'sendblue').
+-- the credential material.
 
 create unique index if not exists clients_organization_id_id_uidx
   on public.clients(organization_id, id);
@@ -27,8 +26,6 @@ create table if not exists public.sendblue_credentials (
     on delete cascade
 );
 
--- CREATE TABLE IF NOT EXISTS does not add constraints to a pre-existing table,
--- so add the composite tenant foreign key separately and idempotently.
 do $$
 begin
   if not exists (
@@ -55,4 +52,4 @@ revoke all on table public.sendblue_credentials from anon, authenticated;
 comment on table public.sendblue_credentials is
   'Server-only encrypted Sendblue API Key ID and Secret, per organization/client.';
 comment on column public.sendblue_credentials.api_secret_ciphertext is
-  'AES-256-GCM ciphertext; the encryption key is stored only in Cloudflare secrets.';
+  'AES-256-GCM ciphertext; the encryption key is stored only in Cloudflare secrets.';;

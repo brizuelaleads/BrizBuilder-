@@ -17,16 +17,16 @@ const webhookSource = read("lib/callrail-webhook.ts");
 const ingestionSource = read("lib/callrail-ingestion.ts");
 const crmSource = read("db/supabase-crm.ts");
 const migrationSource = read(
-  "supabase/migrations/20260819000000_callrail_connection.sql",
+  "supabase/migrations/20260819034836_callrail_connection.sql",
 );
 const ingestionMigrationSource = read(
-  "supabase/migrations/20260825000000_callrail_ingestion.sql",
+  "supabase/migrations/20260825140802_callrail_ingestion.sql",
 );
 const outcomeMigrationSource = read(
-  "supabase/migrations/20260826000000_callrail_delivery_outcomes.sql",
+  "supabase/migrations/20260825204943_callrail_delivery_outcomes.sql",
 );
 const syncClaimMigrationSource = read(
-  "supabase/migrations/20260826010000_callrail_sync_run_claim.sql",
+  "supabase/migrations/20260825210935_callrail_sync_run_claim.sql",
 );
 const viteConfigSource = read("vite.config.ts");
 const workerSource = read("worker/index.ts");
@@ -42,7 +42,7 @@ const callsUi = read("app/crm/CallsSection.tsx");
 const leadsUi = read("app/crm/LeadsViews.tsx");
 const contactsUi = read("app/crm/FoundationViews.tsx");
 const mediaMigrationSource = read(
-  "supabase/migrations/20260827000000_callrail_call_media.sql",
+  "supabase/migrations/20260825221723_callrail_call_media.sql",
 );
 
 /**
@@ -665,7 +665,7 @@ test("neither listing action can return a key or decrypted credential", () => {
 
 test("one CallRail company can serve only one client", () => {
   const uniqueness = read(
-    "supabase/migrations/20260819010000_callrail_company_uniqueness.sql",
+    "supabase/migrations/20260824233421_callrail_company_uniqueness.sql",
   );
   // Enforced in the database, so no future code path can bypass it.
   assert.match(

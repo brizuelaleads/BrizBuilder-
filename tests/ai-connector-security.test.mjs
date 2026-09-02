@@ -7,12 +7,12 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
 const migrationPath = path.join(
   root,
-  "supabase/migrations/20260722220000_ai_connector_transactional_mutations.sql",
+  "supabase/migrations/20260723025602_ai_connector_transactional_mutations.sql",
 );
 const mcpPath = path.join(root, "lib/ai-connector/mcp.ts");
 const performanceMigrationPath = path.join(
   root,
-  "supabase/migrations/20260722230000_ai_connector_performance_indexes.sql",
+  "supabase/migrations/20260723025748_ai_connector_performance_indexes.sql",
 );
 
 test("AI connector mutations are tenant-pinned, atomic, and idempotent", () => {

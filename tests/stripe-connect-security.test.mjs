@@ -51,7 +51,7 @@ const gatewaySource = read("lead-worker", "src", "index.ts");
 const migrationSource = read(
   "supabase",
   "migrations",
-  "20260723180000_stripe_embedded_security.sql",
+  "20260724002447_stripe_embedded_security.sql",
 );
 
 function permissionArrayBlock(source, name) {

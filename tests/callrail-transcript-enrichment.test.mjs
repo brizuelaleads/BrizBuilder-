@@ -252,7 +252,7 @@ test("23. an additional contact stays a note, not the primary name", () => {
 
 test("24. multiple calls share one open lead and one call row per CallRail id", () => {
   const source = read("lib/callrail-ingestion.ts");
-  const migration = read("supabase/migrations/20260825000000_callrail_ingestion.sql");
+  const migration = read("supabase/migrations/20260825140802_callrail_ingestion.sql");
   assert.match(source, /selectNewestLead/);
   assert.match(source, /lead_id: lead\.leadId/);
   assert.match(migration, /unique \(organization_id, client_id, callrail_call_id\)/);

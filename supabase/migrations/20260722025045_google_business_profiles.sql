@@ -37,4 +37,4 @@ create policy "agency manage" on public.google_business_profiles
   with check (public.is_agency_member(organization_id));
 create policy "client manage" on public.google_business_profiles
   for update using (public.is_client_member(client_id))
-  with check (public.is_client_member(client_id));
+  with check (public.is_client_member(client_id));;

@@ -13,7 +13,7 @@ const themeSource = read("db/theme.ts");
 const crmAppSource = read("app/CrmApp.tsx");
 const dashboardSource = read("app/crm/DashboardView.tsx");
 const styles = read("app/globals.css");
-const migration = read("supabase/migrations/20260726000000_user_preferences.sql");
+const migration = read("supabase/migrations/20260726053015_user_preferences.sql");
 
 function themesFromTs() {
   const match = themeSource.match(/CRM_THEMES[^=]*=\s*\[([^\]]+)\]/);

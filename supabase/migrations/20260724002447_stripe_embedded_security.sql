@@ -130,3 +130,4 @@ comment on table public.provider_webhook_events is
   'Server-only idempotency receipts for signed provider webhooks; payloads are never stored.';
 comment on column public.provider_connections.livemode is
   'Explicit Stripe test/live mode captured from the OAuth response.';
+;

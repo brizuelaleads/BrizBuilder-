@@ -26,4 +26,4 @@ create unique index if not exists callrail_credentials_company_unique_idx
   where company_id is not null;
 
 comment on index public.callrail_credentials_company_unique_idx is
-  'One CallRail company serves one client. Prevents duplicate call ingestion.';
+  'One CallRail company serves one client. Prevents duplicate call ingestion.';;
