@@ -331,3 +331,25 @@ test("the browser does not keep the token after connecting", () => {
   );
   assert.match(block.slice(0, 700), /setMetaAdsToken\(""\)/);
 });
+
+test("the connection card tells you to label the ads before connecting", () => {
+  // Meta offers no lookup from a click back to a campaign, so this label is the
+  // only link between a lead and the ad that paid for it -- and a lead only
+  // carries it if the label was live at click time. Someone who connects an
+  // account without setting it gets spend they cannot attribute to anything.
+  const form = connectionsUi.slice(
+    connectionsUi.indexOf('action: "connect_meta_ads"'),
+    connectionsUi.indexOf("System User access token"),
+  );
+  assert.match(form, /Set this in Ads Manager first/);
+  // JSX writes the braces as entities; these render as {{campaign.id}} etc.
+  const brace = "&#123;&#123;";
+  const close = "&#125;&#125;";
+  for (const field of ["campaign.id", "adset.id", "ad.id"]) {
+    assert.ok(
+      form.includes(`${brace}${field}${close}`),
+      `the snippet carries ${field}`,
+    );
+  }
+  assert.match(form, /utm_source=meta/);
+});

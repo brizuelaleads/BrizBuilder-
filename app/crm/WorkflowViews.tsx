@@ -1034,6 +1034,41 @@ export function ConnectionsView({
                   generate a token. That token never expires and needs no app
                   review. BrizBuilder stores it encrypted.
                 </p>
+                {/*
+                  Shown before the token field, not after connecting. Meta gives
+                  no way to look up which campaign produced a click, so this
+                  label is the only thing tying a lead to the ad that paid for
+                  it -- and a lead only carries it if the label was on the link
+                  when the click happened. Set it late and the leads in between
+                  can never be costed.
+                */}
+                <p>
+                  <strong>Set this in Ads Manager first.</strong> Paste it into{" "}
+                  <em>URL parameters</em> on each ad, or at campaign level. Meta
+                  fills in the real IDs at click time.
+                </p>
+                <code
+                  style={{
+                    display: "block",
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid var(--crm-border)",
+                    background: "var(--crm-surface)",
+                    color: "var(--crm-text)",
+                    fontSize: 11,
+                    lineHeight: 1.6,
+                    // The snippet is one long unbroken token; without this it
+                    // pushes the card wider than the column on a phone.
+                    overflowWrap: "anywhere",
+                    userSelect: "all",
+                  }}
+                >
+                  utm_source=meta&amp;utm_medium=paid&amp;utm_campaign=&#123;&#123;campaign.id&#125;&#125;&amp;utm_term=&#123;&#123;adset.id&#125;&#125;&amp;utm_content=&#123;&#123;ad.id&#125;&#125;
+                </code>
+                <p>
+                  Without it spend still arrives, but no lead can be traced to a
+                  campaign and cost per lead has nothing to divide.
+                </p>
                 <label>
                   System User access token
                   <input
