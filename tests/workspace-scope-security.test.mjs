@@ -46,7 +46,6 @@ const AGENCY_ONLY_TABS = [
   "clients",
   "custom-data",
   "audit",
-  "settings",
 ];
 
 function permissionArray(source, name) {
@@ -155,7 +154,7 @@ test("client roles keep exactly the capabilities their own tabs need", () => {
   assert.ok(!rolePermissions(supabaseSource, "CLIENT_EMPLOYEE").includes("calendar.connect"));
 });
 
-test("every agency-only tab is flagged, and Team stays reachable for client owners", () => {
+test("agency-only tabs stay flagged while permission-gated pages follow capabilities", () => {
   for (const id of AGENCY_ONLY_TABS) {
     const entry = appSource.match(
       new RegExp(`\\{[^{}]*id: "${id}"[^{}]*\\}`, "s"),
@@ -171,6 +170,18 @@ test("every agency-only tab is flagged, and Team stays reachable for client owne
     appSource,
     /view === "team" && data\.viewer\.permissions\.includes\("team\.manage"\)/,
     "Team must render for permitted client owners, not only agency users",
+  );
+  const settings = appSource.match(/\{[^{}]*id: "settings"[^{}]*\}/s)?.[0];
+  assert.ok(settings, "settings nav entry exists");
+  assert.doesNotMatch(
+    settings,
+    /agencyOnly/,
+    "Client App settings follow the existing branding permission, not a role-name check",
+  );
+  assert.match(settings, /permission: "clients\.manage"/);
+  assert.match(
+    appSource,
+    /view === "settings" && data\.viewer\.permissions\.includes\("clients\.manage"\)/,
   );
 });
 

@@ -271,7 +271,7 @@ const nav: Array<{
     agencyOnly: true,
     permission: "audit.read",
   },
-  { id: "settings", label: "Settings", icon: <SettingsIcon />, section: "TOOLS", agencyOnly: true, permission: "feature_flags.manage" },
+  { id: "settings", label: "Settings", icon: <SettingsIcon />, section: "TOOLS", permission: "clients.manage" },
 ];
 
 const viewChangeEvent = "brizuela:crm-view-change";
@@ -1451,7 +1451,7 @@ export function CrmApp({
         {view === "team" && data.viewer.permissions.includes("team.manage") && (
           <TeamView team={data.team} onInvite={() => setModal("invite")} mutate={mutate} />
         )}
-        {view === "settings" && data.viewer.isAgency && (
+        {view === "settings" && data.viewer.permissions.includes("clients.manage") && (
           <SettingsView
             organizationName={data.organization.name}
             viewerRole={data.viewer.role}
