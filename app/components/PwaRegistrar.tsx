@@ -5,9 +5,9 @@ import { useEffect } from "react";
 /**
  * Registers the service worker that makes the tenant app installable.
  *
- * Rendered inside the authenticated workspace only. Registering on the public
- * marketing pages would put a worker on the origin for visitors who will never
- * install anything, and it would have to be unregistered later to change that.
+ * Rendered inside the authenticated workspace and on the dedicated public
+ * install route. Marketing pages still omit it, so only someone using the app
+ * or deliberately installing a client workspace registers the worker.
  */
 export function PwaRegistrar() {
   useEffect(() => {

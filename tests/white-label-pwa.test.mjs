@@ -35,6 +35,8 @@ const brandingStore = read("db/supabase-branding.ts");
 const manifestRoute = read("app/manifest.webmanifest/route.ts");
 const brandHead = read("app/components/BrandHead.tsx");
 const crmAppSource = read("app/CrmApp.tsx");
+const clientAppSettings = read("app/crm/BrandingSettings.tsx");
+const operationsViews = read("app/crm/OperationsViews.tsx");
 const serviceWorker = read("public/sw.js");
 
 function extractBlock(source, needle) {
@@ -322,6 +324,88 @@ test("save_client_branding is permission checked and tenant scoped", () => {
     block,
     /input\.organizationId/,
     "the organization is never taken from the request body",
+  );
+  assert.match(
+    block,
+    /thresholds: input\.thresholds/,
+    "notification thresholds reach the existing branding store",
+  );
+});
+
+test("Client App settings are discoverable and gated by the existing permission", () => {
+  assert.match(operationsViews, /label: "Client App"/);
+  assert.match(operationsViews, /setSection\("branding"\)/);
+  assert.match(
+    crmAppSource,
+    /id: "settings"[^\n]*permission: "clients\.manage"/,
+  );
+  assert.match(
+    crmAppSource,
+    /view === "settings" && data\.viewer\.permissions\.includes\("clients\.manage"\)/,
+  );
+  assert.doesNotMatch(
+    crmAppSource,
+    /id: "settings"[^\n]*agencyOnly: true/,
+    "a client role with the explicit permission is not blocked by a second role-name check",
+  );
+});
+
+test("Client App form reuses branding storage and never leaks unsaved state across tenants", () => {
+  assert.match(clientAppSettings, /action: "save_client_branding"/);
+  assert.match(clientAppSettings, /synced\.clientId !== clientId/);
+  assert.match(clientAppSettings, /Discard unsaved Client App changes/);
+  assert.match(clientAppSettings, /Unsaved changes/);
+  assert.match(clientAppSettings, /Save Changes/);
+  assert.doesNotMatch(
+    clientAppSettings,
+    /fetch\(|storage\.from|\.upload\(/,
+    "the UI must not create a second branding or asset-storage path",
+  );
+});
+
+test("Client App UI exposes live preview, notifications, and existing PWA install support", () => {
+  for (const label of [
+    "App Name",
+    "Client Logo",
+    "App Icon",
+    "Brand Color",
+    "Accent Color",
+    "Hot Lead / High Lead Score",
+    "Edit Branding",
+    "Send App",
+    "Install App",
+    "Copy Link",
+    "Send to Client",
+    "QR Code",
+    "Advanced",
+    "Live preview",
+  ]) {
+    assert.ok(clientAppSettings.includes(label), `${label} is present`);
+  }
+  assert.match(clientAppSettings, /beforeinstallprompt/);
+  assert.match(clientAppSettings, /appinstalled/);
+  assert.match(clientAppSettings, /onClick=\{\(\) => void handleInstallAction\(\)\}/);
+  assert.match(clientAppSettings, /installPrompt\.state === "available"/);
+  assert.match(clientAppSettings, /installPrompt\.state === "ios"/);
+  assert.doesNotMatch(
+    clientAppSettings,
+    /installPrompt\.state === "available" \? \(\s*<button/,
+    "the install button stays visible even before a native prompt is available",
+  );
+  assert.match(clientAppSettings, /form\.appName\.trim\(\)/);
+  assert.match(clientAppSettings, /normalizeBrandingUrl\(form\.logoUrl\)/);
+  assert.match(clientAppSettings, /style=\{previewStyle\}/);
+  assert.match(clientAppSettings, /role="dialog"/);
+  assert.match(clientAppSettings, /<details className="crm-client-app-advanced">/);
+  assert.match(clientAppSettings, /<QRCodeCanvas/);
+  assert.match(clientAppSettings, /value=\{qrUrl\}/);
+  assert.match(clientAppSettings, /Show QR Code/);
+  assert.doesNotMatch(clientAppSettings, /Coming soon/);
+  assert.match(clientAppSettings, /navigator\.share/);
+  assert.doesNotMatch(
+    clientAppSettings,
+    /<ol>|<h[234]>iPhone<\/h[234]>|<h[234]>Android<\/h[234]>/,
+    "platform instructions stay contextual instead of becoming permanent cards",
   );
 });
 

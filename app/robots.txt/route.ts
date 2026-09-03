@@ -7,6 +7,7 @@ const DISALLOWED = [
   "/dashboard",
   "/login",
   "/local-login",
+  "/install/",
   "/api/",
   "/oauth/",
   "/mcp",

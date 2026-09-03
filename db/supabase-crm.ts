@@ -4191,6 +4191,7 @@ export async function executeSupabaseCrmAction(
       accentColor: input.accentColor,
       subdomain: input.subdomain,
       notifications: input.notifications,
+      thresholds: input.thresholds,
     });
 
     await audit(
