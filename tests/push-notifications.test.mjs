@@ -29,6 +29,9 @@ const read = (rel) =>
   fs.readFileSync(path.join(root, rel), "utf8").replaceAll("\r\n", "\n");
 
 const migration = read("supabase/migrations/20260827140000_push_notifications.sql");
+const concurrencyMigration = read(
+  "supabase/migrations/20260829120000_production_readiness_concurrency.sql",
+);
 const pushStore = read("db/supabase-push.ts");
 const dispatcher = read("lib/push-notifications.ts");
 const sweeps = read("lib/notification-sweeps.ts");
@@ -369,11 +372,24 @@ test("one device cannot accumulate duplicate subscriptions", () => {
 
 test("the delivery ledger makes a retried event idempotent", () => {
   assert.match(migration, /unique \(client_id, event_key\)/);
-  assert.match(pushStore, /duplicate key\|push_deliveries_client_id_event_key_key/);
-  // The claim must come before the fan-out, or a retry sends twice.
+  assert.match(pushStore, /rpc\("claim_push_delivery"/);
+  assert.match(concurrencyMigration, /pg_advisory_xact_lock/);
+  assert.match(
+    concurrencyMigration,
+    /v_row\.status in \('delivered', 'permanently_failed'\)/,
+  );
+  // The leased claim must come before the fan-out, or two workers can send.
   const claimIndex = dispatcher.indexOf("claimDelivery({");
   const sendIndex = dispatcher.indexOf("subscriptionsForClient(");
   assert.ok(claimIndex > 0 && sendIndex > claimIndex, "claim precedes delivery");
+});
+
+test("failed and abandoned delivery claims are retryable", () => {
+  assert.match(concurrencyMigration, /lease_expires_at/);
+  assert.match(concurrencyMigration, /next_attempt_at/);
+  assert.match(concurrencyMigration, /status in \('pending', 'processing', 'delivered', 'failed', 'permanently_failed'\)/);
+  assert.match(pushStore, /recoverablePushDeliveries/);
+  assert.match(sweeps, /recoverPushDeliveries/);
 });
 
 test("a disabled alert type leaves no ledger row", () => {

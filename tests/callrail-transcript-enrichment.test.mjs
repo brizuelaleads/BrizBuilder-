@@ -277,7 +277,9 @@ test("calendar appointment writes are idempotent and final-state gated", () => {
     /extracted\.status !== "cancelled"\s*&&\s*\(extracted\.status === "tentative" \|\| !extracted\.verified\)/,
   );
   assert.match(calendar, /brizbuilderAppointmentId/);
-  assert.match(calendar, /method: eventId \? "PUT" : "POST"/);
+  assert.match(calendar, /method: existingEventId \? "PUT" : "POST"/);
+  assert.match(calendar, /id: deterministicEventId/);
+  assert.match(calendar, /error\.status !== 409/);
   assert.match(calendar, /method: "DELETE"/);
   assert.match(migration, /appointments_transcript_lead_uidx/);
   assert.match(ingestion, /\.eq\("starts_at", extracted\.start\)/);

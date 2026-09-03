@@ -52,8 +52,6 @@ const MAX_WEBHOOK_BYTES = 512_000;
 const CLAIM_STALE_MS = 10 * 60 * 1000;
 const RECONCILE_LOOKBACK_MS = 2 * 60 * 60 * 1000;
 const RECONCILE_MAX_CONNECTIONS = 25;
-const DEFAULT_PIPELINE_ID = "00000000-0000-4000-8000-000000000101";
-const DEFAULT_NEW_STAGE_ID = "00000000-0000-4000-8000-000000000201";
 
 type WaitUntilContext = {
   waitUntil(promise: Promise<unknown>): void;
@@ -129,6 +127,22 @@ export const CALLRAIL_SYNC_FAILURES = [
 
 export type CallRailSyncFailure = (typeof CALLRAIL_SYNC_FAILURES)[number];
 
+export const CALLRAIL_SYNC_OPERATIONS = [
+  "load_enabled_connections",
+  "claim_sync_run",
+  "complete_sync_run",
+  "record_sync_failure",
+  "reconcile",
+] as const;
+
+type CallRailSyncOperation = (typeof CALLRAIL_SYNC_OPERATIONS)[number];
+
+type CallRailSyncDiagnostic = {
+  failure: CallRailSyncFailure;
+  operation: CallRailSyncOperation;
+  errorType: "CallRailApiError" | "AbortError" | "TypeError" | "Error" | "NonError";
+};
+
 export function classifySyncFailure(error: unknown): CallRailSyncFailure {
   if (error instanceof CallRailApiError) {
     if (error.status === "unauthorized") return "callrail_unauthorized";
@@ -144,6 +158,51 @@ export function classifySyncFailure(error: unknown): CallRailSyncFailure {
     return "credential_unreadable";
   }
   return "unknown";
+}
+
+function safeSyncErrorType(error: unknown): CallRailSyncDiagnostic["errorType"] {
+  if (error instanceof CallRailApiError) return "CallRailApiError";
+  if (error instanceof DOMException && error.name === "AbortError") return "AbortError";
+  if (error instanceof TypeError) return "TypeError";
+  if (error instanceof Error) return "Error";
+  return "NonError";
+}
+
+class CallRailSyncOperationError extends Error {
+  readonly diagnostic: CallRailSyncDiagnostic;
+
+  constructor(operation: CallRailSyncOperation, cause: unknown) {
+    // This fixed message deliberately excludes the cause. Database and provider
+    // errors can carry request URLs, row fragments, or credential material.
+    super("A CallRail reconciliation operation failed.", { cause });
+    this.name = "CallRailSyncOperationError";
+    this.diagnostic = {
+      failure: classifySyncFailure(cause),
+      operation,
+      errorType: safeSyncErrorType(cause),
+    };
+  }
+}
+
+async function observeSyncOperation<T>(
+  operation: CallRailSyncOperation,
+  work: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    throw new CallRailSyncOperationError(operation, error);
+  }
+}
+
+/** Fixed-vocabulary diagnostics safe for the production log sink. */
+export function describeSyncFailure(error: unknown): CallRailSyncDiagnostic {
+  if (error instanceof CallRailSyncOperationError) return error.diagnostic;
+  return {
+    failure: classifySyncFailure(error),
+    operation: "reconcile",
+    errorType: safeSyncErrorType(error),
+  };
 }
 
 function hex(bytes: Uint8Array) {
@@ -460,6 +519,7 @@ async function callRowPatch(
   call: CallRailCall,
   kind: CallRailWebhookKind,
   existing: Row | null,
+  transcriptGeneration: number,
 ) {
   const attemptedAt = new Date();
   const now = attemptedAt.toISOString();
@@ -538,6 +598,10 @@ async function callRowPatch(
       : null,
     transcript_failure_reason: retry.failureReason,
     transcript_sha256: transcriptHash,
+    transcript_requested_generation: transcriptGeneration,
+    transcript_generation: call.transcript
+      ? transcriptGeneration
+      : Number(existing?.transcript_generation ?? 0),
     enrichment_status: storedTranscript
       ? transcriptChanged
         ? "pending"
@@ -553,16 +617,24 @@ const CALL_SNAPSHOT_STATE_FIELDS =
   "id,contact_id,lead_id,ingest_status,updated_at,transcript,call_summary," +
   "transcript_status,transcript_attempt_count,transcript_completed_at," +
   "transcript_next_attempt_at,transcript_failure_reason," +
-  "transcript_sha256,enrichment_status,enrichment_transcript_sha256";
+  "transcript_sha256,transcript_requested_generation,transcript_generation," +
+  "enrichment_status,enrichment_transcript_sha256";
 
 async function updateExistingCallSnapshot(
   rowId: string,
   patch: Record<string, unknown>,
   providerHasTranscript: boolean,
   providerHasSummary: boolean,
+  transcriptGeneration: number,
 ) {
   if (providerHasTranscript) {
-    await checked(db().from("callrail_calls").update(patch).eq("id", rowId));
+    await checked(
+      db()
+        .from("callrail_calls")
+        .update(patch)
+        .eq("id", rowId)
+        .eq("transcript_requested_generation", transcriptGeneration),
+    );
   } else {
     // A stale provider response that still says "no transcript" must not erase
     // a transcript written by a concurrent modified-call webhook. Keep the
@@ -578,13 +650,19 @@ async function updateExistingCallSnapshot(
       "transcript_completed_at",
       "transcript_failure_reason",
       "transcript_sha256",
+      "transcript_requested_generation",
+      "transcript_generation",
       "enrichment_status",
     ]) {
       delete metadataPatch[field];
     }
     if (!providerHasSummary) delete metadataPatch.call_summary;
     await checked(
-      db().from("callrail_calls").update(metadataPatch).eq("id", rowId),
+      db()
+        .from("callrail_calls")
+        .update(metadataPatch)
+        .eq("id", rowId)
+        .eq("transcript_requested_generation", transcriptGeneration),
     );
     await checked(
       db()
@@ -599,6 +677,7 @@ async function updateExistingCallSnapshot(
           updated_at: patch.updated_at,
         })
         .eq("id", rowId)
+        .eq("transcript_requested_generation", transcriptGeneration)
         .eq("transcript_status", "pending")
         .is("transcript", null),
     );
@@ -617,6 +696,7 @@ async function saveCallSnapshot(
   clientId: string,
   call: CallRailCall,
   kind: CallRailWebhookKind,
+  transcriptGeneration: number,
 ): Promise<Row> {
   const existing = (await checked(
     db()
@@ -627,13 +707,21 @@ async function saveCallSnapshot(
       .eq("callrail_call_id", call.id)
       .maybeSingle(),
   )) as Row | null;
-  const patch = await callRowPatch(organizationId, clientId, call, kind, existing);
+  const patch = await callRowPatch(
+    organizationId,
+    clientId,
+    call,
+    kind,
+    existing,
+    transcriptGeneration,
+  );
   if (existing) {
     return updateExistingCallSnapshot(
       String(existing.id),
       patch,
       Boolean(call.transcript),
       Boolean(call.callSummary),
+      transcriptGeneration,
     );
   }
   try {
@@ -664,6 +752,7 @@ async function saveCallSnapshot(
       patch,
       Boolean(call.transcript),
       Boolean(call.callSummary),
+      transcriptGeneration,
     );
   }
 }
@@ -963,20 +1052,38 @@ async function ensureLead(
   // open lead from a month ago instead of starting the job they are calling
   // about. The status and the window are both judged against this one lead.
   const recent = (await checked(
-    db()
-      .from("leads")
-      .select("id,status,created_at,first_contacted_at,last_contacted_at")
-      .eq("organization_id", organizationId)
-      .eq("client_id", clientId)
-      .eq("contact_id", contactId)
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .limit(1),
+    db().rpc("find_or_create_callrail_lead", {
+      p_organization_id: organizationId,
+      p_client_id: clientId,
+      p_contact_id: contactId,
+      p_message: leadMessage(call),
+      p_campaign: call.campaign ?? call.source,
+      p_lead_score: call.answered ? 65 : 45,
+      p_attribution: call.fbclid
+        ? normalizeAttribution({ fbclid: call.fbclid })
+        : {},
+      p_meta_eligible: metaDecision(call).eligible,
+      p_meta_eligibility_reason: metaDecision(call).reason,
+      p_first_contacted_at: call.startedAt ?? callInteractionAt(call),
+      p_last_contacted_at: callInteractionAt(call),
+      p_field_provenance: {
+        source: sourceMetadata("callrail", 1),
+        ...(call.campaign || call.source
+          ? { campaign: sourceMetadata("callrail", 1) }
+          : {}),
+        ...(call.callSummary
+          ? { message: sourceMetadata("ai_summary", 0.9) }
+          : {}),
+      },
+    }),
   )) as Row[] | null;
+  if (!recent?.[0]?.lead_id) {
+    throw new Error("CallRail lead matching returned no lead.");
+  }
 
   const candidate = selectNewestLead(
     (Array.isArray(recent) ? recent : []).map((row) => ({
-      id: String(row.id),
+      id: String(row.lead_id),
       status: row.status,
       createdAt: row.created_at,
     })),
@@ -1010,48 +1117,14 @@ async function ensureLead(
         .eq("organization_id", organizationId)
         .eq("client_id", clientId),
     );
-    return { leadId, created: false, reused: true };
+    return {
+      leadId,
+      created: recent?.[0]?.created === true,
+      reused: recent?.[0]?.reused === true,
+    };
   }
 
-  const decisionMeta = metaDecision(call);
-  const lead = (await checked(
-    db()
-      .from("leads")
-      .insert({
-        organization_id: organizationId,
-        client_id: clientId,
-        contact_id: contactId,
-        pipeline_id: DEFAULT_PIPELINE_ID,
-        stage_id: DEFAULT_NEW_STAGE_ID,
-        service_requested: "Phone call",
-        message: leadMessage(call),
-        source: "CallRail",
-        campaign: call.campaign ?? call.source,
-        status: "NEW",
-        lead_score: call.answered ? 65 : 45,
-        tags: ["CallRail"],
-        consent_status: "unknown",
-        attribution: call.fbclid
-          ? normalizeAttribution({ fbclid: call.fbclid })
-          : {},
-        meta_eligible: decisionMeta.eligible,
-        meta_eligibility_reason: decisionMeta.reason,
-        first_contacted_at: call.startedAt ?? callInteractionAt(call),
-        last_contacted_at: callInteractionAt(call),
-        field_provenance: {
-          source: sourceMetadata("callrail", 1),
-          ...(call.campaign || call.source
-            ? { campaign: sourceMetadata("callrail", 1) }
-            : {}),
-          ...(call.callSummary
-            ? { message: sourceMetadata("ai_summary", 0.9) }
-            : {}),
-        },
-      })
-      .select("id")
-      .single(),
-  )) as Row;
-  return { leadId: String(lead.id), created: true, reused: false };
+  throw new Error("CallRail lead matching returned an invalid status.");
 }
 
 async function markCall(rowId: string, patch: Record<string, unknown>) {
@@ -1379,14 +1452,31 @@ async function processTranscriptEnrichment(input: {
   providerSummary: string | null;
   transcript: string;
   transcriptHash: string;
+  transcriptGeneration: number;
   contactId: string;
   leadId: string;
 }) {
   const database = db();
-  await markCall(input.callRowId, {
-    enrichment_status: "processing",
-    enrichment_attempted_at: new Date().toISOString(),
-  });
+  // This is the linearization point for every transcript-derived mutation.
+  // The RPC validates hash + stored generation + latest requested generation
+  // in one transaction. The active per-call ingestion lease then prevents a
+  // new generation reservation until this owner finishes.
+  const enrichmentClaimed = await checked(
+    database.rpc("claim_callrail_transcript_enrichment", {
+      p_call_row_id: input.callRowId,
+      p_organization_id: input.organizationId,
+      p_client_id: input.clientId,
+      p_transcript_sha256: input.transcriptHash,
+      p_transcript_generation: input.transcriptGeneration,
+    }),
+  );
+  if (enrichmentClaimed !== true) {
+    callRailLog("enrichment.stale_skipped", {
+      call: callReference(input.callId),
+      generation: input.transcriptGeneration,
+    });
+    return false;
+  }
   try {
     const [client, contact, lead] = (await Promise.all([
       checked(
@@ -1620,7 +1710,7 @@ async function processTranscriptEnrichment(input: {
     // run is still working. Never let the older result mark that newer hash as
     // completed; leaving its pending/processing state intact makes the next
     // reconciliation process the new evidence.
-    await checked(
+    const completed = (await checked(
       database
         .from("callrail_calls")
         .update({
@@ -1648,8 +1738,13 @@ async function processTranscriptEnrichment(input: {
           updated_at: completedAt,
         })
         .eq("id", input.callRowId)
-        .eq("transcript_sha256", input.transcriptHash),
-    );
+        .eq("transcript_sha256", input.transcriptHash)
+        .eq("transcript_generation", input.transcriptGeneration)
+        .eq("transcript_requested_generation", input.transcriptGeneration)
+        .select("id")
+        .maybeSingle(),
+    )) as Row | null;
+    if (!completed) return false;
     callRailLog("enrichment.completed", {
       call: callReference(input.callId),
       applied,
@@ -1667,8 +1762,20 @@ async function processTranscriptEnrichment(input: {
         contactName: enrichment.customerName?.value ?? null,
       }),
     );
+    return true;
   } catch (error) {
-    await markCall(input.callRowId, { enrichment_status: "failed" });
+    await checked(
+      database
+        .from("callrail_calls")
+        .update({
+          enrichment_status: "failed",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", input.callRowId)
+        .eq("transcript_sha256", input.transcriptHash)
+        .eq("transcript_generation", input.transcriptGeneration)
+        .eq("transcript_requested_generation", input.transcriptGeneration),
+    ).catch(() => undefined);
     callRailLog("enrichment.failed", {
       call: callReference(input.callId),
       reason: classifySyncFailure(error),
@@ -1682,6 +1789,7 @@ export async function ingestFetchedCall(
   clientId: string,
   call: CallRailCall,
   kind: CallRailWebhookKind = "post_call",
+  reservedTranscriptGeneration?: number,
 ): Promise<CallRailIngestionResult> {
   const state = await ingestionState(organizationId, clientId);
   if (!state.enabled || !state.companyId) {
@@ -1690,7 +1798,40 @@ export async function ingestFetchedCall(
   if (!call.companyId || call.companyId !== state.companyId) {
     throw new Error("CallRail call belongs to a different company.");
   }
-  const snapshot = await saveCallSnapshot(organizationId, clientId, call, kind);
+  await ensureCallPlaceholder(
+    organizationId,
+    clientId,
+    state.companyId,
+    call.id,
+    kind,
+  );
+  const transcriptGeneration =
+    reservedTranscriptGeneration ??
+    (await reserveTranscriptGeneration(organizationId, clientId, call.id));
+  if (!transcriptGeneration) {
+    return { status: "busy", leadCreated: false, repaired: false };
+  }
+  const snapshot = await saveCallSnapshot(
+    organizationId,
+    clientId,
+    call,
+    kind,
+    transcriptGeneration,
+  );
+  // The update is a database compare-and-set against the generation reserved
+  // before the provider fetch. If a later request reserved a higher value, the
+  // stale response changes nothing and must not proceed into CRM enrichment.
+  if (
+    Number(snapshot.transcript_requested_generation) !== transcriptGeneration ||
+    (Boolean(call.transcript) &&
+      Number(snapshot.transcript_generation) !== transcriptGeneration)
+  ) {
+    callRailLog("transcript.stale_response", {
+      call: callReference(call.id),
+      generation: transcriptGeneration,
+    });
+    return { status: "busy", leadCreated: false, repaired: false };
+  }
   callRailLog("transcript.fetch", {
     call: callReference(call.id),
     attempt: snapshot.transcript_attempt_count,
@@ -1742,6 +1883,7 @@ export async function ingestFetchedCall(
         providerSummary: call.callSummary,
         transcript,
         transcriptHash,
+        transcriptGeneration,
         contactId,
         leadId: lead.leadId,
       }).catch(() => undefined);
@@ -1863,6 +2005,7 @@ async function recordTranscriptFetchFailure(
   organizationId: string,
   clientId: string,
   callId: string,
+  transcriptGeneration: number,
 ) {
   const row = (await checked(
     db()
@@ -1897,6 +2040,7 @@ async function recordTranscriptFetchFailure(
         updated_at: attemptedAt.toISOString(),
       })
       .eq("id", String(row.id))
+      .eq("transcript_requested_generation", transcriptGeneration)
       .eq("transcript_status", "pending"),
   );
   callRailLog("transcript.fetch_failed", {
@@ -1922,27 +2066,32 @@ async function ensureCallPlaceholder(
       .eq("callrail_call_id", callId)
       .maybeSingle(),
   )) as Row | null;
-  if (existing) return;
+  if (existing) return String(existing.id);
   const now = new Date();
   try {
-    await checked(
-      db().from("callrail_calls").insert({
-        organization_id: organizationId,
-        client_id: clientId,
-        callrail_call_id: callId,
-        company_id: companyId,
-        ingest_status: "received",
-        last_webhook_kind: kind,
-        transcript_status: "pending",
-        transcript_attempt_count: 0,
-        transcript_next_attempt_at: new Date(
-          now.getTime() + CALLRAIL_TRANSCRIPT_RETRY_DELAYS_MS[0],
-        ).toISOString(),
-        enrichment_status: "not_ready",
-        updated_at: now.toISOString(),
-      }),
-    );
+    const inserted = (await checked(
+      db()
+        .from("callrail_calls")
+        .insert({
+          organization_id: organizationId,
+          client_id: clientId,
+          callrail_call_id: callId,
+          company_id: companyId,
+          ingest_status: "received",
+          last_webhook_kind: kind,
+          transcript_status: "pending",
+          transcript_attempt_count: 0,
+          transcript_next_attempt_at: new Date(
+            now.getTime() + CALLRAIL_TRANSCRIPT_RETRY_DELAYS_MS[0],
+          ).toISOString(),
+          enrichment_status: "not_ready",
+          updated_at: now.toISOString(),
+        })
+        .select("id")
+        .single(),
+    )) as Row;
     callRailLog("call.placeholder_created", { call: callReference(callId) });
+    return String(inserted.id);
   } catch (error) {
     // The unique call id is the race arbiter. Only suppress the insert error if
     // another worker really did create this exact tenant-scoped call row.
@@ -1956,7 +2105,25 @@ async function ensureCallPlaceholder(
         .maybeSingle(),
     );
     if (!raced) throw error;
+    return String((raced as Row).id);
   }
+}
+
+async function reserveTranscriptGeneration(
+  organizationId: string,
+  clientId: string,
+  callId: string,
+): Promise<number | null> {
+  const generation = await checked(
+    db().rpc("reserve_callrail_transcript_generation", {
+      p_organization_id: organizationId,
+      p_client_id: clientId,
+      p_callrail_call_id: callId,
+      p_stale_before: new Date(Date.now() - CLAIM_STALE_MS).toISOString(),
+    }),
+  );
+  const value = Number(generation);
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
 }
 
 export async function ingestCallRailCall(
@@ -1984,16 +2151,33 @@ export async function ingestCallRailCall(
     callId,
     kind,
   );
+  const transcriptGeneration = await reserveTranscriptGeneration(
+    organizationId,
+    clientId,
+    callId,
+  );
+  if (!transcriptGeneration) {
+    return { status: "busy", leadCreated: false, repaired: false };
+  }
   let call: CallRailCall;
   try {
     call = await getCallRailCall(access.accountId, callId, access.apiKey);
   } catch (error) {
-    await recordTranscriptFetchFailure(organizationId, clientId, callId).catch(
-      () => undefined,
-    );
+    await recordTranscriptFetchFailure(
+      organizationId,
+      clientId,
+      callId,
+      transcriptGeneration,
+    ).catch(() => undefined);
     throw error;
   }
-  return ingestFetchedCall(organizationId, clientId, call, kind);
+  return ingestFetchedCall(
+    organizationId,
+    clientId,
+    call,
+    kind,
+    transcriptGeneration,
+  );
 }
 
 export async function processCallRailWebhookDelivery(deliveryId: string) {
@@ -2212,6 +2396,7 @@ async function retryStoredTranscriptEnrichment(
       .from("callrail_calls")
       .select(
         "contact_id,lead_id,transcript,transcript_sha256,enrichment_status," +
+          "transcript_requested_generation,transcript_generation," +
           "started_at,ended_at,call_summary",
       )
       .eq("id", String(row.id))
@@ -2237,6 +2422,7 @@ async function retryStoredTranscriptEnrichment(
     providerSummary: text(current.call_summary, 2_400),
     transcript,
     transcriptHash,
+    transcriptGeneration: Number(current.transcript_generation ?? 0),
     contactId: String(current.contact_id ?? claim.contact_id ?? row.contact_id),
     leadId: String(current.lead_id ?? claim.lead_id ?? row.lead_id),
   }).catch(() => undefined);
@@ -2264,9 +2450,12 @@ export async function reconcileCallRailIngestion(options: {
   const windowStart = new Date(
     windowEnd.getTime() - (options.lookbackMs ?? RECONCILE_LOOKBACK_MS),
   );
-  const connections = await enabledConnections(
-    options.maxConnections ?? RECONCILE_MAX_CONNECTIONS,
-    options.scope,
+  const connections = await observeSyncOperation(
+    "load_enabled_connections",
+    () => enabledConnections(
+      options.maxConnections ?? RECONCILE_MAX_CONNECTIONS,
+      options.scope,
+    ),
   );
   const summary = {
     connections: connections.length,
@@ -2284,11 +2473,14 @@ export async function reconcileCallRailIngestion(options: {
     const clientId = String(connection.client_id);
     const accountId = String(connection.account_id);
     const companyId = String(connection.company_id);
-    const runId = await claimSyncRun(
-      organizationId,
-      clientId,
-      windowStart.toISOString(),
-      windowEnd.toISOString(),
+    const runId = await observeSyncOperation(
+      "claim_sync_run",
+      () => claimSyncRun(
+        organizationId,
+        clientId,
+        windowStart.toISOString(),
+        windowEnd.toISOString(),
+      ),
     );
     if (!runId) {
       summary.skipped += 1;
@@ -2360,19 +2552,23 @@ export async function reconcileCallRailIngestion(options: {
       summary.callsIngested += ingested;
       summary.callsRepaired += repaired;
       summary.callsRecovered += recovered;
-      await finishSyncRun(runId, {
-        calls_seen: discovered.callIds.length,
-        calls_ingested: ingested,
-        calls_repaired: repaired,
-        status: discovered.truncated ? "partial" : "ok",
-        error: null,
-      });
+      await observeSyncOperation("complete_sync_run", () =>
+        finishSyncRun(runId, {
+          calls_seen: discovered.callIds.length,
+          calls_ingested: ingested,
+          calls_repaired: repaired,
+          status: discovered.truncated ? "partial" : "ok",
+          error: null,
+        }),
+      );
     } catch (error) {
       summary.failures += 1;
-      await finishSyncRun(runId, {
-        status: "failed",
-        error: classifySyncFailure(error),
-      });
+      await observeSyncOperation("record_sync_failure", () =>
+        finishSyncRun(runId, {
+          status: "failed",
+          error: classifySyncFailure(error),
+        }),
+      );
     }
   }
   return summary;

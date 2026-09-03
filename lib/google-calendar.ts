@@ -15,6 +15,16 @@ type GoogleCalendarEvent = {
   id?: string;
 };
 
+class GoogleCalendarRequestError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "GoogleCalendarRequestError";
+    this.status = status;
+  }
+}
+
 export type GoogleCalendarSyncResult = {
   action: "created" | "updated" | "cancelled" | "unchanged";
   eventId: string | null;
@@ -44,7 +54,8 @@ async function googleCalendarRequest(
       const payload = (await response.json().catch(() => null)) as {
         error?: { message?: string };
       } | null;
-      throw new Error(
+      throw new GoogleCalendarRequestError(
+        response.status,
         payload?.error?.message
           ? `Google Calendar: ${payload.error.message.slice(0, 240)}`
           : `Google Calendar request failed (${response.status}).`,
@@ -59,6 +70,34 @@ async function googleCalendarRequest(
   } finally {
     clearTimeout(timeout);
   }
+}
+
+const BASE32HEX = "0123456789abcdefghijklmnopqrstuv";
+
+/** Stable base32hex provider id for one BrizBuilder appointment. */
+export async function googleCalendarEventId(
+  appointmentId: string,
+): Promise<string> {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(appointmentId),
+    ),
+  );
+  let bits = 0;
+  let buffer = 0;
+  let encoded = "";
+  for (const byte of digest) {
+    buffer = (buffer << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      bits -= 5;
+      encoded += BASE32HEX[(buffer >>> bits) & 31];
+      buffer &= (1 << bits) - 1;
+    }
+  }
+  if (bits > 0) encoded += BASE32HEX[(buffer << (5 - bits)) & 31];
+  return `bb${encoded}`;
 }
 
 async function findGoogleCalendarEvent(
@@ -94,14 +133,14 @@ export async function syncGoogleCalendarAppointment(
   accessToken: string,
   appointment: GoogleCalendarAppointment,
 ): Promise<GoogleCalendarSyncResult> {
-  const eventId = await findGoogleCalendarEvent(
+  const existingEventId = await findGoogleCalendarEvent(
     accessToken,
     appointment.id,
   );
   if (appointment.status === "CANCELED") {
-    if (!eventId) return { action: "unchanged", eventId: null };
+    if (!existingEventId) return { action: "unchanged", eventId: null };
     const url = new URL(
-      `${GOOGLE_CALENDAR_API}/calendars/primary/events/${encodeURIComponent(eventId)}`,
+      `${GOOGLE_CALENDAR_API}/calendars/primary/events/${encodeURIComponent(existingEventId)}`,
     );
     url.searchParams.set("sendUpdates", "none");
     await googleCalendarRequest(accessToken, url, { method: "DELETE" });
@@ -113,7 +152,9 @@ export async function syncGoogleCalendarAppointment(
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
     throw new Error("The appointment time is invalid for Google Calendar.");
   }
+  const deterministicEventId = await googleCalendarEventId(appointment.id);
   const body = JSON.stringify({
+    ...(!existingEventId ? { id: deterministicEventId } : {}),
     summary: `${appointment.serviceType} — ${appointment.contactName}`,
     description: appointment.notes
       ? `${appointment.notes}\n\nSynced from BrizBuilder`
@@ -124,21 +165,48 @@ export async function syncGoogleCalendarAppointment(
       private: { brizbuilderAppointmentId: appointment.id },
     },
   });
-  const url = eventId
+  const url = existingEventId
     ? new URL(
-        `${GOOGLE_CALENDAR_API}/calendars/primary/events/${encodeURIComponent(eventId)}`,
+        `${GOOGLE_CALENDAR_API}/calendars/primary/events/${encodeURIComponent(existingEventId)}`,
       )
     : new URL(`${GOOGLE_CALENDAR_API}/calendars/primary/events`);
   url.searchParams.set("sendUpdates", "none");
-  const response = await googleCalendarRequest(accessToken, url, {
-    method: eventId ? "PUT" : "POST",
-    body,
-  });
-  if (eventId) return { action: "updated", eventId };
+  let response: Response;
+  try {
+    response = await googleCalendarRequest(accessToken, url, {
+      method: existingEventId ? "PUT" : "POST",
+      body,
+    });
+  } catch (error) {
+    if (
+      existingEventId ||
+      !(error instanceof GoogleCalendarRequestError) ||
+      error.status !== 409
+    ) {
+      throw error;
+    }
+    // A concurrent creator won after our lookup. PUT converges both workers
+    // on the deterministic resource rather than creating a second event.
+    const conflictUrl = new URL(
+      `${GOOGLE_CALENDAR_API}/calendars/primary/events/${encodeURIComponent(deterministicEventId)}`,
+    );
+    conflictUrl.searchParams.set("sendUpdates", "none");
+    await googleCalendarRequest(accessToken, conflictUrl, {
+      method: "PUT",
+      body,
+    });
+    return { action: "updated", eventId: deterministicEventId };
+  }
+  if (existingEventId) {
+    return { action: "updated", eventId: existingEventId };
+  }
   const created = (await response.json()) as GoogleCalendarEvent;
   return {
     action: "created",
-    eventId: typeof created.id === "string" && created.id ? created.id : null,
+    eventId:
+      typeof created.id === "string" && created.id
+        ? created.id
+        : deterministicEventId,
   };
 }
 

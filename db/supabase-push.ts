@@ -13,6 +13,20 @@ export type StoredSubscription = PushSubscriptionKeys & {
   email: string;
 };
 
+export type PushDeliveryClaim = {
+  deliveryId: string;
+  claimToken: string;
+  attemptCount: number;
+};
+
+export type RecoverablePushDelivery = {
+  organizationId: string;
+  clientId: string;
+  eventKey: string;
+  notificationType: string;
+  eventPayload: Record<string, unknown>;
+};
+
 function supabase() {
   return getSupabaseAdminClient();
 }
@@ -226,44 +240,95 @@ export async function markSubscriptionsExpired(
 }
 
 /**
- * Claims an event for delivery.
+ * Claims or reclaims an event under a short database lease.
  *
- * Returns false when this event was already sent for this tenant. The unique
- * (client_id, event_key) index is what enforces it, so two workers racing on
- * the same webhook retry cannot both win.
+ * The RPC serializes workers on the tenant/event key. Delivered events return
+ * no row, active claims return no row, and expired/failed claims can be retried.
  */
 export async function claimDelivery(input: {
   organizationId: string;
   clientId: string;
   eventKey: string;
   notificationType: string;
-}): Promise<boolean> {
-  const { error } = await supabase().from("push_deliveries").insert({
-    organization_id: input.organizationId,
-    client_id: input.clientId,
-    event_key: input.eventKey,
-    notification_type: input.notificationType,
-  });
-  if (!error) return true;
-  // A duplicate key means somebody else already claimed this event.
-  if (/duplicate key|push_deliveries_client_id_event_key_key/i.test(error.message))
-    return false;
-  throw new Error(error.message);
+  eventPayload: Record<string, unknown>;
+  leaseSeconds: number;
+}): Promise<PushDeliveryClaim | null> {
+  const rows = (await assertOk(
+    supabase().rpc("claim_push_delivery", {
+      p_organization_id: input.organizationId,
+      p_client_id: input.clientId,
+      p_event_key: input.eventKey,
+      p_notification_type: input.notificationType,
+      p_event_payload: input.eventPayload,
+      p_lease_seconds: input.leaseSeconds,
+    }),
+  )) as AnyRecord[] | null;
+  const row = rows?.[0];
+  if (!row?.delivery_id || !row.claim_token) return null;
+  return {
+    deliveryId: String(row.delivery_id),
+    claimToken: String(row.claim_token),
+    attemptCount: Math.max(1, Number(row.attempt_count ?? 1)),
+  };
 }
 
-/** Records the outcome of a fan-out against its already-claimed ledger row. */
+/** Completes a fan-out only when the caller still owns the active lease. */
 export async function recordDeliveryOutcome(input: {
   clientId: string;
   eventKey: string;
+  claimToken: string;
+  status: "delivered" | "failed" | "permanently_failed";
   sent: number;
   failed: number;
+  nextAttemptAt: string | null;
+  errorCode: string | null;
 }): Promise<void> {
-  const { error } = await supabase()
-    .from("push_deliveries")
-    .update({ sent_count: input.sent, failed_count: input.failed })
-    .eq("client_id", input.clientId)
-    .eq("event_key", input.eventKey);
-  // A ledger update failing must not fail the notification that already went
-  // out; the alert is the product, the bookkeeping is not.
-  if (error) console.error("Push delivery outcome could not be recorded.", error.message);
+  await assertOk(
+    supabase().rpc("complete_push_delivery", {
+      p_client_id: input.clientId,
+      p_event_key: input.eventKey,
+      p_claim_token: input.claimToken,
+      p_status: input.status,
+      p_sent_count: input.sent,
+      p_failed_count: input.failed,
+      p_next_attempt_at: input.nextAttemptAt,
+      p_last_error: input.errorCode,
+    }),
+  );
+}
+
+/**
+ * Events whose failure backoff is due or whose processing lease was abandoned.
+ * The stored payload lets the scheduled Worker recover every trigger type,
+ * including one-off webhook events that would otherwise never be emitted again.
+ */
+export async function recoverablePushDeliveries(
+  now: string,
+  limit = 100,
+): Promise<RecoverablePushDelivery[]> {
+  const rows = (await assertOk(
+    supabase()
+      .from("push_deliveries")
+      .select(
+        "organization_id,client_id,event_key,notification_type,event_payload",
+      )
+      .or(
+        `status.eq.pending,and(status.eq.processing,lease_expires_at.lte.${now}),and(status.eq.failed,next_attempt_at.lte.${now})`,
+      )
+      .order("updated_at", { ascending: true })
+      .limit(Math.max(1, Math.min(500, limit))),
+  )) as AnyRecord[] | null;
+
+  return (rows ?? []).map((row) => ({
+    organizationId: String(row.organization_id),
+    clientId: String(row.client_id),
+    eventKey: String(row.event_key),
+    notificationType: String(row.notification_type),
+    eventPayload:
+      row.event_payload &&
+      typeof row.event_payload === "object" &&
+      !Array.isArray(row.event_payload)
+        ? (row.event_payload as Record<string, unknown>)
+        : {},
+  }));
 }

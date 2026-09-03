@@ -44,6 +44,9 @@ const contactsUi = read("app/crm/FoundationViews.tsx");
 const mediaMigrationSource = read(
   "supabase/migrations/20260825221723_callrail_call_media.sql",
 );
+const concurrencyMigrationSource = read(
+  "supabase/migrations/20260829120000_production_readiness_concurrency.sql",
+);
 
 /**
  * Source with line comments removed.
@@ -441,7 +444,8 @@ test("ingestion and reconciliation are idempotent around CallRail call ids", () 
   assert.match(ingestionMigrationSource, /ingest_status <> 'enriching'/);
   const ingest = block(ingestionSource, "export async function ingestFetchedCall");
   assert.ok(ingest);
-  assert.match(ingest, /saveCallSnapshot\(organizationId, clientId, call, kind\)/);
+  assert.match(ingest, /saveCallSnapshot\([\s\S]+transcriptGeneration/);
+  assert.match(ingest, /transcript\.stale_response/);
   assert.match(ingest, /claimCall\(String\(snapshot\.id\)\)/);
   assert.match(ingest, /ensureContact\(/);
   assert.match(ingest, /ensureLead\(/);
@@ -1059,6 +1063,35 @@ test("a sync run records a reason, never a raw message", () => {
   assert.match(ingestionSource, /console\.info\(JSON\.stringify\(\{ system: "callrail", event/);
 });
 
+test("scheduled reconciliation logs only fixed-vocabulary operation diagnostics", () => {
+  const describe = block(ingestionSource, "export function describeSyncFailure");
+  assert.ok(describe, "the sanitized scheduled diagnostic exists");
+  assert.match(describe, /failure: classifySyncFailure\(error\)/);
+  assert.match(describe, /operation: "reconcile"/);
+  assert.match(describe, /errorType: safeSyncErrorType\(error\)/);
+  assert.equal(/\.message|\.stack|\.cause/.test(describe), false);
+
+  const operations = section(
+    ingestionSource,
+    "export const CALLRAIL_SYNC_OPERATIONS = [",
+    "] as const;",
+  );
+  assert.ok(operations, "the operation vocabulary exists");
+  for (const operation of [
+    "load_enabled_connections",
+    "claim_sync_run",
+    "complete_sync_run",
+    "record_sync_failure",
+    "reconcile",
+  ]) {
+    assert.match(operations, new RegExp(`"${operation}"`));
+  }
+
+  const scheduled = section(workerSource, "async scheduled(", "\n};");
+  assert.match(scheduled, /describeSyncFailure\(error\)/);
+  assert.equal(/error\.message|error\.stack|error\.cause/.test(scheduled), false);
+});
+
 test("a failed background task is recoverable at any age", () => {
   // Reconciliation re-lists a time window, so a waitUntil that died on an
   // older call would never be retried without this.
@@ -1269,8 +1302,8 @@ test("ingestion finds or creates a contact in one locked call", () => {
 test("a repeat call joins the newest lead when that lead is open", () => {
   const ensure = block(ingestionSource, "async function ensureLead(");
   assert.ok(ensure, "ensureLead exists");
-  // The newest lead of ANY status, then judged. Filtering to open statuses
-  // here would step over a more recent closed lead.
+  assert.match(ensure, /rpc\("find_or_create_callrail_lead"/);
+  // The locked function selects the newest lead of ANY status, then judges it.
   assert.equal(
     /\.in\("status"/.test(ensure),
     false,
@@ -1281,14 +1314,15 @@ test("a repeat call joins the newest lead when that lead is open", () => {
     false,
     "the candidate query must not filter by the window either",
   );
-  assert.match(ensure, /\.order\("created_at", \{ ascending: false \}\)/);
-  assert.match(ensure, /\.order\("id", \{ ascending: false \}\)/);
-  assert.match(ensure, /selectNewestLead\(/);
-  assert.match(ensure, /decideReInquiry\(/);
-  // Scoped to the tenant and the matched contact.
-  assert.match(ensure, /\.eq\("organization_id", organizationId\)/);
-  assert.match(ensure, /\.eq\("client_id", clientId\)/);
-  assert.match(ensure, /\.eq\("contact_id", contactId\)/);
+  assert.match(
+    concurrencyMigrationSource,
+    /order by lead\.created_at desc, lead\.id desc[\s\S]+for update/,
+  );
+  assert.match(concurrencyMigrationSource, /pg_advisory_xact_lock/);
+  // Scoped to the tenant and the matched contact inside the transaction.
+  assert.match(concurrencyMigrationSource, /lead\.organization_id = p_organization_id/);
+  assert.match(concurrencyMigrationSource, /lead\.client_id = p_client_id/);
+  assert.match(concurrencyMigrationSource, /lead\.contact_id = p_contact_id/);
   // Age is not consulted. An open lead is reused however old it is, so
   // nothing here may read a window, a cutoff or a clock.
   assert.equal(
@@ -2134,7 +2168,8 @@ test("two reconciliations cannot run over the same connection at once", () => {
 
   // A connection whose slot is taken is skipped, not run anyway.
   const reconcile = block(ingestionSource, "export async function reconcileCallRailIngestion");
-  assert.match(reconcile, /const runId = await claimSyncRun\(/);
+  assert.match(reconcile, /const runId = await observeSyncOperation\(/);
+  assert.match(reconcile, /"claim_sync_run",\s*\n\s*\(\) => claimSyncRun\(/);
   assert.match(reconcile, /if \(!runId\) \{\s*\n\s*summary\.skipped \+= 1;\s*\n\s*continue;\s*\n\s*\}/);
   const claim = block(ingestionSource, "async function claimSyncRun");
   assert.match(claim, /db\(\)\.rpc\("claim_callrail_sync_run"/);
@@ -2252,8 +2287,8 @@ test("no definer function resolves a name through a writable schema", () => {
   // claim_callrail_call_for_ingestion kept `search_path = public` while the
   // contact function next to it was hardened.
   const migrations = [
-    ["20260825000000_callrail_ingestion.sql", ingestionMigrationSource],
-    ["20260826010000_callrail_sync_run_claim.sql", syncClaimMigrationSource],
+    ["20260825140802_callrail_ingestion.sql", ingestionMigrationSource],
+    ["20260825210935_callrail_sync_run_claim.sql", syncClaimMigrationSource],
   ];
   const seen = [];
   for (const [name, source] of migrations) {

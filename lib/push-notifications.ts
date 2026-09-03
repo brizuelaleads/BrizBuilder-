@@ -9,12 +9,22 @@ import { sendWebPush, type VapidKeys } from "./web-push";
 import {
   claimDelivery,
   markSubscriptionsExpired,
+  recoverablePushDeliveries,
   recordDeliveryOutcome,
   subscriptionsForClient,
   subscriptionsForEmail,
 } from "../db/supabase-push";
 import { brandingForClient } from "../db/runtime-branding";
-import type { NotificationKey, TenantBranding } from "../db/branding";
+import {
+  NOTIFICATION_KEYS,
+  type NotificationKey,
+  type TenantBranding,
+} from "../db/branding";
+import {
+  completePushDelivery,
+  PUSH_DELIVERY_LEASE_SECONDS,
+} from "./push-delivery-state";
+import { normalizeVapidSubject } from "./vapid-subject";
 
 export type PushEvent = {
   organizationId: string;
@@ -42,20 +52,14 @@ const HIGH_URGENCY: ReadonlySet<NotificationKey> = new Set([
 export function getVapidKeys(): VapidKeys | null {
   const publicKey = readRuntimeValue("VAPID_PUBLIC_KEY");
   const privateKey = readRuntimeValue("VAPID_PRIVATE_KEY");
-  const subject =
-    readRuntimeValue("VAPID_SUBJECT") || readRuntimeValue("SYSTEM_EMAIL_FROM");
-  if (!publicKey || !privateKey) return null;
-  // RFC 8292 requires a mailto: or https: contact; a bare address is a common
-  // misconfiguration and push services reject the whole token for it.
-  const contact = subject.includes("@")
-    ? `mailto:${subject.replace(/^.*<|>.*$/g, "").trim()}`
-    : subject;
+  const subject = normalizeVapidSubject(
+    readRuntimeValue("VAPID_SUBJECT") || readRuntimeValue("SYSTEM_EMAIL_FROM"),
+  );
+  if (!publicKey || !privateKey || !subject) return null;
   return {
     publicKey,
     privateKey,
-    subject: contact.startsWith("mailto:") || contact.startsWith("https:")
-      ? contact
-      : `mailto:${contact}`,
+    subject,
   };
 }
 
@@ -76,6 +80,7 @@ export function vapidPublicKey(): string | null {
  * event looking already-delivered.
  */
 export async function dispatchPushEvent(event: PushEvent): Promise<void> {
+  let claim: Awaited<ReturnType<typeof claimDelivery>> = null;
   try {
     const keys = getVapidKeys();
     if (!keys) return;
@@ -83,23 +88,28 @@ export async function dispatchPushEvent(event: PushEvent): Promise<void> {
     const branding: TenantBranding = await brandingForClient(event.clientId);
     if (!branding.notifications[event.type]) return;
 
-    if (
-      !(await claimDelivery({
-        organizationId: event.organizationId,
-        clientId: event.clientId,
-        eventKey: event.eventKey,
-        notificationType: event.type,
-      }))
-    )
-      return;
+    claim = await claimDelivery({
+      organizationId: event.organizationId,
+      clientId: event.clientId,
+      eventKey: event.eventKey,
+      notificationType: event.type,
+      eventPayload: {
+        title: event.title,
+        body: event.body,
+        url: event.url ?? "/dashboard",
+      },
+      leaseSeconds: PUSH_DELIVERY_LEASE_SECONDS,
+    });
+    if (!claim) return;
 
     const subscriptions = await subscriptionsForClient(event.clientId);
     if (!subscriptions.length) {
+      const completion = completePushDelivery([], claim.attemptCount);
       await recordDeliveryOutcome({
         clientId: event.clientId,
         eventKey: event.eventKey,
-        sent: 0,
-        failed: 0,
+        claimToken: claim.claimToken,
+        ...completion,
       });
       return;
     }
@@ -128,20 +138,79 @@ export async function dispatchPushEvent(event: PushEvent): Promise<void> {
     const expired = results.filter((result) => result.expired).map((r) => r.endpoint);
     if (expired.length) await markSubscriptionsExpired(expired);
 
-    const sent = results.filter((result) => result.status >= 200 && result.status < 300);
+    const completion = completePushDelivery(results, claim.attemptCount);
     await recordDeliveryOutcome({
       clientId: event.clientId,
       eventKey: event.eventKey,
-      sent: sent.length,
-      failed: results.length - sent.length,
+      claimToken: claim.claimToken,
+      ...completion,
     });
   } catch (error) {
+    if (claim) {
+      const completion = completePushDelivery(
+        [
+          {
+            endpoint: "internal",
+            status: 0,
+            expired: false,
+            error: "dispatch_failed",
+          },
+        ],
+        claim.attemptCount,
+      );
+      await recordDeliveryOutcome({
+        clientId: event.clientId,
+        eventKey: event.eventKey,
+        claimToken: claim.claimToken,
+        ...completion,
+      }).catch(() => undefined);
+    }
     // Deliberately swallowed: see the module header.
     console.error(
       "Push notification could not be delivered.",
       error instanceof Error ? error.message : error,
     );
   }
+}
+
+function recoveredPushEvent(row: Awaited<ReturnType<typeof recoverablePushDeliveries>>[number]): PushEvent | null {
+  if (!(NOTIFICATION_KEYS as readonly string[]).includes(row.notificationType)) {
+    return null;
+  }
+  const title = typeof row.eventPayload.title === "string"
+    ? row.eventPayload.title.trim().slice(0, 200)
+    : "";
+  const body = typeof row.eventPayload.body === "string"
+    ? row.eventPayload.body.trim().slice(0, 500)
+    : "";
+  const url = typeof row.eventPayload.url === "string" && row.eventPayload.url.startsWith("/")
+    ? row.eventPayload.url.slice(0, 500)
+    : "/dashboard";
+  if (!title || !body) return null;
+  return {
+    organizationId: row.organizationId,
+    clientId: row.clientId,
+    eventKey: row.eventKey,
+    type: row.notificationType as NotificationKey,
+    title,
+    body,
+    url,
+  };
+}
+
+/** Replays failed deliveries and processing claims abandoned by a dead Worker. */
+export async function recoverPushDeliveries(limit = 100): Promise<number> {
+  let attempted = 0;
+  for (const row of await recoverablePushDeliveries(
+    new Date().toISOString(),
+    limit,
+  )) {
+    const event = recoveredPushEvent(row);
+    if (!event) continue;
+    await dispatchPushEvent(event);
+    attempted += 1;
+  }
+  return attempted;
 }
 
 export type TestNotificationResult = {

@@ -12,10 +12,15 @@
 import { getSupabaseAdminClient } from "./supabase/server";
 import { brandingForClient } from "../db/runtime-branding";
 import {
+  isRetryableJwtClockSkewError,
+  withJwtClockSkewRetry,
+} from "./jwt-clock-skew";
+import {
   appointmentReminderEvent,
   dispatchPushEvent,
   leadNotContactedEvent,
   pushConfigured,
+  recoverPushDeliveries,
 } from "./push-notifications";
 
 type AnyRecord = Record<string, unknown>;
@@ -118,6 +123,7 @@ export async function sweepStaleLeads(): Promise<number> {
         sent += 1;
       }
     } catch (error) {
+      if (isRetryableJwtClockSkewError(error)) throw error;
       // One tenant's failure must not stop the sweep for everybody else.
       console.error(
         "Stale lead sweep failed for a tenant.",
@@ -168,6 +174,7 @@ export async function sweepAppointmentReminders(): Promise<number> {
         sent += 1;
       }
     } catch (error) {
+      if (isRetryableJwtClockSkewError(error)) throw error;
       console.error(
         "Appointment reminder sweep failed for a tenant.",
         error instanceof Error ? error.message : error,
@@ -186,8 +193,14 @@ export async function sweepAppointmentReminders(): Promise<number> {
 export async function runNotificationSweeps(): Promise<void> {
   if (!pushConfigured()) return;
   try {
-    await sweepStaleLeads();
-    await sweepAppointmentReminders();
+    await withJwtClockSkewRetry(async () => {
+      // Recover failed work and claims abandoned by an interrupted Worker before
+      // emitting this cycle's new events. The claim RPC still arbitrates overlap.
+      await recoverPushDeliveries();
+      await sweepStaleLeads();
+      await sweepAppointmentReminders();
+    });
+    console.log("Notification sweeps completed.");
   } catch (error) {
     console.error(
       "Notification sweeps failed.",
