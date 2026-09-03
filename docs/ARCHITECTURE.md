@@ -3,10 +3,15 @@
 ## Decision summary
 
 BrizBuilder is a modular monolith built as a Cloudflare Worker-compatible
-Vinext application. ChatGPT Sites owns the production application versions,
-deployments, runtime environment, and `brizbuilder.com` custom domain. The UI,
-authenticated route handlers, CRM application service, and persistence live in
-one deployable unit, but module boundaries and provider adapters are explicit.
+Vinext application. The existing Cloudflare Worker named `brizbuilder` owns the
+production runtime and serves `brizbuilder.com`. The UI, authenticated route
+handlers, CRM application service, and persistence live in one deployable unit,
+but module boundaries and provider adapters are explicit.
+
+Sites is not a production owner or deployment target. It may be used only for
+non-production work unless the repository owner explicitly requests a future
+hosting migration. Production secrets and encryption keys remain on the
+existing `brizbuilder` Worker.
 
 The `brizbuilder-leads` and `brizbuilder-ai` Workers are narrow public gateways,
 not alternate application deployments. They forward allowed requests to
@@ -16,7 +21,7 @@ copy of the main application.
 ```mermaid
 flowchart LR
     U["Agency or client user"] --> E["Cloudflare edge and Access"]
-    E --> A["Authenticated Next.js/Vinext application"]
+    E --> A["brizbuilder Worker: authenticated Next.js/Vinext application"]
     A --> P["Tenant context and permission policy"]
     P --> C["CRM application service"]
     C --> D["D1 relational data"]
@@ -92,7 +97,27 @@ secret-backed recovery path.
 - `db/crm.ts`: tenant context, authorization, Phase 1 queries/actions, audit, seeding, and template rendering.
 - `drizzle/`: ordered generated database migrations.
 - `tests/`: Worker-level D1 and tenant-isolation integration coverage.
-- `.openai/hosting.json`: Cloudflare/Sites runtime and D1 binding configuration.
+- `.openai/hosting.json`: non-production Sites project metadata; it does not
+  define or own the production runtime.
+
+## Production ownership and change control
+
+- The canonical repository is `D:/brizl/Websites/BrizBuilder-` on `main`.
+- The canonical production runtime is the existing `brizbuilder` Cloudflare
+  Worker, and its production domain is `brizbuilder.com`.
+- Normal feature work targets this repository and the existing Worker
+  architecture. It must not introduce a competing production deployment.
+- Sites is not production and must not be treated as the deployment target
+  without an explicit hosting-migration request from the repository owner.
+- Production secrets and encryption keys remain configured on the existing
+  Worker and are never stored in the repository.
+- DNS, custom domains, routes, bindings, cron triggers, and production secrets
+  must not be changed unless the repository owner explicitly requests that
+  specific production change.
+- Before every deployment, verify the exact `brizbuilder` Worker target and
+  preserve its existing routes, bindings, schedules, variables, and secrets.
+
+See [`PRODUCTION.md`](../PRODUCTION.md) for the operational source of truth.
 
 ## Data rules
 

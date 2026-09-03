@@ -20,7 +20,7 @@
     "test:team": "node --test tests/team-access-security.test.mjs",
     "test:workspace": "node --test tests/workspace-scope-security.test.mjs",
     "test:client-deletion": "node --test tests/client-deletion-security.test.mjs",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern work",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern work --ignore-pattern .codex-reconcile",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:pg:generate": "drizzle-kit generate --config drizzle.supabase.config.ts",

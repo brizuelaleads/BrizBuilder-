@@ -7,7 +7,7 @@ Phase 1 is implemented as a production-quality MVP. Records are stored in Cloudf
 ## Current architecture
 
 - Vinext / Next.js App Router, React 19, and TypeScript strict mode
-- Cloudflare Worker-compatible Vinext runtime, versioned and deployed to production through ChatGPT Sites
+- Cloudflare Worker-compatible Vinext runtime deployed through the existing `brizbuilder` Cloudflare Worker
 - Cloudflare D1 with Drizzle schema and generated migrations
 - Cloudflare Access application JWT authentication with origin-side signature, issuer, audience, algorithm, and expiry verification
 - Independent administrator cookie-session fallback backed by Cloudflare secrets
@@ -24,6 +24,7 @@ Canonical product documentation:
 - [Integration strategy](docs/INTEGRATIONS.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Database implementation](docs/database.md)
+- [Production ownership and deployment guardrails](PRODUCTION.md)
 
 ## Prerequisites
 
@@ -76,7 +77,8 @@ database. The dated migrations are authoritative for every change after that
 baseline. If you use the Supabase CLI instead, apply the complete
 `supabase/migrations` directory to an empty database and skip `schema.sql`.
 
-4. Add these environment variables in Sites environment settings:
+4. For local development, add these environment variables to `.env.local`. For
+   production, they belong in the existing `brizbuilder` Worker's environment:
 
 ```txt
 NEXT_PUBLIC_SUPABASE_URL=
@@ -108,7 +110,10 @@ the production Worker.
 
 ## Database and migrations
 
-The logical D1 binding is declared as `DB` in `.openai/hosting.json`.
+The production runtime is the existing `brizbuilder` Cloudflare Worker. Its
+current bindings are canonical and must be preserved during deployment.
+`.openai/hosting.json` describes a non-production Sites project; its presence
+does not make Sites a production target.
 
 Supabase/Postgres changes live in `supabase/migrations` and must be applied in
 filename order. `supabase/schema.sql` is only the baseline snapshot; a fresh
@@ -123,7 +128,9 @@ Generate a migration after changing `db/schema.ts`:
 npm run db:generate
 ```
 
-Phase 1 uses ordered migrations through `drizzle/0003_unusual_midnight.sql`. Sites packages migrations under `.openai/drizzle` during deployment. Local development also initializes missing tables safely with `CREATE TABLE IF NOT EXISTS` so a new workspace can run immediately.
+Phase 1 uses ordered migrations through `drizzle/0003_unusual_midnight.sql`.
+Local development also initializes missing tables safely with
+`CREATE TABLE IF NOT EXISTS` so a new workspace can run immediately.
 
 ## Clean workspace initialization
 
@@ -221,10 +228,11 @@ npm run build
   call. Disconnecting an app revokes both access and refresh tokens.
 - Production uses the separate `brizbuilder-ai` machine gateway. It exposes only
   OAuth discovery/registration/token routes and `/mcp`; the dashboard and human
-  approval screen remain on the Sites-owned `brizbuilder.com` application.
+  approval screen remain on the canonical `brizbuilder` Worker at
+  `brizbuilder.com`.
 - The gateway reaches `brizbuilder.com` over HTTPS. It intentionally keeps the
   original Workers URL as the internal OAuth resource identifier so existing
-  connector grants survive the hosting cutover; that identifier is not a second
+  connector grants remain valid; that identifier is not a second
   application deployment.
 
 ## Not implemented yet
@@ -246,18 +254,23 @@ See [the phased roadmap](docs/ROADMAP.md) and [feature parity matrix](docs/FEATU
 
 ## Deployment
 
-1. Run `npm test`.
-2. Confirm `.openai/hosting.json` contains the existing Sites `project_id` and `"d1": "DB"`.
-3. Confirm the Sites environment settings contain the production Supabase and
-   provider values before saving a version.
-4. Package, save, and publish through the Sites hosting workflow. Do not deploy
-   the main application with Wrangler; `brizbuilder.com` has one application
-   owner, Sites.
-5. Before moving the domain, verify the Sites URL, API routes, static PWA files,
-   and the 15-minute scheduled handler. The schedule is required for CallRail
-   recovery and notification sweeps.
-6. Attach `brizbuilder.com` to the approved Sites version, then detach the same
-   hostname and schedule from the legacy `brizbuilder` Worker. Keep the Worker
-   undeleted as a rollback artifact until the cutover is accepted.
+`brizbuilder.com` is served by the existing `brizbuilder` Cloudflare Worker.
+That Worker is the sole canonical production runtime. Sites is not production
+and must not be used as the deployment target unless the repository owner
+explicitly requests a future hosting migration.
 
-Runtime secrets belong in Sites environment settings, never in the repository.
+Before every production deployment:
+
+1. Confirm the repository is `D:/brizl/Websites/BrizBuilder-`, the branch is
+   `main`, and the intended commit is checked out.
+2. Confirm the target is the existing Worker named `brizbuilder`.
+3. Inspect and preserve the Worker's current DNS/custom-domain routing,
+   bindings, cron triggers, environment-variable names, and secrets.
+4. Run the applicable tests and build checks.
+5. Stop if the deployment would create another production target or alter any
+   production configuration that was not explicitly requested.
+
+Production secrets, including encryption keys, remain on the existing Worker
+and must never be committed. Do not change DNS, custom domains, routes,
+bindings, cron triggers, or production secrets as an incidental part of feature
+work. See [PRODUCTION.md](PRODUCTION.md) for the complete production guardrails.
