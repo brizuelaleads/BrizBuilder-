@@ -325,6 +325,17 @@ test("the connection card offers Meta Ads separately from Conversions", () => {
   assert.match(connectionsUi, /action: "disconnect_meta_ads"/);
 });
 
+test("the Meta Ads setup uses the integrations card layout", () => {
+  const card = connectionsUi.slice(
+    connectionsUi.indexOf('expandedIntegration === "meta-ads"'),
+    connectionsUi.indexOf('expandedIntegration === "callrail"'),
+  );
+  assert.match(card, /crm-integration-footer/);
+  assert.match(card, /crm-integration-advanced/);
+  assert.match(card, /crm-connection-details compact crm-connection-details-simple/);
+  assert.doesNotMatch(card, /crm-integration-actions|crm-integration-detail/);
+});
+
 test("the browser does not keep the token after connecting", () => {
   const block = connectionsUi.slice(
     connectionsUi.indexOf('action: "connect_meta_ads"'),

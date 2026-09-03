@@ -952,18 +952,19 @@ export function ConnectionsView({
               <Badge tone={metaAdsLinked ? "green" : "blue"}>
                 {metaAdsLinked ? "Connected" : "Available"}
               </Badge>
+              <span className="crm-integration-chevron" aria-hidden="true">›</span>
             </header>
             <div className="crm-integration-facts">
               <div><Database /><span>Ad account<strong>{metaAdsConnection?.accountLabel ?? "—"}</strong></span></div>
               <div><KeyRound /><span>Access token<strong>{metaAdsLinked ? "Active" : "—"}</strong></span></div>
               <div><Sparkles /><span>Spend this month<strong>{metaAdsConnection?.monthSpend != null ? formatAdSpend(metaAdsConnection.monthSpend, metaAdsConnection.currency) : "—"}</strong></span></div>
             </div>
-            <div className="crm-integration-actions">
+            <div className="crm-integration-footer">
               <button type="button" className="crm-integration-primary" aria-expanded={expandedIntegration === "meta-ads"} onClick={() => setExpandedIntegration((current) => current === "meta-ads" ? null : "meta-ads")}>{metaAdsLinked ? "Manage" : "Configure"}</button>
-              <button type="button" className="crm-integration-learn" onClick={() => setExpandedIntegration((current) => current === "meta-ads" ? null : "meta-ads")}>Learn more <span aria-hidden="true">↗</span></button>
+              <button type="button" className="crm-integration-learn" aria-expanded={expandedIntegration === "meta-ads"} onClick={() => setExpandedIntegration((current) => current === "meta-ads" ? null : "meta-ads")}>Learn more <span aria-hidden="true">↗</span></button>
             </div>
-            <div className="crm-integration-detail" hidden={expandedIntegration !== "meta-ads"}>
-            <div className="crm-connection-grid">
+            <div className="crm-integration-advanced">
+            <div className="crm-connection-details compact crm-connection-details-simple">
               <div><span>Ad account</span><strong>{metaAdsConnection?.accountLabel ?? "Not connected"}</strong></div>
               <div><span>Last updated</span><strong>{metaAdsConnection?.lastHealthCheckAt ? dateTime(metaAdsConnection.lastHealthCheckAt) : "Not connected"}</strong></div>
             </div>
