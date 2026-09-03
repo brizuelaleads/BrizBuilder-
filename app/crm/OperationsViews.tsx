@@ -536,7 +536,7 @@ export function SettingsView({
   const [section, setSection] = useState<"workspace" | "branding" | "security" | "integrations" | "privacy">("workspace");
   const sections = [
     { id: "workspace" as const, label: "Workspace", icon: "B" },
-    { id: "branding" as const, label: "Branding & app", icon: "W" },
+    { id: "branding" as const, label: "Client App", icon: "C" },
     { id: "security" as const, label: "Access & security", icon: "A" },
     { id: "integrations" as const, label: "Integrations", icon: "I" },
     { id: "privacy" as const, label: "Privacy", icon: "P" },
@@ -551,7 +551,7 @@ export function SettingsView({
           <span>Manage the workspace foundation for {organizationName}.</span>
         </div>
       </section>
-      <section className="crm-settings-workspace">
+      <section className={`crm-settings-workspace${section === "branding" ? " has-client-app" : ""}`}>
         <aside aria-label="Settings sections">
           <header>
             <strong>Settings</strong>
@@ -587,15 +587,27 @@ export function SettingsView({
                   <div><dt>Active sub-accounts</dt><dd>{clients.length}</dd></div>
                 </dl>
               </article>
+              <button
+                type="button"
+                className="crm-settings-client-app-entry"
+                onClick={() => setSection("branding")}
+              >
+                <span aria-hidden="true">C</span>
+                <div>
+                  <strong>Client App</strong>
+                  <small>Brand the app, choose notifications, and preview the install experience.</small>
+                </div>
+                <i aria-hidden="true">→</i>
+              </button>
             </>
           ) : null}
           {section === "branding" ? (
             <>
               <header>
-                <h3>Branding &amp; app</h3>
+                <h3>Client App</h3>
                 <p>
-                  How this sub-account&apos;s workspace looks, and what it is
-                  called once someone adds it to their phone home screen.
+                  Give each client a polished, installable workspace using the
+                  branding and notification settings already built into BrizBuilder.
                 </p>
               </header>
               <BrandingSettings
