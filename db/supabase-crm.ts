@@ -84,6 +84,11 @@ import {
   verifyMetaAdAccount,
 } from "../lib/meta-ads";
 import { syncMetaAdsForClient } from "../lib/meta-ads-sync";
+import {
+  advanceMetaAdsBackfill,
+  cancelMetaAdsBackfill,
+  startMetaAdsBackfill,
+} from "../lib/meta-ads-backfill";
 import { metaCampaignIdFromAttribution } from "../lib/meta-ads-ids";
 import {
   resolveWonValueCents,
@@ -145,6 +150,7 @@ import type {
   CrmAutomationRun,
   CrmProviderConnection,
   CrmMetaAdInsight,
+  CrmMetaAdsBackfill,
   CrmAiAuthorization,
   CrmAiActivity,
   CrmWorkflow,
@@ -3208,6 +3214,25 @@ function mapMetaAdInsight(row: AnyRecord): CrmMetaAdInsight {
   };
 }
 
+function mapMetaAdsBackfill(row: AnyRecord): CrmMetaAdsBackfill {
+  const status = String(row.status ?? "running");
+  return {
+    clientId: String(row.client_id),
+    runId: String(row.id),
+    status: (["running", "completed", "failed", "canceled"].includes(status)
+      ? status
+      : "running") as CrmMetaAdsBackfill["status"],
+    since: String(row.requested_since ?? ""),
+    until: String(row.requested_until ?? ""),
+    daysTotal: Number(row.days_total ?? 0),
+    daysDone: Number(row.days_done ?? 0),
+    rowsWritten: Number(row.rows_written ?? 0),
+    lastError: nullable(row.last_error),
+    startedAt: String(row.started_at ?? ""),
+    finishedAt: nullable(row.finished_at),
+  };
+}
+
 function mapProviderConnection(row: AnyRecord): CrmProviderConnection {
   const publicConfig =
     row.public_config && typeof row.public_config === "object"
@@ -3389,6 +3414,7 @@ export async function getSupabaseCrmBootstrap(
     workflowVersions,
     workflowRuns,
     metaAdInsights,
+    metaAdsBackfills,
   ] = await Promise.all([
     (() => {
       let builder = query<AnyRecord>("clients")
@@ -3603,6 +3629,20 @@ export async function getSupabaseCrmBootstrap(
         .limit(5000),
     ).catch((error) => {
       console.error("Meta Ads insight tables are not migrated yet.", error);
+      return [] as AnyRecord[];
+    }),
+    // Newest first; the mapper keeps one per client, so a finished run stays
+    // visible until a new one replaces it.
+    assertOk(
+      query<AnyRecord>(
+        "meta_ads_backfill_runs",
+        "id,client_id,status,requested_since,requested_until,days_total," +
+          "days_done,rows_written,last_error,started_at,finished_at",
+      )
+        .order("started_at", { ascending: false })
+        .limit(200),
+    ).catch((error) => {
+      console.error("Meta Ads backfill table is not migrated yet.", error);
       return [] as AnyRecord[];
     }),
   ]);
@@ -3838,6 +3878,18 @@ export async function getSupabaseCrmBootstrap(
     metaAdInsights: ((metaAdInsights ?? []) as AnyRecord[]).map(
       mapMetaAdInsight,
     ),
+    metaAdsBackfills: (() => {
+      // One row per client: the newest, because the query is already ordered
+      // and older runs are history nothing in the interface asks for.
+      const seen = new Set<string>();
+      return ((metaAdsBackfills ?? []) as AnyRecord[])
+        .map(mapMetaAdsBackfill)
+        .filter((run) => {
+          if (seen.has(run.clientId)) return false;
+          seen.add(run.clientId);
+          return true;
+        });
+    })(),
     aiAuthorizations: aiAuthorizationRows.map(
       (row: AnyRecord): CrmAiAuthorization => {
         const oauthClient = nestedOne(row.ai_oauth_clients) ?? {};
@@ -5092,6 +5144,57 @@ export async function executeSupabaseCrmAction(
       currency: account.currency,
       syncStatus: outcome.status,
     };
+  }
+
+  // Historical spend. A client connected today has no history, so every
+  // cost-per-lead figure before the connection date is computed against a
+  // denominator with no spend behind it.
+  if (action === "start_meta_ads_backfill") {
+    requirePermission(context, "websites.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const progress = await startMetaAdsBackfill({
+      organizationId: context.organizationId,
+      clientId,
+      since: input.since,
+      until: input.until,
+      requestedByEmail: context.email,
+    });
+    await audit(
+      context,
+      "provider.backfill_started",
+      "provider_connection",
+      progress.runId,
+      { provider: "meta_ads", since: input.since, until: input.until },
+      clientId,
+    );
+    return progress;
+  }
+
+  if (action === "advance_meta_ads_backfill") {
+    requirePermission(context, "websites.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    return advanceMetaAdsBackfill(context.organizationId, clientId);
+  }
+
+  if (action === "cancel_meta_ads_backfill") {
+    requirePermission(context, "websites.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    await requireClient(context, clientId);
+    const progress = await cancelMetaAdsBackfill(
+      context.organizationId,
+      clientId,
+    );
+    await audit(
+      context,
+      "provider.backfill_canceled",
+      "provider_connection",
+      progress.runId,
+      { provider: "meta_ads" },
+      clientId,
+    );
+    return progress;
   }
 
   if (action === "sync_meta_ads") {

@@ -364,3 +364,182 @@ test("the connection card tells you to label the ads before connecting", () => {
   }
   assert.match(form, /utm_source=meta/);
 });
+
+// ---------------------------------------------------------------------------
+// Historical backfill
+// ---------------------------------------------------------------------------
+
+const backfillSource = read("lib/meta-ads-backfill.ts");
+const rangeSource = read("lib/meta-ads-range.ts");
+const backfillMigration = read(
+  "supabase/migrations/20260903000000_meta_ads_backfill.sql",
+);
+
+test("a backfill range stops short of the window the sync owns", async () => {
+  const { resolveBackfillRange, latestBackfillDay } = await import(
+    "../lib/meta-ads-range.ts"
+  );
+  const today = new Date("2026-09-03T12:00:00Z");
+  assert.equal(latestBackfillDay(today), "2026-08-31");
+
+  // Asking through today is reasonable; the answer is the part the sync does
+  // not already re-fetch every fifteen minutes.
+  const clamped = resolveBackfillRange("2026-08-01", "2026-09-03", today);
+  assert.deepEqual(clamped, { since: "2026-08-01", until: "2026-08-31" });
+
+  // A range entirely in the past is untouched.
+  const past = resolveBackfillRange("2026-06-01", "2026-06-30", today);
+  assert.deepEqual(past, { since: "2026-06-01", until: "2026-06-30" });
+});
+
+test("a backfill range that is nothing but the sync window is refused", async () => {
+  const { resolveBackfillRange } = await import("../lib/meta-ads-range.ts");
+  const today = new Date("2026-09-03T12:00:00Z");
+  assert.throws(
+    () => resolveBackfillRange("2026-09-02", "2026-09-03", today),
+    /automatic sync already covers/,
+  );
+});
+
+test("malformed, reversed and oversized ranges are refused", async () => {
+  const { resolveBackfillRange } = await import("../lib/meta-ads-range.ts");
+  const today = new Date("2026-09-03T12:00:00Z");
+  const cases = [
+    ["", "2026-08-01", /YYYY-MM-DD/],
+    ["2026-08-01", "", /YYYY-MM-DD/],
+    ["01-08-2026", "2026-08-05", /YYYY-MM-DD/],
+    [null, undefined, /YYYY-MM-DD/],
+    ["2026-13-45", "2026-14-99", /real calendar dates|YYYY-MM-DD/],
+    ["2026-08-30", "2026-08-01", /start date must be on or before/],
+    ["2020-01-01", "2026-08-31", /at most 366 days/],
+  ];
+  for (const [since, until, pattern] of cases) {
+    assert.throws(
+      () => resolveBackfillRange(since, until, today),
+      pattern,
+      `${String(since)}..${String(until)} must be refused`,
+    );
+  }
+});
+
+test("backfilled rows land on the same key as the sync, so spend cannot double", () => {
+  // The whole no-duplicate-spend guarantee is this: the backfill does not have
+  // its own write path, it calls the sync's storeInsights, which upserts.
+  assert.match(backfillSource, /storeInsights\(credential, insights\)/);
+  assert.ok(
+    !/from\("meta_ad_insights"\)[\s\S]{0,80}\.insert\(/.test(backfillSource),
+    "the backfill never inserts insight rows directly",
+  );
+  assert.match(
+    read("lib/meta-ads-sync.ts"),
+    /onConflict: "organization_id,client_id,date_start,ad_id"/,
+  );
+});
+
+test("the backfill and the scheduled sync cannot call Meta at once", () => {
+  // Both take the same per-client claim on meta_ads_credentials.
+  assert.match(backfillSource, /if \(!\(await claim\(credential\)\)\) return toProgress\(run\)/);
+  assert.match(backfillSource, /from "\.\/meta-ads-sync"/);
+});
+
+test("rows are stored before the cursor advances", () => {
+  // A crash between the two costs a repeated window, which the upsert absorbs.
+  // The other order costs a silently missing one.
+  const body = backfillSource.slice(backfillSource.indexOf("for (let pass"));
+  const store = body.indexOf("storeInsights");
+  const cursorWrite = body.indexOf("cursor_date:");
+  assert.ok(store > -1 && cursorWrite > -1);
+  assert.ok(store < cursorWrite, "storeInsights runs before the cursor is written");
+});
+
+test("the range rules stay dependency-free so they can be exercised directly", () => {
+  assert.ok(!/^import /m.test(rangeSource), "meta-ads-range.ts imports nothing");
+});
+
+test("work is bounded per invocation", () => {
+  // A Worker has a fixed CPU and subrequest budget, and Meta rate-limits the
+  // application rather than the caller.
+  assert.match(rangeSource, /CHUNKS_PER_PASS = \d+/);
+  assert.match(backfillSource, /pass < CHUNKS_PER_PASS/);
+  assert.match(rangeSource, /DEFAULT_CHUNK_DAYS = \d+/);
+});
+
+test("a rate limit pauses a backfill rather than failing it", () => {
+  // Throttling is Meta asking to be asked later, not the run being broken.
+  assert.match(
+    backfillSource,
+    /failure\.status === "rate_limited" \? "running" : "failed"/,
+  );
+});
+
+test("only sanitized text is stored against a backfill run", () => {
+  assert.match(backfillSource, /describeFailure\(error\)/);
+  assert.ok(
+    !/last_error: String\(error/.test(backfillSource),
+    "a raw exception is never written to last_error",
+  );
+});
+
+test("one backfill per client is enforced by the database", () => {
+  assert.match(
+    backfillMigration,
+    /create unique index if not exists meta_ads_backfill_runs_active_uidx[\s\S]*?where status = 'running'/,
+  );
+  assert.match(backfillSource, /A backfill is already running for this client/);
+});
+
+test("the backfill table is service-role only and cannot outlive its client", () => {
+  assert.match(
+    backfillMigration,
+    /alter table public\.meta_ads_backfill_runs enable row level security/,
+  );
+  assert.match(
+    backfillMigration,
+    /revoke all on table public\.meta_ads_backfill_runs from anon, authenticated/,
+  );
+  assert.match(backfillMigration, /meta_ads_backfill_runs_organization_client_fk/);
+});
+
+test("the backfill table holds no spend", () => {
+  // Spend lives in meta_ad_insights under one key. A second copy here would be
+  // a second source of truth to disagree with it.
+  for (const column of ["spend_cents", "impressions", "clicks"]) {
+    assert.ok(
+      !backfillMigration.includes(column),
+      `${column} must not be on the backfill run table`,
+    );
+  }
+});
+
+test("every backfill action is permissioned and client-scoped", () => {
+  for (const action of [
+    "start_meta_ads_backfill",
+    "advance_meta_ads_backfill",
+    "cancel_meta_ads_backfill",
+  ]) {
+    const start = crmSource.indexOf(`if (action === "${action}")`);
+    assert.ok(start > -1, `${action} exists`);
+    const block = crmSource.slice(start, start + 900);
+    assert.match(block, /requirePermission\(context, "websites\.manage"\)/);
+    assert.match(block, /await requireClient\(context, clientId\)/);
+  }
+});
+
+test("a long backfill cannot delay the restatement sync", () => {
+  // Separate waitUntil calls: neither job can hold up or fail the other.
+  assert.match(workerSource, /ctx\.waitUntil\(\s*advanceMetaAdsBackfills\(\)/);
+  assert.match(workerSource, /ctx\.waitUntil\(\s*syncMetaAdsInsights\(\)/);
+});
+
+test("the card explains that the range stops short of today", () => {
+  const anchor = connectionsUi.indexOf('action: "start_meta_ads_backfill"');
+  assert.ok(anchor > -1, "the start action is wired in the card");
+  const block = connectionsUi.slice(anchor - 5000, anchor + 4000);
+  // Copy wraps across lines in JSX, so match on whitespace-tolerant phrases.
+  assert.match(block, /automatic sync already\s+owns that window/);
+  assert.match(block, /Last 30 days/);
+  assert.match(block, /Last 90 days/);
+  assert.match(block, /action: "cancel_meta_ads_backfill"/);
+  assert.match(block, /action: "advance_meta_ads_backfill"/);
+  assert.match(block, /role="progressbar"/);
+});

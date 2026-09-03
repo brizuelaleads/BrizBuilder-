@@ -18,6 +18,7 @@ import type {
   CrmAiAuthorization,
   CrmClient,
   CrmProviderConnection,
+  CrmMetaAdsBackfill,
   CrmStage,
   CrmWorkflow,
   CrmWorkflowEdge,
@@ -98,6 +99,7 @@ function clientChoice(
 export function ConnectionsView({
   clients,
   connections,
+  metaAdsBackfills,
   aiAuthorizations,
   selectedClientId,
   mutate,
@@ -107,6 +109,7 @@ export function ConnectionsView({
 }: {
   clients: CrmClient[];
   connections: CrmProviderConnection[];
+  metaAdsBackfills: CrmMetaAdsBackfill[];
   aiAuthorizations: CrmAiAuthorization[];
   selectedClientId: string;
   mutate: Mutate;
@@ -156,6 +159,29 @@ export function ConnectionsView({
   const [metaAdsAccounts, setMetaAdsAccounts] = useState<
     Array<{ id: string; name: string; currency: string | null }>
   >([]);
+  const backfill = metaAdsBackfills.find((run) => run.clientId === clientId);
+  const backfillRunning = backfill?.status === "running";
+  const backfillPercent = backfill?.daysTotal
+    ? Math.min(100, Math.round((backfill.daysDone / backfill.daysTotal) * 100))
+    : 0;
+  // The scheduled sync owns the last three days, so a backfill stops short of
+  // them. Offering today as an end date would promise a window it will not
+  // fetch.
+  // Read once on mount rather than on every render: the clock is impure, and a
+  // date input whose max drifts between renders is worse than one fixed at the
+  // moment the screen opened. The server clamps the range regardless.
+  const [backfillLatest] = useState(() =>
+    new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10),
+  );
+  const [backfillSince, setBackfillSince] = useState("");
+  const [backfillUntil, setBackfillUntil] = useState("");
+  const presetRange = (days: number) => {
+    const end = new Date(Date.now() - 3 * 86_400_000);
+    const start = new Date(end);
+    start.setUTCDate(start.getUTCDate() - (days - 1));
+    setBackfillSince(start.toISOString().slice(0, 10));
+    setBackfillUntil(end.toISOString().slice(0, 10));
+  };
   const callRailConnection = connections.find(
     (item) => item.clientId === clientId && item.provider === "callrail",
   );
@@ -979,6 +1005,163 @@ export function ConnectionsView({
                 {metaAdsConnection?.lastError ? (
                   <p className="crm-connection-error">{metaAdsConnection.lastError}</p>
                 ) : null}
+                {/*
+                  Spend before the connection date does not exist yet, so every
+                  cost-per-lead figure over an earlier range is divided by a
+                  denominator with no spend behind it. The backfill fills that
+                  in; it writes the same rows the sync writes, on the same key,
+                  so a range fetched twice corrects rather than doubles.
+                */}
+                <div className="crm-connection-grid">
+                  <div>
+                    <span>Historical spend</span>
+                    <strong>
+                      {backfill
+                        ? backfill.status === "running"
+                          ? `Backfilling · ${backfill.daysDone}/${backfill.daysTotal} days`
+                          : backfill.status === "completed"
+                            ? `Filled ${backfill.since} to ${backfill.until}`
+                            : backfill.status === "canceled"
+                              ? "Backfill canceled"
+                              : "Backfill failed"
+                        : "Not backfilled"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Rows written</span>
+                    <strong>{backfill ? backfill.rowsWritten : "—"}</strong>
+                  </div>
+                </div>
+                {backfillRunning ? (
+                  <>
+                    <p>
+                      Fetching a few weeks per run. It continues on its own every
+                      fifteen minutes; leaving this page will not stop it.
+                    </p>
+                    <div
+                      role="progressbar"
+                      aria-valuenow={backfillPercent}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label="Backfill progress"
+                      style={{
+                        height: 6,
+                        borderRadius: 999,
+                        background: "var(--crm-border)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <i
+                        style={{
+                          display: "block",
+                          height: "100%",
+                          width: `${backfillPercent}%`,
+                          background: "var(--crm-accent, #6757e8)",
+                          transition: "width .3s",
+                        }}
+                      />
+                    </div>
+                    <div className="crm-connection-actions">
+                      <button
+                        className="crm-button-secondary"
+                        type="button"
+                        onClick={() =>
+                          mutate(
+                            { action: "advance_meta_ads_backfill", clientId },
+                            "Backfill advanced.",
+                          )
+                        }
+                      >
+                        Continue now
+                      </button>
+                      <button
+                        className="crm-button-danger"
+                        type="button"
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              "Cancel the backfill? Days already fetched are kept; the rest are not.",
+                            )
+                          )
+                            return;
+                          void mutate(
+                            { action: "cancel_meta_ads_backfill", clientId },
+                            "Backfill canceled.",
+                          );
+                        }}
+                      >
+                        Cancel backfill
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <form
+                    className="crm-connection-connect-form"
+                    onSubmit={async (event) => {
+                      event.preventDefault();
+                      await mutate(
+                        {
+                          action: "start_meta_ads_backfill",
+                          clientId,
+                          since: backfillSince,
+                          until: backfillUntil,
+                        },
+                        "Backfill started.",
+                      );
+                    }}
+                  >
+                    {backfill?.lastError ? (
+                      <p className="crm-connection-error">{backfill.lastError}</p>
+                    ) : null}
+                    <div className="crm-connection-actions">
+                      <button
+                        className="crm-button-secondary"
+                        type="button"
+                        onClick={() => presetRange(30)}
+                      >
+                        Last 30 days
+                      </button>
+                      <button
+                        className="crm-button-secondary"
+                        type="button"
+                        onClick={() => presetRange(90)}
+                      >
+                        Last 90 days
+                      </button>
+                    </div>
+                    <label>
+                      From
+                      <input
+                        type="date"
+                        value={backfillSince}
+                        max={backfillLatest}
+                        onChange={(event) => setBackfillSince(event.target.value)}
+                        required
+                      />
+                    </label>
+                    <label>
+                      To
+                      <input
+                        type="date"
+                        value={backfillUntil}
+                        max={backfillLatest}
+                        onChange={(event) => setBackfillUntil(event.target.value)}
+                        required
+                      />
+                    </label>
+                    <p>
+                      Ends three days ago on purpose: the automatic sync already
+                      owns that window and keeps correcting it as Meta restates.
+                    </p>
+                    <button
+                      className="crm-button-primary"
+                      type="submit"
+                      disabled={!backfillSince || !backfillUntil}
+                    >
+                      Backfill spend
+                    </button>
+                  </form>
+                )}
                 <div className="crm-connection-actions">
                   <button
                     className="crm-button-secondary"

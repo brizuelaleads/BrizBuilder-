@@ -8,6 +8,7 @@ import {
 } from "../lib/callrail-ingestion";
 import { runNotificationSweeps } from "../lib/notification-sweeps";
 import { syncMetaAdsInsights } from "../lib/meta-ads-sync";
+import { advanceMetaAdsBackfills } from "../lib/meta-ads-backfill";
 
 interface Env {
   ASSETS: Fetcher;
@@ -113,6 +114,15 @@ const worker = {
     ctx.waitUntil(
       syncMetaAdsInsights().catch(() => {
         console.error("Meta Ads sync could not enumerate connected clients.");
+      }),
+    );
+    // Historical backfills advance a few windows per tick. Separate from the
+    // restatement sync above so a long backfill cannot delay recent numbers,
+    // and it takes the same per-client claim so the two never call Meta for one
+    // account at once.
+    ctx.waitUntil(
+      advanceMetaAdsBackfills().catch(() => {
+        console.error("Meta Ads backfill could not enumerate open runs.");
       }),
     );
   },

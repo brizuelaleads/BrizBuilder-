@@ -4,7 +4,11 @@ import {
   MetaAdsError,
   type MetaAdInsightRow,
 } from "./meta-ads";
+import { dateKey } from "./meta-ads-range.ts";
 import { getSupabaseAdminClient } from "./supabase/server";
+
+// Re-exported so the sync stays the one import for scheduled Meta Ads work.
+export { dateKey };
 
 // Pulling each connected client's ad spend on the scheduled tick.
 //
@@ -25,7 +29,7 @@ const CLAIM_STALE_AFTER_MS = 20 * 60_000;
 // single statement big enough to be refused.
 const UPSERT_BATCH = 500;
 
-type MetaAdsCredentialRow = {
+export type MetaAdsCredentialRow = {
   id: string;
   organization_id: string;
   client_id: string;
@@ -40,9 +44,7 @@ export type MetaAdsSyncOutcome = {
   rows: number;
 };
 
-function dateKey(value: Date): string {
-  return value.toISOString().slice(0, 10);
-}
+
 
 /**
  * The reason a sync failed, in a form that is safe to store and show.
@@ -51,7 +53,7 @@ function dateKey(value: Date): string {
  * other throw is reported as a generic transport failure, because an arbitrary
  * exception can carry a URL, a payload fragment, or customer data.
  */
-function describeFailure(error: unknown): {
+export function describeFailure(error: unknown): {
   status: "unauthorized" | "rate_limited" | "error";
   message: string;
 } {
@@ -68,7 +70,7 @@ function describeFailure(error: unknown): {
  * on the same tick both issue this UPDATE, and Postgres lets exactly one of
  * them match. The loser gets no row back and moves on.
  */
-async function claim(row: MetaAdsCredentialRow): Promise<boolean> {
+export async function claim(row: MetaAdsCredentialRow): Promise<boolean> {
   const staleBefore = new Date(Date.now() - CLAIM_STALE_AFTER_MS).toISOString();
   const result = await getSupabaseAdminClient()
     .from("meta_ads_credentials")
@@ -81,7 +83,7 @@ async function claim(row: MetaAdsCredentialRow): Promise<boolean> {
   return Boolean(result.data);
 }
 
-async function release(
+export async function release(
   row: MetaAdsCredentialRow,
   status: "ok" | "unauthorized" | "rate_limited" | "error",
   lastError: string | null,
@@ -102,7 +104,7 @@ async function release(
     .eq("id", row.id);
 }
 
-async function storeInsights(
+export async function storeInsights(
   row: MetaAdsCredentialRow,
   insights: MetaAdInsightRow[],
 ): Promise<number> {
@@ -145,7 +147,7 @@ async function storeInsights(
  * teaching the dashboard a second shape. Dollars, matching the units the tile
  * formats.
  */
-async function publishMonthSpend(row: MetaAdsCredentialRow) {
+export async function publishMonthSpend(row: MetaAdsCredentialRow) {
   const supabase = getSupabaseAdminClient();
   const now = new Date();
   const monthStart = dateKey(

@@ -1367,6 +1367,7 @@ export function CrmApp({
           <ConnectionsView
             clients={data.clients}
             connections={data.providerConnections}
+            metaAdsBackfills={data.metaAdsBackfills}
             aiAuthorizations={data.aiAuthorizations}
             selectedClientId={effectiveSelectedClientId ?? ""}
             mutate={mutate}

@@ -433,6 +433,26 @@ export type CrmMetaAdInsight = {
   clicks: number;
 };
 
+/**
+ * Progress of a historical Meta ad spend backfill, if one has run for a client.
+ *
+ * Backfills are chunked across scheduled ticks, so the interface needs a
+ * running total rather than a single completion event.
+ */
+export type CrmMetaAdsBackfill = {
+  clientId: string;
+  runId: string;
+  status: "running" | "completed" | "failed" | "canceled";
+  since: string;
+  until: string;
+  daysTotal: number;
+  daysDone: number;
+  rowsWritten: number;
+  lastError: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+};
+
 export type CrmProviderConnection = {
   id: string;
   clientId: string;
@@ -642,6 +662,8 @@ export type CrmBootstrap = {
    * D1 backend, which stores no ad reporting.
    */
   metaAdInsights: CrmMetaAdInsight[];
+  /** Most recent backfill per client, running or finished. Empty on D1. */
+  metaAdsBackfills: CrmMetaAdsBackfill[];
   aiAuthorizations: CrmAiAuthorization[];
   aiActivities: CrmAiActivity[];
   aiConnectorRuntime: { configured: boolean; endpoint: string };
@@ -1011,6 +1033,7 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
     automationRuns: [],
     providerConnections: [],
     metaAdInsights: [],
+    metaAdsBackfills: [],
     aiAuthorizations: [],
     aiActivities: [],
     aiConnectorRuntime: { configured: false, endpoint: "" },
