@@ -140,8 +140,48 @@ type CallRailSyncOperation = (typeof CALLRAIL_SYNC_OPERATIONS)[number];
 type CallRailSyncDiagnostic = {
   failure: CallRailSyncFailure;
   operation: CallRailSyncOperation;
-  errorType: "CallRailApiError" | "AbortError" | "TypeError" | "Error" | "NonError";
+  errorType:
+    | "CallRailApiError"
+    | "AbortError"
+    | "TypeError"
+    | "DatabaseError"
+    | "Error"
+    | "NonError";
+  /**
+   * PostgREST/Postgres error code when the database refused the request.
+   *
+   * A code is a fixed token -- 42501 for permission denied, PGRST205 for a
+   * table missing from the schema cache -- so unlike a message it cannot carry
+   * a row fragment, a URL or credential material. Without it every database
+   * failure logs identically and the cause is unreachable.
+   */
+  databaseCode: string | null;
 };
+
+/**
+ * A database refusal, carrying the one part of it that is safe to keep.
+ *
+ * Supabase returns a plain object rather than an Error, so the message was
+ * being discarded by the instanceof check in checked() and every failure
+ * arrived as the same untraceable string.
+ */
+class DatabaseRequestError extends Error {
+  readonly code: string | null;
+
+  constructor(code: string | null) {
+    super("A database request was refused.");
+    this.name = "DatabaseRequestError";
+    this.code = code;
+  }
+}
+
+/** Codes are short fixed tokens; anything else is not one and is dropped. */
+function safeDatabaseCode(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+  const code = (error as { code?: unknown }).code;
+  if (typeof code !== "string") return null;
+  return /^[A-Za-z0-9_]{1,16}$/u.test(code) ? code : null;
+}
 
 export function classifySyncFailure(error: unknown): CallRailSyncFailure {
   if (error instanceof CallRailApiError) {
@@ -162,6 +202,7 @@ export function classifySyncFailure(error: unknown): CallRailSyncFailure {
 
 function safeSyncErrorType(error: unknown): CallRailSyncDiagnostic["errorType"] {
   if (error instanceof CallRailApiError) return "CallRailApiError";
+  if (error instanceof DatabaseRequestError) return "DatabaseError";
   if (error instanceof DOMException && error.name === "AbortError") return "AbortError";
   if (error instanceof TypeError) return "TypeError";
   if (error instanceof Error) return "Error";
@@ -180,6 +221,7 @@ class CallRailSyncOperationError extends Error {
       failure: classifySyncFailure(cause),
       operation,
       errorType: safeSyncErrorType(cause),
+      databaseCode: cause instanceof DatabaseRequestError ? cause.code : null,
     };
   }
 }
@@ -202,6 +244,7 @@ export function describeSyncFailure(error: unknown): CallRailSyncDiagnostic {
     failure: classifySyncFailure(error),
     operation: "reconcile",
     errorType: safeSyncErrorType(error),
+    databaseCode: error instanceof DatabaseRequestError ? error.code : null,
   };
 }
 
@@ -220,11 +263,9 @@ async function transcriptSha256(value: string) {
 async function checked<T>(promise: PromiseLike<{ data: T; error: unknown }>) {
   const result = await promise;
   if (result.error) {
-    const message =
-      result.error instanceof Error
-        ? result.error.message
-        : "Database request failed.";
-    throw new Error(message);
+    // Supabase hands back a plain object, so an instanceof check discards the
+    // whole thing. The code survives; the message deliberately does not.
+    throw new DatabaseRequestError(safeDatabaseCode(result.error));
   }
   return result.data;
 }
