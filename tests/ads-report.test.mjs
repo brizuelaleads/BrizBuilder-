@@ -258,8 +258,10 @@ test("the report module stays dependency-free", () => {
   );
 });
 
-test("the Ads tab is in navigation and respects the workspace date range", () => {
-  assert.match(crmApp, /id: "ads", label: "Ads"/);
+test("the Ads tab is a main tab and respects the workspace date range", () => {
+  // A daily "is the money working" question belongs beside Dashboard and
+  // Leads, not filed under channel setup.
+  assert.match(crmApp, /id: "ads", label: "Ads", icon: <Megaphone \/>, section: "MAIN"/);
   assert.match(crmApp, /\["dashboard", "leads", "reports", "ads"\]/);
   assert.match(crmApp, /view === "ads" && \(/);
 });
@@ -274,7 +276,54 @@ test("the tab covers every setup state and offers the snippet", () => {
     assert.ok(adsView.includes(copy), `${copy} is handled`);
   }
   assert.match(adsView, /utm_campaign=\{\{campaign\.id\}\}/);
+  assert.match(adsView, /utm_term=\{\{adset\.id\}\}/);
+  assert.match(adsView, /utm_content=\{\{ad\.id\}\}/);
   assert.match(adsView, /navigator\.clipboard\.writeText\(URL_PARAMETERS\)/);
+});
+
+test("all seven summary cards are present", () => {
+  for (const label of [
+    "Ad spend",
+    "Leads from Meta ads",
+    "Cost per lead",
+    "Booked jobs",
+    "Cost per booked job",
+    "Won revenue",
+    "ROAS",
+  ]) {
+    assert.ok(
+      adsView.includes(`label="${label}"`),
+      `${label} is a summary card of its own`,
+    );
+  }
+});
+
+test("the campaign table carries delivery as well as money", () => {
+  // Impressions and clicks are what tell you whether a bad CPL is a delivery
+  // problem or a conversion problem.
+  for (const column of [
+    "Campaign",
+    "Spend",
+    "Impressions",
+    "Clicks",
+    "Leads",
+    "CPL",
+    "Booked jobs",
+    "Won customers",
+    "Revenue",
+    "ROAS",
+  ]) {
+    assert.ok(adsView.includes(`<th>${column}</th>`), `${column} column exists`);
+  }
+});
+
+test("a campaign opens in a drawer, with its ad sets, ads and leads", () => {
+  assert.match(adsView, /function CampaignDrawer\(/);
+  assert.match(adsView, /role="dialog"/);
+  assert.match(adsView, /aria-modal="true"/);
+  assert.match(adsView, /aria-label="Ad sets"/);
+  assert.match(adsView, /aria-label="Leads from this campaign"/);
+  assert.match(adsView, /onClick=\{\(\) => onOpenLead\(lead\)\}/);
 });
 
 test("the tab shows a dash for a cost it cannot compute, never a zero", () => {

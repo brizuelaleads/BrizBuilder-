@@ -1,34 +1,41 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Megaphone, TriangleAlert } from "lucide-react";
+import { Megaphone, TriangleAlert, X } from "lucide-react";
 import type {
   CrmLead,
   CrmMetaAdInsight,
   CrmMetaAdsBackfill,
   CrmProviderConnection,
 } from "../../db/crm";
-import { buildAdsReport, type AdsMetrics } from "../../lib/meta-ads-report";
+import {
+  buildAdsReport,
+  type AdsReportCampaign,
+} from "../../lib/meta-ads-report";
 import { Badge, EmptyState, money } from "./ui";
 
-// The URL parameters an ad must carry for a click to be traceable. Repeated
-// here rather than imported so the snippet the operator copies is the literal
-// text in the source, not a value assembled at runtime.
+// The URL parameters an ad must carry for a click to be traceable. Written out
+// here rather than assembled, so what the operator copies is the literal text
+// in the source.
 const URL_PARAMETERS =
   "utm_source=meta&utm_medium=paid&utm_campaign={{campaign.id}}" +
   "&utm_term={{adset.id}}&utm_content={{ad.id}}";
 
-function ratio(value: number | null, digits = 1) {
-  return value == null ? "—" : `${value.toFixed(digits)}x`;
+function ratio(value: number | null) {
+  return value == null ? "—" : `${value.toFixed(1)}x`;
 }
 
 function percent(value: number | null) {
   return value == null ? "—" : `${(value * 100).toFixed(2)}%`;
 }
 
-/** A cost that has no denominator yet reads as unknown, never as zero. */
+/** A cost with no denominator reads as unknown, never as zero. */
 function cost(value: number | null) {
   return value == null ? "—" : money(value, true);
+}
+
+function count(value: number) {
+  return value.toLocaleString();
 }
 
 function SnippetBox() {
@@ -45,8 +52,8 @@ function SnippetBox() {
             setCopied(true);
             window.setTimeout(() => setCopied(false), 2000);
           } catch {
-            // Clipboard access can be refused; the text is selectable anyway,
-            // so this is a convenience rather than the only way to get it.
+            // Clipboard access can be refused. The text is selectable, so this
+            // is a convenience rather than the only way to get it.
             setCopied(false);
           }
         }}
@@ -75,18 +82,160 @@ function MetricCard({
   );
 }
 
-function MetricCells({ metrics }: { metrics: AdsMetrics }) {
+/**
+ * One campaign, opened over the table.
+ *
+ * A drawer rather than an inline row: a campaign's ad sets, its ads and its
+ * leads together are more than a table row can hold without pushing everything
+ * below it off the screen.
+ */
+function CampaignDrawer({
+  campaign,
+  leads,
+  onOpenLead,
+  onClose,
+}: {
+  campaign: AdsReportCampaign;
+  leads: CrmLead[];
+  onOpenLead: (lead: CrmLead) => void;
+  onClose: () => void;
+}) {
   return (
-    <>
-      <td data-label="Spend">{money(metrics.spendCents, true)}</td>
-      <td data-label="Leads">{metrics.leads}</td>
-      <td data-label="Cost / lead">{cost(metrics.costPerLeadCents)}</td>
-      <td data-label="Booked">{metrics.booked}</td>
-      <td data-label="Cost / booked">{cost(metrics.costPerBookedCents)}</td>
-      <td data-label="Won">{metrics.won}</td>
-      <td data-label="Revenue">{money(metrics.revenueCents, true)}</td>
-      <td data-label="ROAS">{ratio(metrics.roas)}</td>
-    </>
+    <div
+      className="crm-ads-drawer-layer"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        className="crm-ads-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Campaign details for ${campaign.campaignName}`}
+      >
+        <header>
+          <div>
+            <p>CAMPAIGN</p>
+            <h3>{campaign.campaignName}</h3>
+            <small>{campaign.campaignId}</small>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close campaign"
+            title="Close campaign"
+          >
+            <X aria-hidden="true" />
+          </button>
+        </header>
+
+        <div className="crm-ads-drawer-body">
+          <section className="crm-ads-drawer-summary" aria-label="Campaign summary">
+            <div>
+              <span>Spend</span>
+              <strong>{money(campaign.spendCents, true)}</strong>
+            </div>
+            <div>
+              <span>Leads</span>
+              <strong>{count(campaign.leads)}</strong>
+            </div>
+            <div>
+              <span>Cost per lead</span>
+              <strong>{cost(campaign.costPerLeadCents)}</strong>
+            </div>
+            <div>
+              <span>Booked jobs</span>
+              <strong>{count(campaign.booked)}</strong>
+            </div>
+            <div>
+              <span>Won customers</span>
+              <strong>{count(campaign.won)}</strong>
+            </div>
+            <div>
+              <span>Revenue</span>
+              <strong>{money(campaign.revenueCents, true)}</strong>
+            </div>
+            <div>
+              <span>ROAS</span>
+              <strong>{ratio(campaign.roas)}</strong>
+            </div>
+            <div>
+              <span>Impressions</span>
+              <strong>{count(campaign.impressions)}</strong>
+            </div>
+          </section>
+
+          <section aria-label="Ad sets">
+            <h4>Ad sets</h4>
+            {campaign.adsets.length === 0 ? (
+              <p className="crm-ads-quiet">
+                No ad sets in this range.
+              </p>
+            ) : (
+              campaign.adsets.map((adset) => (
+                <div key={adset.adsetId} className="crm-ads-adset">
+                  <h5>
+                    <span>Ad set {adset.adsetId}</span>
+                    <Badge tone="neutral">
+                      {money(adset.spendCents, true)} · {count(adset.leads)} leads
+                      · {cost(adset.costPerLeadCents)} CPL
+                    </Badge>
+                  </h5>
+                  <ul>
+                    {adset.ads.map((ad) => (
+                      <li key={ad.adId}>
+                        <span>{ad.adName}</span>
+                        <span>{money(ad.spendCents, true)}</span>
+                        <span>{count(ad.leads)} leads</span>
+                        <span>{cost(ad.costPerLeadCents)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))
+            )}
+          </section>
+
+          <section aria-label="Leads from this campaign">
+            <h4>
+              Leads from this campaign
+              <Badge tone="neutral">{leads.length}</Badge>
+            </h4>
+            {leads.length === 0 ? (
+              <p className="crm-ads-quiet">
+                Spend recorded, but no lead has carried this campaign yet.
+              </p>
+            ) : (
+              <ul className="crm-ads-campaign-leads">
+                {leads.map((lead) => (
+                  <li key={lead.id}>
+                    <button type="button" onClick={() => onOpenLead(lead)}>
+                      <span>
+                        {lead.firstName} {lead.lastName}
+                      </span>
+                      <span>{lead.serviceRequested}</span>
+                      <Badge
+                        tone={
+                          lead.status === "WON"
+                            ? "green"
+                            : ["LOST", "SPAM", "UNRESPONSIVE"].includes(
+                                  lead.status,
+                                )
+                              ? "red"
+                              : "blue"
+                        }
+                      >
+                        {lead.status.replaceAll("_", " ")}
+                      </Badge>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -111,7 +260,7 @@ export function AdsView({
   onOpenLead: (lead: CrmLead) => void;
   onOpenConnections: () => void;
 }) {
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [openCampaignId, setOpenCampaignId] = useState<string | null>(null);
 
   const connected = providerConnections.some(
     (connection) =>
@@ -119,12 +268,10 @@ export function AdsView({
       (connection.isActive || connection.isLinked),
   );
 
-  // Read the clock once on mount rather than on every render: it is impure, and
-  // a boundary that drifts mid-session would make the "older spend is missing"
-  // notice appear and disappear on its own.
+  // Read the clock once on mount: it is impure, and a boundary that drifted
+  // mid-session would make the "older spend is missing" notice come and go on
+  // its own.
   const [openedAt] = useState(() => Date.now());
-  // The earliest day the current range asks about. Used only to decide whether
-  // older spend is still missing, so a day boundary is precise enough.
   const rangeStart = useMemo(() => {
     const days = Number(range);
     if (range === "all" || !Number.isFinite(days) || days <= 0) return null;
@@ -166,6 +313,10 @@ export function AdsView({
     return grouped;
   }, [leads]);
 
+  const openCampaign = openCampaignId
+    ? report.campaigns.find((c) => c.campaignId === openCampaignId)
+    : undefined;
+
   const heading = (
     <section className="crm-page-heading">
       <div>
@@ -204,12 +355,14 @@ export function AdsView({
           title="Connected, no spend yet"
           description={
             backfill?.status === "running"
-              ? `Backfilling history — ${backfill.daysDone} of ${backfill.daysTotal} days done. Numbers appear as it goes.`
+              ? `Backfilling history — ${backfill.daysDone} of ${backfill.daysTotal} days done, ${count(backfill.rowsWritten)} rows so far. Numbers appear as it goes.`
               : "The account is connected but no days have synced yet. The first sync runs within fifteen minutes, or backfill history from the connection card."
           }
           action={
             <button className="crm-button-secondary" onClick={onOpenConnections}>
-              Open connection
+              {backfill?.status === "running"
+                ? "View backfill"
+                : "Backfill history"}
             </button>
           }
         />
@@ -227,7 +380,7 @@ export function AdsView({
           <div>
             <strong>Spend is arriving, but no lead can be traced to it.</strong>
             <p>
-              {report.unattributedLeads} lead
+              {count(report.unattributedLeads)} lead
               {report.unattributedLeads === 1 ? "" : "s"} came in with no campaign
               attached. Meta offers no way to look up which campaign produced a
               click, so the ad has to carry the label itself. Paste this into{" "}
@@ -246,7 +399,7 @@ export function AdsView({
             <strong>Older spend is missing.</strong>
             <p>
               {report.earliestSpendDate
-                ? `History starts on ${report.earliestSpendDate}, which is later than the range you are viewing, so costs before then divide by spend that is not here yet.`
+                ? `History starts on ${report.earliestSpendDate}, later than the range you are viewing, so costs before then divide by spend that is not here yet.`
                 : "No spend has synced for this range yet."}{" "}
               A backfill fetches it.
             </p>
@@ -261,14 +414,14 @@ export function AdsView({
         <MetricCard
           label="Ad spend"
           value={money(report.totals.spendCents, true)}
-          support={`${report.totals.clicks.toLocaleString()} clicks · ${percent(report.totals.ctr)} CTR`}
+          support={`${count(report.totals.clicks)} clicks · ${percent(report.totals.ctr)} CTR`}
         />
         <MetricCard
-          label="Meta leads"
-          value={String(report.totals.leads)}
+          label="Leads from Meta ads"
+          value={count(report.totals.leads)}
           support={
             report.unattributedLeads
-              ? `${report.unattributedLeads} not traceable to an ad`
+              ? `${count(report.unattributedLeads)} not traceable to an ad`
               : "All leads traced to a campaign"
           }
         />
@@ -279,21 +432,26 @@ export function AdsView({
         />
         <MetricCard
           label="Booked jobs"
-          value={String(report.totals.booked)}
-          support={`${cost(report.totals.costPerBookedCents)} to book one`}
+          value={count(report.totals.booked)}
+          support="Booked, estimate sent, or won"
         />
         <MetricCard
-          label="Won customers"
-          value={String(report.totals.won)}
-          support={`${cost(report.totals.costPerWonCents)} to win one`}
+          label="Cost per booked job"
+          value={cost(report.totals.costPerBookedCents)}
+          support={`${cost(report.totals.costPerWonCents)} per won customer`}
         />
         <MetricCard
           label="Won revenue"
           value={money(report.totals.revenueCents, true)}
+          support={`${count(report.totals.won)} won customer${report.totals.won === 1 ? "" : "s"}`}
+        />
+        <MetricCard
+          label="ROAS"
+          value={ratio(report.totals.roas)}
           support={
             report.totals.roas == null
-              ? "No revenue recorded yet"
-              : `${ratio(report.totals.roas)} return on spend`
+              ? "Needs both spend and recorded revenue"
+              : "Revenue per unit of spend"
           }
         />
       </section>
@@ -317,115 +475,44 @@ export function AdsView({
                 <tr>
                   <th>Campaign</th>
                   <th>Spend</th>
+                  <th>Impressions</th>
+                  <th>Clicks</th>
                   <th>Leads</th>
-                  <th>Cost / lead</th>
-                  <th>Booked</th>
-                  <th>Cost / booked</th>
-                  <th>Won</th>
+                  <th>CPL</th>
+                  <th>Booked jobs</th>
+                  <th>Won customers</th>
                   <th>Revenue</th>
                   <th>ROAS</th>
                 </tr>
               </thead>
               <tbody>
-                {report.campaigns.map((campaign) => {
-                  const open = expanded === campaign.campaignId;
-                  const campaignLeads =
-                    leadsByCampaign.get(campaign.campaignId) ?? [];
-                  return [
-                    <tr
-                      key={campaign.campaignId}
-                      className="crm-ads-campaign-row"
-                      onClick={() =>
-                        setExpanded(open ? null : campaign.campaignId)
-                      }
-                    >
-                      <td data-label="Campaign">
-                        <button
-                          type="button"
-                          className="crm-ads-disclosure"
-                          aria-expanded={open}
-                        >
-                          {open ? <ChevronDown /> : <ChevronRight />}
-                          <span>{campaign.campaignName}</span>
-                        </button>
-                      </td>
-                      <MetricCells metrics={campaign} />
-                    </tr>,
-                    open ? (
-                      <tr key={`${campaign.campaignId}-detail`}>
-                        <td colSpan={9} className="crm-ads-detail-cell">
-                          <div className="crm-ads-detail">
-                            {campaign.adsets.map((adset) => (
-                              <div key={adset.adsetId} className="crm-ads-adset">
-                                <h4>
-                                  Ad set {adset.adsetId}
-                                  <Badge tone="neutral">
-                                    {money(adset.spendCents, true)} ·{" "}
-                                    {adset.leads} leads
-                                  </Badge>
-                                </h4>
-                                <ul>
-                                  {adset.ads.map((ad) => (
-                                    <li key={ad.adId}>
-                                      <span>{ad.adName}</span>
-                                      <span>{money(ad.spendCents, true)}</span>
-                                      <span>{ad.leads} leads</span>
-                                      <span>{cost(ad.costPerLeadCents)}</span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            ))}
-                            <div className="crm-ads-campaign-leads">
-                              <h4>
-                                Leads from this campaign
-                                <Badge tone="neutral">
-                                  {campaignLeads.length}
-                                </Badge>
-                              </h4>
-                              {campaignLeads.length === 0 ? (
-                                <p>
-                                  Spend recorded, no leads carrying this
-                                  campaign yet.
-                                </p>
-                              ) : (
-                                <ul>
-                                  {campaignLeads.slice(0, 25).map((lead) => (
-                                    <li key={lead.id}>
-                                      <button
-                                        type="button"
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          onOpenLead(lead);
-                                        }}
-                                      >
-                                        <span>
-                                          {lead.firstName} {lead.lastName}
-                                        </span>
-                                        <span>{lead.serviceRequested}</span>
-                                        <Badge
-                                          tone={
-                                            lead.status === "WON"
-                                              ? "green"
-                                              : lead.status === "LOST"
-                                                ? "red"
-                                                : "blue"
-                                          }
-                                        >
-                                          {lead.status.replaceAll("_", " ")}
-                                        </Badge>
-                                      </button>
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : null,
-                  ];
-                })}
+                {report.campaigns.map((campaign) => (
+                  <tr
+                    key={campaign.campaignId}
+                    className="crm-ads-campaign-row"
+                    onClick={() => setOpenCampaignId(campaign.campaignId)}
+                  >
+                    <td data-label="Campaign">
+                      <button type="button" className="crm-ads-disclosure">
+                        <span>{campaign.campaignName}</span>
+                        <small>{campaign.campaignId}</small>
+                      </button>
+                    </td>
+                    <td data-label="Spend">
+                      {money(campaign.spendCents, true)}
+                    </td>
+                    <td data-label="Impressions">{count(campaign.impressions)}</td>
+                    <td data-label="Clicks">{count(campaign.clicks)}</td>
+                    <td data-label="Leads">{count(campaign.leads)}</td>
+                    <td data-label="CPL">{cost(campaign.costPerLeadCents)}</td>
+                    <td data-label="Booked jobs">{count(campaign.booked)}</td>
+                    <td data-label="Won customers">{count(campaign.won)}</td>
+                    <td data-label="Revenue">
+                      {money(campaign.revenueCents, true)}
+                    </td>
+                    <td data-label="ROAS">{ratio(campaign.roas)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -437,6 +524,15 @@ export function AdsView({
           </p>
         ) : null}
       </section>
+
+      {openCampaign ? (
+        <CampaignDrawer
+          campaign={openCampaign}
+          leads={leadsByCampaign.get(openCampaign.campaignId) ?? []}
+          onOpenLead={onOpenLead}
+          onClose={() => setOpenCampaignId(null)}
+        />
+      ) : null}
     </div>
   );
 }

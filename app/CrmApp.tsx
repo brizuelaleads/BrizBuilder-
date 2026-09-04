@@ -167,6 +167,7 @@ const nav: Array<{
   },
   { id: "calendar", label: "Calendar", icon: <CalendarDays />, section: "MAIN" },
   { id: "tasks", label: "Tasks", icon: <ListChecks />, section: "MAIN" },
+  { id: "ads", label: "Ads", icon: <Megaphone />, section: "MAIN", permission: "reports.read" },
   {
     id: "conversations",
     label: "Conversations",
@@ -230,7 +231,6 @@ const nav: Array<{
     agencyOnly: true,
     preview: true,
   },
-  { id: "ads", label: "Ads", icon: <Megaphone />, section: "GROWTH", permission: "reports.read" },
   { id: "reports", label: "Reports", icon: <ChartNoAxesCombined />, section: "BUSINESS", permission: "reports.read" },
   {
     id: "payments",
