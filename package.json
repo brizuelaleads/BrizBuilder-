@@ -10,7 +10,7 @@
     "build": "vinext build",
     "start": "vinext start",
     "test": "npm run test:security && npm run test:brand && npm run test:landing && npm run build && node --test tests/crm.integration.test.mjs",
-    "test:security": "npm run test:oauth && npm run test:ai-connector && npm run test:ai-gateway && npm run test:stripe && npm run test:google-calendar && npm run test:theme && npm run test:team && npm run test:workspace && npm run test:client-deletion && npm run test:auth && npm run test:system-email && npm run test:meta && npm run test:meta-redaction && npm run test:meta-value && npm run test:meta-eligibility && npm run test:callrail-ids && npm run test:callrail-cleanup && npm run test:callrail-dni && npm run test:callrail-dni-page && npm run test:callrail-webhook && npm run test:callrail-reinquiry && npm run test:callrail-ingestion-state && npm run test:callrail-pagination && npm run test:callrail-calls && npm run test:callrail-transcript && npm run test:callrail-transcript-enrichment && npm run test:callrail-media && npm run test:callrail && npm run test:white-label && npm run test:install && npm run test:push && npm run test:meta-ads && npm run test:concurrency",
+    "test:security": "npm run test:oauth && npm run test:ai-connector && npm run test:ai-gateway && npm run test:stripe && npm run test:google-calendar && npm run test:theme && npm run test:team && npm run test:workspace && npm run test:client-deletion && npm run test:auth && npm run test:system-email && npm run test:meta && npm run test:meta-redaction && npm run test:meta-value && npm run test:meta-eligibility && npm run test:callrail-ids && npm run test:callrail-cleanup && npm run test:callrail-dni && npm run test:callrail-dni-page && npm run test:callrail-webhook && npm run test:callrail-reinquiry && npm run test:callrail-ingestion-state && npm run test:callrail-pagination && npm run test:callrail-calls && npm run test:callrail-transcript && npm run test:callrail-transcript-enrichment && npm run test:callrail-media && npm run test:callrail && npm run test:white-label && npm run test:install && npm run test:push && npm run test:meta-ads && npm run test:ads-report && npm run test:concurrency",
     "test:oauth": "node --experimental-strip-types --test tests/ai-oauth-security.test.mjs",
     "test:ai-connector": "node --test tests/ai-connector-security.test.mjs",
     "test:ai-gateway": "node --experimental-strip-types --test tests/ai-gateway.test.mjs",
@@ -51,6 +51,7 @@
     "test:install": "node --experimental-strip-types --test tests/client-app-install.test.mjs",
     "test:push": "node --experimental-strip-types --test tests/push-notifications.test.mjs tests/jwt-clock-skew.test.mjs",
     "test:meta-ads": "node --experimental-strip-types --test tests/meta-ads.test.mjs",
+    "test:ads-report": "node --experimental-strip-types --test tests/ads-report.test.mjs",
     "test:concurrency": "node --experimental-strip-types --test tests/production-readiness-concurrency.test.mjs"
   },
   "dependencies": {

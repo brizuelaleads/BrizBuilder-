@@ -195,6 +195,10 @@ export type CrmLead = {
    * because nothing in the interface needs them.
    */
   metaCampaignId: string | null;
+  /** utm_term / {{adset.id}}, when the click carried one. */
+  metaAdsetId: string | null;
+  /** utm_content / {{ad.id}}, when the click carried one. */
+  metaAdId: string | null;
   status: string;
   assignedUser: string | null;
   estimatedValueCents: number;
@@ -1073,7 +1077,7 @@ function mapContact(row: Record<string, unknown>): CrmContact {
 }
 
 function mapLead(row: Record<string, unknown>): CrmLead {
-  return { id: String(row.id), clientId: String(row.client_id), clientName: String(row.client_name), contactId: String(row.contact_id), firstName: String(row.first_name), lastName: String(row.last_name), phone: nullable(row.phone), email: nullable(row.email), address: nullable(row.address), city: nullable(row.city), state: nullable(row.state), zip: nullable(row.zip), stageId: String(row.stage_id), stageName: String(row.stage_name), stageColor: String(row.stage_color), serviceRequested: String(row.service_requested), message: String(row.message ?? ""), source: String(row.source), campaign: nullable(row.campaign), metaCampaignId: null, status: String(row.status), assignedUser: nullable(row.assigned_user), estimatedValueCents: Number(row.estimated_value_cents ?? 0), finalRevenueCents: Number(row.final_revenue_cents ?? 0), appointmentDate: nullable(row.appointment_date), appointmentStatus: "none", appointmentStart: null, appointmentEnd: null, appointmentTimeZone: null, leadScore: Number(row.lead_score ?? 0), tags: parseStringArray(row.tags_json), consentStatus: String(row.consent_status), lostReason: nullable(row.lost_reason), lastContactedAt: nullable(row.last_contacted_at), firstContactedAt: String(row.created_at), nextFollowUpAt: nullable(row.next_follow_up_at), createdAt: String(row.created_at), updatedAt: String(row.updated_at) };
+  return { id: String(row.id), clientId: String(row.client_id), clientName: String(row.client_name), contactId: String(row.contact_id), firstName: String(row.first_name), lastName: String(row.last_name), phone: nullable(row.phone), email: nullable(row.email), address: nullable(row.address), city: nullable(row.city), state: nullable(row.state), zip: nullable(row.zip), stageId: String(row.stage_id), stageName: String(row.stage_name), stageColor: String(row.stage_color), serviceRequested: String(row.service_requested), message: String(row.message ?? ""), source: String(row.source), campaign: nullable(row.campaign), metaCampaignId: null, metaAdsetId: null, metaAdId: null, status: String(row.status), assignedUser: nullable(row.assigned_user), estimatedValueCents: Number(row.estimated_value_cents ?? 0), finalRevenueCents: Number(row.final_revenue_cents ?? 0), appointmentDate: nullable(row.appointment_date), appointmentStatus: "none", appointmentStart: null, appointmentEnd: null, appointmentTimeZone: null, leadScore: Number(row.lead_score ?? 0), tags: parseStringArray(row.tags_json), consentStatus: String(row.consent_status), lostReason: nullable(row.lost_reason), lastContactedAt: nullable(row.last_contacted_at), firstContactedAt: String(row.created_at), nextFollowUpAt: nullable(row.next_follow_up_at), createdAt: String(row.created_at), updatedAt: String(row.updated_at) };
 }
 
 function nullable(value: unknown): string | null {

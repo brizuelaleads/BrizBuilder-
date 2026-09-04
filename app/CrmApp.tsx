@@ -27,6 +27,7 @@ import {
   ListChecks,
   LogOut,
   MapPin,
+  Megaphone,
   Menu,
   MessageSquareText,
   PhoneCall,
@@ -79,6 +80,7 @@ import {
   FoundationContactsView,
 } from "./crm/FoundationViews";
 import { FutureModuleView, type FutureModule } from "./crm/FutureModuleViews";
+import { AdsView } from "./crm/AdsView";
 import { WebsitesView } from "./crm/WebsitesView";
 import { ConversationsView, PhoneSystemView } from "./crm/PhoneViews";
 import { ConnectionsView, VisualAutomationsView } from "./crm/WorkflowViews";
@@ -98,6 +100,7 @@ type View =
   | "tasks"
   | "clients"
   | "reports"
+  | "ads"
   | "websites"
   | "profiles"
   | "reviews"
@@ -227,6 +230,7 @@ const nav: Array<{
     agencyOnly: true,
     preview: true,
   },
+  { id: "ads", label: "Ads", icon: <Megaphone />, section: "GROWTH", permission: "reports.read" },
   { id: "reports", label: "Reports", icon: <ChartNoAxesCombined />, section: "BUSINESS", permission: "reports.read" },
   {
     id: "payments",
@@ -783,7 +787,7 @@ export function CrmApp({
                 : view === "team"
                   ? `${data.team.length} ${data.team.length === 1 ? "team member" : "team members"}`
                   : null;
-  const showRangeFilter = ["dashboard", "leads", "reports"].includes(
+  const showRangeFilter = ["dashboard", "leads", "reports", "ads"].includes(
     view,
   );
 
@@ -1306,6 +1310,19 @@ export function CrmApp({
         )}
         {view === "reports" && (
           <ReportsView leads={filteredLeads} clients={filteredClients} />
+        )}
+        {view === "ads" && (
+          <AdsView
+            leads={filteredLeads}
+            metaAdInsights={filteredMetaAdInsights}
+            providerConnections={filteredProviderConnections}
+            metaAdsBackfills={data.metaAdsBackfills}
+            clients={filteredClients}
+            selectedClientId={effectiveSelectedClientId ?? "all"}
+            range={range}
+            onOpenLead={(lead) => setSelectedLeadId(lead.id)}
+            onOpenConnections={() => navigate("connections")}
+          />
         )}
         {view === "websites" && (
           <WebsitesView

@@ -89,7 +89,11 @@ import {
   cancelMetaAdsBackfill,
   startMetaAdsBackfill,
 } from "../lib/meta-ads-backfill";
-import { metaCampaignIdFromAttribution } from "../lib/meta-ads-ids";
+import {
+  metaAdIdFromAttribution,
+  metaAdsetIdFromAttribution,
+  metaCampaignIdFromAttribution,
+} from "../lib/meta-ads-ids";
 import {
   resolveWonValueCents,
   wonValueCustomData,
@@ -3057,6 +3061,8 @@ function mapLead(row: AnyRecord): CrmLead {
     source: String(row.source ?? "Manual"),
     campaign: nullable(row.campaign),
     metaCampaignId: metaCampaignIdFromAttribution(row.attribution),
+    metaAdsetId: metaAdsetIdFromAttribution(row.attribution),
+    metaAdId: metaAdIdFromAttribution(row.attribution),
     status: String(row.status ?? "NEW"),
     assignedUser: nullable(row.assigned_user),
     estimatedValueCents: Number(row.estimated_value_cents ?? 0),

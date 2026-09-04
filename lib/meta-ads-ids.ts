@@ -24,25 +24,41 @@ export function normalizeAdAccountId(value: unknown): string {
 }
 
 /**
- * The Meta campaign id a captured click carried, or null.
+ * A Meta object id a captured click carried, or null.
  *
- * Meta substitutes {{campaign.id}} into an ad's URL parameters at click time and
- * the capture path stores the result as utm_campaign. But utm_campaign is
- * caller-controlled on the public lead endpoint: anyone can post one. Only a
- * value shaped like a Meta object id is returned, so a free-text campaign label
- * is never presented in the interface as a join into somebody's ad account.
+ * Meta substitutes {{campaign.id}}, {{adset.id}} and {{ad.id}} into an ad's URL
+ * parameters at click time and the capture path stores them as utm_campaign,
+ * utm_term and utm_content. But those fields are caller-controlled on the public
+ * lead endpoint: anyone can post one. Only a value shaped like a Meta object id
+ * is returned, so a free-text label is never presented in the interface as a
+ * join into somebody's ad account.
  *
- * A forged id degrades into a lead attributed to a campaign that does not exist
+ * A forged id degrades into a lead attributed to something that does not exist
  * in the synced insights, which shows as an unresolved name -- not as spend
  * moving between real campaigns.
  */
-export function metaCampaignIdFromAttribution(value: unknown): string | null {
+function metaObjectId(value: unknown, key: string): string | null {
   const attribution =
     value && typeof value === "object" && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : {};
-  const campaign = attribution.utm_campaign;
-  if (typeof campaign !== "string") return null;
-  const trimmed = campaign.trim();
+  const raw = attribution[key];
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
   return META_OBJECT_ID.test(trimmed) ? trimmed : null;
+}
+
+/** utm_campaign carries {{campaign.id}}. */
+export function metaCampaignIdFromAttribution(value: unknown): string | null {
+  return metaObjectId(value, "utm_campaign");
+}
+
+/** utm_term carries {{adset.id}}. */
+export function metaAdsetIdFromAttribution(value: unknown): string | null {
+  return metaObjectId(value, "utm_term");
+}
+
+/** utm_content carries {{ad.id}}. */
+export function metaAdIdFromAttribution(value: unknown): string | null {
+  return metaObjectId(value, "utm_content");
 }

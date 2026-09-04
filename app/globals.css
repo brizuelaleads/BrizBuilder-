@@ -19295,3 +19295,37 @@ canvas {
     flex: 1;
   }
 }
+
+/* Ads — Meta spend against pipeline outcomes. */
+.crm-ads-view { display: grid; gap: 16px; }
+.crm-ads-metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+.crm-ads-metric { display: grid; gap: 4px; padding: 14px 16px; border: 1px solid var(--crm-border); border-radius: 12px; background: var(--crm-surface); }
+.crm-ads-metric span { color: var(--crm-muted); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.crm-ads-metric strong { font-size: 20px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.crm-ads-metric small { color: var(--crm-muted); font-size: 10px; line-height: 1.4; }
+.crm-ads-notice { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; padding: 14px 16px; border: 1px solid var(--crm-border); border-left-width: 3px; border-radius: 10px; background: var(--crm-surface); }
+.crm-ads-notice.is-warning { border-left-color: #d08a2c; }
+.crm-ads-notice svg { width: 16px; height: 16px; color: var(--crm-muted); }
+.crm-ads-notice strong { display: block; font-size: 12px; }
+.crm-ads-notice p { margin: 4px 0 8px; color: var(--crm-muted); font-size: 11px; line-height: 1.55; }
+/* The snippet is one unbroken token; without wrapping it widens the page. */
+.crm-ads-snippet { display: flex; gap: 8px; align-items: center; }
+.crm-ads-snippet code { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--crm-border); border-radius: 8px; background: var(--crm-surface-sunk, var(--crm-surface)); font-size: 10px; line-height: 1.6; overflow-wrap: anywhere; user-select: all; }
+/* Wide tables scroll inside their own box so the page never scrolls sideways. */
+.crm-table-scroll { overflow-x: auto; }
+.crm-ads-table td, .crm-ads-table th { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.crm-ads-campaign-row { cursor: pointer; }
+.crm-ads-campaign-row:hover { background: var(--crm-surface-sunk, rgb(0 0 0 / 3%)); }
+.crm-ads-disclosure { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; color: inherit; font: inherit; padding: 0; cursor: pointer; }
+.crm-ads-disclosure svg { width: 14px; height: 14px; color: var(--crm-muted); }
+.crm-ads-detail-cell { background: var(--crm-surface-sunk, rgb(0 0 0 / 2%)); }
+.crm-ads-detail { display: grid; gap: 14px; padding: 6px 2px 10px; }
+.crm-ads-adset h4, .crm-ads-campaign-leads h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 11px; }
+.crm-ads-adset ul, .crm-ads-campaign-leads ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.crm-ads-adset li { display: grid; grid-template-columns: 1fr auto auto auto; gap: 12px; font-size: 11px; color: var(--crm-muted); }
+.crm-ads-adset li span:first-child { color: var(--crm-text); }
+.crm-ads-campaign-leads li button { width: 100%; display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: center; text-align: left; border: 1px solid transparent; background: none; padding: 6px 8px; border-radius: 8px; font: inherit; font-size: 11px; cursor: pointer; }
+.crm-ads-campaign-leads li button:hover { border-color: var(--crm-border); background: var(--crm-surface); }
+.crm-ads-campaign-leads p { margin: 0; color: var(--crm-muted); font-size: 11px; }
+@media (max-width: 1100px) { .crm-ads-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .crm-ads-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .crm-ads-snippet { flex-direction: column; align-items: stretch; } .crm-ads-adset li, .crm-ads-campaign-leads li button { grid-template-columns: 1fr; gap: 2px; } }
