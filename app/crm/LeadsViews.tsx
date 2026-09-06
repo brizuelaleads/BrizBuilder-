@@ -36,8 +36,8 @@ import type {
   CrmStage,
   CrmTask,
 } from "../../db/crm";
-import { parseCallTranscript } from "../../lib/callrail-transcript";
 import { Badge, dateTime, EmptyState, money, shortDate } from "./ui";
+import { CallTranscriptCard } from "./CallTranscriptCard";
 
 type Mutate = (
   input: Record<string, unknown>,
@@ -658,84 +658,17 @@ function LeadTranscriptCard({
   initials: string;
   index: number;
 }) {
-  const lines = parseCallTranscript(call.transcript);
-
+  const transcriptScope = {
+    recordingCallId: call.callrailCallId,
+    clientId: lead.clientId,
+  };
   return (
-    <section className="crm-lead-section-card crm-lead-transcript-card">
-      <header className="crm-lead-section-heading">
-        <div>
-          <span>{index === 0 ? "Latest call" : `Earlier call ${index + 1}`}</span>
-          <h3>Call transcript</h3>
-        </div>
-        <p>Read-only transcript view</p>
-      </header>
-
-      <div className="crm-lead-call-meta">
-        <div>
-          <span>Call started</span>
-          <strong>{dateTime(call.startedAt)}</strong>
-        </div>
-        <div>
-          <span>Duration</span>
-          <strong>{formatCallDuration(call.durationSeconds)}</strong>
-        </div>
-        <div>
-          <span>Recording</span>
-          <strong>{call.recordingAvailable ? "Available" : "Unavailable"}</strong>
-        </div>
-      </div>
-
-      {call.recordingAvailable ? (
-        <audio
-          className="crm-lead-recording"
-          controls
-          preload="none"
-          src={`/api/callrail/recordings/${encodeURIComponent(
-            call.callrailCallId,
-          )}?clientId=${encodeURIComponent(lead.clientId)}`}
-        >
-          Your browser cannot play this recording.
-        </audio>
-      ) : null}
-
-      {call.callSummary ? (
-        <div className="crm-lead-call-summary">
-          <strong>Call summary</strong>
-          <p>{call.callSummary}</p>
-        </div>
-      ) : null}
-
-      {lines.length ? (
-        <div className="crm-lead-conversation">
-          {lines.map((line, lineIndex) => (
-            <article
-              aria-label={`${line.speaker} message`}
-              className={line.role}
-              key={`${lineIndex}-${line.role}-${line.text.slice(0, 20)}`}
-            >
-              {line.role !== "agent" ? (
-                <span>{line.role === "caller" ? initials.slice(0, 1) : "T"}</span>
-              ) : null}
-              <div>
-                <strong>{line.speaker}</strong>
-                <p>{line.text}</p>
-              </div>
-              {line.role === "agent" ? <span>A</span> : null}
-            </article>
-          ))}
-        </div>
-      ) : (
-        <div className="crm-lead-empty-tab compact">
-          <MessageCircle aria-hidden="true" />
-          <h3>Transcript unavailable</h3>
-          <p>
-            {call.transcriptStatus === "pending"
-              ? "CallRail is still processing this transcript. BrizBuilder will retry automatically."
-              : "This call does not have a transcript."}
-          </p>
-        </div>
-      )}
-    </section>
+    <CallTranscriptCard
+      call={call}
+      clientId={transcriptScope.clientId}
+      customerInitials={initials}
+      eyebrow={index === 0 ? "Latest call" : `Earlier call ${index + 1}`}
+    />
   );
 }
 
@@ -1351,7 +1284,7 @@ export function LeadDetail({
                 ))}
                 {!leadCalls.length ? (
                   <section className="crm-lead-section-card">
-                    <div className="crm-lead-empty-tab"><Phone /><h3>No tracked calls</h3><p>CallRail calls associated with this lead will appear here.</p></div>
+                    <div className="crm-lead-empty-tab"><Phone /><h3>No tracked calls</h3><p>Calls associated with this lead will appear here.</p></div>
                   </section>
                 ) : null}
               </div>

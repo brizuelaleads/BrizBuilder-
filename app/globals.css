@@ -16412,6 +16412,87 @@ canvas {
 .crm-contact-calls-toggle { margin-top: 12px; padding: 0; border: 0; background: none; color: #6857e8; font-size: 11px; font-weight: 700; cursor: pointer; }
 @media (max-width: 640px) { .crm-call-facts { grid-template-columns: 1fr; } }
 
+/* Unified Calls workspace -------------------------------------------------- */
+.crm-calls-view { display: grid; gap: 18px; }
+.crm-calls-view .crm-page-heading { margin-bottom: 0; }
+.crm-calls-attention { min-width: 174px; padding: 12px 15px; display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 7px; border: 1px solid #f2c5cb; border-radius: 13px; color: #a52237; background: #fff5f6; box-shadow: 0 10px 28px rgb(152 28 49 / 7%); }
+.crm-calls-attention svg { width: 18px; height: 18px; }
+.crm-calls-attention strong { font-size: 22px; letter-spacing: -.04em; }
+.crm-calls-attention span { color: #8b5360; font-size: 10px; font-weight: 750; }
+.crm-call-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.crm-call-metrics article { min-height: 132px; padding: 16px; display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; border: 1px solid var(--crm-line); border-radius: 14px; background: var(--crm-card, #fff); box-shadow: 0 10px 30px rgb(25 30 52 / 4%); }
+.crm-call-metrics article > svg { grid-column: 2; grid-row: 1 / span 2; width: 20px; height: 20px; padding: 7px; box-sizing: content-box; border-radius: 10px; color: #6556d9; background: #f0edff; }
+.crm-call-metrics article > span { align-self: end; color: var(--crm-muted); font-size: 10px; font-weight: 700; }
+.crm-call-metrics article > strong { align-self: end; font-size: 28px; letter-spacing: -.05em; }
+.crm-call-metrics article > small { grid-column: 1 / -1; align-self: end; color: var(--crm-muted); font-size: 9px; }
+.crm-call-metrics article.missed > svg,.crm-call-metrics article.attention > svg { color: #b6273e; background: #fff0f2; }
+.crm-call-metrics article.attention { border-color: #efc2ca; box-shadow: 0 10px 30px rgb(166 30 52 / 7%); }
+.crm-calls-history { overflow: hidden; border: 1px solid var(--crm-line); border-radius: 15px; background: var(--crm-card, #fff); box-shadow: 0 12px 35px rgb(25 30 52 / 4%); }
+.crm-calls-history > header { padding: 16px 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--crm-line); }
+.crm-calls-history > header p { margin: 0 0 4px; color: var(--crm-accent, #6857e8); font-size: 8px; font-weight: 850; letter-spacing: 1px; }
+.crm-calls-history > header h3 { margin: 0; font-size: 16px; }
+.crm-calls-filters { display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: var(--crm-soft, #f6f6f9); }
+.crm-calls-filters button { padding: 7px 11px; border: 0; border-radius: 8px; color: var(--crm-muted); background: transparent; font: inherit; font-size: 10px; font-weight: 750; text-transform: capitalize; cursor: pointer; }
+.crm-calls-filters button.active { color: var(--crm-ink); background: var(--crm-card, #fff); box-shadow: 0 2px 8px rgb(25 30 52 / 8%); }
+.crm-calls-history > .crm-inline-error { margin: 12px 18px 0; }
+.crm-calls-table-wrap { overflow-x: auto; }
+.crm-calls-table { width: 100%; border-collapse: collapse; min-width: 940px; }
+.crm-calls-table th { padding: 10px 13px; color: var(--crm-muted); background: var(--crm-soft, #fafafd); font-size: 8px; font-weight: 800; letter-spacing: .08em; text-align: left; text-transform: uppercase; }
+.crm-calls-table td { padding: 11px 13px; border-top: 1px solid var(--crm-line); color: var(--crm-ink); font-size: 10px; vertical-align: middle; }
+.crm-calls-table tr.needs-attention td:first-child { box-shadow: inset 3px 0 #ca3650; }
+.crm-calls-table td > strong,.crm-calls-table td > small { display: block; }
+.crm-calls-table td > small { margin-top: 3px; color: var(--crm-muted); }
+.crm-call-open { padding: 0; display: grid; grid-template-columns: 34px minmax(100px, 1fr); grid-template-rows: auto auto; gap: 1px 9px; border: 0; color: inherit; background: none; text-align: left; cursor: pointer; }
+.crm-call-open > span { grid-row: 1 / span 2; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; color: #5646ca; background: #eeebff; font-size: 10px; font-weight: 850; }
+.crm-call-open strong { align-self: end; font-size: 11px; }
+.crm-call-open small { align-self: start; color: var(--crm-muted); font-size: 9px; }
+.crm-call-direction { display: inline-flex; align-items: center; gap: 5px; text-transform: capitalize; }
+.crm-call-direction svg { width: 14px; height: 14px; color: var(--crm-muted); }
+.crm-call-list-status { display: inline-flex; padding: 4px 8px; border-radius: 999px; font-size: 8px; font-weight: 850; text-transform: capitalize; }
+.crm-call-list-status.answered { color: #13704a; background: #e9f7ef; }
+.crm-call-list-status.missed { color: #aa263c; background: #fff0f2; }
+.crm-call-list-status.pending { color: #755b1c; background: #fff7df; }
+.crm-call-lead-link { padding: 0; border: 0; color: var(--crm-accent, #6857e8); background: none; font: inherit; font-weight: 750; cursor: pointer; }
+.crm-call-back { padding: 7px 10px; border: 1px solid var(--crm-line); border-radius: 8px; color: var(--crm-ink); background: var(--crm-card, #fff); font: inherit; font-size: 9px; font-weight: 800; white-space: nowrap; cursor: pointer; }
+.crm-call-back:hover { border-color: var(--crm-accent, #6857e8); color: var(--crm-accent, #6857e8); }
+.crm-call-back:disabled { opacity: .5; cursor: wait; }
+.crm-calls-empty { min-height: 280px; padding: 40px; display: grid; place-items: center; align-content: center; gap: 8px; text-align: center; }
+.crm-calls-empty svg { width: 28px; height: 28px; color: var(--crm-muted); }
+.crm-calls-empty h3,.crm-calls-empty p { margin: 0; }
+.crm-calls-empty p { color: var(--crm-muted); font-size: 10px; }
+.crm-call-detail-scrim { position: fixed; z-index: 90; inset: 0; display: flex; justify-content: flex-end; background: rgb(15 18 30 / 34%); backdrop-filter: blur(2px); }
+.crm-call-detail { width: min(620px, 100%); height: 100%; padding: 22px; overflow-y: auto; color: var(--crm-ink); background: var(--crm-page, #f8f8fb); box-shadow: -20px 0 60px rgb(15 18 30 / 22%); }
+.crm-call-detail > header { display: flex; justify-content: space-between; gap: 15px; }
+.crm-call-detail > header p { margin: 0 0 5px; color: var(--crm-accent, #6857e8); font-size: 8px; font-weight: 850; letter-spacing: .1em; }
+.crm-call-detail > header h2 { margin: 0; font: 400 28px/1.1 var(--font-display), Georgia, serif; }
+.crm-call-detail > header span { display: block; margin-top: 5px; color: var(--crm-muted); font-size: 11px; }
+.crm-call-detail > header > button { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--crm-line); border-radius: 50%; color: var(--crm-ink); background: var(--crm-card, #fff); cursor: pointer; }
+.crm-call-detail > header > button svg { width: 16px; }
+.crm-call-detail-actions { margin: 18px 0; display: flex; gap: 8px; }
+.crm-call-detail-actions button { display: inline-flex; align-items: center; gap: 7px; }
+.crm-call-detail-actions svg { width: 15px; height: 15px; }
+.crm-call-detail-facts { margin: 0 0 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.crm-call-detail-facts > div { padding: 12px; border: 1px solid var(--crm-line); border-radius: 11px; background: var(--crm-card, #fff); }
+.crm-call-detail-facts dt { color: var(--crm-muted); font-size: 8px; font-weight: 800; text-transform: uppercase; }
+.crm-call-detail-facts dd { margin: 5px 0 0; font-size: 10px; font-weight: 750; }
+.crm-call-detail-facts dd small { display: block; margin-top: 3px; color: var(--crm-muted); font-weight: 500; }
+.crm-call-detail-facts button { padding: 0; border: 0; color: var(--crm-accent, #6857e8); background: none; font: inherit; font-weight: inherit; cursor: pointer; }
+.crm-call-detail .crm-lead-transcript-card { margin-top: 0; }
+.crm-mobile-call-badge { min-width: 15px; height: 15px; padding: 0 4px; display: inline-grid; place-items: center; border-radius: 999px; color: #fff; background: #bf2942; font-size: 8px; }
+
+@media (max-width: 900px) {
+  .crm-call-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .crm-calls-history > header { align-items: flex-start; flex-direction: column; }
+  .crm-calls-filters { max-width: 100%; overflow-x: auto; }
+}
+@media (max-width: 640px) {
+  .crm-call-metrics { grid-template-columns: 1fr 1fr; }
+  .crm-call-metrics article { min-height: 112px; padding: 13px; }
+  .crm-call-detail { padding: 17px; }
+  .crm-call-detail-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .crm-calls-attention { width: 100%; }
+}
+
 /* Full-page lead workspace */
 .crm-lead-page-layer {
   --crm-accent: #5b43ee;

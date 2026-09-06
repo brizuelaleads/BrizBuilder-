@@ -333,6 +333,19 @@ export type CrmPhoneCall = {
   missedCallTextSentAt: string | null;
 };
 
+/** A tenant-owned number that may receive calls or be selected for callbacks. */
+export type CrmPhoneNumber = {
+  id: string;
+  clientId: string;
+  connectionId: string | null;
+  provider: string;
+  phoneNumber: string;
+  displayName: string;
+  purpose: string | null;
+  isActive: boolean;
+  isDefault: boolean;
+};
+
 export type CrmConversation = {
   id: string;
   clientId: string;
@@ -378,7 +391,7 @@ export type CrmAutomationRun = {
 };
 
 /**
- * One tracked call, as the interface needs it.
+ * One provider-neutral call, as the interface needs it.
  *
  * Deliberately not the whole ingested row: no click ids, no session id, no
  * recording URL. A call is shown to somebody working a lead, and everything
@@ -390,7 +403,12 @@ export type CrmCall = {
   clientId: string;
   contactId: string | null;
   leadId: string | null;
-  /** CallRail's own id, and what the recording route resolves against. */
+  provider: string;
+  providerConnectionId: string | null;
+  providerCallId: string;
+  businessPhoneNumberId: string | null;
+  status: string;
+  /** Backward-compatible CallRail recording identity; empty for other providers. */
   callrailCallId: string;
   direction: string | null;
   answered: boolean | null;
@@ -413,6 +431,8 @@ export type CrmCall = {
   ingestStatus: string | null;
   transcriptStatus: string | null;
   appointmentStatus: string | null;
+  handledAt: string | null;
+  handledByCallId: string | null;
 };
 
 /**
@@ -655,6 +675,7 @@ export type CrmBootstrap = {
   companies: CrmCompany[];
   websites: CrmWebsite[];
   phoneConfigs: CrmPhoneConfig[];
+  phoneNumbers: CrmPhoneNumber[];
   phoneCalls: CrmPhoneCall[];
   conversations: CrmConversation[];
   messages: CrmMessage[];
@@ -1030,6 +1051,7 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
     reviewRequests: [],
     reviewSettings: [],
     phoneConfigs: [],
+    phoneNumbers: [],
     phoneCalls: [],
     conversations: [],
     messages: [],

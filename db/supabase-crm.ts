@@ -148,6 +148,7 @@ import type {
   CrmWebsite,
   CrmPhoneConfig,
   CrmPhoneCall,
+  CrmPhoneNumber,
   CrmConversation,
   CrmMessage,
   CrmAutomationRule,
@@ -171,6 +172,7 @@ import { resolveBranding } from "./branding";
 import { saveClientBranding } from "./supabase-branding";
 import { subscriptionCountForEmail } from "./supabase-push";
 import { hostBasedRoutingEnabled, tenantRootDomains } from "../lib/tenant-host";
+import { placeOutboundCall } from "../lib/outbound-calls";
 import {
   dispatchPushEvent,
   maybeNotifyHotLead,
@@ -3121,6 +3123,20 @@ function mapPhoneConfig(row: AnyRecord): CrmPhoneConfig {
   };
 }
 
+function mapPhoneNumber(row: AnyRecord): CrmPhoneNumber {
+  return {
+    id: String(row.id),
+    clientId: String(row.client_id),
+    connectionId: nullable(row.connection_id),
+    provider: String(row.provider),
+    phoneNumber: String(row.normalized_phone_number ?? row.phone_number),
+    displayName: String(row.display_name ?? row.phone_number),
+    purpose: nullable(row.purpose),
+    isActive: row.is_active !== false,
+    isDefault: row.is_default === true,
+  };
+}
+
 function mapPhoneCall(row: AnyRecord): CrmPhoneCall {
   return {
     id: String(row.id),
@@ -3134,6 +3150,63 @@ function mapPhoneCall(row: AnyRecord): CrmPhoneCall {
       row.duration_seconds == null ? null : Number(row.duration_seconds),
     startedAt: String(row.started_at),
     missedCallTextSentAt: nullable(row.missed_call_text_sent_at),
+  };
+}
+
+function mapUnifiedCall(row: AnyRecord): CrmCall {
+  const direction = nullable(row.direction);
+  const status = String(row.status ?? "unknown");
+  const answered =
+    typeof row.answered === "boolean"
+      ? row.answered
+      : ["completed", "in-progress", "answered"].includes(status.toLowerCase())
+        ? true
+        : ["no-answer", "busy", "failed", "canceled"].includes(status.toLowerCase())
+          ? false
+          : null;
+  const provider = String(row.provider ?? "twilio").toLowerCase();
+  const providerCallId = String(row.provider_call_id ?? row.provider_call_sid ?? "");
+  return {
+    id: String(row.id),
+    clientId: String(row.client_id),
+    contactId: nullable(row.contact_id),
+    leadId: nullable(row.lead_id),
+    provider,
+    providerConnectionId: nullable(row.provider_connection_id),
+    providerCallId,
+    businessPhoneNumberId: nullable(row.business_phone_number_id),
+    status,
+    callrailCallId: provider === "callrail" ? providerCallId : "",
+    direction,
+    answered,
+    durationSeconds:
+      row.duration_seconds == null ? null : Number(row.duration_seconds),
+    startedAt: nullable(row.started_at),
+    endedAt: nullable(row.ended_at),
+    trackingPhoneNumber: nullable(row.business_phone ?? row.to_number),
+    businessPhoneNumber: nullable(row.business_phone ?? row.from_number),
+    customerPhone: nullable(
+      row.customer_phone ??
+        (direction?.toLowerCase() === "outbound" ? row.to_number : row.from_number),
+    ),
+    customerName: nullable(row.customer_name),
+    source: nullable(row.source),
+    sourceName: nullable(row.source_name),
+    medium: nullable(row.medium),
+    campaign: nullable(row.campaign),
+    classification: nullable(row.classification),
+    callSummary: nullable(row.call_summary),
+    transcript: nullable(row.transcript),
+    recordingAvailable: row.recording_available === true,
+    recordingDurationSeconds:
+      row.recording_duration_seconds == null
+        ? null
+        : Number(row.recording_duration_seconds),
+    ingestStatus: null,
+    transcriptStatus: nullable(row.transcript_status),
+    appointmentStatus: null,
+    handledAt: nullable(row.handled_at),
+    handledByCallId: nullable(row.handled_by_call_id),
   };
 }
 
@@ -3403,6 +3476,7 @@ export async function getSupabaseCrmBootstrap(
     notes,
     auditEvents,
     phoneConfigs,
+    phoneNumbers,
     phoneCalls,
     conversations,
     messages,
@@ -3488,10 +3562,42 @@ export async function getSupabaseCrmBootstrap(
       }),
     ),
     assertOk(
-      query<AnyRecord>("phone_calls")
+      query<AnyRecord>(
+        "phone_numbers",
+        "id,client_id,connection_id,provider,phone_number,normalized_phone_number," +
+          "display_name,purpose,is_active,is_default",
+      ).order("display_name"),
+    ).catch((error) => {
+      console.error("Phone number registry is not migrated yet.", error);
+      return [] as AnyRecord[];
+    }),
+    assertOk(
+      query<AnyRecord>(
+        "phone_calls",
+        "id,client_id,contact_id,lead_id,provider_call_sid,provider," +
+          "provider_connection_id,provider_call_id,business_phone_number_id," +
+          "direction,from_number,to_number,status,answered,duration_seconds," +
+          "started_at,ended_at,customer_phone,business_phone,customer_name," +
+          "source,source_name,medium,campaign,classification,call_summary," +
+          "transcript,transcript_status,recording_available," +
+          "recording_duration_seconds,handled_at,handled_by_call_id," +
+          "missed_call_text_sent_at",
+      )
         .order("started_at", { ascending: false })
-        .limit(200),
-    ),
+        .limit(500),
+    ).catch((error) => {
+      console.error("Unified phone call fields are not migrated yet.", error);
+      return assertOk(
+        query<AnyRecord>(
+          "phone_calls",
+          "id,client_id,contact_id,lead_id,provider_call_sid,direction," +
+            "from_number,to_number,status,duration_seconds,started_at,ended_at," +
+            "recording_url,missed_call_text_sent_at",
+        )
+          .order("started_at", { ascending: false })
+          .limit(500),
+      );
+    }),
     assertOk(
       query<AnyRecord>(
         "conversations",
@@ -3662,6 +3768,8 @@ export async function getSupabaseCrmBootstrap(
   const taskRows = (tasks ?? []) as AnyRecord[];
   const appointmentRows = (appointments ?? []) as AnyRecord[];
   const noteRows = (notes ?? []) as AnyRecord[];
+  const phoneNumberRows = (phoneNumbers ?? []) as AnyRecord[];
+  const phoneCallRows = (phoneCalls ?? []) as AnyRecord[];
   const callRows = (callrailCalls ?? []) as AnyRecord[];
   const auditRows = (auditEvents ?? []) as AnyRecord[];
   const providerConnectionRows = (providerConnections ?? []) as AnyRecord[];
@@ -3674,6 +3782,64 @@ export async function getSupabaseCrmBootstrap(
     ((googleCredentialRefs ?? []) as AnyRecord[]).map((row) =>
       String(row.client_id),
     ),
+  );
+  const normalizedCalls = phoneCallRows.map(mapUnifiedCall);
+  const normalizedCallKeys = new Set(
+    normalizedCalls.map((call) => `${call.provider}:${call.providerCallId}`),
+  );
+  // During a rolling deployment the projection migration may not have copied
+  // every historical CallRail row yet. Keep those calls visible once, then the
+  // normalized row naturally wins after the trigger catches up.
+  for (const row of callRows) {
+    const providerCallId = String(row.callrail_call_id);
+    if (normalizedCallKeys.has(`callrail:${providerCallId}`)) continue;
+    normalizedCalls.push({
+      id: String(row.id),
+      clientId: String(row.client_id),
+      contactId: nullable(row.contact_id),
+      leadId: nullable(row.lead_id),
+      provider: "callrail",
+      providerConnectionId: null,
+      providerCallId,
+      businessPhoneNumberId: null,
+      status:
+        row.answered === true
+          ? "completed"
+          : row.answered === false
+            ? "no-answer"
+            : String(row.ingest_status ?? "processing"),
+      callrailCallId: providerCallId,
+      direction: nullable(row.direction),
+      answered: typeof row.answered === "boolean" ? row.answered : null,
+      durationSeconds:
+        typeof row.duration_seconds === "number" ? row.duration_seconds : null,
+      startedAt: nullable(row.started_at),
+      endedAt: nullable(row.ended_at),
+      trackingPhoneNumber: nullable(row.tracking_phone_number),
+      businessPhoneNumber: nullable(row.business_phone_number),
+      customerPhone: nullable(row.customer_phone_e164),
+      customerName: nullable(row.customer_name),
+      source: nullable(row.source),
+      sourceName: nullable(row.source_name),
+      medium: nullable(row.medium),
+      campaign: nullable(row.campaign),
+      classification: nullable(row.classification),
+      callSummary: nullable(row.call_summary),
+      transcript: nullable(row.transcript),
+      recordingAvailable: row.recording_available === true,
+      recordingDurationSeconds:
+        typeof row.recording_duration_seconds === "number"
+          ? row.recording_duration_seconds
+          : null,
+      ingestStatus: nullable(row.ingest_status),
+      transcriptStatus: nullable(row.transcript_status),
+      appointmentStatus: nullable(row.appointment_status),
+      handledAt: null,
+      handledByCallId: null,
+    });
+  }
+  normalizedCalls.sort((left, right) =>
+    (right.startedAt ?? "").localeCompare(left.startedAt ?? ""),
   );
   const legacyBalanceRows = providerConnectionRows.filter((row) => {
     const publicConfig =
@@ -3865,7 +4031,8 @@ export async function getSupabaseCrmBootstrap(
     companies: companyRows.map(mapCompany),
     websites: websiteRows.map(mapWebsite),
     phoneConfigs: ((phoneConfigs ?? []) as AnyRecord[]).map(mapPhoneConfig),
-    phoneCalls: ((phoneCalls ?? []) as AnyRecord[]).map(mapPhoneCall),
+    phoneNumbers: phoneNumberRows.map(mapPhoneNumber),
+    phoneCalls: phoneCallRows.map(mapPhoneCall),
     conversations: ((conversations ?? []) as AnyRecord[]).map(mapConversation),
     messages: ((messages ?? []) as AnyRecord[]).map(mapMessage),
     automationRules: ((automationRules ?? []) as AnyRecord[]).map(
@@ -4069,38 +4236,7 @@ export async function getSupabaseCrmBootstrap(
       authorEmail: "team",
       createdAt: String(row.created_at),
     })),
-    calls: callRows.map((row: AnyRecord): CrmCall => ({
-      id: String(row.id),
-      clientId: String(row.client_id),
-      contactId: nullable(row.contact_id),
-      leadId: nullable(row.lead_id),
-      callrailCallId: String(row.callrail_call_id),
-      direction: nullable(row.direction),
-      answered: typeof row.answered === "boolean" ? row.answered : null,
-      durationSeconds:
-        typeof row.duration_seconds === "number" ? row.duration_seconds : null,
-      startedAt: nullable(row.started_at),
-      endedAt: nullable(row.ended_at),
-      trackingPhoneNumber: nullable(row.tracking_phone_number),
-      businessPhoneNumber: nullable(row.business_phone_number),
-      customerPhone: nullable(row.customer_phone_e164),
-      customerName: nullable(row.customer_name),
-      source: nullable(row.source),
-      sourceName: nullable(row.source_name),
-      medium: nullable(row.medium),
-      campaign: nullable(row.campaign),
-      classification: nullable(row.classification),
-      callSummary: nullable(row.call_summary),
-      transcript: nullable(row.transcript),
-      recordingAvailable: row.recording_available === true,
-      recordingDurationSeconds:
-        typeof row.recording_duration_seconds === "number"
-          ? row.recording_duration_seconds
-          : null,
-      ingestStatus: nullable(row.ingest_status),
-      transcriptStatus: nullable(row.transcript_status),
-      appointmentStatus: nullable(row.appointment_status),
-    })),
+    calls: normalizedCalls,
     team: teamMembers,
     demoData: false,
     generatedAt: new Date().toISOString(),
@@ -4230,6 +4366,61 @@ export async function executeSupabaseCrmAction(
         ),
     );
     return { saved: true, theme };
+  }
+
+  if (action === "place_outbound_call") {
+    requirePermission(context, "opportunities.write");
+    const sourceCallId = requireText(input.callId, "Call", 100);
+    const result = await placeOutboundCall({
+      organizationId: context.organizationId,
+      allowedClientIds: clientAccessList(context),
+      callId: sourceCallId,
+    });
+    await audit(
+      context,
+      "phone.callback_started",
+      "phone_call",
+      result.callId,
+      { sourceCallId, provider: result.provider },
+    );
+    return result;
+  }
+
+  if (action === "mark_call_handled") {
+    requirePermission(context, "opportunities.write");
+    const callId = requireText(input.callId, "Call", 100);
+    const call = requireRow(
+      await assertOk(
+        supabase()
+          .from("phone_calls")
+          .select("id,client_id")
+          .eq("organization_id", context.organizationId)
+          .eq("id", callId)
+          .maybeSingle(),
+      ),
+      "Call not found.",
+    );
+    await requireClient(context, String(call.client_id));
+    await assertOk(
+      supabase()
+        .from("phone_calls")
+        .update({
+          handled_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", String(call.client_id))
+        .eq("id", callId),
+    );
+    await audit(
+      context,
+      "phone.call_handled",
+      "phone_call",
+      callId,
+      {},
+      String(call.client_id),
+    );
+    return { id: callId, handled: true };
   }
 
   if (action === "save_client_branding") {

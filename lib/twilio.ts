@@ -416,6 +416,50 @@ export async function sendTwilioMessage(input: {
   return { sid: payload.sid, status: payload.status || "queued" };
 }
 
+/**
+ * Starts a two-leg callback without exposing credentials or TwiML to the
+ * browser. The business/operator answers first, then Twilio dials the customer.
+ */
+export async function placeTwilioOutboundCall(input: {
+  accountSid: string;
+  fromNumber: string;
+  businessPhoneNumber: string;
+  customerPhoneNumber: string;
+}) {
+  const config = runtime();
+  const statusCallback = `${config.webhookBaseUrl}/api/twilio/outbound/status`;
+  const twiml =
+    `<Response><Dial callerId="${escapeTwiml(input.fromNumber)}" ` +
+    `action="${escapeTwiml(statusCallback)}" method="POST" answerOnBridge="true">` +
+    `<Number>${escapeTwiml(input.customerPhoneNumber)}</Number></Dial></Response>`;
+  const result = await twilioApi<{
+    sid: string;
+    status?: string;
+    date_created?: string;
+  }>(
+    input.accountSid,
+    `/2010-04-01/Accounts/${encodeURIComponent(input.accountSid)}/Calls.json`,
+    {
+      method: "POST",
+      body: {
+        To: input.businessPhoneNumber,
+        From: input.fromNumber,
+        Twiml: twiml,
+        StatusCallback: statusCallback,
+        StatusCallbackMethod: "POST",
+      },
+    },
+  );
+  if (!result.sid) throw new Error("Twilio did not return an outbound call ID.");
+  return {
+    sid: String(result.sid),
+    status: String(result.status ?? "queued"),
+    startedAt: result.date_created
+      ? new Date(result.date_created).toISOString()
+      : new Date().toISOString(),
+  };
+}
+
 function toBase64(bytes: Uint8Array) {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);

@@ -33,19 +33,14 @@ const AGENCY_ONLY_PERMISSIONS = [
   "reports.read",
 ];
 
-// Tabs a client user must never see in the sidebar.
-const AGENCY_ONLY_TABS = [
+const PRIMARY_TABS = [
+  "dashboard",
+  "leads",
+  "pipeline",
+  "calls",
+  "calendar",
+  "ads",
   "connections",
-  "phone-system",
-  "automations",
-  "profiles",
-  "forms",
-  "funnels",
-  "payments",
-  "ai",
-  "clients",
-  "custom-data",
-  "audit",
 ];
 
 function permissionArray(source, name) {
@@ -154,31 +149,19 @@ test("client roles keep exactly the capabilities their own tabs need", () => {
   assert.ok(!rolePermissions(supabaseSource, "CLIENT_EMPLOYEE").includes("calendar.connect"));
 });
 
-test("agency-only tabs stay flagged while permission-gated pages follow capabilities", () => {
-  for (const id of AGENCY_ONLY_TABS) {
+test("the seven primary tabs are shared while sensitive pages follow capabilities", () => {
+  for (const id of PRIMARY_TABS) {
     const entry = appSource.match(
       new RegExp(`\\{[^{}]*id: "${id}"[^{}]*\\}`, "s"),
     )?.[0];
     assert.ok(entry, `nav entry for ${id} exists`);
-    assert.match(entry, /agencyOnly: true/, `${id} must be agency-only`);
+    assert.doesNotMatch(entry, /agencyOnly|permission:/, `${id} must be shared`);
   }
-  const team = appSource.match(/\{[^{}]*id: "team"[^{}]*\}/s)?.[0];
-  assert.ok(team, "team nav entry exists");
-  assert.doesNotMatch(team, /agencyOnly/, "Team is permission-gated, not agency-only");
-  assert.match(team, /permission: "team\.manage"/);
   assert.match(
     appSource,
     /view === "team" && data\.viewer\.permissions\.includes\("team\.manage"\)/,
     "Team must render for permitted client owners, not only agency users",
   );
-  const settings = appSource.match(/\{[^{}]*id: "settings"[^{}]*\}/s)?.[0];
-  assert.ok(settings, "settings nav entry exists");
-  assert.doesNotMatch(
-    settings,
-    /agencyOnly/,
-    "Client App settings follow the existing branding permission, not a role-name check",
-  );
-  assert.match(settings, /permission: "clients\.manage"/);
   assert.match(
     appSource,
     /view === "settings" && data\.viewer\.permissions\.includes\("clients\.manage"\)/,
@@ -212,7 +195,7 @@ test("every nav item declares a section so hiding tabs cannot orphan a label", (
   const navBlock = appSource.match(/const nav: Array<\{[\s\S]*?\n\];/)?.[0];
   assert.ok(navBlock, "nav array exists");
   const entries = navBlock.match(/\{[^{}]*id: "[a-z-]+"[^{}]*\}/gs) ?? [];
-  assert.ok(entries.length >= 20, "found the nav entries");
+  assert.equal(entries.length, PRIMARY_TABS.length, "found exactly the seven primary nav entries");
   for (const entry of entries) {
     assert.match(entry, /section: "/, `nav entry missing a section: ${entry.slice(0, 60)}`);
   }

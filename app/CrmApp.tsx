@@ -10,36 +10,19 @@ import {
 } from "react";
 import {
   Bell,
-  BriefcaseBusiness,
-  Building2,
   CalendarDays,
-  ChartNoAxesCombined,
   CircleUserRound,
-  ContactRound,
-  CreditCard,
-  Database,
-  FileText,
   Funnel,
-  Globe2,
-  History,
   KeyRound,
   LayoutDashboard,
-  ListChecks,
   LogOut,
-  MapPin,
   Megaphone,
   Menu,
-  MessageSquareText,
   PhoneCall,
   Plus,
   Plug,
   Search,
-  Settings as SettingsIcon,
-  Sparkles,
-  Star,
   UserRoundSearch,
-  UsersRound,
-  Workflow,
   X,
 } from "lucide-react";
 import { BrandLogo } from "./components/BrandLogo";
@@ -88,12 +71,15 @@ import { GoogleProfilesView } from "./crm/GoogleProfilesView";
 import { PaymentsView } from "./crm/PaymentsView";
 import { ReviewsView } from "./crm/ReviewsView";
 import { AiConnectorView } from "./crm/AiConnectorView";
+import { CallsView } from "./crm/CallsView";
 import { Badge, initials, Modal } from "./crm/ui";
+import { callNeedsFollowUp } from "../lib/call-attention";
 
 type View =
   | "dashboard"
   | "leads"
   | "pipeline"
+  | "calls"
   | "contacts"
   | "companies"
   | "calendar"
@@ -150,136 +136,24 @@ const nav: Array<{
   section?: string;
   preview?: boolean;
 }> = [
-  // Every item carries an explicit section so hiding agency-only tabs can never
-  // orphan a section label onto an unrelated item below it.
-  // agencyOnly marks the tabs a client user must never see; their underlying
-  // permissions are withheld from client roles too, so this is defence in depth
-  // rather than the only gate.
   { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard />, section: "MAIN" },
   { id: "leads", label: "Leads", icon: <UserRoundSearch />, section: "MAIN" },
-  { id: "contacts", label: "Contacts", icon: <ContactRound />, section: "MAIN" },
-  {
-    id: "companies",
-    label: "Companies",
-    icon: <Building2 />,
-    section: "MAIN",
-    permission: "companies.write",
-  },
+  { id: "pipeline", label: "Pipeline", icon: <Funnel />, section: "MAIN" },
+  { id: "calls", label: "Calls", icon: <PhoneCall />, section: "MAIN" },
   { id: "calendar", label: "Calendar", icon: <CalendarDays />, section: "MAIN" },
-  { id: "tasks", label: "Tasks", icon: <ListChecks />, section: "MAIN" },
-  { id: "ads", label: "Ads", icon: <Megaphone />, section: "MAIN", permission: "reports.read" },
-  {
-    id: "conversations",
-    label: "Conversations",
-    icon: <MessageSquareText />,
-    section: "COMMUNICATIONS",
-    permission: "messages.write",
-  },
-  {
-    id: "connections",
-    label: "Connections",
-    icon: <Plug />,
-    section: "COMMUNICATIONS",
-    agencyOnly: true,
-    permission: "phone_system.manage",
-  },
-  {
-    id: "phone-system",
-    label: "Phone & Texting",
-    icon: <PhoneCall />,
-    section: "COMMUNICATIONS",
-    agencyOnly: true,
-    permission: "phone_system.manage",
-  },
-  {
-    id: "automations",
-    label: "Automations",
-    icon: <Workflow />,
-    section: "COMMUNICATIONS",
-    agencyOnly: true,
-    permission: "automations.manage",
-  },
-  { id: "websites", label: "Websites", icon: <Globe2 />, section: "GROWTH" },
-  {
-    id: "reviews",
-    label: "Reviews",
-    icon: <Star />,
-    section: "GROWTH",
-    permission: "reviews.read",
-  },
-  {
-    id: "profiles",
-    label: "Google Profiles",
-    icon: <MapPin />,
-    section: "GROWTH",
-    agencyOnly: true,
-    permission: "profiles.manage",
-  },
-  {
-    id: "forms",
-    label: "Forms",
-    icon: <FileText />,
-    section: "GROWTH",
-    agencyOnly: true,
-    preview: true,
-  },
-  {
-    id: "funnels",
-    label: "Funnels",
-    icon: <Funnel />,
-    section: "GROWTH",
-    agencyOnly: true,
-    preview: true,
-  },
-  { id: "reports", label: "Reports", icon: <ChartNoAxesCombined />, section: "BUSINESS", permission: "reports.read" },
-  {
-    id: "payments",
-    label: "Payments",
-    icon: <CreditCard />,
-    section: "BUSINESS",
-    agencyOnly: true,
-    permission: "payments.manage",
-  },
-  {
-    id: "clients",
-    label: "Sub-accounts",
-    icon: <BriefcaseBusiness />,
-    section: "BUSINESS",
-    agencyOnly: true,
-    permission: "clients.manage",
-  },
-  // Client owners manage their own staff here; the server restricts them to
-  // client roles inside their own sub-account.
-  { id: "team", label: "Team", icon: <UsersRound />, section: "BUSINESS", permission: "team.manage" },
-  {
-    id: "ai",
-    label: "AI Connector",
-    icon: <Sparkles />,
-    section: "TOOLS",
-    agencyOnly: true,
-    permission: "ai_connector.manage",
-  },
-  {
-    id: "custom-data",
-    label: "Custom data",
-    icon: <Database />,
-    section: "TOOLS",
-    agencyOnly: true,
-    permission: "custom_data.manage",
-  },
-  {
-    id: "audit",
-    label: "Audit log",
-    icon: <History />,
-    section: "TOOLS",
-    agencyOnly: true,
-    permission: "audit.read",
-  },
-  { id: "settings", label: "Settings", icon: <SettingsIcon />, section: "TOOLS", permission: "clients.manage" },
+  { id: "ads", label: "Ads", icon: <Megaphone />, section: "MAIN" },
+  { id: "connections", label: "Connections", icon: <Plug />, section: "MAIN" },
 ];
 
 const viewChangeEvent = "brizuela:crm-view-change";
-const nestedViews: View[] = ["pipeline"];
+// Existing routes stay valid for deep links and in-product secondary actions,
+// but only the seven entries above appear in primary navigation.
+const nestedViews: View[] = [
+  "contacts", "companies", "tasks", "clients", "reports", "websites",
+  "profiles", "reviews", "payments", "phone-system", "conversations",
+  "automations", "ai", "custom-data", "audit", "team", "settings",
+  ...futureModules,
+];
 
 function roleLabel(role: CrmRole) {
   const labels: Record<CrmRole, string> = {
@@ -371,17 +245,15 @@ export function CrmApp({
     (client) => client.id === effectiveSelectedClientId,
   );
   const workspaceName = scopedClient?.businessName ?? data.organization.name;
-  const view =
-    requestedView === "pipeline" &&
-    visibleNav.some((item) => item.id === "leads")
-      ? requestedView
-      : visibleNav.some((item) => item.id === requestedView)
-        ? requestedView
-        : "dashboard";
+  const requested = requestedView as View;
+  const view: View =
+    visibleNav.some((item) => item.id === requested) ||
+    nestedViews.includes(requested)
+      ? requested
+      : "dashboard";
   const title =
-    view === "pipeline"
-      ? "Leads"
-      : visibleNav.find((item) => item.id === view)?.label ?? "Dashboard";
+    visibleNav.find((item) => item.id === view)?.label ??
+    view.replaceAll("-", " ").replace(/^\w/u, (letter) => letter.toUpperCase());
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -552,6 +424,15 @@ export function CrmApp({
       (effectiveSelectedClientId === "all" ||
         call.clientId === effectiveSelectedClientId) &&
       (!rangeCutoff || crmTimestamp(call.startedAt) >= rangeCutoff),
+  );
+  const filteredCalls = data.calls.filter(
+    (call) =>
+      (effectiveSelectedClientId === "all" ||
+        call.clientId === effectiveSelectedClientId) &&
+      (!rangeCutoff || crmTimestamp(call.startedAt) >= rangeCutoff),
+  );
+  const missedCallsNeedingFollowUp = filteredCalls.filter((call) =>
+    callNeedsFollowUp(call, data.calls),
   );
   // Ad spend follows the same client and date filters as everything else on the
   // dashboard, so a cost-per-lead figure is always spend and leads measured
@@ -772,8 +653,10 @@ export function CrmApp({
   const topbarDetail =
     view === "leads"
       ? `${filteredLeads.length} ${filteredLeads.length === 1 ? "lead" : "leads"}`
-      : view === "pipeline"
-        ? `${workspaceLeads.length} ${workspaceLeads.length === 1 ? "lead" : "leads"}`
+       : view === "pipeline"
+         ? `${workspaceLeads.length} ${workspaceLeads.length === 1 ? "lead" : "leads"}`
+       : view === "calls"
+         ? `${filteredCalls.length} ${filteredCalls.length === 1 ? "call" : "calls"}`
       : view === "contacts"
         ? `${filteredContacts.length} ${filteredContacts.length === 1 ? "contact" : "contacts"}`
         : view === "companies"
@@ -787,7 +670,7 @@ export function CrmApp({
                 : view === "team"
                   ? `${data.team.length} ${data.team.length === 1 ? "team member" : "team members"}`
                   : null;
-  const showRangeFilter = ["dashboard", "leads", "reports", "ads"].includes(
+  const showRangeFilter = ["dashboard", "leads", "calls", "reports", "ads"].includes(
     view,
   );
 
@@ -905,15 +788,13 @@ export function CrmApp({
               ) : null}
               <button
                 className={
-                  view === item.id ||
-                  (item.id === "leads" && view === "pipeline")
+                  view === item.id
                     ? "active"
                     : ""
                 }
                 onClick={() => navigate(item.id)}
                 aria-current={
-                  view === item.id ||
-                  (item.id === "leads" && view === "pipeline")
+                  view === item.id
                     ? "page"
                     : undefined
                 }
@@ -928,6 +809,9 @@ export function CrmApp({
                     }
                   </em>
                 )}
+                {item.id === "calls" && missedCallsNeedingFollowUp.length > 0 ? (
+                  <em>{missedCallsNeedingFollowUp.length}</em>
+                ) : null}
                 {item.id === "tasks" && (
                   <em>
                     {
@@ -1248,6 +1132,17 @@ export function CrmApp({
             onShowList={() => navigate("leads")}
           />
         )}
+        {view === "calls" && (
+          <CallsView
+            calls={filteredCalls}
+            allCalls={data.calls}
+            leads={data.leads}
+            clients={data.clients}
+            phoneNumbers={data.phoneNumbers}
+            mutate={mutate}
+            onOpenLead={openLead}
+          />
+        )}
         {view === "contacts" && (
           <FoundationContactsView
             contacts={filteredContacts}
@@ -1392,7 +1287,7 @@ export function CrmApp({
               "billing.read_shared",
             )}
             onOpenAiConnector={openAiConnector}
-            onViewCalls={() => navigate("conversations")}
+            onViewCalls={() => navigate("calls")}
           />
         )}
         {view === "phone-system" && (
@@ -1498,16 +1393,17 @@ export function CrmApp({
           <UserRoundSearch aria-hidden="true" />
           Leads
         </button>
-        {visibleNav.some((item) => item.id === "conversations") ? (
-          <button
-            type="button"
-            className={view === "conversations" ? "active" : ""}
-            onClick={() => navigate("conversations")}
-          >
-            <MessageSquareText aria-hidden="true" />
-            Conversations
-          </button>
-        ) : null}
+        <button
+          type="button"
+          className={view === "calls" ? "active" : ""}
+          onClick={() => navigate("calls")}
+        >
+          <PhoneCall aria-hidden="true" />
+          Calls
+          {missedCallsNeedingFollowUp.length ? (
+            <span className="crm-mobile-call-badge">{missedCallsNeedingFollowUp.length}</span>
+          ) : null}
+        </button>
         <button
           type="button"
           className={view === "calendar" ? "active" : ""}

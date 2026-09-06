@@ -337,17 +337,14 @@ test("Client App settings are discoverable and gated by the existing permission"
   assert.match(operationsViews, /setSection\("branding"\)/);
   assert.match(
     crmAppSource,
-    /id: "settings"[^\n]*permission: "clients\.manage"/,
+    /onClick=\{\(\) => navigate\("settings"\)\}/,
+    "account settings remain discoverable outside the primary seven tabs",
   );
   assert.match(
     crmAppSource,
     /view === "settings" && data\.viewer\.permissions\.includes\("clients\.manage"\)/,
   );
-  assert.doesNotMatch(
-    crmAppSource,
-    /id: "settings"[^\n]*agencyOnly: true/,
-    "a client role with the explicit permission is not blocked by a second role-name check",
-  );
+  assert.doesNotMatch(crmAppSource, /view === "settings"[^\n]*isAgency/);
 });
 
 test("Client App form reuses branding storage and never leaks unsaved state across tenants", () => {

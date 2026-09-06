@@ -262,7 +262,7 @@ test("the Ads tab is a main tab and respects the workspace date range", () => {
   // A daily "is the money working" question belongs beside Dashboard and
   // Leads, not filed under channel setup.
   assert.match(crmApp, /id: "ads", label: "Ads", icon: <Megaphone \/>, section: "MAIN"/);
-  assert.match(crmApp, /\["dashboard", "leads", "reports", "ads"\]/);
+  assert.match(crmApp, /\["dashboard", "leads", "calls", "reports", "ads"\]/);
   assert.match(crmApp, /view === "ads" && \(/);
 });
 

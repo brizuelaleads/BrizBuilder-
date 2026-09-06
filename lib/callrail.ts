@@ -370,6 +370,7 @@ type CallRailEndpoint =
   | "companies.get"
   | "calls.list"
   | "calls.get"
+  | "calls.create"
   | "calls.recording"
   | "integrations.list"
   | "integrations.write"
@@ -987,6 +988,58 @@ export async function getCallRailCall(
   );
   const call = mapCall(body);
   return { ...call, id: call.id || safeCallId };
+}
+
+/**
+ * Starts CallRail's two-leg callback flow. CallRail calls the business first,
+ * then connects the customer while presenting the selected tracking number.
+ * Every number comes from the server-side tenant route resolver.
+ */
+export async function placeCallRailOutboundCall(input: {
+  accountId: string;
+  apiKey: string;
+  callerId: string;
+  businessPhoneNumber: string;
+  customerPhoneNumber: string;
+  recordingEnabled?: boolean;
+}): Promise<CallRailCall> {
+  const accountId = assertCallRailAccountId(input.accountId);
+  const northAmerican = (value: string, label: string) => {
+    const digits = value.replace(/\D/gu, "");
+    const local = digits.length === 11 && digits.startsWith("1")
+      ? digits.slice(1)
+      : digits;
+    if (!/^\d{10}$/u.test(local)) {
+      throw new Error(`${label} must be a US or Canadian phone number.`);
+    }
+    return `+1${local}`;
+  };
+  const row = await callRailRequest(
+    `/a/${accountId}/calls.json`,
+    input.apiKey,
+    {
+      method: "POST",
+      body: {
+        caller_id: northAmerican(input.callerId, "Caller ID"),
+        business_phone_number: northAmerican(
+          input.businessPhoneNumber,
+          "Business phone number",
+        ),
+        customer_phone_number: northAmerican(
+          input.customerPhoneNumber,
+          "Customer phone number",
+        ),
+        recording_enabled: input.recordingEnabled === true,
+      },
+    },
+    "calls.create",
+  );
+  // Reuse the canonical response mapper without making a second provider read;
+  // a callback may already be ringing when this request returns.
+  const createdCallMapper: (value: Record<string, unknown>) => CallRailCall = mapCall;
+  const call = createdCallMapper(row);
+  if (!call.id) throw new Error("CallRail did not return an outbound call ID.");
+  return call;
 }
 
 /**

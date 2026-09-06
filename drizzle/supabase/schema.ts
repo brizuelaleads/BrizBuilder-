@@ -188,6 +188,7 @@ export const contacts = pgTable(
     lastInteractionAt: timestamp("last_interaction_at", {
       withTimezone: true,
     }),
+    lastInboundPhoneNumberId: uuid("last_inbound_phone_number_id"),
     createdAt,
     updatedAt,
     archivedAt: timestamp("archived_at", { withTimezone: true }),
@@ -274,6 +275,7 @@ export const leads = pgTable(
     consentStatus: text("consent_status").notNull().default("unknown"),
     lostReason: text("lost_reason"),
     lastContactedAt: timestamp("last_contacted_at", { withTimezone: true }),
+    lastInboundPhoneNumberId: uuid("last_inbound_phone_number_id"),
     nextFollowUpAt: timestamp("next_follow_up_at", { withTimezone: true }),
     createdAt,
     updatedAt,
@@ -330,6 +332,32 @@ export const phoneSystemConfigs = pgTable("phone_system_configs", {
   updatedAt,
 }, (table) => [uniqueIndex("phone_configs_org_client_uidx").on(table.organizationId, table.clientId), index("phone_configs_number_idx").on(table.phoneNumber)]);
 
+export const phoneNumbers = pgTable("phone_numbers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  connectionId: uuid("connection_id"),
+  provider: text("provider").notNull(),
+  phoneNumber: text("phone_number").notNull(),
+  normalizedPhoneNumber: text("normalized_phone_number").notNull(),
+  displayName: text("display_name").notNull(),
+  purpose: text("purpose"),
+  providerNumberId: text("provider_number_id"),
+  providerConfig: jsonb("provider_config").notNull().default({}),
+  isActive: boolean("is_active").notNull().default(true),
+  isDefault: boolean("is_default").notNull().default(false),
+  createdAt,
+  updatedAt,
+}, (table) => [
+  uniqueIndex("phone_numbers_tenant_provider_number_uidx").on(
+    table.organizationId,
+    table.clientId,
+    table.provider,
+    table.normalizedPhoneNumber,
+  ),
+  index("phone_numbers_scope_idx").on(table.organizationId, table.clientId, table.isActive),
+]);
+
 export const conversations = pgTable("conversations", {
   id: uuid("id").primaryKey().defaultRandom(),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
@@ -351,11 +379,31 @@ export const phoneCalls = pgTable("phone_calls", {
   contactId: uuid("contact_id").references(() => contacts.id, { onDelete: "set null" }),
   leadId: uuid("lead_id").references(() => leads.id, { onDelete: "set null" }),
   providerCallSid: text("provider_call_sid").notNull().unique(),
+  provider: text("provider").notNull().default("twilio"),
+  providerConnectionId: uuid("provider_connection_id"),
+  providerCallId: text("provider_call_id").notNull(),
+  businessPhoneNumberId: uuid("business_phone_number_id").references(() => phoneNumbers.id, { onDelete: "set null" }),
   direction: text("direction").notNull().default("inbound"),
   fromNumber: text("from_number").notNull(),
   toNumber: text("to_number").notNull(),
   forwardedTo: text("forwarded_to"),
   status: text("status").notNull().default("initiated"),
+  answered: boolean("answered"),
+  customerPhone: text("customer_phone"),
+  businessPhone: text("business_phone"),
+  customerName: text("customer_name"),
+  source: text("source"),
+  sourceName: text("source_name"),
+  medium: text("medium"),
+  campaign: text("campaign"),
+  classification: text("classification"),
+  callSummary: text("call_summary"),
+  transcript: text("transcript"),
+  transcriptStatus: text("transcript_status"),
+  recordingAvailable: boolean("recording_available").notNull().default(false),
+  recordingDurationSeconds: integer("recording_duration_seconds"),
+  handledAt: timestamp("handled_at", { withTimezone: true }),
+  handledByCallId: uuid("handled_by_call_id"),
   answeredBy: text("answered_by"),
   durationSeconds: integer("duration_seconds"),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
@@ -364,7 +412,16 @@ export const phoneCalls = pgTable("phone_calls", {
   rawEvent: jsonb("raw_event").notNull().default({}),
   createdAt,
   updatedAt,
-}, (table) => [index("phone_calls_scope_time_idx").on(table.organizationId, table.clientId, table.startedAt)]);
+}, (table) => [
+  index("phone_calls_scope_time_idx").on(table.organizationId, table.clientId, table.startedAt),
+  uniqueIndex("phone_calls_tenant_provider_call_uidx").on(
+    table.organizationId,
+    table.clientId,
+    table.provider,
+    table.providerCallId,
+  ),
+  index("phone_calls_customer_time_idx").on(table.organizationId, table.clientId, table.customerPhone, table.startedAt),
+]);
 
 export const messages = pgTable("messages", {
   id: uuid("id").primaryKey().defaultRandom(),

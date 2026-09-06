@@ -43,12 +43,68 @@ async function verifiedForm(request: Request) {
   return valid ? form : null;
 }
 
-async function configForNumber(number: string) {
+async function configForNumber(number: string, accountSid: string) {
+  const normalized = (() => {
+    const digits = number.replace(/\D/gu, "");
+    if (digits.length === 10) return `+1${digits}`;
+    if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+    return number;
+  })();
+  const connectionRows = await db()
+    .from("provider_connections")
+    .select("id")
+    .eq("provider", "twilio")
+    .eq("external_account_id", accountSid)
+    .not("status", "in", '("disconnected","not_connected","revoked")');
+  if (connectionRows.error) throw new Error(connectionRows.error.message);
+  const connectionIds = (connectionRows.data ?? []).map((row) => String(row.id));
+  const registered = connectionIds.length ? await db()
+    .from("phone_numbers")
+    .select("id,organization_id,client_id,connection_id,phone_number,display_name,purpose,provider_config")
+    .eq("provider", "twilio")
+    .eq("normalized_phone_number", normalized)
+    .eq("is_active", true)
+    .in("connection_id", connectionIds)
+    .limit(2) : { data: [], error: null };
+  if (registered.error) throw new Error(registered.error.message);
+  if ((registered.data ?? []).length > 1) return null;
+  const registeredNumber = registered.data?.[0];
+  if (registeredNumber) {
+    const numberConfig =
+      registeredNumber.provider_config &&
+      typeof registeredNumber.provider_config === "object" &&
+      !Array.isArray(registeredNumber.provider_config)
+        ? (registeredNumber.provider_config as Row)
+        : {};
+    const config = await db()
+      .from("phone_system_configs")
+      .select("*,clients(business_name)")
+      .eq("organization_id", registeredNumber.organization_id)
+      .eq("client_id", registeredNumber.client_id)
+      .eq("provider", "twilio")
+      .maybeSingle();
+    if (config.error) throw new Error(config.error.message);
+    return config.data
+      ? ({
+          ...config.data,
+          phone_number: registeredNumber.phone_number,
+          phone_number_registry_id: registeredNumber.id,
+          provider_connection_id: registeredNumber.connection_id,
+          forwarding_number:
+            typeof numberConfig.forwardingNumber === "string"
+              ? numberConfig.forwardingNumber
+              : config.data.forwarding_number,
+          phone_number_display_name:
+            registeredNumber.display_name ?? registeredNumber.purpose,
+        } as Row)
+      : null;
+  }
   const { data, error } = await db()
     .from("phone_system_configs")
     .select("*,clients(business_name)")
     .eq("phone_number", number)
     .eq("provider", "twilio")
+    .eq("provider_account_sid", accountSid)
     .maybeSingle();
   if (error) throw new Error(error.message);
   return data as Row | null;
@@ -57,6 +113,34 @@ async function configForNumber(number: string) {
 async function findOrCreateContact(config: Row, from: string) {
   const organizationId = String(config.organization_id);
   const clientId = String(config.client_id);
+  const canonical = (() => {
+    const digits = from.replace(/\D/gu, "");
+    if (digits.length === 10) return `+1${digits}`;
+    if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+    return /^\+[1-9]\d{7,14}$/u.test(from) ? from : null;
+  })();
+  if (canonical) {
+    const matched = await db().rpc("find_or_create_phone_contact", {
+      p_organization_id: organizationId,
+      p_client_id: clientId,
+      p_phone_e164: canonical,
+      p_first_name: "Phone",
+      p_last_name: "Caller",
+      p_city: null,
+      p_state: null,
+      p_provider: "twilio",
+    });
+    if (matched.error) throw new Error(matched.error.message);
+    const contact = await db()
+      .from("contacts")
+      .select("id,phone,marketing_consent,first_name,last_name")
+      .eq("organization_id", organizationId)
+      .eq("client_id", clientId)
+      .eq("id", String(matched.data))
+      .single();
+    if (contact.error) throw new Error(contact.error.message);
+    return contact.data as Row;
+  }
   const existing = await db()
     .from("contacts")
     .select("id,phone,marketing_consent,first_name,last_name")
@@ -83,6 +167,71 @@ async function findOrCreateContact(config: Row, from: string) {
     .single();
   if (created.error) throw new Error(created.error.message);
   return created.data as Row;
+}
+
+async function findOrCreateLead(config: Row, contactId: string, startedAt: string) {
+  const result = await db().rpc("find_or_create_phone_lead", {
+    p_organization_id: String(config.organization_id),
+    p_client_id: String(config.client_id),
+    p_contact_id: contactId,
+    p_provider: "twilio",
+    p_message: "Incoming phone call",
+    p_campaign: null,
+    p_lead_score: 50,
+    p_attribution: {},
+    p_meta_eligible: false,
+    p_meta_eligibility_reason: "no_validated_meta_session",
+    p_first_contacted_at: startedAt,
+    p_last_contacted_at: startedAt,
+    p_field_provenance: {
+      source: {
+        source: "twilio",
+        confidence: 1,
+        verified: false,
+        updatedAt: new Date().toISOString(),
+      },
+    },
+  });
+  if (result.error) throw new Error(result.error.message);
+  const rows = Array.isArray(result.data) ? result.data : [];
+  if (!rows[0]?.lead_id) throw new Error("Phone lead matching returned no lead.");
+  return String(rows[0].lead_id);
+}
+
+async function contactAndLeadForCall(
+  config: Row,
+  from: string,
+  callSid: string,
+  startedAt: string,
+) {
+  if (callSid) {
+    const existing = await db()
+      .from("phone_calls")
+      .select("contact_id,lead_id")
+      .eq("organization_id", String(config.organization_id))
+      .eq("client_id", String(config.client_id))
+      .eq("provider", "twilio")
+      .eq("provider_call_sid", callSid)
+      .maybeSingle();
+    if (existing.error) throw new Error(existing.error.message);
+    if (existing.data?.contact_id && existing.data.lead_id) {
+      const contact = await db()
+        .from("contacts")
+        .select("id,phone,marketing_consent,first_name,last_name")
+        .eq("organization_id", String(config.organization_id))
+        .eq("client_id", String(config.client_id))
+        .eq("id", String(existing.data.contact_id))
+        .maybeSingle();
+      if (contact.error) throw new Error(contact.error.message);
+      if (contact.data) {
+        return { contact: contact.data as Row, leadId: String(existing.data.lead_id) };
+      }
+    }
+  }
+
+  const contact = await findOrCreateContact(config, from);
+  const leadId = await findOrCreateLead(config, String(contact.id), startedAt);
+  return { contact, leadId };
 }
 
 async function conversationFor(
@@ -146,7 +295,7 @@ export async function handleIncomingVoice(request: Request) {
   const from = form.get("From") ?? "";
   const to = form.get("To") ?? "";
   const callSid = form.get("CallSid") ?? "";
-  const config = await configForNumber(to);
+  const config = await configForNumber(to, form.get("AccountSid") ?? "");
   if (
     !config ||
     config.provider_status !== "connected" ||
@@ -155,7 +304,13 @@ export async function handleIncomingVoice(request: Request) {
     return xml(
       "<Response><Say>This phone line is not configured yet.</Say></Response>",
     );
-  const contact = await findOrCreateContact(config, from);
+  const startedAt = new Date().toISOString();
+  const { contact, leadId } = await contactAndLeadForCall(
+    config,
+    from,
+    callSid,
+    startedAt,
+  );
   const upsert = await db()
     .from("phone_calls")
     .upsert(
@@ -163,13 +318,25 @@ export async function handleIncomingVoice(request: Request) {
         organization_id: config.organization_id,
         client_id: config.client_id,
         contact_id: contact.id,
+        lead_id: leadId,
         provider_call_sid: callSid,
+        provider: "twilio",
+        provider_connection_id: config.provider_connection_id,
+        provider_call_id: callSid,
+        business_phone_number_id: config.phone_number_registry_id,
         direction: "inbound",
         from_number: from,
         to_number: to,
+        customer_phone: from,
+        business_phone: to,
+        customer_name: form.get("CallerName"),
+        source: "Twilio",
+        source_name: config.phone_number_display_name,
+        transcript_status: "unavailable",
         forwarded_to: config.forwarding_number,
         status: "ringing",
-        started_at: new Date().toISOString(),
+        answered: null,
+        started_at: startedAt,
         raw_event: Object.fromEntries(form.entries()),
         updated_at: new Date().toISOString(),
       },
@@ -190,9 +357,18 @@ export async function handleVoiceStatus(request: Request) {
   const callSid = form.get("CallSid") ?? "";
   const callStatus =
     form.get("DialCallStatus") || form.get("CallStatus") || "completed";
-  const config = await configForNumber(to);
+  const config = await configForNumber(to, form.get("AccountSid") ?? "");
   if (!config) return xml();
-  const contact = await findOrCreateContact(config, from);
+  const startedAt =
+    form.get("Timestamp") && Number.isFinite(Date.parse(String(form.get("Timestamp"))))
+      ? new Date(String(form.get("Timestamp"))).toISOString()
+      : new Date().toISOString();
+  const { contact, leadId } = await contactAndLeadForCall(
+    config,
+    from,
+    callSid,
+    startedAt,
+  );
   const missed = new Set(["no-answer", "busy", "failed", "canceled"]).has(
     callStatus,
   );
@@ -203,12 +379,24 @@ export async function handleVoiceStatus(request: Request) {
         organization_id: config.organization_id,
         client_id: config.client_id,
         contact_id: contact.id,
+        lead_id: leadId,
         provider_call_sid: callSid,
+        provider: "twilio",
+        provider_connection_id: config.provider_connection_id,
+        provider_call_id: callSid,
+        business_phone_number_id: config.phone_number_registry_id,
         direction: "inbound",
         from_number: from,
         to_number: to,
+        customer_phone: from,
+        business_phone: to,
+        customer_name: form.get("CallerName"),
+        source: "Twilio",
+        source_name: config.phone_number_display_name,
+        transcript_status: "unavailable",
         forwarded_to: config.forwarding_number,
         status: callStatus,
+        answered: !missed,
         duration_seconds: Number(
           form.get("DialCallDuration") || form.get("CallDuration") || 0,
         ),
@@ -387,6 +575,67 @@ export async function handleVoiceStatus(request: Request) {
   return xml();
 }
 
+/** Signed status updates for callbacks initiated by the common call service. */
+export async function handleOutboundVoiceStatus(request: Request) {
+  const form = await verifiedForm(request);
+  if (!form) return xml("<Response></Response>", 403);
+  const callSid = form.get("CallSid") ?? "";
+  const accountSid = form.get("AccountSid") ?? "";
+  if (!callSid || !accountSid) return xml();
+
+  const callResult = await db()
+    .from("phone_calls")
+    .select("id,organization_id,client_id,provider_connection_id")
+    .eq("provider", "twilio")
+    .eq("provider_call_id", callSid)
+    .maybeSingle();
+  if (callResult.error) throw new Error(callResult.error.message);
+  const call = callResult.data as Row | null;
+  if (!call) return xml();
+
+  const connection = await db()
+    .from("provider_connections")
+    .select("id")
+    .eq("id", String(call.provider_connection_id))
+    .eq("organization_id", String(call.organization_id))
+    .eq("client_id", String(call.client_id))
+    .eq("provider", "twilio")
+    .eq("external_account_id", accountSid)
+    .maybeSingle();
+  if (connection.error) throw new Error(connection.error.message);
+  if (!connection.data) return xml("<Response></Response>", 403);
+
+  const status =
+    form.get("DialCallStatus") || form.get("CallStatus") || "completed";
+  const failed = new Set(["no-answer", "busy", "failed", "canceled"]).has(status);
+  const answered = failed
+    ? false
+    : new Set(["in-progress", "completed", "answered"]).has(status)
+      ? true
+      : null;
+  const durationValue = Number(
+    form.get("DialCallDuration") || form.get("CallDuration") || "",
+  );
+  const patch: Record<string, unknown> = {
+    status,
+    answered,
+    raw_event: Object.fromEntries(form.entries()),
+    updated_at: new Date().toISOString(),
+  };
+  if (Number.isFinite(durationValue)) patch.duration_seconds = durationValue;
+  if (answered !== null || failed) patch.ended_at = new Date().toISOString();
+  const updated = await db()
+    .from("phone_calls")
+    .update(patch)
+    .eq("id", String(call.id))
+    .eq("organization_id", String(call.organization_id))
+    .eq("client_id", String(call.client_id))
+    .eq("provider", "twilio")
+    .eq("provider_call_id", callSid);
+  if (updated.error) throw new Error(updated.error.message);
+  return xml();
+}
+
 export async function handleIncomingMessage(request: Request) {
   const form = await verifiedForm(request);
   if (!form) return xml("<Response></Response>", 403);
@@ -394,7 +643,7 @@ export async function handleIncomingMessage(request: Request) {
   const to = form.get("To") ?? "";
   const body = (form.get("Body") ?? "").slice(0, 1600);
   const messageSid = form.get("MessageSid") || form.get("SmsSid") || "";
-  const config = await configForNumber(to);
+  const config = await configForNumber(to, form.get("AccountSid") ?? "");
   if (!config) return xml();
   const contact = await findOrCreateContact(config, from);
   const normalized = body
