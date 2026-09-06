@@ -6,6 +6,9 @@ import { callNeedsFollowUp } from "../lib/call-attention.ts";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const migration = read("supabase/migrations/20260904000000_unified_calls.sql");
+const twilioReconciliation = read(
+  "supabase/migrations/20260906010000_twilio_number_reconciliation.sql",
+);
 const app = read("app/CrmApp.tsx");
 const resolver = read("lib/outbound-calls.ts");
 const adapters = read("lib/call-provider-adapters.ts");
@@ -73,6 +76,21 @@ test("provider calls project into one tenant-keyed call ledger", () => {
   assert.match(migration, /sync_callrail_call_to_phone_calls/);
   assert.match(migration, /find_or_create_phone_contact/);
   assert.match(migration, /find_or_create_phone_lead/);
+});
+
+test("Twilio reconciliation links only genuine connections and unambiguous numbers", () => {
+  assert.match(twilioReconciliation, /connection\.status = 'connected'/);
+  assert.match(twilioReconciliation, /connection\.disconnected_at is null/);
+  assert.match(
+    twilioReconciliation,
+    /connection\.external_account_id = (new|config)\.provider_account_sid/,
+  );
+  assert.match(twilioReconciliation, /number\.organization_id = call\.organization_id/);
+  assert.match(twilioReconciliation, /number\.client_id = call\.client_id/);
+  assert.match(twilioReconciliation, /number\.provider = 'twilio'/);
+  assert.match(twilioReconciliation, /number\.is_active = true/);
+  assert.match(twilioReconciliation, /having count\(\*\) = 1/);
+  assert.doesNotMatch(twilioReconciliation, /callrail/i);
 });
 
 test("a retried Twilio event reuses the call's existing lead", () => {
