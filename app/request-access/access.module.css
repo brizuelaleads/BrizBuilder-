@@ -1,0 +1,89 @@
+.form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 90px;
+  resize: vertical;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+  color: #111827;
+  font: inherit;
+}
+.form textarea:focus-visible {
+  outline: 2px solid #7743e8;
+  outline-offset: 2px;
+}
+.form .consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.form .consent input {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  flex: 0 0 18px;
+  margin-top: 2px;
+}
+.form .consent span {
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 400;
+}
+.form a {
+  text-decoration: underline;
+}
+.form button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.inbox {
+  min-height: 100vh;
+  background: #f5f6fa;
+  color: #172033;
+  padding: 32px 20px;
+}
+.inboxInner {
+  max-width: 1000px;
+  margin: auto;
+}
+.inbox header {
+  margin: 24px 0;
+}
+.inbox h1 {
+  font-size: clamp(26px, 4vw, 38px);
+}
+.inbox a {
+  color: #6235b8;
+  text-decoration: underline;
+}
+.requests {
+  display: grid;
+  gap: 16px;
+  padding: 0;
+  list-style: none;
+}
+.requests li {
+  border: 1px solid #dde0e7;
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+}
+.requests h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+.requests p {
+  margin: 8px 0;
+  line-height: 1.5;
+}
+.message {
+  white-space: pre-wrap;
+}
+.meta {
+  color: #596174;
+  font-size: 13px;
+}

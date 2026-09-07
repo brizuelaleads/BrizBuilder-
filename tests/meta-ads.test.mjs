@@ -228,7 +228,7 @@ test("the dashboard reports spend it actually has", () => {
   // could never resolve. It now reads the synced ad rows.
   assert.match(
     dashboardSource,
-    /const reportedAdSpendCents = metaAdInsights\.reduce\(/,
+    /const reportedAdSpendCents = marketingReport\.totals\.spendCents/,
   );
   assert.ok(
     !/connection\.monthSpend \?\? 0/.test(dashboardSource),
@@ -254,11 +254,11 @@ test("cost per lead counts only leads that carry a campaign", () => {
   // calls, which is how a cost-per-lead figure quietly becomes fiction.
   assert.match(
     dashboardSource,
-    /const attributedLeads = leads\.filter\(\(lead\) => Boolean\(lead\.metaCampaignId\)\)/,
+    /const costPerLeadCents = marketingReport\.totals\.costPerLeadCents/,
   );
   assert.match(
-    dashboardSource,
-    /reportedAdSpendCents \/ attributedLeads\.length/,
+    read("app/CrmApp.tsx"),
+    /buildAdsReport\(\{\s*insights: filteredMetaAdInsights,\s*leads: filteredLeads/,
   );
 });
 

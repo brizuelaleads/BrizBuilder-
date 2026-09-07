@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type {
   CrmAppointment,
+  CrmCall,
   CrmClient,
   CrmLead,
   CrmMetaAdInsight,
@@ -25,6 +26,8 @@ import type {
   CrmTask,
 } from "../../db/crm";
 import { dateTime, initials, money } from "./ui";
+import type { AdsReport } from "../../lib/meta-ads-report";
+import { reportingWindow } from "../../lib/reporting-window";
 
 type DashboardDestination =
   | "leads"
@@ -62,7 +65,8 @@ function previousRangeCount(
 ) {
   const days = Number(range);
   if (!Number.isFinite(days) || days <= 0) return null;
-  const currentStart = generatedAtTimestamp - days * DAY_MS;
+  const currentStart = reportingWindow(range, new Date(generatedAtTimestamp).toISOString()).start;
+  if (currentStart == null) return null;
   const previousStart = currentStart - days * DAY_MS;
   return leads.filter((lead) => {
     const createdAt = timestamp(lead.createdAt);
@@ -206,7 +210,7 @@ function bucketSeries<T>(
   const start =
     range === "all" || !Number.isFinite(rangeDays) || rangeDays <= 0
       ? Math.min(...eventTimes, end - 30 * DAY_MS)
-      : end - rangeDays * DAY_MS;
+      : reportingWindow(range, new Date(end).toISOString()).start!;
   const span = Math.max(DAY_MS, end - start);
 
   items.forEach((item) => {
@@ -325,6 +329,9 @@ export function DashboardView({
   phoneCalls,
   providerConnections,
   metaAdInsights,
+  marketingReport,
+  callsNeedingFollowUp,
+  onOpenCallFollowUps,
   stages,
   range,
   generatedAt,
@@ -339,6 +346,9 @@ export function DashboardView({
   phoneCalls: CrmPhoneCall[];
   providerConnections: CrmProviderConnection[];
   metaAdInsights: CrmMetaAdInsight[];
+  marketingReport: AdsReport;
+  callsNeedingFollowUp: CrmCall[];
+  onOpenCallFollowUps: () => void;
   stages: CrmStage[];
   range: string;
   generatedAt: string;
@@ -379,7 +389,8 @@ export function DashboardView({
   );
   const untouchedLeads = pipelineLeads.filter(
     (lead) => lead.status === "NEW" && !lead.lastContactedAt,
-  );
+  ).sort((a, b) => timestamp(a.createdAt) - timestamp(b.createdAt));
+  overdueFollowUps.sort((a, b) => timestamp(a.nextFollowUpAt) - timestamp(b.nextFollowUpAt));
   const overdueTasks = openTasks.filter(
     (task) => task.dueAt && timestamp(task.dueAt) < generatedAtTimestamp,
   );
@@ -391,35 +402,21 @@ export function DashboardView({
   // Spend comes from the synced daily ad rows rather than a rollup cached on
   // the connection, so it answers for the range the viewer selected and lines
   // up with the leads and revenue it is divided against.
-  const reportedAdSpendCents = metaAdInsights.reduce(
-    (sum, insight) => sum + insight.spendCents,
-    0,
-  );
+  const reportedAdSpendCents = marketingReport.totals.spendCents;
   const reportedAdSpend = reportedAdSpendCents / 100;
-  const hasReportedAdSpend = reportedAdSpendCents > 0;
+  const hasReportedAdSpend = metaAdInsights.length > 0;
   const adReportingConnected = providerConnections.some(
     (connection) =>
       providerIsAdReporting(connection) &&
       (connection.isActive || connection.isLinked),
   );
-  const roas =
-    hasReportedAdSpend && revenue > 0
-      ? revenue / 100 / reportedAdSpend
-      : null;
+  const roas = marketingReport.totals.roas;
 
   // Only leads carrying a campaign id can be costed. Counting all of them
   // against Meta spend would credit Meta with referrals and organic calls, so
   // the attributed subset is tracked separately and shown as its own number.
-  const attributedLeads = leads.filter((lead) => Boolean(lead.metaCampaignId));
-  const costPerLeadCents = attributedLeads.length
-    ? Math.round(reportedAdSpendCents / attributedLeads.length)
-    : null;
-  const attributedWonLeads = attributedLeads.filter(
-    (lead) => lead.status === "WON",
-  );
-  const costPerWonCents = attributedWonLeads.length
-    ? Math.round(reportedAdSpendCents / attributedWonLeads.length)
-    : null;
+  const costPerLeadCents = marketingReport.totals.costPerLeadCents;
+  const costPerWonCents = marketingReport.totals.costPerWonCents;
 
   const activeAppointments = appointments.filter(
     (appointment) => !["CANCELED", "CANCELLED"].includes(appointment.status),
@@ -479,17 +476,9 @@ export function DashboardView({
     (appointment) => appointment.startsAt,
   );
   const adBudgetCents = configuredBudgetCents;
-  const adBudgetUsedPercent =
-    adBudgetCents && hasReportedAdSpend
-      ? Math.min(100, Math.round((reportedAdSpend / (adBudgetCents / 100)) * 100))
-      : 0;
   const adSpendSupport = hasReportedAdSpend
-    ? adBudgetCents
-      ? `${adBudgetUsedPercent}% of monthly budget`
-      : "Connected spend"
-    : adBudgetCents
-      ? `${money(adBudgetCents, true)} budget set`
-      : "No ad spend connected";
+    ? `Synced Meta spend · ${rangeLabel(range).toLowerCase()}`
+    : "No synced Meta spend in this range";
   const sourceCounts = leads.reduce((sourceMap, lead) => {
     const label = lead.source.trim() || "Unattributed";
     sourceMap.set(label, (sourceMap.get(label) ?? 0) + 1);
@@ -564,7 +553,7 @@ export function DashboardView({
       value: callTrackingConnected ? String(missedCalls.length) : "-",
       support: callTrackingConnected
         ? missedCalls.length
-          ? "Needs response"
+          ? "Inbound missed calls in this period"
           : "No missed calls"
         : "No call tracking connected",
       icon: PhoneCall,
@@ -605,7 +594,7 @@ export function DashboardView({
       // or no revenue is not a zero, it is a question nobody has answered yet.
       support: hasReportedAdSpend
         ? [
-            roas == null ? null : `${roas.toFixed(1)}x ROAS`,
+            roas == null ? null : `${roas.toFixed(1)}x Meta ROAS`,
             costPerLeadCents == null
               ? null
               : `${money(costPerLeadCents, true)} per lead`,
@@ -635,33 +624,44 @@ export function DashboardView({
     detail: string;
     icon: LucideIcon;
     tone: "orange" | "blue" | "purple";
-    destination: DashboardDestination;
+    action: () => void;
+    count: number;
   }> = [
     {
       id: "missed-calls",
-      title: `${missedCalls.length} missed calls`,
-      detail: callTrackingConnected
-        ? "Return calls to capture more leads"
-        : "Connect call tracking",
+      title: `${callsNeedingFollowUp.length} calls need follow-up`,
+      detail: "Open unresolved calls · all loaded history",
       icon: PhoneCall,
       tone: "orange",
-      destination: callTrackingConnected ? "conversations" : "phone-system",
+      action: onOpenCallFollowUps,
+      count: callsNeedingFollowUp.length,
     },
     {
       id: "untouched-leads",
       title: `${untouchedLeads.length} new leads need response`,
-      detail: "Respond to new inquiries",
+      detail: untouchedLeads[0] ? `Open ${displayLeadName(untouchedLeads[0])} · oldest unanswered lead` : "No unanswered leads",
       icon: UserPlus,
       tone: "blue",
-      destination: "leads",
+      action: () => untouchedLeads[0] && onOpenLead(untouchedLeads[0]),
+      count: untouchedLeads.length,
     },
     {
       id: "overdue-follow-ups",
-      title: `${overdueFollowUps.length + overdueTasks.length} follow-ups overdue`,
-      detail: "Reach out to keep things moving",
+      title: `${overdueFollowUps.length} lead follow-ups overdue`,
+      detail: overdueFollowUps[0] ? `Open ${displayLeadName(overdueFollowUps[0])} · earliest overdue follow-up` : "No overdue lead follow-ups",
       icon: CalendarDays,
       tone: "purple",
-      destination: "tasks",
+      action: () => overdueFollowUps[0] && onOpenLead(overdueFollowUps[0]),
+      count: overdueFollowUps.length,
+    },
+    {
+      id: "overdue-tasks",
+      title: `${overdueTasks.length} tasks overdue`,
+      detail: "Review task owners and due dates",
+      icon: CalendarDays,
+      tone: "purple",
+      action: () => onNavigate("tasks"),
+      count: overdueTasks.length,
     },
   ];
 
@@ -705,15 +705,7 @@ export function DashboardView({
               {hasReportedAdSpend ? formatProviderSpend(reportedAdSpend) : "-"}
             </strong>
             <small>{adSpendSupport}</small>
-            <i
-              className="crm-dashboard-marketing-progress"
-              style={
-                {
-                  "--marketing-progress": `${adBudgetUsedPercent}%`,
-                } as CSSProperties
-              }
-              aria-hidden="true"
-            />
+            <small>Monthly budget: {money(adBudgetCents, true)} planned</small>
           </article>
           <article className="crm-dashboard-marketing-card">
             <span>Appointments Booked</span>
@@ -781,17 +773,15 @@ export function DashboardView({
               <AlertTriangle aria-hidden="true" />
               <h3>Needs Attention</h3>
             </div>
-            <button type="button" onClick={() => onNavigate("tasks")}>
-              View all
-            </button>
+            <span>{attentionItems.reduce((sum, item) => sum + item.count, 0)} open</span>
           </header>
           <div className="crm-dashboard-attention-list">
-            {attentionItems.map(
-              ({ id, title, detail, icon: Icon, tone, destination }) => (
+            {attentionItems.filter((item) => item.count > 0).map(
+              ({ id, title, detail, icon: Icon, tone, action }) => (
                 <button
                   key={id}
                   type="button"
-                  onClick={() => onNavigate(destination)}
+                  onClick={action}
                 >
                   <span
                     className={`crm-dashboard-row-icon is-${tone}`}
@@ -807,6 +797,7 @@ export function DashboardView({
                 </button>
               ),
             )}
+            {attentionItems.every((item) => item.count === 0) ? <p className="crm-calm-empty">You’re caught up. No unanswered leads, unresolved missed calls, or overdue follow-ups in this workspace.</p> : null}
           </div>
         </article>
 

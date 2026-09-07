@@ -37,7 +37,6 @@ import { LeadDetail, LeadsView, PipelineView } from "./crm/LeadsViews";
 import {
   CalendarView,
   ClientsView,
-  ReportsView,
   SettingsView,
   TasksView,
   TeamView,
@@ -74,6 +73,9 @@ import { AiConnectorView } from "./crm/AiConnectorView";
 import { CallsView } from "./crm/CallsView";
 import { Badge, initials, Modal } from "./crm/ui";
 import { callNeedsFollowUp } from "../lib/call-attention";
+import { buildAdsReport } from "../lib/meta-ads-report";
+import { ReportsView } from "./crm/ReportsView";
+import { reportingWindow } from "../lib/reporting-window";
 
 type View =
   | "dashboard"
@@ -195,10 +197,12 @@ export function CrmApp({
   initialData,
   signOutPath,
   branding = DEFAULT_BRANDING,
+  canReviewAccessRequests = false,
 }: {
   initialData: CrmBootstrap;
   signOutPath: string;
   branding?: TenantBranding;
+  canReviewAccessRequests?: boolean;
 }) {
   const [data, setData] = useState(initialData);
   const requestedView = useSyncExternalStore(
@@ -213,6 +217,7 @@ export function CrmApp({
         : initialData.clients[0]?.id ?? ""),
   );
   const [range, setRange] = useState("30");
+  const [callFollowUpMode, setCallFollowUpMode] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalName>(null);
   const [mobileNav, setMobileNav] = useState(false);
@@ -363,16 +368,13 @@ export function CrmApp({
       ),
     [data.leads, effectiveSelectedClientId],
   );
-  const rangeCutoff = useMemo(() => {
-    const days = Number(range);
-    if (range === "all" || !Number.isFinite(days) || days <= 0) return null;
-    return crmTimestamp(data.generatedAt) - days * 86400000;
-  }, [data.generatedAt, range]);
+  const reportWindow = useMemo(() => reportingWindow(range, data.generatedAt), [data.generatedAt, range]);
+  const rangeCutoff = reportWindow.start;
   const filteredLeads = useMemo(() => {
     return workspaceLeads.filter(
-      (lead) => !rangeCutoff || crmTimestamp(lead.createdAt) >= rangeCutoff,
+      (lead) => (!rangeCutoff || crmTimestamp(lead.createdAt) >= rangeCutoff) && crmTimestamp(lead.createdAt) <= reportWindow.end,
     );
-  }, [rangeCutoff, workspaceLeads]);
+  }, [rangeCutoff, reportWindow.end, workspaceLeads]);
   const filteredContacts = data.contacts.filter(
     (contact) =>
       effectiveSelectedClientId === "all" ||
@@ -431,7 +433,10 @@ export function CrmApp({
         call.clientId === effectiveSelectedClientId) &&
       (!rangeCutoff || crmTimestamp(call.startedAt) >= rangeCutoff),
   );
-  const missedCallsNeedingFollowUp = filteredCalls.filter((call) =>
+  const workspaceCalls = data.calls.filter((call) =>
+    effectiveSelectedClientId === "all" || call.clientId === effectiveSelectedClientId,
+  );
+  const missedCallsNeedingFollowUp = workspaceCalls.filter((call) =>
     callNeedsFollowUp(call, data.calls),
   );
   // Ad spend follows the same client and date filters as everything else on the
@@ -442,7 +447,7 @@ export function CrmApp({
     (insight) =>
       (effectiveSelectedClientId === "all" ||
         insight.clientId === effectiveSelectedClientId) &&
-      (!rangeCutoff || crmTimestamp(insight.date) >= rangeCutoff),
+      (!rangeCutoff || crmTimestamp(insight.date) >= rangeCutoff) && insight.date <= reportWindow.endDate,
   );
   const filteredClients = data.clients.filter(
     (client) =>
@@ -454,6 +459,13 @@ export function CrmApp({
       effectiveSelectedClientId === "all" ||
       connection.clientId === effectiveSelectedClientId,
   );
+  const marketingReport = buildAdsReport({
+    insights: filteredMetaAdInsights,
+    leads: filteredLeads,
+    connected: filteredProviderConnections.some((connection) =>
+      connection.provider === "meta_ads" && (connection.isActive || connection.isLinked)),
+    rangeStart: reportWindow.startDate,
+  });
   const selectedLead =
     data.leads.find((lead) => lead.id === selectedLeadId) ?? null;
 
@@ -544,6 +556,7 @@ export function CrmApp({
   }
 
   function navigate(next: View) {
+    setCallFollowUpMode(false);
     const url = new URL(window.location.href);
     url.searchParams.set("view", next);
     window.history.replaceState({}, "", url);
@@ -583,6 +596,11 @@ export function CrmApp({
 
   function openLead(lead: CrmLead) {
     setSelectedLeadId(lead.id);
+  }
+
+  function openCallFollowUps() {
+    navigate("calls");
+    setCallFollowUpMode(true);
   }
 
   const searchResults = useMemo(() => {
@@ -1069,7 +1087,7 @@ export function CrmApp({
           {showRangeFilter ? (
             <select
               value={range}
-              onChange={(event) => setRange(event.target.value)}
+              onChange={(event) => { setRange(event.target.value); setCallFollowUpMode(false); }}
               aria-label="Filter by date range"
             >
               <option value="7">7 days</option>
@@ -1097,6 +1115,7 @@ export function CrmApp({
             />
           </div>
         )}
+        {view === "dashboard" && canReviewAccessRequests ? <div className="crm-view"><a className="crm-button-secondary" href="/access-requests">Review access requests</a></div> : null}
         {view === "dashboard" && (
           <DashboardView
             leads={filteredLeads}
@@ -1107,6 +1126,9 @@ export function CrmApp({
             phoneCalls={filteredPhoneCalls}
             providerConnections={filteredProviderConnections}
             metaAdInsights={filteredMetaAdInsights}
+            marketingReport={marketingReport}
+            callsNeedingFollowUp={missedCallsNeedingFollowUp}
+            onOpenCallFollowUps={openCallFollowUps}
             stages={data.stages}
             range={range}
             generatedAt={data.generatedAt}
@@ -1134,7 +1156,10 @@ export function CrmApp({
         )}
         {view === "calls" && (
           <CallsView
-            calls={filteredCalls}
+            key={`${effectiveSelectedClientId}-${callFollowUpMode}`}
+            calls={callFollowUpMode ? workspaceCalls : filteredCalls}
+            initialFollowUpOnly={callFollowUpMode}
+            onExitFollowUps={() => setCallFollowUpMode(false)}
             allCalls={data.calls}
             leads={data.leads}
             clients={data.clients}
@@ -1204,7 +1229,7 @@ export function CrmApp({
           />
         )}
         {view === "reports" && (
-          <ReportsView leads={filteredLeads} clients={filteredClients} />
+          <ReportsView leads={filteredLeads} clients={filteredClients} report={marketingReport} hasSpendData={filteredMetaAdInsights.length > 0} period={range === "all" ? "All loaded history" : `Last ${range} days`} />
         )}
         {view === "ads" && (
           <AdsView
@@ -1215,6 +1240,7 @@ export function CrmApp({
             clients={filteredClients}
             selectedClientId={effectiveSelectedClientId ?? "all"}
             range={range}
+            generatedAt={data.generatedAt}
             onOpenLead={(lead) => setSelectedLeadId(lead.id)}
             onOpenConnections={() => navigate("connections")}
           />

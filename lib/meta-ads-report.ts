@@ -121,12 +121,12 @@ function per(totalCents: number, count: number): number | null {
   return count > 0 ? Math.round(totalCents / count) : null;
 }
 
-function derive(metrics: AdsMetrics): AdsMetrics {
+function derive(metrics: AdsMetrics, hasInsightData = true): AdsMetrics {
   return {
     ...metrics,
-    costPerLeadCents: per(metrics.spendCents, metrics.leads),
-    costPerBookedCents: per(metrics.spendCents, metrics.booked),
-    costPerWonCents: per(metrics.spendCents, metrics.won),
+    costPerLeadCents: hasInsightData ? per(metrics.spendCents, metrics.leads) : null,
+    costPerBookedCents: hasInsightData ? per(metrics.spendCents, metrics.booked) : null,
+    costPerWonCents: hasInsightData ? per(metrics.spendCents, metrics.won) : null,
     roas:
       metrics.spendCents > 0 && metrics.revenueCents > 0
         ? metrics.revenueCents / metrics.spendCents
@@ -261,16 +261,16 @@ export function buildAdsReport(input: {
     .map((campaign) => ({
       campaignId: campaign.campaignId,
       campaignName: campaign.campaignName || campaign.campaignId,
-      ...derive(campaign.metrics),
+      ...derive(campaign.metrics, input.insights.length > 0),
       adsets: [...campaign.adsets.values()]
         .map((adset) => ({
           adsetId: adset.adsetId,
-          ...derive(adset.metrics),
+          ...derive(adset.metrics, input.insights.length > 0),
           ads: [...adset.ads.values()]
             .map((ad) => ({
               adId: ad.adId,
               adName: ad.adName || ad.adId,
-              ...derive(ad.metrics),
+              ...derive(ad.metrics, input.insights.length > 0),
             }))
             .sort((a, b) => b.spendCents - a.spendCents),
         }))
@@ -290,7 +290,7 @@ export function buildAdsReport(input: {
         : "ready";
 
   return {
-    totals: derive(totals),
+    totals: derive(totals, input.insights.length > 0),
     campaigns: built,
     setupState,
     // History does not reach the start of what is being asked about, so there

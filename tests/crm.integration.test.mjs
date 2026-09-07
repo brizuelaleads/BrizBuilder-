@@ -244,6 +244,21 @@ test("Phase 1 CRM authentication, tenant isolation, imports, custom data, compan
   });
 
   try {
+    const accessPage = await mf.dispatchFetch("http://crm.test/request-access");
+    assert.equal(accessPage.status, 200);
+    assert.match(await accessPage.text(), /Request access/);
+    const ownerInbox = await mf.dispatchFetch("http://crm.test/access-requests", { redirect: "manual" });
+    assert.ok([302, 303, 307, 308].includes(ownerInbox.status));
+    assert.match(ownerInbox.headers.get("location"), /\/login/);
+    const rejectedApplication = await mf.dispatchFetch("http://crm.test/api/access-requests", {
+      method: "POST", headers: { origin: "https://other.example", "content-type": "application/json" }, body: "{}",
+    });
+    assert.equal(rejectedApplication.status, 403);
+    const unavailableApplication = await mf.dispatchFetch("http://crm.test/api/access-requests", {
+      method: "POST", headers: { origin: "http://crm.test", "content-type": "application/json" },
+      body: JSON.stringify({ name: "Test applicant", email: "applicant@example.com", business: "Test", message: "", consent: true }),
+    });
+    assert.equal(unavailableApplication.status, 503, "missing Supabase must never claim a request was saved");
     const protectedResource = await mf.dispatchFetch(
       "http://crm.test/.well-known/oauth-protected-resource",
     );

@@ -15,6 +15,8 @@ export function isAnsweredCall(call: CrmCall) {
 /** A missed call stops needing attention after a later successful conversation. */
 export function callNeedsFollowUp(call: CrmCall, allCalls: CrmCall[]) {
   if (!isMissedCall(call) || call.handledAt) return false;
+  // Two withheld/unknown caller numbers do not identify the same customer.
+  if (!call.customerPhone?.trim()) return true;
   const startedAt = Date.parse(call.startedAt ?? "");
   return !allCalls.some(
     (candidate) =>

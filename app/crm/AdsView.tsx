@@ -13,6 +13,7 @@ import {
   type AdsReportCampaign,
 } from "../../lib/meta-ads-report";
 import { Badge, EmptyState, money } from "./ui";
+import { reportingWindow } from "../../lib/reporting-window";
 
 // The URL parameters an ad must carry for a click to be traceable. Written out
 // here rather than assembled, so what the operator copies is the literal text
@@ -247,6 +248,7 @@ export function AdsView({
   clients,
   selectedClientId,
   range,
+  generatedAt,
   onOpenLead,
   onOpenConnections,
 }: {
@@ -257,6 +259,7 @@ export function AdsView({
   clients: Array<{ id: string; businessName: string }>;
   selectedClientId: string;
   range: string;
+  generatedAt: string;
   onOpenLead: (lead: CrmLead) => void;
   onOpenConnections: () => void;
 }) {
@@ -268,15 +271,7 @@ export function AdsView({
       (connection.isActive || connection.isLinked),
   );
 
-  // Read the clock once on mount: it is impure, and a boundary that drifted
-  // mid-session would make the "older spend is missing" notice come and go on
-  // its own.
-  const [openedAt] = useState(() => Date.now());
-  const rangeStart = useMemo(() => {
-    const days = Number(range);
-    if (range === "all" || !Number.isFinite(days) || days <= 0) return null;
-    return new Date(openedAt - days * 86_400_000).toISOString().slice(0, 10);
-  }, [range, openedAt]);
+  const rangeStart = reportingWindow(range, generatedAt).startDate;
 
   const report = useMemo(
     () =>

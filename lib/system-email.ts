@@ -1,4 +1,5 @@
 import { readRuntimeValue } from "./supabase/env";
+import type { AccessRequestInput } from "./access-request";
 
 type SystemEmailMessage = {
   to: string;
@@ -26,7 +27,10 @@ export function systemEmailConfigured(): boolean {
   );
 }
 
-export async function sendSystemEmail(message: SystemEmailMessage) {
+export async function sendSystemEmail(message: SystemEmailMessage, options: {
+  category?: "account-security" | "access-request";
+  idempotencyKey?: string;
+} = {}) {
   const apiKey = readRuntimeValue("RESEND_API_KEY");
   const from = readRuntimeValue("SYSTEM_EMAIL_FROM");
   if (!apiKey || !from) {
@@ -37,9 +41,11 @@ export async function sendSystemEmail(message: SystemEmailMessage) {
 
   const response = await fetch(RESEND_SEND_EMAIL_URL, {
     method: "POST",
+    ...(options.category === "access-request" ? { signal: AbortSignal.timeout(8000) } : {}),
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
+      ...(options.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : {}),
     },
     body: JSON.stringify({
       from,
@@ -47,13 +53,26 @@ export async function sendSystemEmail(message: SystemEmailMessage) {
       subject: message.subject,
       html: message.html,
       text: message.text,
-      tags: [{ name: "category", value: "account-security" }],
+      tags: [{ name: "category", value: options.category ?? "account-security" }],
     }),
   });
 
   if (!response.ok) {
     throw new Error("System email could not be sent.");
   }
+}
+
+export function accessRequestEmail(to: string, input: AccessRequestInput): SystemEmailMessage {
+  return composeEmail({
+    to,
+    subject: "New BrizBuilder access request",
+    eyebrow: "Access request",
+    heading: "A business requested access",
+    body: `Name: ${input.name}\nEmail: ${input.email}\nBusiness: ${input.business}\nMessage: ${input.message || "No message provided."}`,
+    actionLabel: "Review access requests",
+    link: new URL("/access-requests", readRuntimeValue("APP_BASE_URL") || "https://brizbuilder.com").toString(),
+    footer: "The applicant agreed to be contacted about this request. No account or workspace access has been granted.",
+  });
 }
 
 export function userInvitationEmail(input: SystemEmailTemplateInput): SystemEmailMessage {

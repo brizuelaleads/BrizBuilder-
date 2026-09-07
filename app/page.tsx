@@ -129,7 +129,7 @@ export default function MarketingHome() {
 
           <div className={styles.navActions}>
             <Link href="/login">Log in</Link>
-            <a className={styles.button} href="#access">
+            <a className={styles.button} href="/request-access">
               Request Access
             </a>
           </div>
@@ -154,7 +154,7 @@ export default function MarketingHome() {
             always knows what needs attention next.
           </p>
           <div className={styles.heroActions}>
-            <a className={`${styles.button} ${styles.primaryButton}`} href="#access">
+            <a className={`${styles.button} ${styles.primaryButton}`} href="/request-access">
               Request Access
             </a>
             <Link className={styles.button} href="/login">
@@ -282,7 +282,7 @@ export default function MarketingHome() {
             BrizBuilder is a private platform for LB Marketing and invited client
             businesses. Request access and we will get you set up.
           </p>
-          <a className={`${styles.button} ${styles.primaryButton}`} href="#access">
+          <a className={`${styles.button} ${styles.primaryButton}`} href="/request-access">
             Request Access <ArrowRight aria-hidden="true" />
           </a>
         </div>
@@ -310,7 +310,7 @@ export default function MarketingHome() {
             <h4>Account</h4>
             <Link href="/login">Log In</Link>
             <a href="mailto:brizuelaleads@gmail.com">Support</a>
-            <a className={styles.footerButton} href="#access">
+            <a className={styles.footerButton} href="/request-access">
               Request Access
             </a>
           </div>
