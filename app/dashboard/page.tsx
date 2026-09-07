@@ -18,6 +18,7 @@ import { pushConfigured, vapidPublicKey } from "../../lib/push-notifications";
 import { BrandHead } from "../components/BrandHead";
 import { PwaRegistrar } from "../components/PwaRegistrar";
 import { AuthNote, AuthShell } from "../auth/AuthShell";
+import { MAIN_ADMIN_EMAIL } from "../auth-config";
 
 export const dynamic = "force-dynamic";
 
@@ -178,6 +179,7 @@ export default async function DashboardPage() {
           initialData={crmData}
           signOutPath={signOutPath}
           branding={branding}
+          canReviewAccessRequests={crmData.viewer.email.toLowerCase() === MAIN_ADMIN_EMAIL && !MAIN_ADMIN_EMAIL.endsWith(".local")}
         />
       </>
     );

@@ -28,7 +28,7 @@ type Mutate = (
   input: Record<string, unknown>,
   success: string,
 ) => Promise<unknown>;
-type CallFilter = "all" | "missed" | "answered" | "inbound" | "outbound";
+type CallFilter = "all" | "follow-up" | "missed" | "answered" | "inbound" | "outbound";
 
 function phone(value: string | null) {
   if (!value) return "Not available";
@@ -71,6 +71,8 @@ export function CallsView({
   phoneNumbers,
   mutate,
   onOpenLead,
+  initialFollowUpOnly = false,
+  onExitFollowUps,
 }: {
   calls: CrmCall[];
   allCalls: CrmCall[];
@@ -79,8 +81,10 @@ export function CallsView({
   phoneNumbers: CrmPhoneNumber[];
   mutate: Mutate;
   onOpenLead: (lead: CrmLead) => void;
+  initialFollowUpOnly?: boolean;
+  onExitFollowUps?: () => void;
 }) {
-  const [filter, setFilter] = useState<CallFilter>("all");
+  const [filter, setFilter] = useState<CallFilter>(initialFollowUpOnly ? "follow-up" : "all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -99,6 +103,7 @@ export function CallsView({
     ? Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length)
     : null;
   const visible = ordered.filter((call) => {
+    if (filter === "follow-up") return callNeedsFollowUp(call, allCalls);
     if (filter === "missed") return isMissedCall(call);
     if (filter === "answered") return isAnsweredCall(call);
     if (filter === "inbound") return isInboundCall(call);
@@ -169,11 +174,12 @@ export function CallsView({
       </section>
 
       <section className="crm-calls-history">
+        {initialFollowUpOnly ? <div className="crm-report-note"><p>Follow-ups include all loaded history for this workspace, regardless of the dashboard date filter.</p><button type="button" className="crm-button-secondary" onClick={onExitFollowUps}>Back to selected period</button></div> : null}
         <header>
           <div><p>CALL HISTORY</p><h3>All connected numbers</h3></div>
           <div className="crm-calls-filters" role="group" aria-label="Filter calls">
-            {(["all", "missed", "answered", "inbound", "outbound"] as CallFilter[]).map((item) => (
-              <button key={item} type="button" className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>
+            {(["all", "follow-up", "missed", "answered", "inbound", "outbound"] as CallFilter[]).map((item) => (
+              <button key={item} type="button" className={filter === item ? "active" : ""} aria-pressed={filter === item} onClick={() => setFilter(item)}>{item === "follow-up" ? "Needs follow-up" : item}</button>
             ))}
           </div>
         </header>
