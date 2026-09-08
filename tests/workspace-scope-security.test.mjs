@@ -33,15 +33,77 @@ const AGENCY_ONLY_PERMISSIONS = [
   "reports.read",
 ];
 
-const PRIMARY_TABS = [
-  "dashboard",
-  "leads",
-  "pipeline",
-  "calls",
-  "calendar",
-  "ads",
-  "connections",
+const CLIENT_TABS = [
+  ["dashboard", "Dashboard", "LayoutDashboard", "MAIN"],
+  ["leads", "Leads", "UserRoundSearch", "MAIN"],
+  ["pipeline", "Pipeline", "Funnel", "MAIN"],
+  ["calls", "Calls", "PhoneCall", "MAIN"],
+  ["calendar", "Calendar", "CalendarDays", "MAIN"],
+  ["ads", "Ads", "Megaphone", "MAIN"],
+  ["connections", "Connections", "Plug", "MAIN"],
 ];
+
+const AGENCY_TABS = [
+  ["dashboard", "Dashboard", "LayoutDashboard", "MAIN"],
+  ["leads", "Leads", "UserRoundSearch", "MAIN"],
+  ["pipeline", "Pipeline", "Funnel", "MAIN"],
+  ["calls", "Calls", "PhoneCall", "MAIN"],
+  ["contacts", "Contacts", "ContactRound", "MAIN"],
+  ["companies", "Companies", "Building2", "MAIN"],
+  ["calendar", "Calendar", "CalendarDays", "MAIN"],
+  ["tasks", "Tasks", "ListChecks", "MAIN"],
+  ["ads", "Ads", "Megaphone", "MAIN"],
+  ["conversations", "Conversations", "MessageSquareText", "COMMUNICATIONS"],
+  ["connections", "Connections", "Plug", "COMMUNICATIONS"],
+  ["phone-system", "Phone & Texting", "PhoneCall", "COMMUNICATIONS"],
+  ["automations", "Automations", "Workflow", "COMMUNICATIONS"],
+  ["websites", "Websites", "Globe2", "GROWTH"],
+  ["reviews", "Reviews", "Star", "GROWTH"],
+  ["profiles", "Google Profiles", "MapPin", "GROWTH"],
+  ["forms", "Forms", "FileText", "GROWTH"],
+  ["funnels", "Funnels", "Funnel", "GROWTH"],
+  ["reports", "Reports", "ChartNoAxesCombined", "BUSINESS"],
+  ["payments", "Payments", "CreditCard", "BUSINESS"],
+  ["clients", "Sub-accounts", "BriefcaseBusiness", "BUSINESS"],
+  ["team", "Team", "UsersRound", "BUSINESS"],
+  ["ai", "AI Connector", "Sparkles", "TOOLS"],
+  ["custom-data", "Custom data", "Database", "TOOLS"],
+  ["audit", "Audit log", "History", "TOOLS"],
+  ["settings", "Settings", "SettingsIcon", "TOOLS"],
+];
+
+const AGENCY_ONLY_TABS = new Set([
+  "connections",
+  "phone-system",
+  "automations",
+  "profiles",
+  "forms",
+  "funnels",
+  "payments",
+  "clients",
+  "ai",
+  "custom-data",
+  "audit",
+]);
+
+const NAV_PERMISSIONS = new Map([
+  ["companies", "companies.write"],
+  ["ads", "reports.read"],
+  ["conversations", "messages.write"],
+  ["connections", "phone_system.manage"],
+  ["phone-system", "phone_system.manage"],
+  ["automations", "automations.manage"],
+  ["reviews", "reviews.read"],
+  ["profiles", "profiles.manage"],
+  ["reports", "reports.read"],
+  ["payments", "payments.manage"],
+  ["clients", "clients.manage"],
+  ["team", "team.manage"],
+  ["ai", "ai_connector.manage"],
+  ["custom-data", "custom_data.manage"],
+  ["audit", "audit.read"],
+  ["settings", "clients.manage"],
+]);
 
 function permissionArray(source, name) {
   const block = source.match(new RegExp(`const ${name}: CrmPermission\\[] = \\[([\\s\\S]*?)\\]`));
@@ -70,6 +132,24 @@ function extractBlock(source, needle) {
     }
   }
   return undefined;
+}
+
+function navigationEntries(name) {
+  const start = appSource.indexOf(`const ${name}: NavItem[] = [`);
+  assert.notEqual(start, -1, `${name} exists`);
+  const end = appSource.indexOf("\n];", start);
+  assert.notEqual(end, -1, `${name} closes`);
+  const block = appSource.slice(start, end + 3);
+  return [...block.matchAll(/\{\s*id: "[a-z-]+"[\s\S]*?\}/g)].map(
+    ([entry]) => ({
+      id: entry.match(/id: "([a-z-]+)"/)?.[1],
+      label: entry.match(/label: "([^"]+)"/)?.[1],
+      icon: entry.match(/icon: <([A-Za-z0-9]+)/)?.[1],
+      section: entry.match(/section: "([A-Z]+)"/)?.[1],
+      agencyOnly: /agencyOnly: true/.test(entry),
+      permission: entry.match(/permission: "([a-z_.]+)"/)?.[1],
+    }),
+  );
 }
 
 const CLIENT_ROLES = ["CLIENT_OWNER", "CLIENT_MANAGER", "CLIENT_EMPLOYEE"];
@@ -149,13 +229,15 @@ test("client roles keep exactly the capabilities their own tabs need", () => {
   assert.ok(!rolePermissions(supabaseSource, "CLIENT_EMPLOYEE").includes("calendar.connect"));
 });
 
-test("the seven primary tabs are shared while sensitive pages follow capabilities", () => {
-  for (const id of PRIMARY_TABS) {
-    const entry = appSource.match(
-      new RegExp(`\\{[^{}]*id: "${id}"[^{}]*\\}`, "s"),
-    )?.[0];
-    assert.ok(entry, `nav entry for ${id} exists`);
-    assert.doesNotMatch(entry, /agencyOnly|permission:/, `${id} must be shared`);
+test("client navigation is exactly the requested seven shared tabs", () => {
+  const entries = navigationEntries("clientNavigation");
+  assert.deepEqual(
+    entries.map(({ id, label, icon, section }) => [id, label, icon, section]),
+    CLIENT_TABS,
+  );
+  for (const entry of entries) {
+    assert.equal(entry.agencyOnly, false, `${entry.id} must not be agency-only`);
+    assert.equal(entry.permission, undefined, `${entry.id} must not be permission-hidden`);
   }
   assert.match(
     appSource,
@@ -166,6 +248,73 @@ test("the seven primary tabs are shared while sensitive pages follow capabilitie
     appSource,
     /view === "settings" && data\.viewer\.permissions\.includes\("clients\.manage"\)/,
   );
+});
+
+test("agency navigation restores the historical menu and retains Pipeline and Calls", () => {
+  const entries = navigationEntries("agencyNavigation");
+  assert.deepEqual(
+    entries.map(({ id, label, icon, section }) => [id, label, icon, section]),
+    AGENCY_TABS,
+  );
+  for (const entry of entries) {
+    assert.equal(
+      entry.agencyOnly,
+      AGENCY_ONLY_TABS.has(entry.id),
+      `${entry.id} agency-only behavior drifted`,
+    );
+    assert.equal(
+      entry.permission,
+      NAV_PERMISSIONS.get(entry.id),
+      `${entry.id} permission drifted`,
+    );
+  }
+});
+
+test("authenticated account type selects navigation independently of client selection", () => {
+  assert.match(
+    appSource,
+    /const navigation = data\.viewer\.isAgency\s*\? agencyNavigation\s*: clientNavigation;/,
+  );
+  assert.doesNotMatch(
+    appSource.match(/const navigation = [\s\S]*?;/)?.[0] ?? "",
+    /selectedClient|effectiveSelectedClientId/,
+  );
+});
+
+test("client deep links cannot bypass agency-only and permission route gates", () => {
+  assert.match(
+    appSource,
+    /\(!item\.agencyOnly \|\| isAgency\)[\s\S]*?permissions\.includes\(item\.permission\)/,
+  );
+  assert.match(
+    appSource,
+    /accessibleSecondaryViews = agencyNavigation\.filter\(\(item\) =>[\s\S]*?canAccessNavigationItem/,
+  );
+  assert.match(
+    appSource,
+    /visibleNav\.some\(\(item\) => item\.id === requested\) \|\|[\s\S]*?accessibleSecondaryViews\.some\(\(item\) => item\.id === requested\)/,
+  );
+  assert.doesNotMatch(appSource, /nestedViews\.includes\(requested\)/);
+  const clientIds = new Set(CLIENT_TABS.map(([id]) => id));
+  for (const id of AGENCY_ONLY_TABS) {
+    if (id !== "connections") assert.ok(!clientIds.has(id), `${id} leaked into client navigation`);
+  }
+});
+
+test("every restored agency tab resolves to an implemented view", () => {
+  assert.match(
+    appSource,
+    /return requested && knownViews\.has\(requested\) \? requested : "dashboard";/,
+    "refresh and direct-link parsing must recognize every configured navigation route",
+  );
+  const renderedViews = appSource.slice(appSource.indexOf('{view === "dashboard" && !data.viewer.isAgency'));
+  for (const [id] of AGENCY_TABS) {
+    if (["forms", "funnels"].includes(id)) continue;
+    assert.match(renderedViews, new RegExp(`view === "${id}"`), `${id} needs an implemented view`);
+  }
+  assert.match(appSource, /const futureModules: FutureModule\[] = \[[\s\S]*?"forms",[\s\S]*?"funnels",/);
+  assert.match(renderedViews, /futureModules\.includes\(view as FutureModule\)/);
+  assert.match(renderedViews, /<FutureModuleView module=\{view as FutureModule\} \/>/);
 });
 
 test("client sessions are pinned to their own selected client in the UI", () => {
@@ -191,13 +340,11 @@ test("client sessions are pinned to their own selected client in the UI", () => 
   );
 });
 
-test("every nav item declares a section so hiding tabs cannot orphan a label", () => {
-  const navBlock = appSource.match(/const nav: Array<\{[\s\S]*?\n\];/)?.[0];
-  assert.ok(navBlock, "nav array exists");
-  const entries = navBlock.match(/\{[^{}]*id: "[a-z-]+"[^{}]*\}/gs) ?? [];
-  assert.equal(entries.length, PRIMARY_TABS.length, "found exactly the seven primary nav entries");
-  for (const entry of entries) {
-    assert.match(entry, /section: "/, `nav entry missing a section: ${entry.slice(0, 60)}`);
+test("every role-specific nav item declares a section", () => {
+  for (const name of ["clientNavigation", "agencyNavigation"]) {
+    for (const entry of navigationEntries(name)) {
+      assert.ok(entry.section, `${name} entry ${entry.id} is missing a section`);
+    }
   }
 });
 

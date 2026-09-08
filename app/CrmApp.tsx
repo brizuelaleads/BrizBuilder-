@@ -10,19 +10,36 @@ import {
 } from "react";
 import {
   Bell,
+  BriefcaseBusiness,
+  Building2,
   CalendarDays,
+  ChartNoAxesCombined,
   CircleUserRound,
+  ContactRound,
+  CreditCard,
+  Database,
+  FileText,
   Funnel,
+  Globe2,
+  History,
   KeyRound,
   LayoutDashboard,
+  ListChecks,
   LogOut,
+  MapPin,
   Megaphone,
   Menu,
+  MessageSquareText,
   PhoneCall,
   Plus,
   Plug,
   Search,
+  Settings as SettingsIcon,
+  Sparkles,
+  Star,
   UserRoundSearch,
+  UsersRound,
+  Workflow,
   X,
 } from "lucide-react";
 import { BrandLogo } from "./components/BrandLogo";
@@ -127,15 +144,17 @@ function crmTimestamp(value: string | null) {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-const nav: Array<{
+type NavItem = {
   id: View;
   label: string;
   icon: ReactNode;
   agencyOnly?: boolean;
   permission?: CrmPermission;
-  section?: string;
+  section: string;
   preview?: boolean;
-}> = [
+};
+
+const clientNavigation: NavItem[] = [
   { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard />, section: "MAIN" },
   { id: "leads", label: "Leads", icon: <UserRoundSearch />, section: "MAIN" },
   { id: "pipeline", label: "Pipeline", icon: <Funnel />, section: "MAIN" },
@@ -145,15 +164,148 @@ const nav: Array<{
   { id: "connections", label: "Connections", icon: <Plug />, section: "MAIN" },
 ];
 
-const viewChangeEvent = "brizuela:crm-view-change";
-// Existing routes stay valid for deep links and in-product secondary actions,
-// but only the seven entries above appear in primary navigation.
-const nestedViews: View[] = [
-  "contacts", "companies", "tasks", "clients", "reports", "websites",
-  "profiles", "reviews", "payments", "phone-system", "conversations",
-  "automations", "ai", "custom-data", "audit", "team", "settings",
-  ...futureModules,
+const agencyNavigation: NavItem[] = [
+  // The full agency navigation is the pre-simplification menu, with Pipeline
+  // and Calls retained as the two legitimate additions from unified Calls.
+  { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard />, section: "MAIN" },
+  { id: "leads", label: "Leads", icon: <UserRoundSearch />, section: "MAIN" },
+  { id: "pipeline", label: "Pipeline", icon: <Funnel />, section: "MAIN" },
+  { id: "calls", label: "Calls", icon: <PhoneCall />, section: "MAIN" },
+  { id: "contacts", label: "Contacts", icon: <ContactRound />, section: "MAIN" },
+  {
+    id: "companies",
+    label: "Companies",
+    icon: <Building2 />,
+    section: "MAIN",
+    permission: "companies.write",
+  },
+  { id: "calendar", label: "Calendar", icon: <CalendarDays />, section: "MAIN" },
+  { id: "tasks", label: "Tasks", icon: <ListChecks />, section: "MAIN" },
+  { id: "ads", label: "Ads", icon: <Megaphone />, section: "MAIN", permission: "reports.read" },
+  {
+    id: "conversations",
+    label: "Conversations",
+    icon: <MessageSquareText />,
+    section: "COMMUNICATIONS",
+    permission: "messages.write",
+  },
+  {
+    id: "connections",
+    label: "Connections",
+    icon: <Plug />,
+    section: "COMMUNICATIONS",
+    agencyOnly: true,
+    permission: "phone_system.manage",
+  },
+  {
+    id: "phone-system",
+    label: "Phone & Texting",
+    icon: <PhoneCall />,
+    section: "COMMUNICATIONS",
+    agencyOnly: true,
+    permission: "phone_system.manage",
+  },
+  {
+    id: "automations",
+    label: "Automations",
+    icon: <Workflow />,
+    section: "COMMUNICATIONS",
+    agencyOnly: true,
+    permission: "automations.manage",
+  },
+  { id: "websites", label: "Websites", icon: <Globe2 />, section: "GROWTH" },
+  {
+    id: "reviews",
+    label: "Reviews",
+    icon: <Star />,
+    section: "GROWTH",
+    permission: "reviews.read",
+  },
+  {
+    id: "profiles",
+    label: "Google Profiles",
+    icon: <MapPin />,
+    section: "GROWTH",
+    agencyOnly: true,
+    permission: "profiles.manage",
+  },
+  {
+    id: "forms",
+    label: "Forms",
+    icon: <FileText />,
+    section: "GROWTH",
+    agencyOnly: true,
+    preview: true,
+  },
+  {
+    id: "funnels",
+    label: "Funnels",
+    icon: <Funnel />,
+    section: "GROWTH",
+    agencyOnly: true,
+    preview: true,
+  },
+  { id: "reports", label: "Reports", icon: <ChartNoAxesCombined />, section: "BUSINESS", permission: "reports.read" },
+  {
+    id: "payments",
+    label: "Payments",
+    icon: <CreditCard />,
+    section: "BUSINESS",
+    agencyOnly: true,
+    permission: "payments.manage",
+  },
+  {
+    id: "clients",
+    label: "Sub-accounts",
+    icon: <BriefcaseBusiness />,
+    section: "BUSINESS",
+    agencyOnly: true,
+    permission: "clients.manage",
+  },
+  { id: "team", label: "Team", icon: <UsersRound />, section: "BUSINESS", permission: "team.manage" },
+  {
+    id: "ai",
+    label: "AI Connector",
+    icon: <Sparkles />,
+    section: "TOOLS",
+    agencyOnly: true,
+    permission: "ai_connector.manage",
+  },
+  {
+    id: "custom-data",
+    label: "Custom data",
+    icon: <Database />,
+    section: "TOOLS",
+    agencyOnly: true,
+    permission: "custom_data.manage",
+  },
+  {
+    id: "audit",
+    label: "Audit log",
+    icon: <History />,
+    section: "TOOLS",
+    agencyOnly: true,
+    permission: "audit.read",
+  },
+  { id: "settings", label: "Settings", icon: <SettingsIcon />, section: "TOOLS", permission: "clients.manage" },
 ];
+
+const knownViews = new Set<View>(
+  [...agencyNavigation, ...clientNavigation].map((item) => item.id),
+);
+
+function canAccessNavigationItem(
+  item: NavItem,
+  isAgency: boolean,
+  permissions: CrmPermission[],
+) {
+  return (
+    (!item.agencyOnly || isAgency) &&
+    (!item.permission || permissions.includes(item.permission))
+  );
+}
+
+const viewChangeEvent = "brizuela:crm-view-change";
 
 function roleLabel(role: CrmRole) {
   const labels: Record<CrmRole, string> = {
@@ -175,11 +327,7 @@ function readViewFromLocation(): View {
   const requested = new URLSearchParams(window.location.search).get(
     "view",
   ) as View | null;
-  return requested &&
-    (nav.some((item) => item.id === requested) ||
-      nestedViews.includes(requested))
-    ? requested
-    : "dashboard";
+  return requested && knownViews.has(requested) ? requested : "dashboard";
 }
 
 function subscribeToViewChange(onStoreChange: () => void) {
@@ -236,10 +384,24 @@ export function CrmApp({
         : firstVisibleClientId
     : data.viewer.clientId;
 
-  const visibleNav = nav.filter(
-    (item) =>
-      (!item.agencyOnly || data.viewer.isAgency) &&
-      (!item.permission || data.viewer.permissions.includes(item.permission)),
+  const navigation = data.viewer.isAgency
+    ? agencyNavigation
+    : clientNavigation;
+  const visibleNav = navigation.filter((item) =>
+    canAccessNavigationItem(
+      item,
+      data.viewer.isAgency,
+      data.viewer.permissions,
+    ),
+  );
+  // Hidden legacy routes remain available to roles that historically had
+  // access, while agency-only routes are rejected for true client sessions.
+  const accessibleSecondaryViews = agencyNavigation.filter((item) =>
+    canAccessNavigationItem(
+      item,
+      data.viewer.isAgency,
+      data.viewer.permissions,
+    ),
   );
   const scopedClient = data.clients.find(
     (client) => client.id === effectiveSelectedClientId,
@@ -248,11 +410,12 @@ export function CrmApp({
   const requested = requestedView as View;
   const view: View =
     visibleNav.some((item) => item.id === requested) ||
-    nestedViews.includes(requested)
+    accessibleSecondaryViews.some((item) => item.id === requested)
       ? requested
       : "dashboard";
   const title =
     visibleNav.find((item) => item.id === view)?.label ??
+    agencyNavigation.find((item) => item.id === view)?.label ??
     view.replaceAll("-", " ").replace(/^\w/u, (letter) => letter.toUpperCase());
 
   useEffect(() => {

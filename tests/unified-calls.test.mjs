@@ -55,8 +55,9 @@ function call(overrides = {}) {
   };
 }
 
-test("primary CRM navigation is the requested seven tabs in order", () => {
-  const nav = app.slice(app.indexOf("const nav:"), app.indexOf("const viewChangeEvent"));
+test("client CRM navigation keeps the requested seven tabs in order", () => {
+  const start = app.indexOf("const clientNavigation:");
+  const nav = app.slice(start, app.indexOf("\n];", start));
   const labels = [...nav.matchAll(/label: "([^"]+)"/g)].map((match) => match[1]);
   assert.deepEqual(labels, [
     "Dashboard",
@@ -67,6 +68,12 @@ test("primary CRM navigation is the requested seven tabs in order", () => {
     "Ads",
     "Connections",
   ]);
+});
+
+test("agency CRM navigation retains unified Calls", () => {
+  const start = app.indexOf("const agencyNavigation:");
+  const nav = app.slice(start, app.indexOf("\n];", start));
+  assert.match(nav, /id: "calls", label: "Calls", icon: <PhoneCall \/>/);
 });
 
 test("provider calls project into one tenant-keyed call ledger", () => {

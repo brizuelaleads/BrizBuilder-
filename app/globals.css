@@ -16392,7 +16392,11 @@ canvas {
 
 /* Dashboard-only Uiverse card treatment. */
 .crm-dashboard-view {
-  --crm-dashboard-card-gradient: linear-gradient(135deg, #e66465, #9198e5);
+  --crm-dashboard-card-gradient: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--crm-brand-primary, #6757e8) 72%, #ffffff),
+    var(--crm-brand-primary, #6757e8)
+  );
   --crm-dashboard-card-shadow:
     15px 15px 30px #bebebe,
     -15px -15px 30px #ffffff;
