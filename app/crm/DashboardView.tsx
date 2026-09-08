@@ -677,15 +677,17 @@ export function DashboardView({
               key={label}
               className={`crm-dashboard-kpi-card is-${tone}`}
             >
-              <div className="crm-dashboard-kpi-heading">
+              <div className="crm-dashboard-card-image">
                 <span className="crm-dashboard-icon-box" aria-hidden="true">
                   <Icon />
                 </span>
-                <span>{label}</span>
+                <DashboardSparkline values={sparkline} tone={tone} id={label} />
               </div>
-              <strong>{value}</strong>
-              <small>{support}</small>
-              <DashboardSparkline values={sparkline} tone={tone} id={label} />
+              <div className="crm-dashboard-card-text">
+                <span className="crm-dashboard-kpi-heading">{label}</span>
+                <strong>{value}</strong>
+                <small>{support}</small>
+              </div>
             </article>
           ),
         )}
