@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import {
   AlertTriangle,
   CalendarDays,
@@ -313,6 +313,30 @@ function DashboardEmpty({
       <strong>{title}</strong>
       <span>{detail}</span>
     </div>
+  );
+}
+
+function DashboardActionButton({
+  children,
+  className,
+  onClick,
+}: {
+  children: ReactNode;
+  className?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={["crm-dashboard-uiverse-button", className]
+        .filter(Boolean)
+        .join(" ")}
+      onClick={onClick}
+    >
+      <span className="crm-dashboard-button-blob1" aria-hidden="true" />
+      <span className="crm-dashboard-button-blob2" aria-hidden="true" />
+      <span className="crm-dashboard-button-inner">{children}</span>
+    </button>
   );
 }
 
@@ -767,13 +791,12 @@ export function DashboardView({
             )}
           </article>
         </div>
-        <button
-          type="button"
+        <DashboardActionButton
           className="crm-dashboard-marketing-link"
           onClick={() => onNavigate("reports")}
         >
           View full marketing report
-        </button>
+        </DashboardActionButton>
       </section>
 
       <section className="crm-dashboard-duo-grid" aria-label="Action panels">
@@ -783,9 +806,9 @@ export function DashboardView({
               <AlertTriangle aria-hidden="true" />
               <h3>Needs Attention</h3>
             </div>
-            <button type="button" onClick={() => onNavigate("tasks")}>
+            <DashboardActionButton onClick={() => onNavigate("tasks")}>
               View all
-            </button>
+            </DashboardActionButton>
           </header>
           <div className="crm-dashboard-attention-list">
             {attentionItems.map(
@@ -818,9 +841,9 @@ export function DashboardView({
               <CalendarDays aria-hidden="true" />
               <h3>Today</h3>
             </div>
-            <button type="button" onClick={() => onNavigate("calendar")}>
+            <DashboardActionButton onClick={() => onNavigate("calendar")}>
               View calendar
-            </button>
+            </DashboardActionButton>
           </header>
           <div className="crm-dashboard-today-list">
             {todaysAppointments.length ? (
@@ -886,9 +909,9 @@ export function DashboardView({
             <UserPlus aria-hidden="true" />
             <h3>Recent Leads</h3>
           </div>
-          <button type="button" onClick={() => onNavigate("leads")}>
+          <DashboardActionButton onClick={() => onNavigate("leads")}>
             View all leads
-          </button>
+          </DashboardActionButton>
         </header>
         {recentLeads.length ? (
           <div className="crm-dashboard-recent-table" role="table">

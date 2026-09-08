@@ -16392,11 +16392,14 @@ canvas {
 
 /* Dashboard-only Uiverse card treatment. */
 .crm-dashboard-view {
-  --crm-dashboard-card-gradient: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--crm-brand-primary, #6757e8) 72%, #ffffff),
-    var(--crm-brand-primary, #6757e8)
-  );
+  --crm-dashboard-card-gradient:
+    radial-gradient(
+      circle 190px at 0% 100%,
+      #3fe9ff 0%,
+      rgb(0 0 255 / 50%) 38%,
+      transparent 72%
+    ),
+    radial-gradient(circle 340px at 80% -50%, #777777, #0f1111 72%);
   --crm-dashboard-card-shadow:
     15px 15px 30px #bebebe,
     -15px -15px 30px #ffffff;
@@ -16549,7 +16552,7 @@ canvas {
   }
 
   .crm-dashboard-view .crm-dashboard-kpi-card:hover .crm-dashboard-icon-box svg {
-    color: #9198e5;
+    color: #0051ff;
   }
 }
 
@@ -16584,20 +16587,7 @@ canvas {
 }
 
 .crm-dashboard-view .crm-panel > header button {
-  min-height: 32px;
-  border: 0;
-  border-radius: 10px;
-  color: #686da9;
-  background: #ffffff;
-  transition: transform .2s ease-in-out, color .2s ease-in-out;
-}
-
-@media (hover: hover) {
-  .crm-dashboard-view .crm-panel > header button:hover {
-    color: #4f557f;
-    background: #ffffff;
-    transform: scale(1.05) rotate(1deg);
-  }
+  min-height: 0;
 }
 
 .crm-dashboard-view .crm-dashboard-marketing-grid {
@@ -16625,9 +16615,127 @@ canvas {
 
 .crm-dashboard-view .crm-dashboard-marketing-link {
   margin-bottom: 24px;
-  border-radius: 10px;
-  color: #686da9;
-  background: #e3fff9;
+}
+
+.crm-dashboard-button-blob1,
+.crm-dashboard-button-blob2 {
+  display: none;
+}
+
+.crm-dashboard-button-inner {
+  display: contents;
+}
+
+.crm-main-dashboard .crm-dashboard-uiverse-button,
+.crm-dashboard-view .crm-dashboard-uiverse-button,
+.crm-dashboard-view .crm-panel > header .crm-dashboard-uiverse-button {
+  min-height: 0;
+  padding: 2px;
+  position: relative;
+  isolation: isolate;
+  overflow: visible;
+  border: 0;
+  border-radius: 16px;
+  background: radial-gradient(circle 80px at 80% -10%, #ffffff, #181b1b);
+  box-shadow: none;
+  font-size: 1.4rem;
+  cursor: pointer;
+  transition: box-shadow .2s ease, transform .2s ease, filter .2s ease;
+}
+
+.crm-main-dashboard .crm-dashboard-uiverse-button .crm-dashboard-button-blob2,
+.crm-dashboard-view .crm-dashboard-uiverse-button .crm-dashboard-button-blob2 {
+  width: 65%;
+  height: 60%;
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: block;
+  z-index: -1;
+  border-radius: 120px;
+  box-shadow: 0 0 20px rgb(255 255 255 / 22%);
+  pointer-events: none;
+}
+
+.crm-main-dashboard .crm-dashboard-uiverse-button .crm-dashboard-button-blob1,
+.crm-dashboard-view .crm-dashboard-uiverse-button .crm-dashboard-button-blob1 {
+  width: 70px;
+  height: 100%;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  display: block;
+  border-radius: 16px;
+  background: radial-gradient(
+    circle 60px at 0% 100%,
+    #3fe9ff,
+    rgb(0 0 255 / 50%),
+    transparent
+  );
+  box-shadow: -10px 10px 30px rgb(0 81 255 / 18%);
+  pointer-events: none;
+}
+
+.crm-main-dashboard .crm-dashboard-uiverse-button .crm-dashboard-button-inner,
+.crm-dashboard-view .crm-dashboard-uiverse-button .crm-dashboard-button-inner {
+  padding: 14px 25px;
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 14px;
+  color: #ffffff;
+  background: radial-gradient(circle 80px at 80% -50%, #777777, #0f1111);
+  font-size: inherit;
+  font-weight: 720;
+  line-height: 1;
+}
+
+.crm-main-dashboard .crm-dashboard-uiverse-button .crm-dashboard-button-inner::before,
+.crm-dashboard-view .crm-dashboard-uiverse-button .crm-dashboard-button-inner::before {
+  content: "";
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 14px;
+  background: radial-gradient(
+    circle 60px at 0% 100%,
+    rgb(0 225 255 / 10%),
+    rgb(0 0 255 / 7%),
+    transparent
+  );
+  pointer-events: none;
+}
+
+.crm-main-dashboard .crm-dashboard-uiverse-button .crm-dashboard-button-inner > *,
+.crm-dashboard-view .crm-dashboard-uiverse-button .crm-dashboard-button-inner > * {
+  position: relative;
+  z-index: 1;
+}
+
+.crm-main-dashboard .crm-dashboard-uiverse-button:focus-visible,
+.crm-dashboard-view .crm-dashboard-uiverse-button:focus-visible {
+  outline: 2px solid #3fe9ff;
+  outline-offset: 3px;
+}
+
+@media (hover: hover) {
+  .crm-main-dashboard .crm-dashboard-uiverse-button:hover,
+  .crm-dashboard-view .crm-dashboard-uiverse-button:hover {
+    box-shadow: -10px 12px 34px rgb(0 81 255 / 25%);
+    transform: translateY(-1px);
+    filter: brightness(1.05);
+  }
+}
+
+.crm-main-dashboard .crm-dashboard-uiverse-button:active,
+.crm-dashboard-view .crm-dashboard-uiverse-button:active {
+  box-shadow: -5px 6px 18px rgb(0 81 255 / 20%);
+  transform: translateY(0);
 }
 
 .crm-dashboard-view .crm-dashboard-duo-grid {

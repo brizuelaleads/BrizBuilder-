@@ -1084,11 +1084,17 @@ export function CrmApp({
             {["dashboard", "leads", "pipeline"].includes(view) ? (
               <button
                 type="button"
-                className="crm-topbar-action crm-topbar-action-primary"
+                className={`crm-topbar-action crm-topbar-action-primary${
+                  view === "dashboard" ? " crm-dashboard-uiverse-button" : ""
+                }`}
                 onClick={() => setModal("lead")}
               >
-                <Plus aria-hidden="true" />
-                <span>Add lead</span>
+                <span className="crm-dashboard-button-blob1" aria-hidden="true" />
+                <span className="crm-dashboard-button-blob2" aria-hidden="true" />
+                <span className="crm-dashboard-button-inner">
+                  <Plus aria-hidden="true" />
+                  <span>Add lead</span>
+                </span>
               </button>
             ) : null}
             {view === "contacts" ? (
