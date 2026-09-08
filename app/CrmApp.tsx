@@ -10,19 +10,36 @@ import {
 } from "react";
 import {
   Bell,
+  BriefcaseBusiness,
+  Building2,
   CalendarDays,
+  ChartNoAxesCombined,
   CircleUserRound,
+  ContactRound,
+  CreditCard,
+  Database,
+  FileText,
   Funnel,
+  Globe2,
+  History,
   KeyRound,
   LayoutDashboard,
+  ListChecks,
   LogOut,
+  MapPin,
   Megaphone,
   Menu,
+  MessageSquareText,
   PhoneCall,
   Plus,
   Plug,
   Search,
+  Settings as SettingsIcon,
+  Sparkles,
+  Star,
   UserRoundSearch,
+  UsersRound,
+  Workflow,
   X,
 } from "lucide-react";
 import { BrandLogo } from "./components/BrandLogo";
@@ -129,6 +146,7 @@ function crmTimestamp(value: string | null) {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
+// Client workspaces retain the compact seven-tab menu.
 const nav: Array<{
   id: View;
   label: string;
@@ -147,9 +165,37 @@ const nav: Array<{
   { id: "connections", label: "Connections", icon: <Plug />, section: "MAIN" },
 ];
 
+// Agency users need the full workspace menu, even while managing a selected
+// sub-account. Restore the existing capability gates, not additional access.
+const agencyNav: typeof nav = [
+  ...nav
+    .filter((item) => item.id !== "connections")
+    .map((item) => item.id === "ads" ? { ...item, permission: "reports.read" as const } : item),
+  { id: "contacts", label: "Contacts", icon: <ContactRound />, section: "MAIN" },
+  { id: "companies", label: "Companies", icon: <Building2 />, section: "MAIN", permission: "companies.write" },
+  { id: "tasks", label: "Tasks", icon: <ListChecks />, section: "MAIN" },
+  { id: "conversations", label: "Conversations", icon: <MessageSquareText />, section: "COMMUNICATIONS", permission: "messages.write" },
+  { id: "connections", label: "Connections", icon: <Plug />, section: "COMMUNICATIONS", agencyOnly: true, permission: "phone_system.manage" },
+  { id: "phone-system", label: "Phone & Texting", icon: <PhoneCall />, section: "COMMUNICATIONS", agencyOnly: true, permission: "phone_system.manage" },
+  { id: "automations", label: "Automations", icon: <Workflow />, section: "COMMUNICATIONS", agencyOnly: true, permission: "automations.manage" },
+  { id: "websites", label: "Websites", icon: <Globe2 />, section: "GROWTH" },
+  { id: "reviews", label: "Reviews", icon: <Star />, section: "GROWTH", permission: "reviews.read" },
+  { id: "profiles", label: "Google Profiles", icon: <MapPin />, section: "GROWTH", agencyOnly: true, permission: "profiles.manage" },
+  { id: "forms", label: "Forms", icon: <FileText />, section: "GROWTH", agencyOnly: true, preview: true },
+  { id: "funnels", label: "Funnels", icon: <Funnel />, section: "GROWTH", agencyOnly: true, preview: true },
+  { id: "reports", label: "Reports", icon: <ChartNoAxesCombined />, section: "BUSINESS", permission: "reports.read" },
+  { id: "payments", label: "Payments", icon: <CreditCard />, section: "BUSINESS", agencyOnly: true, permission: "payments.manage" },
+  { id: "clients", label: "Sub-accounts", icon: <BriefcaseBusiness />, section: "BUSINESS", agencyOnly: true, permission: "clients.manage" },
+  { id: "team", label: "Team", icon: <UsersRound />, section: "BUSINESS", permission: "team.manage" },
+  { id: "ai", label: "AI Connector", icon: <Sparkles />, section: "TOOLS", agencyOnly: true, permission: "ai_connector.manage" },
+  { id: "custom-data", label: "Custom data", icon: <Database />, section: "TOOLS", agencyOnly: true, permission: "custom_data.manage" },
+  { id: "audit", label: "Audit log", icon: <History />, section: "TOOLS", agencyOnly: true, permission: "audit.read" },
+  { id: "settings", label: "Settings", icon: <SettingsIcon />, section: "TOOLS", permission: "clients.manage" },
+];
+
 const viewChangeEvent = "brizuela:crm-view-change";
-// Existing routes stay valid for deep links and in-product secondary actions,
-// but only the seven entries above appear in primary navigation.
+// Keep secondary routes available for client deep links and in-product actions.
+// Sidebar visibility does not replace the existing page and server permissions.
 const nestedViews: View[] = [
   "contacts", "companies", "tasks", "clients", "reports", "websites",
   "profiles", "reviews", "payments", "phone-system", "conversations",
@@ -241,7 +287,7 @@ export function CrmApp({
         : firstVisibleClientId
     : data.viewer.clientId;
 
-  const visibleNav = nav.filter(
+  const visibleNav = (data.viewer.isAgency ? agencyNav : nav).filter(
     (item) =>
       (!item.agencyOnly || data.viewer.isAgency) &&
       (!item.permission || data.viewer.permissions.includes(item.permission)),

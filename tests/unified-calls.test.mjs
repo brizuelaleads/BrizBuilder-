@@ -55,8 +55,8 @@ function call(overrides = {}) {
   };
 }
 
-test("primary CRM navigation is the requested seven tabs in order", () => {
-  const nav = app.slice(app.indexOf("const nav:"), app.indexOf("const viewChangeEvent"));
+test("client CRM navigation retains the requested seven tabs in order", () => {
+  const nav = app.slice(app.indexOf("const nav:"), app.indexOf("const agencyNav:"));
   const labels = [...nav.matchAll(/label: "([^"]+)"/g)].map((match) => match[1]);
   assert.deepEqual(labels, [
     "Dashboard",

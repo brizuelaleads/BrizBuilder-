@@ -3,6 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import { buildSync } from "esbuild";
 
 const root = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
 // Line endings are normalized so the block-matching patterns below behave the
@@ -14,6 +16,34 @@ const d1Source = read("db/crm.ts");
 const supabaseSource = read("db/supabase-crm.ts");
 const appSource = read("app/CrmApp.tsx");
 const formsSource = read("app/crm/ActionForms.tsx");
+
+// Execute the actual JSX navigation definitions and viewer filter in isolation,
+// without loading the CRM's network/provider components.
+const navigationDefinitions = appSource.slice(
+  appSource.indexOf("const nav:"),
+  appSource.indexOf("const viewChangeEvent"),
+);
+const navigationFilter = appSource.match(/const visibleNav = ([\s\S]*?);/)?.[1];
+assert.ok(navigationFilter, "CRM computes a visible navigation list");
+const iconsImport = appSource.match(/import \{[^}]+\} from "lucide-react";/)?.[0];
+const navigationBuild = buildSync({
+  stdin: {
+    contents: `${iconsImport}\n${navigationDefinitions}\nexport function visibleNavigation(viewer) { const data = { viewer }; return ${navigationFilter}; }`,
+    loader: "tsx",
+    resolveDir: root,
+  },
+  bundle: true,
+  write: false,
+  platform: "node",
+  format: "cjs",
+  jsx: "automatic",
+  external: ["react/jsx-runtime", "lucide-react"],
+});
+const navigationModule = { exports: {} };
+new Function("require", "module", "exports", navigationBuild.outputFiles[0].text)(
+  createRequire(import.meta.url), navigationModule, navigationModule.exports,
+);
+const { visibleNavigation } = navigationModule.exports;
 
 // Capabilities a client user must never hold: they drive the agency-only tabs
 // (provider setup, automations, AI, custom data, shared billing).
@@ -149,7 +179,7 @@ test("client roles keep exactly the capabilities their own tabs need", () => {
   assert.ok(!rolePermissions(supabaseSource, "CLIENT_EMPLOYEE").includes("calendar.connect"));
 });
 
-test("the seven primary tabs are shared while sensitive pages follow capabilities", () => {
+test("the compact client tabs remain available while sensitive pages follow capabilities", () => {
   for (const id of PRIMARY_TABS) {
     const entry = appSource.match(
       new RegExp(`\\{[^{}]*id: "${id}"[^{}]*\\}`, "s"),
@@ -166,6 +196,74 @@ test("the seven primary tabs are shared while sensitive pages follow capabilitie
     appSource,
     /view === "settings" && data\.viewer\.permissions\.includes\("clients\.manage"\)/,
   );
+});
+
+test("agency owners regain the full grouped menu, including Pipeline and Calls", () => {
+  const menu = visibleNavigation({ isAgency: true, permissions: rolePermissions(supabaseSource, "LB_OWNER") });
+  assert.deepEqual(menu.map((item) => item.id), [
+    "dashboard", "leads", "pipeline", "calls", "calendar", "ads",
+    "contacts", "companies", "tasks", "conversations", "connections",
+    "phone-system", "automations", "websites", "reviews", "profiles",
+    "forms", "funnels", "reports", "payments", "clients", "team", "ai",
+    "custom-data", "audit", "settings",
+  ]);
+  assert.deepEqual([...new Set(menu.map((item) => item.section))], [
+    "MAIN", "COMMUNICATIONS", "GROWTH", "BUSINESS", "TOOLS",
+  ]);
+  assert.deepEqual(menu.filter((item) => item.preview).map((item) => item.id), ["forms", "funnels"]);
+  assert.ok(menu.every((item) => item.icon && item.label && item.section));
+});
+
+test("all client roles keep exactly seven tabs even with an agency permission supplied", () => {
+  for (const role of ["CLIENT_OWNER", "CLIENT_MANAGER", "CLIENT_EMPLOYEE"]) {
+    for (const permissions of [rolePermissions(supabaseSource, role), rolePermissions(supabaseSource, "LB_OWNER")]) {
+      const menu = visibleNavigation({ isAgency: false, role, permissions });
+      assert.deepEqual(menu.map((item) => item.id), PRIMARY_TABS, role);
+    }
+  }
+});
+
+test("agency menu uses the authenticated viewer, not the selected sub-account", () => {
+  const viewer = { isAgency: true, permissions: rolePermissions(supabaseSource, "LB_OWNER") };
+  assert.deepEqual(visibleNavigation({ ...viewer, clientId: "client-one", canViewAllClients: false }), visibleNavigation(viewer));
+});
+
+test("restored agency management tabs retain their original capability gates", () => {
+  const expectedGates = {
+    ads: "reports.read", companies: "companies.write", conversations: "messages.write",
+    connections: "phone_system.manage", "phone-system": "phone_system.manage",
+    automations: "automations.manage", reviews: "reviews.read", profiles: "profiles.manage",
+    reports: "reports.read", payments: "payments.manage", clients: "clients.manage",
+    team: "team.manage", ai: "ai_connector.manage", "custom-data": "custom_data.manage",
+    audit: "audit.read", settings: "clients.manage",
+  };
+  for (const source of [d1Source, supabaseSource]) {
+    for (const role of ["LB_OWNER", "LB_ADMIN", "LB_TEAM_MEMBER", "SUPER_ADMIN", "AGENCY_OWNER", "AGENCY_ADMIN", "AGENCY_MEMBER"]) {
+      const permissions = rolePermissions(source, role);
+      const menu = visibleNavigation({ isAgency: true, role, permissions });
+      for (const [id, permission] of Object.entries(expectedGates)) {
+        assert.equal(menu.some((item) => item.id === id), permissions.includes(permission), `${role}: ${id} requires ${permission}`);
+      }
+      assert.equal(new Set(menu.map((item) => item.id)).size, menu.length, "no duplicate tabs");
+      const sections = menu.map((item) => item.section).filter((section, index, all) => index === 0 || section !== all[index - 1]);
+      assert.equal(new Set(sections).size, sections.length, "sections remain contiguous after permission filtering");
+    }
+  }
+});
+
+test("agency viewer without management permissions cannot see management tabs", () => {
+  const ids = visibleNavigation({ isAgency: true, permissions: [] }).map((item) => item.id);
+  assert.deepEqual(ids, ["dashboard", "leads", "pipeline", "calls", "calendar", "contacts", "tasks", "websites", "forms", "funnels"]);
+});
+
+test("restored entries still resolve through existing navigation and deep-link routes", () => {
+  const secondaryRoutes = appSource.match(/const nestedViews: View\[\] = \[([\s\S]*?)\];/)?.[1];
+  assert.ok(secondaryRoutes);
+  const knownRoutes = new Set([...PRIMARY_TABS, "forms", "funnels", ...[...secondaryRoutes.matchAll(/"([a-z-]+)"/g)].map((match) => match[1])]);
+  for (const item of visibleNavigation({ isAgency: true, permissions: rolePermissions(supabaseSource, "LB_OWNER") })) {
+    assert.ok(knownRoutes.has(item.id), `${item.id} is a supported route`);
+  }
+  assert.match(appSource, /onClick=\{\(\) => navigate\(item\.id\)\}/);
 });
 
 test("client sessions are pinned to their own selected client in the UI", () => {
