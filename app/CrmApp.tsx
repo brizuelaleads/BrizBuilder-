@@ -1085,16 +1085,24 @@ export function CrmApp({
               <button
                 type="button"
                 className={`crm-topbar-action crm-topbar-action-primary${
-                  view === "dashboard" ? " crm-dashboard-uiverse-button" : ""
+                  view === "dashboard" ? " button" : ""
                 }`}
                 onClick={() => setModal("lead")}
               >
-                <span className="crm-dashboard-button-blob1" aria-hidden="true" />
-                <span className="crm-dashboard-button-blob2" aria-hidden="true" />
-                <span className="crm-dashboard-button-inner">
-                  <Plus aria-hidden="true" />
-                  <span>Add lead</span>
-                </span>
+                {view === "dashboard" ? (
+                  <>
+                    <span className="blob1" aria-hidden="true" />
+                    <span className="inner">
+                      <Plus aria-hidden="true" />
+                      <span>Add lead</span>
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Plus aria-hidden="true" />
+                    <span>Add lead</span>
+                  </>
+                )}
               </button>
             ) : null}
             {view === "contacts" ? (

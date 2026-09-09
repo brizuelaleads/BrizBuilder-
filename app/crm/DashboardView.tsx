@@ -37,6 +37,7 @@ type DashboardDestination =
   | "reports";
 
 type KpiTone = "green" | "orange" | "purple";
+type TrendTone = "up" | "down" | "neutral";
 
 const DAY_MS = 86_400_000;
 const SOURCE_COLORS = ["#18b65d", "#ff7a2f", "#6947ff", "#4d8fff", "#9ca3af"];
@@ -227,6 +228,53 @@ function bucketSeries<T>(
   return buckets;
 }
 
+function seriesTrend(values: number[], inverse = false): TrendTone {
+  if (values.length < 2 || values.every((value) => value === 0)) {
+    return "neutral";
+  }
+
+  const midpoint = Math.floor(values.length / 2);
+  const previous = values
+    .slice(0, midpoint)
+    .reduce((sum, value) => sum + value, 0);
+  const current = values
+    .slice(midpoint)
+    .reduce((sum, value) => sum + value, 0);
+
+  if (current === previous) return "neutral";
+  const direction: TrendTone = current > previous ? "up" : "down";
+  if (!inverse) return direction;
+  return direction === "up" ? "down" : "up";
+}
+
+function ratioTrend(
+  numerators: number[],
+  denominators: number[],
+): TrendTone {
+  const midpoint = Math.floor(
+    Math.min(numerators.length, denominators.length) / 2,
+  );
+  if (!midpoint) return "neutral";
+
+  const sum = (values: number[], start: number, end?: number) =>
+    values.slice(start, end).reduce((total, value) => total + value, 0);
+  const previousDenominator = sum(denominators, 0, midpoint);
+  const currentDenominator = sum(denominators, midpoint);
+  if (previousDenominator <= 0 || currentDenominator <= 0) return "neutral";
+
+  const previousRatio =
+    sum(numerators, 0, midpoint) / previousDenominator;
+  const currentRatio = sum(numerators, midpoint) / currentDenominator;
+  if (currentRatio === previousRatio) return "neutral";
+  return currentRatio > previousRatio ? "up" : "down";
+}
+
+function trendLabel(trend: TrendTone) {
+  if (trend === "up") return "Trending up";
+  if (trend === "down") return "Trending down";
+  return "No directional trend";
+}
+
 function sparklineGeometry(values: number[]) {
   const width = 120;
   const height = 48;
@@ -269,22 +317,27 @@ function sparklineGeometry(values: number[]) {
 
 function DashboardSparkline({
   values,
-  tone,
+  trend,
   id,
+  trendBasis,
 }: {
   values: number[];
-  tone: KpiTone;
+  trend: TrendTone;
   id: string;
+  trendBasis?: string;
 }) {
   const geometry = sparklineGeometry(values);
   const gradientId = `crm-dashboard-area-${id.replace(/[^a-z0-9_-]/gi, "-").toLowerCase()}`;
+  const label = `${id} sparkline. ${trendBasis ?? id}: ${trendLabel(trend)}`;
   return (
     <svg
-      className={`crm-dashboard-sparkline is-${tone}`}
+      className={`crm-dashboard-sparkline is-trend-${trend}`}
       viewBox="0 0 120 48"
       preserveAspectRatio="none"
-      aria-hidden="true"
+      role="img"
+      aria-label={label}
     >
+      <title>{label}</title>
       <defs>
         <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="currentColor" stopOpacity="0.3" />
@@ -328,14 +381,13 @@ function DashboardActionButton({
   return (
     <button
       type="button"
-      className={["crm-dashboard-uiverse-button", className]
+      className={["button", className]
         .filter(Boolean)
         .join(" ")}
       onClick={onClick}
     >
-      <span className="crm-dashboard-button-blob1" aria-hidden="true" />
-      <span className="crm-dashboard-button-blob2" aria-hidden="true" />
-      <span className="crm-dashboard-button-inner">{children}</span>
+      <span className="blob1" aria-hidden="true" />
+      <span className="inner">{children}</span>
     </button>
   );
 }
@@ -559,12 +611,41 @@ export function DashboardView({
         .join(", ")})`
     : "conic-gradient(#edf1ee 0deg 360deg)";
 
+  const leadSparkline = bucketSeries(
+    leads,
+    generatedAtTimestamp,
+    range,
+    (lead) => lead.createdAt,
+  );
+  const missedCallSparkline = bucketSeries(
+    missedCalls,
+    generatedAtTimestamp,
+    range,
+    (call) => call.startedAt,
+  );
+  const revenueSparkline = bucketSeries(
+    wonLeads,
+    generatedAtTimestamp,
+    range,
+    (lead) => lead.updatedAt,
+    (lead) => Math.max(0, lead.finalRevenueCents / 100),
+  );
+  const adSpendSparkline = bucketSeries(
+    metaAdInsights,
+    generatedAtTimestamp,
+    range,
+    (insight) => insight.date,
+    (insight) => insight.spendCents / 100,
+  );
+
   const kpiCards: Array<{
     label: string;
     value: string;
     support: string;
     icon: LucideIcon;
     tone: KpiTone;
+    trend: TrendTone;
+    trendBasis?: string;
     sparkline: number[];
   }> = [
     {
@@ -576,12 +657,8 @@ export function DashboardView({
           : formatLeadDelta(leads.length, previousLeads),
       icon: UsersRound,
       tone: "green",
-      sparkline: bucketSeries(
-        leads,
-        generatedAtTimestamp,
-        range,
-        (lead) => lead.createdAt,
-      ),
+      trend: seriesTrend(leadSparkline),
+      sparkline: leadSparkline,
     },
     {
       label: "Missed Calls",
@@ -593,12 +670,8 @@ export function DashboardView({
         : "No call tracking connected",
       icon: PhoneCall,
       tone: "orange",
-      sparkline: bucketSeries(
-        missedCalls,
-        generatedAtTimestamp,
-        range,
-        (call) => call.startedAt,
-      ),
+      trend: seriesTrend(missedCallSparkline, true),
+      sparkline: missedCallSparkline,
     },
     {
       label: "Revenue",
@@ -612,13 +685,8 @@ export function DashboardView({
         : "No revenue recorded",
       icon: CircleDollarSign,
       tone: "green",
-      sparkline: bucketSeries(
-        wonLeads,
-        generatedAtTimestamp,
-        range,
-        (lead) => lead.updatedAt,
-        (lead) => Math.max(0, lead.finalRevenueCents / 100),
-      ),
+      trend: seriesTrend(revenueSparkline),
+      sparkline: revenueSparkline,
     },
     {
       label: "Ad spend",
@@ -643,6 +711,8 @@ export function DashboardView({
             : "No ad account connected",
       icon: TrendingUp,
       tone: "purple",
+      trend: ratioTrend(revenueSparkline, adSpendSparkline),
+      trendBasis: "ROAS",
       sparkline: bucketSeries(
         metaAdInsights,
         generatedAtTimestamp,
@@ -696,16 +766,31 @@ export function DashboardView({
         aria-label="Business snapshot"
       >
         {kpiCards.map(
-          ({ label, value, support, icon: Icon, tone, sparkline }) => (
+          ({
+            label,
+            value,
+            support,
+            icon: Icon,
+            tone,
+            trend,
+            trendBasis,
+            sparkline,
+          }) => (
             <article
               key={label}
-              className={`crm-dashboard-kpi-card is-${tone}`}
+              className={`crm-dashboard-kpi-card is-${tone} is-trend-${trend}`}
+              aria-label={`${label}: ${value}. ${support}. ${trendBasis ?? label}: ${trendLabel(trend)}.`}
             >
               <div className="crm-dashboard-card-image">
                 <span className="crm-dashboard-icon-box" aria-hidden="true">
                   <Icon />
                 </span>
-                <DashboardSparkline values={sparkline} tone={tone} id={label} />
+                <DashboardSparkline
+                  values={sparkline}
+                  trend={trend}
+                  id={label}
+                  trendBasis={trendBasis}
+                />
               </div>
               <div className="crm-dashboard-card-text">
                 <span className="crm-dashboard-kpi-heading">{label}</span>
@@ -753,7 +838,7 @@ export function DashboardView({
             </small>
             <DashboardSparkline
               values={appointmentTrend}
-              tone="green"
+              trend={seriesTrend(appointmentTrend)}
               id="appointments-booked"
             />
           </article>
