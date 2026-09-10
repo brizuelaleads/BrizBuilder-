@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import { useId, useState, type CSSProperties, type ReactNode } from "react";
 import {
   AlertTriangle,
   CalendarDays,
@@ -188,6 +188,8 @@ function stageDisplay(lead: CrmLead) {
   };
 }
 
+type DatedSeries = number[] & { dates?: string[] };
+
 function bucketSeries<T>(
   items: T[],
   generatedAtTimestamp: number,
@@ -195,7 +197,7 @@ function bucketSeries<T>(
   getTime: (item: T) => string | null,
   getValue: (item: T) => number = () => 1,
 ) {
-  const buckets = Array.from({ length: 8 }, () => 0);
+  const buckets: DatedSeries = Array.from({ length: 8 }, () => 0);
   const eventTimes = items
     .map((item) => timestamp(getTime(item)))
     .filter((value) => value > 0);
@@ -209,6 +211,12 @@ function bucketSeries<T>(
       ? Math.min(...eventTimes, end - 30 * DAY_MS)
       : end - rangeDays * DAY_MS;
   const span = Math.max(DAY_MS, end - start);
+  const formatDate = (value: number) => new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+  buckets.dates = buckets.map((_, index) => {
+    const from = formatDate(start + index * span / buckets.length);
+    const to = formatDate(Math.min(end, start + (index + 1) * span / buckets.length - 1));
+    return from === to ? from : `${from} – ${to}`;
+  });
 
   items.forEach((item) => {
     const eventTimestamp = timestamp(getTime(item));
@@ -351,6 +359,30 @@ function DashboardSparkline({
       />
       <path className="crm-dashboard-sparkline-line" d={geometry.line} />
     </svg>
+  );
+}
+
+function DashboardAreaChart({ values, trend, id }: { values: DatedSeries; trend: TrendTone; id: string; trendBasis?: string }) {
+  const fillId = useId();
+  const [active, setActive] = useState<number | null>(null);
+  const geometry = sparklineGeometry(values);
+  const markerX = active === null ? 0 : 2 + active / Math.max(1, values.length - 1) * 116;
+  const markerY = active === null ? 0 : 42 - values[active] / Math.max(1, ...values) * 36;
+  const describe = (index: number) => `${values.dates?.[index] ?? "Date unavailable"}: ${id === "Revenue" || id === "Ad spend" ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(values[index]) : `${values[index]} ${id.toLowerCase()}`}`;
+  return (
+    <div className={`crm-dashboard-area-chart is-trend-${trend}`}>
+      <svg viewBox="0 0 120 48" preserveAspectRatio="none" aria-hidden="true">
+        <defs><linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="currentColor" stopOpacity=".34" /><stop offset="60%" stopColor="currentColor" stopOpacity=".13" /><stop offset="100%" stopColor="currentColor" stopOpacity=".015" /></linearGradient></defs>
+        <path className="crm-dashboard-area-glow" d={geometry.area} fill={`url(#${fillId})`} />
+        <path className="crm-dashboard-area-fill" d={geometry.area} fill={`url(#${fillId})`} />
+        <path className="crm-dashboard-area-line" d={geometry.line} fill="none" stroke="currentColor" strokeWidth="1.8" vectorEffect="non-scaling-stroke" />
+      </svg>
+      {active !== null && <div className="crm-dashboard-chart-marker" style={{ left: `${markerX / 120 * 100}%` }} aria-hidden="true"><span style={{ top: `${markerY / 48 * 100}%` }} /></div>}
+      <div className="crm-dashboard-chart-targets" onMouseLeave={() => setActive(null)}>
+        {values.map((value, index) => <button key={index} type="button" aria-label={describe(index)} onMouseEnter={() => setActive(index)} onFocus={() => setActive(index)} onBlur={() => setActive(null)} onClick={() => setActive(index)} />)}
+      </div>
+      {active !== null && <output className="crm-dashboard-chart-tooltip" style={{ left: `clamp(84px, ${markerX / 120 * 100}%, calc(100% - 84px))` }}><strong>{id === "Revenue" || id === "Ad spend" ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(values[active]) : `${values[active]} ${id.toLowerCase()}`}</strong><time>{values.dates?.[active] ?? "Date unavailable"}</time></output>}
+    </div>
   );
 }
 
@@ -646,7 +678,7 @@ export function DashboardView({
     tone: KpiTone;
     trend: TrendTone;
     trendBasis?: string;
-    sparkline: number[];
+    sparkline: DatedSeries;
   }> = [
     {
       label: "Leads",
@@ -785,7 +817,7 @@ export function DashboardView({
                 <span className="crm-dashboard-icon-box" aria-hidden="true">
                   <Icon />
                 </span>
-                <DashboardSparkline
+                <DashboardAreaChart
                   values={sparkline}
                   trend={trend}
                   id={label}

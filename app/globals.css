@@ -20435,3 +20435,85 @@ canvas {
     box-shadow: 16px 0 40px rgb(0 0 0 / 25%);
   }
 }
+
+/* Frosted dashboard canvas, using the existing charcoal palette. */
+.crm-shell:has(> .crm-main-dashboard) {
+  background:
+    radial-gradient(ellipse at 14% 8%, rgb(255 255 255 / 10%), transparent 52%),
+    radial-gradient(ellipse at 85% 70%, rgb(255 255 255 / 4%), transparent 58%),
+    #0d1117;
+}
+.crm-shell .crm-main-dashboard {
+  background:
+    linear-gradient(155deg, rgb(255 255 255 / 5%), transparent 65%),
+    rgb(13 17 23 / 72%);
+  -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(22px);
+}
+.crm-shell .crm-main-dashboard > .crm-dashboard-view {
+  background: transparent;
+}
+.crm-shell .crm-main-dashboard > .crm-topbar,
+.crm-shell .crm-main-dashboard > .crm-mobile-filterbar {
+  background: rgb(13 17 23 / 64%);
+  -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(22px);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .crm-shell .crm-main-dashboard,
+  .crm-shell .crm-main-dashboard > .crm-topbar,
+  .crm-shell .crm-main-dashboard > .crm-mobile-filterbar {
+    background-color: #171b21;
+  }
+}
+
+/* Individual metric cards with inspectable area charts. */
+.crm-dashboard-area-chart { position: absolute; left: 20px; right: 20px; bottom: 12px; height: 90px; color: var(--crm-dashboard-trend-line); }
+.crm-dashboard-area-chart > svg { display: block; width: 100%; height: 100%; }
+.crm-dashboard-area-glow {
+  opacity: .42;
+  filter: blur(9px);
+  transform: translateY(3px);
+  transform-origin: center bottom;
+  transition: opacity 220ms ease, filter 220ms ease;
+}
+.crm-dashboard-area-fill {
+  opacity: .78;
+  transition: opacity 220ms ease;
+}
+.crm-dashboard-area-line {
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 20%));
+  transition: stroke-width 180ms ease, filter 220ms ease;
+}
+.crm-dashboard-area-chart:has(.crm-dashboard-chart-targets > button:hover) .crm-dashboard-area-glow,
+.crm-dashboard-area-chart:has(.crm-dashboard-chart-targets > button:focus-visible) .crm-dashboard-area-glow { opacity: .62; filter: blur(11px); }
+.crm-dashboard-area-chart:has(.crm-dashboard-chart-targets > button:hover) .crm-dashboard-area-fill,
+.crm-dashboard-area-chart:has(.crm-dashboard-chart-targets > button:focus-visible) .crm-dashboard-area-fill { opacity: .92; }
+.crm-dashboard-area-chart:has(.crm-dashboard-chart-targets > button:hover) .crm-dashboard-area-line,
+.crm-dashboard-area-chart:has(.crm-dashboard-chart-targets > button:focus-visible) .crm-dashboard-area-line { stroke-width: 2.15; filter: drop-shadow(0 2px 4px rgb(0 0 0 / 24%)); }
+.crm-dashboard-chart-targets { position: absolute; inset: 0; display: flex; }
+.crm-shell .crm-main-dashboard .crm-dashboard-chart-targets > button { flex: 1; min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; transform: none; cursor: crosshair; }
+.crm-shell .crm-main-dashboard .crm-dashboard-chart-targets > button:hover,
+.crm-shell .crm-main-dashboard .crm-dashboard-chart-targets > button:focus-visible { background: transparent; outline: none; box-shadow: none; }
+.crm-dashboard-chart-tooltip { position: absolute; z-index: 5; left: 0; top: 0; max-width: 100%; padding: 8px 10px; border-radius: 6px; color: #f2f4f7; background: #292d35; box-shadow: 0 4px 12px rgb(0 0 0 / 24%); font-size: 11px; line-height: 1.5; pointer-events: none; }
+
+.crm-dashboard-chart-marker { position: absolute; top: 0; bottom: 0; width: 1px; background: currentColor; pointer-events: none; }
+.crm-dashboard-chart-marker > span { position: absolute; left: 0; width: 7px; height: 7px; transform: translate(-50%, -50%); border-radius: 50%; background: currentColor; box-shadow: 0 0 0 2px #171b21; }
+
+/* Keep the readout above the plot, with a soft fill instead of a neon glow. */
+.crm-dashboard-area-chart { height: 72px; }
+.crm-dashboard-chart-tooltip {
+  top: auto; bottom: calc(100% + 7px); width: 168px; max-width: 100%;
+  transform: translateX(-50%); padding: 6px 9px; border-radius: 9px;
+  border: 1px solid rgb(255 255 255 / 12%); background: rgb(39 43 51 / 96%);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 20%); text-align: center;
+  transition: left 120ms ease-out; line-height: 1.35;
+}
+.crm-dashboard-chart-tooltip strong { display: block; color: #f2f4f7; font-size: 12px; font-weight: 600; }
+.crm-dashboard-chart-tooltip time { display: block; margin-top: 2px; color: #bec5cf; font-size: 9px; }
+.crm-dashboard-chart-marker { background: linear-gradient(to bottom, transparent, currentColor 20%, currentColor 80%, transparent); transition: left 120ms ease-out; }
+.crm-dashboard-chart-marker > span { transition: top 120ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .crm-dashboard-chart-tooltip, .crm-dashboard-chart-marker, .crm-dashboard-chart-marker > span,
+  .crm-dashboard-area-glow, .crm-dashboard-area-fill, .crm-dashboard-area-line { transition: none; }
+}
