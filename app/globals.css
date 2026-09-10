@@ -20128,17 +20128,17 @@ canvas {
 .crm-shell .crm-sidebar .crm-primary-nav.input {
   display: flex;
   flex-direction: column;
-  width: 200px;
+  width: 100%;
   max-width: 100%;
   flex-shrink: 1;
-  /* Safe centering keeps long CRM menus scrollable from the first item. */
-  justify-content: safe center;
-  padding: 6px 8px 16px 14px;
+  justify-content: flex-start;
+  padding: 6px 8px 10px 14px;
   border-radius: 5px;
   background: #0d1117;
 }
 
 .crm-shell .crm-sidebar .crm-primary-nav.input .crm-nav-section {
+  margin: 12px 8px 4px;
   color: rgb(255 255 255 / 48%);
 }
 
@@ -20146,10 +20146,11 @@ canvas {
   display: flex;
   position: relative;
   width: 100%;
-  min-height: 39px;
-  margin: 2px 0;
-  padding: 10px;
-  gap: 5px;
+  min-height: 36px;
+  margin: 1px 0;
+  padding: 6px 8px;
+  align-items: center;
+  gap: 9px;
   border: 0;
   border-radius: 4px;
   color: white;
@@ -20267,3 +20268,15 @@ canvas {
 }
 
 .crm-shell .crm-sidebar .crm-primary-nav.input > * { flex-shrink: 0; }
+
+.crm-shell .crm-sidebar .crm-primary-nav.input .value i {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+}
+.crm-shell .crm-sidebar .crm-primary-nav.input .crm-nav-item:first-child .crm-nav-section {
+  margin-top: 6px;
+}
+@media (pointer: coarse) {
+  .crm-shell .crm-sidebar .crm-primary-nav.input .value { min-height: 44px; }
+}
