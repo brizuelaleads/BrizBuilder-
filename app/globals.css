@@ -20324,3 +20324,70 @@ canvas {
   background: #21262c;
   color: rgb(255 255 255 / 96%);
 }
+
+/* Preserve the original dark surfaces; simplify interiors and soften bright accents. */
+.crm-shell .crm-main-dashboard .crm-dashboard-view .crm-dashboard-kpi-card.is-trend-up { --crm-dashboard-trend-line: #a4dec3; --crm-dashboard-trend-text: #93d6b6; }
+.crm-shell .crm-main-dashboard .crm-dashboard-view .crm-dashboard-kpi-card.is-trend-down { --crm-dashboard-trend-line: #edb4c7; --crm-dashboard-trend-text: #e3a8bb; }
+.crm-shell .crm-main-dashboard .crm-dashboard-view .crm-dashboard-kpi-card.is-trend-neutral { --crm-dashboard-trend-line: #afcff0; --crm-dashboard-trend-text: #a8c9e8; }
+.crm-shell .crm-main-dashboard .crm-dashboard-view :is(.crm-dashboard-icon-box, .crm-dashboard-row-icon, .crm-dashboard-widget-heading svg, .crm-dashboard-stage-badge, .crm-avatar) {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.crm-shell .crm-main-dashboard .crm-dashboard-view .crm-dashboard-kpi-card .crm-dashboard-icon-box { color: var(--crm-dashboard-trend-line); }
+.crm-shell .crm-main-dashboard .crm-dashboard-view .crm-dashboard-kpi-card .crm-dashboard-card-text > small {
+  min-height: 0;
+  padding: 0;
+  margin-top: 20px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  white-space: normal;
+  line-height: 1.6;
+}
+.crm-shell .crm-main-dashboard .crm-dashboard-view :is(.crm-dashboard-sparkline, .crm-dashboard-sparkline-line, .crm-dashboard-row-icon svg) { filter: none; opacity: 1; }
+.crm-shell .crm-main-dashboard .crm-dashboard-view .crm-dashboard-sparkline-area { display: none; }
+.crm-shell .crm-main-dashboard .crm-dashboard-view .crm-dashboard-sparkline.is-trend-up { color: #a4dec3; }
+.crm-shell .crm-main-dashboard .crm-dashboard-view .crm-dashboard-sparkline.is-trend-down { color: #edb4c7; }
+.crm-shell .crm-main-dashboard .crm-dashboard-view .crm-dashboard-sparkline.is-trend-neutral { color: #afcff0; }
+.crm-shell .crm-main-dashboard .crm-dashboard-view :is(.crm-dashboard-marketing-card, .crm-dashboard-pipeline-stage) {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  clip-path: none;
+}
+.crm-shell .crm-main-dashboard .crm-dashboard-view .crm-dashboard-marketing-card { padding: 8px 0; }
+.crm-shell .crm-main-dashboard .crm-dashboard-view .crm-dashboard-marketing-card::before { display: none; }
+.crm-shell .crm-main-dashboard .crm-dashboard-view .crm-dashboard-marketing-grid { padding: 12px 30px 30px; gap: 36px; }
+
+.crm-shell .crm-main-dashboard .crm-dashboard-view :is(.crm-dashboard-marketing-progress, .crm-dashboard-pipeline-stage i)::after { background: #a4dec3; box-shadow: none; }
+.crm-shell .crm-main-dashboard .crm-dashboard-view :is(.crm-dashboard-attention-list, .crm-dashboard-today-list) { padding: 8px 30px 26px; gap: 14px; }
+.crm-shell .crm-main-dashboard .crm-dashboard-view :is(.crm-dashboard-attention-list, .crm-dashboard-today-list) > button {
+  min-height: 88px;
+  padding: 20px 0;
+  column-gap: 18px;
+  border: 0;
+  border-bottom: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.crm-shell .crm-main-dashboard .crm-dashboard-view :is(.crm-dashboard-attention-list, .crm-dashboard-today-list) > button:last-child { border-bottom: 0; }
+.crm-shell .crm-main-dashboard .crm-dashboard-view :is(.crm-dashboard-attention-list, .crm-dashboard-today-list) small { display: block; margin-top: 7px; line-height: 1.6; overflow-wrap: anywhere; }
+.crm-shell .crm-main-dashboard .crm-dashboard-view .crm-dashboard-row-icon.is-orange { color: #e7b992; }
+.crm-shell .crm-main-dashboard .crm-dashboard-view .crm-dashboard-row-icon.is-purple { color: #c2afe5; }
+.crm-shell .crm-main-dashboard .crm-dashboard-view .crm-dashboard-row-icon.is-blue { color: #afcff0; }
+.crm-shell .crm-main-dashboard .crm-dashboard-view .crm-dashboard-pipeline-strip { padding: 12px 30px 30px; gap: 28px; }
+.crm-shell .crm-main-dashboard .crm-dashboard-view .crm-dashboard-today-list em { padding: 0; border: 0; background: transparent; }
+@media (hover: hover) {
+  .crm-shell .crm-main-dashboard .crm-dashboard-view :is(.crm-dashboard-attention-list, .crm-dashboard-today-list) > button:hover,
+  .crm-shell .crm-main-dashboard .crm-dashboard-view .crm-dashboard-pipeline-stage:hover { background: rgb(255 255 255 / 4%); box-shadow: none; }
+}
+@media (max-width: 640px) {
+  .crm-shell .crm-main-dashboard .crm-dashboard-view :is(.crm-dashboard-marketing-grid, .crm-dashboard-pipeline-strip) { padding: 12px 20px 24px; gap: 26px; }
+  .crm-shell .crm-main-dashboard .crm-dashboard-view :is(.crm-dashboard-attention-list, .crm-dashboard-today-list) { padding: 8px 20px 24px; }
+  .crm-shell .crm-main-dashboard .crm-dashboard-view :is(.crm-dashboard-attention-list, .crm-dashboard-today-list) > button { column-gap: 12px; }
+}
