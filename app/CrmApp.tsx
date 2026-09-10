@@ -857,7 +857,7 @@ export function CrmApp({
             <BrandLogo
               className="crm-brand-logo"
               size={126}
-              tone={theme === "classic" ? "dark" : "light"}
+              tone="light"
               decorative
               priority
               logoUrl={branding.logoUrl}

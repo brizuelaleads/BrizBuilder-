@@ -20280,3 +20280,47 @@ canvas {
 @media (pointer: coarse) {
   .crm-shell .crm-sidebar .crm-primary-nav.input .value { min-height: 44px; }
 }
+
+/* Match Dashboard canvas and the complete sidebar to the navigation surface. */
+.crm-shell.crm-shell .crm-sidebar,
+.crm-main-dashboard,
+.crm-main-dashboard .crm-dashboard-view,
+.crm-main-dashboard .crm-topbar,
+.crm-main-dashboard .crm-mobile-filterbar {
+  background: #0d1117;
+}
+
+.crm-shell.crm-shell .crm-sidebar {
+  --crm-ink: rgb(255 255 255 / 90%);
+  --crm-muted: rgb(255 255 255 / 60%);
+  --crm-line: rgb(255 255 255 / 12%);
+  --crm-card: #0d1117;
+  color: rgb(255 255 255 / 90%);
+  border-color: rgb(255 255 255 / 12%);
+  color-scheme: dark;
+}
+
+.crm-shell.crm-shell .crm-sidebar :is(.crm-brand, .crm-org-card, .crm-org-menu, .crm-theme-picker, .crm-sidebar-foot),
+.crm-shell.crm-shell .crm-sidebar .crm-theme-picker select {
+  background: #0d1117;
+  color: rgb(255 255 255 / 90%);
+  border-color: rgb(255 255 255 / 12%);
+}
+.crm-shell.crm-shell .crm-sidebar :is(.crm-brand-home, .crm-org-card strong, .crm-user-summary strong) {
+  color: rgb(255 255 255 / 90%);
+}
+.crm-shell.crm-shell .crm-sidebar :is(.crm-org-card small, .crm-org-card-button > b, .crm-user-summary small, .crm-theme-picker label, .crm-sidebar-foot-actions button, .crm-sidebar-close) {
+  color: rgb(255 255 255 / 60%);
+}
+.crm-shell.crm-shell .crm-sidebar :is(.crm-org-card > span, .crm-avatar) {
+  background: rgb(255 255 255 / 8%);
+  color: #bed6ed;
+}
+.crm-shell.crm-shell .crm-sidebar .crm-org-menu button {
+  color: rgb(255 255 255 / 85%);
+  background: transparent;
+}
+.crm-shell.crm-shell .crm-sidebar :is(.crm-org-card-button, .crm-org-menu button, .crm-sidebar-foot-actions button, .crm-sidebar-close):hover {
+  background: #21262c;
+  color: rgb(255 255 255 / 96%);
+}
