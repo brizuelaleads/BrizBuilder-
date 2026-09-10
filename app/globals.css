@@ -20125,17 +20125,25 @@ canvas {
 
 /* Navigation treatment adapted from the supplied radio-menu reference.
    Existing navigation items, icons, badges, and routing remain the source of truth. */
-.crm-shell[data-theme] .crm-sidebar .crm-primary-nav {
+.crm-shell .crm-sidebar .crm-primary-nav.input {
+  display: flex;
+  flex-direction: column;
+  width: 200px;
+  max-width: 100%;
+  flex-shrink: 1;
+  /* Safe centering keeps long CRM menus scrollable from the first item. */
+  justify-content: safe center;
   padding: 6px 8px 16px 14px;
   border-radius: 5px;
   background: #0d1117;
 }
 
-.crm-shell[data-theme] .crm-sidebar .crm-primary-nav .crm-nav-section {
+.crm-shell .crm-sidebar .crm-primary-nav.input .crm-nav-section {
   color: rgb(255 255 255 / 48%);
 }
 
-.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button {
+.crm-shell .crm-sidebar .crm-primary-nav.input .value {
+  display: flex;
   position: relative;
   width: 100%;
   min-height: 39px;
@@ -20144,30 +20152,30 @@ canvas {
   gap: 5px;
   border: 0;
   border-radius: 4px;
-  color: rgb(255 255 255 / 86%);
+  color: white;
   background: transparent;
   box-shadow: none;
   cursor: pointer;
   transition: background-color .15s ease, color .15s ease;
 }
 
-.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button i,
-.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button.active i {
+.crm-shell .crm-sidebar .crm-primary-nav.input .value i,
+.crm-shell .crm-sidebar .crm-primary-nav.input .value.active i {
   color: #7d8590;
   background: transparent;
   border: 0;
 }
 
-.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button em {
+.crm-shell .crm-sidebar .crm-primary-nav.input .value em {
   color: rgb(255 255 255 / 76%);
   background: rgb(255 255 255 / 9%);
 }
 
-.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button::before {
+.crm-shell .crm-sidebar .crm-primary-nav.input .value::before {
   content: "";
   position: absolute;
   top: 5px;
-  bottom: 5px;
+  height: 80%;
   left: -10px;
   width: 5px;
   border-radius: 5px;
@@ -20176,58 +20184,59 @@ canvas {
   pointer-events: none;
 }
 
-.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button.active,
-.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button:active {
+.crm-shell .crm-sidebar .crm-primary-nav.input .value.active,
+.crm-shell .crm-sidebar .crm-primary-nav.input .value:focus,
+.crm-shell .crm-sidebar .crm-primary-nav.input .value:active {
   color: rgb(255 255 255 / 96%);
   background: #1a1f24;
   box-shadow: none;
 }
 
-.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button.active::before,
-.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button:active::before,
-.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button:focus-visible::before {
+.crm-shell .crm-sidebar .crm-primary-nav.input .value.active::before,
+.crm-shell .crm-sidebar .crm-primary-nav.input .value:active::before,
+.crm-shell .crm-sidebar .crm-primary-nav.input .value:focus::before {
   opacity: 1;
 }
 
 @media (hover: hover) {
-  .crm-shell[data-theme] .crm-sidebar .crm-primary-nav button:not(:active):hover {
+  .crm-shell .crm-sidebar .crm-primary-nav.input .value:not(:active):hover {
     color: rgb(255 255 255 / 96%);
     background: #21262c;
   }
 }
 
-.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button:focus-visible {
+.crm-shell .crm-sidebar .crm-primary-nav.input .value:focus-visible {
   background: #1a1f24;
   outline: 2px solid rgb(126 175 242 / 85%);
   outline-offset: 1px;
 }
 
 /* The same states on the existing mobile shortcuts, retaining their layout. */
-.crm-shell[data-theme] .crm-mobile-dock {
+.crm-shell.crm-shell .crm-mobile-dock {
   background: #0d1117;
   border-color: rgb(255 255 255 / 12%);
 }
-.crm-shell[data-theme] .crm-mobile-dock button {
+.crm-shell.crm-shell .crm-mobile-dock button {
   color: #7d8590;
   background: transparent;
   border-radius: 4px;
 }
-.crm-shell[data-theme] .crm-mobile-dock button.active,
-.crm-shell[data-theme] .crm-mobile-dock button:active {
+.crm-shell.crm-shell .crm-mobile-dock button.active,
+.crm-shell.crm-shell .crm-mobile-dock button:active {
   color: rgb(255 255 255 / 96%);
   background: #1a1f24;
   box-shadow: inset 0 -3px #2f81f7;
 }
-.crm-shell[data-theme] .crm-mobile-dock button:focus-visible {
+.crm-shell.crm-shell .crm-mobile-dock button:focus-visible {
   background: #21262c;
   outline: 2px solid rgb(126 175 242 / 85%);
   outline-offset: -2px;
 }
 @media (hover: hover) {
-  .crm-shell[data-theme] .crm-mobile-dock button:hover { background: #21262c; }
+  .crm-shell.crm-shell .crm-mobile-dock button:hover { background: #21262c; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .crm-shell[data-theme] .crm-sidebar .crm-primary-nav button { transition: none; }
+  .crm-shell .crm-sidebar .crm-primary-nav.input .value { transition: none; }
 }
 
 /* Soft light around the colored accents; the glass surfaces stay dark. */
@@ -20244,10 +20253,17 @@ canvas {
 .crm-dashboard-view .crm-dashboard-row-icon svg {
   filter: drop-shadow(0 0 4px rgb(190 204 229 / 22%));
 }
-.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button::before {
-  background: #6ba7f7;
+.crm-shell .crm-sidebar .crm-primary-nav.input .value::before {
+  background: #2f81f7;
   box-shadow: 0 0 4px rgb(107 167 247 / 38%), 0 0 10px rgb(107 167 247 / 18%);
 }
-.crm-shell[data-theme] .crm-mobile-dock button.active {
+.crm-shell.crm-shell .crm-mobile-dock button.active {
   box-shadow: inset 0 -3px #6ba7f7, 0 3px 8px rgb(107 167 247 / 18%);
 }
+
+.crm-shell .crm-sidebar .crm-primary-nav.input .value svg {
+  width: 15px;
+  height: 15px;
+}
+
+.crm-shell .crm-sidebar .crm-primary-nav.input > * { flex-shrink: 0; }

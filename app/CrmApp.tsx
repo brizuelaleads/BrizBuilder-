@@ -941,7 +941,7 @@ export function CrmApp({
             </div>
           )}
         </div>
-        <nav className="crm-primary-nav" aria-label="Main navigation">
+        <nav className="crm-primary-nav input" aria-label="Main navigation">
           {visibleNav.map((item, index) => (
             <div className="crm-nav-item" key={item.id}>
               {item.section &&
@@ -952,8 +952,8 @@ export function CrmApp({
               <button
                 className={
                   view === item.id
-                    ? "active"
-                    : ""
+                    ? "value active"
+                    : "value"
                 }
                 onClick={() => navigate(item.id)}
                 aria-current={
