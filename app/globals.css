@@ -20122,3 +20122,110 @@ canvas {
 @media (prefers-reduced-motion: reduce) {
   .crm-main-dashboard :is(button, a, select) { transition: none; }
 }
+
+/* Navigation treatment adapted from the supplied radio-menu reference.
+   Existing navigation items, icons, badges, and routing remain the source of truth. */
+.crm-shell[data-theme] .crm-sidebar .crm-primary-nav {
+  padding: 6px 8px 16px 14px;
+  border-radius: 5px;
+  background: #0d1117;
+}
+
+.crm-shell[data-theme] .crm-sidebar .crm-primary-nav .crm-nav-section {
+  color: rgb(255 255 255 / 48%);
+}
+
+.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button {
+  position: relative;
+  width: 100%;
+  min-height: 39px;
+  margin: 2px 0;
+  padding: 10px;
+  gap: 5px;
+  border: 0;
+  border-radius: 4px;
+  color: rgb(255 255 255 / 86%);
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  transition: background-color .15s ease, color .15s ease;
+}
+
+.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button i,
+.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button.active i {
+  color: #7d8590;
+  background: transparent;
+  border: 0;
+}
+
+.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button em {
+  color: rgb(255 255 255 / 76%);
+  background: rgb(255 255 255 / 9%);
+}
+
+.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: -10px;
+  width: 5px;
+  border-radius: 5px;
+  background: #2f81f7;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button.active,
+.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button:active {
+  color: rgb(255 255 255 / 96%);
+  background: #1a1f24;
+  box-shadow: none;
+}
+
+.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button.active::before,
+.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button:active::before,
+.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button:focus-visible::before {
+  opacity: 1;
+}
+
+@media (hover: hover) {
+  .crm-shell[data-theme] .crm-sidebar .crm-primary-nav button:not(:active):hover {
+    color: rgb(255 255 255 / 96%);
+    background: #21262c;
+  }
+}
+
+.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button:focus-visible {
+  background: #1a1f24;
+  outline: 2px solid rgb(126 175 242 / 85%);
+  outline-offset: 1px;
+}
+
+/* The same states on the existing mobile shortcuts, retaining their layout. */
+.crm-shell[data-theme] .crm-mobile-dock {
+  background: #0d1117;
+  border-color: rgb(255 255 255 / 12%);
+}
+.crm-shell[data-theme] .crm-mobile-dock button {
+  color: #7d8590;
+  background: transparent;
+  border-radius: 4px;
+}
+.crm-shell[data-theme] .crm-mobile-dock button.active,
+.crm-shell[data-theme] .crm-mobile-dock button:active {
+  color: rgb(255 255 255 / 96%);
+  background: #1a1f24;
+  box-shadow: inset 0 -3px #2f81f7;
+}
+.crm-shell[data-theme] .crm-mobile-dock button:focus-visible {
+  background: #21262c;
+  outline: 2px solid rgb(126 175 242 / 85%);
+  outline-offset: -2px;
+}
+@media (hover: hover) {
+  .crm-shell[data-theme] .crm-mobile-dock button:hover { background: #21262c; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .crm-shell[data-theme] .crm-sidebar .crm-primary-nav button { transition: none; }
+}
