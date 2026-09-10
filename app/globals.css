@@ -19883,3 +19883,174 @@ canvas {
 .crm-ads-quiet { margin: 0; color: var(--crm-muted); font-size: 11px; }
 .crm-ads-disclosure small { display: block; color: var(--crm-muted); font-size: 9px; font-variant-numeric: tabular-nums; }
 @media (max-width: 720px) { .crm-ads-drawer-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Dashboard glass experiment: scoped so CRM navigation and other views keep their themes. */
+.crm-main-dashboard {
+  background: #050505;
+  color: #eee9e4;
+  color-scheme: dark;
+}
+
+.crm-main-dashboard .crm-topbar,
+.crm-main-dashboard .crm-mobile-filterbar {
+  background: #090909;
+  border-color: #292725;
+  color: #eee9e4;
+}
+
+.crm-main-dashboard .crm-topbar h1,
+.crm-main-dashboard .crm-topbar h2 {
+  color: #eee9e4;
+}
+
+.crm-dashboard-view {
+  --crm-dashboard-surface-high: #202020;
+  --crm-dashboard-surface: #151515;
+  --crm-dashboard-surface-low: #101010;
+  --crm-dashboard-card-gradient: linear-gradient(145deg, #171819, #080909 75%);
+  --crm-dashboard-card-shadow: 0 12px 28px rgb(0 0 0 / 35%), inset 0 0 0 1px rgb(255 255 255 / 10%);
+  --crm-dashboard-card-hover-shadow: 0 12px 28px rgb(0 0 0 / 45%), inset 0 0 0 1px rgb(193 141 101 / 28%);
+  background: #050505;
+  color: #eee9e4;
+}
+
+/* Display only the text-free upper 20% of the original attachment.
+   The fixed 500% image height keeps the template lettering outside every card. */
+.crm-dashboard-view .crm-dashboard-card-text,
+.crm-dashboard-view .crm-panel {
+  background-image: linear-gradient(180deg, rgb(5 5 5 / 85%), rgb(8 7 6 / 76%)), url('/dashboard-orange-glass.jpg');
+  background-size: 100% 100%, 100% 500%;
+  background-position: center, center top;
+  background-repeat: no-repeat;
+}
+
+.crm-dashboard-view .crm-dashboard-card-text {
+  border-top: 1px solid rgb(222 181 147 / 18%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%);
+}
+
+.crm-dashboard-view .crm-dashboard-card-image {
+  background: var(--crm-dashboard-card-gradient);
+}
+
+.crm-dashboard-view .crm-dashboard-kpi-card.is-trend-up {
+  --crm-dashboard-trend-line: #7da991;
+  --crm-dashboard-trend-text: #b2cebd;
+  --crm-dashboard-trend-chip: #1e3027;
+}
+
+.crm-dashboard-view .crm-dashboard-kpi-card.is-trend-down {
+  --crm-dashboard-trend-line: #bb858a;
+  --crm-dashboard-trend-text: #dfb5b8;
+  --crm-dashboard-trend-chip: #362326;
+}
+
+.crm-dashboard-view .crm-dashboard-kpi-card.is-trend-neutral {
+  --crm-dashboard-trend-line: #7999aa;
+  --crm-dashboard-trend-text: #b8c9d2;
+  --crm-dashboard-trend-chip: #202c32;
+}
+
+.crm-dashboard-view .crm-dashboard-card-text .crm-dashboard-kpi-heading,
+.crm-dashboard-view .crm-dashboard-card-text > strong,
+.crm-dashboard-view .crm-dashboard-marketing-card > strong,
+.crm-dashboard-view .crm-dashboard-attention-list strong,
+.crm-dashboard-view .crm-dashboard-today-list strong,
+.crm-dashboard-view .crm-dashboard-today-list time,
+.crm-dashboard-view .crm-dashboard-recent-row strong,
+.crm-dashboard-view .crm-dashboard-pipeline-stage strong,
+.crm-dashboard-view .crm-dashboard-source-snapshot strong,
+.crm-dashboard-view .crm-dashboard-calm-empty strong {
+  color: #eee9e4;
+}
+
+.crm-dashboard-view .crm-dashboard-marketing-card > span,
+.crm-dashboard-view .crm-dashboard-marketing-card > small,
+.crm-dashboard-view .crm-dashboard-attention-list small,
+.crm-dashboard-view .crm-dashboard-today-list small,
+.crm-dashboard-view .crm-dashboard-pipeline-stage span,
+.crm-dashboard-view .crm-dashboard-source-snapshot,
+.crm-dashboard-view .crm-dashboard-source-donut > span,
+.crm-dashboard-view .crm-dashboard-source,
+.crm-dashboard-view .crm-dashboard-recent-row time,
+.crm-dashboard-view .crm-dashboard-recent-head,
+.crm-dashboard-view .crm-dashboard-calm-empty span {
+  color: #b5ada6;
+}
+
+.crm-dashboard-view .crm-dashboard-marketing-card,
+.crm-dashboard-view .crm-dashboard-attention-list > button,
+.crm-dashboard-view .crm-dashboard-today-list > button,
+.crm-dashboard-view .crm-dashboard-pipeline-stage {
+  background: rgb(15 15 15 / 78%);
+  border-color: rgb(255 255 255 / 9%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%);
+}
+
+.crm-dashboard-view .crm-dashboard-attention-list > button:hover,
+.crm-dashboard-view .crm-dashboard-today-list > button:hover,
+.crm-dashboard-view .crm-dashboard-recent-row:hover,
+.crm-dashboard-view .crm-dashboard-pipeline-stage:hover {
+  background: #28211c;
+}
+
+.crm-dashboard-view .crm-dashboard-source-donut::after {
+  background: #151413;
+}
+
+.crm-dashboard-view .crm-dashboard-icon-box,
+.crm-dashboard-view .crm-dashboard-kpi-card.is-orange .crm-dashboard-icon-box,
+.crm-dashboard-view .crm-dashboard-kpi-card.is-purple .crm-dashboard-icon-box,
+.crm-dashboard-view .crm-dashboard-widget-heading svg {
+  color: #aaa6a1;
+}
+
+.crm-dashboard-view .crm-dashboard-kpi-card:hover .crm-dashboard-icon-box svg {
+  color: #bacbd4;
+}
+
+.crm-dashboard-view .crm-dashboard-sparkline.is-trend-neutral { color: #7999aa; }
+.crm-dashboard-view .crm-dashboard-sparkline.is-trend-up { color: #7da991; }
+.crm-dashboard-view .crm-dashboard-sparkline.is-trend-down { color: #bb858a; }
+
+.crm-dashboard-view .crm-dashboard-marketing-progress,
+.crm-dashboard-view .crm-dashboard-pipeline-stage i {
+  background: #30342f;
+}
+
+.crm-dashboard-view .crm-dashboard-marketing-progress::after,
+.crm-dashboard-view .crm-dashboard-pipeline-stage i::after {
+  background: #62856d;
+  box-shadow: none;
+}
+
+.crm-main-dashboard .button,
+.crm-dashboard-view .crm-panel > header .button {
+  background: #46545a;
+}
+
+.crm-main-dashboard .button .blob1 {
+  background: radial-gradient(circle at bottom left, #426071, transparent);
+  box-shadow: none;
+}
+
+.crm-main-dashboard .button::after { box-shadow: none; }
+.crm-main-dashboard .button .inner { background: #181b1c; }
+.crm-main-dashboard .button .inner::before { opacity: .25; }
+
+.crm-dashboard-view .crm-dashboard-row-icon,
+.crm-dashboard-view .crm-avatar {
+  color: #b5c2ca;
+  background: #252b2e;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+}
+
+.crm-dashboard-view .crm-dashboard-row-icon.is-orange {
+  color: #c5a18a;
+  background: #32271f;
+}
+
+.crm-dashboard-view .crm-dashboard-row-icon.is-purple {
+  color: #afa3c5;
+  background: #2b2535;
+}
