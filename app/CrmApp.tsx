@@ -42,7 +42,6 @@ import {
   Workflow,
   X,
 } from "lucide-react";
-import { ShellBackground } from "./components/ShellBackground";
 import { BrandLogo } from "./components/BrandLogo";
 import type { CrmBootstrap, CrmLead, CrmPermission, CrmRole } from "../db/crm";
 import type { CrmTheme } from "../db/theme";
@@ -847,7 +846,6 @@ export function CrmApp({
       data-theme={theme === "classic" ? undefined : theme}
       style={brandingCssVariables(branding) as React.CSSProperties}
     >
-      {view === "dashboard" && <ShellBackground />}
       <aside className={`crm-sidebar ${mobileNav ? "crm-sidebar-open" : ""}`}>
         <div className="crm-brand">
           <button

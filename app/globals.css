@@ -20392,73 +20392,80 @@ canvas {
   .crm-shell .crm-main-dashboard .crm-dashboard-view :is(.crm-dashboard-attention-list, .crm-dashboard-today-list) > button { column-gap: 12px; }
 }
 
-/* Static atmosphere preserves shell geometry and existing theme tokens. */
+/* A raised dashboard sheet over the existing dark navigation shell. */
 .crm-shell:has(> .crm-main-dashboard) {
-  --crm-shell-glass: color-mix(in srgb, var(--crm-chrome-card, var(--crm-card)) 88%, transparent);
-  --crm-main-glass: color-mix(in srgb, var(--crm-canvas) 90%, transparent);
-  --crm-glass-line: color-mix(in srgb, var(--crm-chrome-text, var(--crm-ink)) 14%, transparent);
-  --crm-shell-glow: color-mix(in srgb, var(--violet) 12%, transparent);
-  position: relative;
-  isolation: isolate;
-  background: var(--crm-canvas);
+  background: radial-gradient(ellipse at 0 0, rgb(255 255 255 / 6%), transparent 48%), #0d1117;
 }
-
-/* Negative stacking stays above the isolated shell background, below its UI.
-   Soft gradient stops need no animated or full-screen blur filter. */
-.crm-shell-background {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse 65% 60% at 12% 8%, var(--crm-shell-glow), transparent 75%),
-    radial-gradient(ellipse 50% 55% at 90% 80%, var(--crm-shell-glow), transparent 80%);
-}
-
 .crm-shell.crm-shell:has(> .crm-main-dashboard) .crm-sidebar {
-  border-right: 1px solid var(--crm-glass-line);
-  background: linear-gradient(145deg, color-mix(in srgb, var(--crm-chrome-text) 4%, transparent), transparent 46%), var(--crm-shell-glass);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
+  border-right: 0;
+  background: linear-gradient(155deg, rgb(255 255 255 / 3%), transparent 65%), rgb(13 17 23 / 78%);
+  -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(22px);
+  box-shadow: none;
 }
-
-.crm-shell .crm-main-dashboard { background: var(--crm-main-glass); }
-.crm-shell .crm-main-dashboard > .crm-dashboard-view { background: transparent; }
-.crm-shell .crm-main-dashboard > .crm-topbar,
-.crm-shell .crm-main-dashboard > .crm-mobile-filterbar {
-  border-bottom-color: var(--crm-glass-line);
-  background: color-mix(in srgb, var(--crm-canvas) 94%, transparent);
+.crm-shell.crm-shell:has(> .crm-main-dashboard) .crm-sidebar :is(.crm-brand, .crm-org-card, .crm-theme-picker, .crm-sidebar-foot),
+.crm-shell:has(> .crm-main-dashboard) .crm-sidebar .crm-primary-nav.input {
+  background: transparent;
 }
-
+.crm-shell .crm-main-dashboard > .crm-topbar {
+  border-bottom: 0;
+  box-shadow: none;
+  background: #0d1117;
+}
 @media (min-width: 901px) {
-  .crm-shell:has(> .crm-main-dashboard) { padding-block: 12px; }
+  .crm-shell:has(> .crm-main-dashboard) { padding-top: 12px; padding-bottom: 12px; }
   .crm-shell .crm-main-dashboard {
+    position: relative;
     margin-right: 12px;
     min-height: calc(100vh - 24px);
-    border: 1px solid var(--crm-glass-line);
     border-radius: 24px;
+    background: #0d1117;
     box-shadow: -10px 0 28px rgb(0 0 0 / 18%), 0 12px 32px rgb(0 0 0 / 16%);
   }
-  .crm-shell .crm-main-dashboard > .crm-topbar { top: 0; border-radius: 24px 24px 0 0; }
+  .crm-shell .crm-main-dashboard > .crm-topbar {
+    top: 0;
+    border-radius: 24px 24px 0 0;
+  }
   .crm-shell .crm-main-dashboard > .crm-dashboard-view { border-radius: 0 0 24px 24px; }
 }
-
 @media (max-width: 900px) {
-  .crm-shell .crm-main-dashboard { overflow: visible; }
   .crm-shell .crm-main-dashboard > .crm-topbar { border-radius: 0; }
   .crm-shell.crm-shell:has(> .crm-main-dashboard) .crm-sidebar {
-    background: color-mix(in srgb, var(--crm-chrome-card, var(--crm-card)) 92%, transparent);
+    background-color: rgb(13 17 23 / 94%);
     box-shadow: 16px 0 40px rgb(0 0 0 / 25%);
   }
 }
 
+/* Frosted dashboard canvas, using the existing charcoal palette. */
+.crm-shell:has(> .crm-main-dashboard) {
+  background:
+    radial-gradient(ellipse at 14% 8%, rgb(255 255 255 / 10%), transparent 52%),
+    radial-gradient(ellipse at 85% 70%, rgb(255 255 255 / 4%), transparent 58%),
+    #0d1117;
+}
+.crm-shell .crm-main-dashboard {
+  background:
+    linear-gradient(155deg, rgb(255 255 255 / 5%), transparent 65%),
+    rgb(13 17 23 / 72%);
+  -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(22px);
+}
+.crm-shell .crm-main-dashboard > .crm-dashboard-view {
+  background: transparent;
+}
+.crm-shell .crm-main-dashboard > .crm-topbar,
+.crm-shell .crm-main-dashboard > .crm-mobile-filterbar {
+  background: rgb(13 17 23 / 64%);
+  -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(22px);
+}
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .crm-shell.crm-shell:has(> .crm-main-dashboard) .crm-sidebar { background: var(--crm-chrome-card, var(--crm-card)); }
   .crm-shell .crm-main-dashboard,
   .crm-shell .crm-main-dashboard > .crm-topbar,
-  .crm-shell .crm-main-dashboard > .crm-mobile-filterbar { background: var(--crm-canvas); }
+  .crm-shell .crm-main-dashboard > .crm-mobile-filterbar {
+    background-color: #171b21;
+  }
 }
-
 
 /* Individual metric cards with inspectable area charts. */
 .crm-dashboard-area-chart { position: absolute; left: 20px; right: 20px; bottom: 12px; height: 90px; color: var(--crm-dashboard-trend-line); }
