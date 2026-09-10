@@ -19884,48 +19884,50 @@ canvas {
 .crm-ads-disclosure small { display: block; color: var(--crm-muted); font-size: 9px; font-variant-numeric: tabular-nums; }
 @media (max-width: 720px) { .crm-ads-drawer-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
-/* Dashboard glass experiment: scoped so CRM navigation and other views keep their themes. */
+/* Dashboard clear glass: all surfaces and interaction states remain scoped to this view. */
 .crm-main-dashboard {
-  background: #050505;
-  color: #eee9e4;
+  background: #121212;
+  color: rgb(255 255 255 / 92%);
   color-scheme: dark;
 }
 
 .crm-main-dashboard .crm-topbar,
 .crm-main-dashboard .crm-mobile-filterbar {
-  background: #090909;
-  border-color: #292725;
-  color: #eee9e4;
+  background: rgb(3 0 13 / 72%);
+  border-color: rgb(255 255 255 / 12%);
+  color: rgb(255 255 255 / 92%);
 }
 
 .crm-main-dashboard .crm-topbar h1,
 .crm-main-dashboard .crm-topbar h2 {
-  color: #eee9e4;
+  color: rgb(255 255 255 / 92%);
 }
 
 .crm-dashboard-view {
-  --crm-dashboard-surface-high: #202020;
-  --crm-dashboard-surface: #151515;
-  --crm-dashboard-surface-low: #101010;
-  --crm-dashboard-card-gradient: linear-gradient(145deg, #171819, #080909 75%);
-  --crm-dashboard-card-shadow: 0 12px 28px rgb(0 0 0 / 35%), inset 0 0 0 1px rgb(255 255 255 / 10%);
-  --crm-dashboard-card-hover-shadow: 0 12px 28px rgb(0 0 0 / 45%), inset 0 0 0 1px rgb(193 141 101 / 28%);
-  background: #050505;
-  color: #eee9e4;
+  --crm-dashboard-surface-high: rgb(255 255 255 / 8%);
+  --crm-dashboard-surface: rgb(255 255 255 / 5%);
+  --crm-dashboard-surface-low: rgb(255 255 255 / 3%);
+  --crm-dashboard-card-gradient: linear-gradient(145deg, rgb(255 255 255 / 5%), transparent), linear-gradient(#121212, #03000D);
+  --crm-dashboard-card-shadow: 0 12px 28px rgb(3 0 13 / 35%), inset 0 0 0 1px rgb(255 255 255 / 10%);
+  --crm-dashboard-card-hover-shadow: 0 12px 28px rgb(3 0 13 / 45%), inset 0 0 0 1px rgb(255 255 255 / 24%);
+  background: #121212;
+  color: rgb(255 255 255 / 92%);
 }
 
-/* Display only the text-free upper 20% of the original attachment.
-   The fixed 500% image height keeps the template lettering outside every card. */
+/* White reflections blend over a violet-black tint; no image or texture layer. */
 .crm-dashboard-view .crm-dashboard-card-text,
 .crm-dashboard-view .crm-panel {
-  background-image: linear-gradient(180deg, rgb(5 5 5 / 85%), rgb(8 7 6 / 76%)), url('/dashboard-orange-glass.jpg');
-  background-size: 100% 100%, 100% 500%;
-  background-position: center, center top;
-  background-repeat: no-repeat;
+  background:
+    radial-gradient(ellipse at 12% 0%, rgb(255 255 255 / 9%), transparent 65%),
+    linear-gradient(125deg, rgb(255 255 255 / 5%), rgb(255 255 255 / 1%) 55%, rgb(255 255 255 / 4%)),
+    rgb(3 0 13 / 38%);
+  background-blend-mode: screen, soft-light, normal;
+  -webkit-backdrop-filter: blur(20px) saturate(.65);
+  backdrop-filter: blur(20px) saturate(.65);
 }
 
 .crm-dashboard-view .crm-dashboard-card-text {
-  border-top: 1px solid rgb(222 181 147 / 18%);
+  border-top: 1px solid rgb(255 255 255 / 14%);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%);
 }
 
@@ -19934,21 +19936,21 @@ canvas {
 }
 
 .crm-dashboard-view .crm-dashboard-kpi-card.is-trend-up {
-  --crm-dashboard-trend-line: #7da991;
+  --crm-dashboard-trend-line: #a1b5aa;
   --crm-dashboard-trend-text: #b2cebd;
-  --crm-dashboard-trend-chip: #1e3027;
+  --crm-dashboard-trend-chip: rgb(161 181 170 / 12%);
 }
 
 .crm-dashboard-view .crm-dashboard-kpi-card.is-trend-down {
-  --crm-dashboard-trend-line: #bb858a;
+  --crm-dashboard-trend-line: #bea5ac;
   --crm-dashboard-trend-text: #dfb5b8;
-  --crm-dashboard-trend-chip: #362326;
+  --crm-dashboard-trend-chip: rgb(190 165 172 / 12%);
 }
 
 .crm-dashboard-view .crm-dashboard-kpi-card.is-trend-neutral {
-  --crm-dashboard-trend-line: #7999aa;
+  --crm-dashboard-trend-line: #aab5c2;
   --crm-dashboard-trend-text: #b8c9d2;
-  --crm-dashboard-trend-chip: #202c32;
+  --crm-dashboard-trend-chip: rgb(170 181 194 / 12%);
 }
 
 .crm-dashboard-view .crm-dashboard-card-text .crm-dashboard-kpi-heading,
@@ -19961,7 +19963,7 @@ canvas {
 .crm-dashboard-view .crm-dashboard-pipeline-stage strong,
 .crm-dashboard-view .crm-dashboard-source-snapshot strong,
 .crm-dashboard-view .crm-dashboard-calm-empty strong {
-  color: #eee9e4;
+  color: rgb(255 255 255 / 92%);
 }
 
 .crm-dashboard-view .crm-dashboard-marketing-card > span,
@@ -19975,14 +19977,14 @@ canvas {
 .crm-dashboard-view .crm-dashboard-recent-row time,
 .crm-dashboard-view .crm-dashboard-recent-head,
 .crm-dashboard-view .crm-dashboard-calm-empty span {
-  color: #b5ada6;
+  color: rgb(255 255 255 / 65%);
 }
 
 .crm-dashboard-view .crm-dashboard-marketing-card,
 .crm-dashboard-view .crm-dashboard-attention-list > button,
 .crm-dashboard-view .crm-dashboard-today-list > button,
 .crm-dashboard-view .crm-dashboard-pipeline-stage {
-  background: rgb(15 15 15 / 78%);
+  background: rgb(255 255 255 / 4%);
   border-color: rgb(255 255 255 / 9%);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%);
 }
@@ -19991,66 +19993,132 @@ canvas {
 .crm-dashboard-view .crm-dashboard-today-list > button:hover,
 .crm-dashboard-view .crm-dashboard-recent-row:hover,
 .crm-dashboard-view .crm-dashboard-pipeline-stage:hover {
-  background: #28211c;
+  background: rgb(255 255 255 / 12%);
 }
 
 .crm-dashboard-view .crm-dashboard-source-donut::after {
-  background: #151413;
+  background: #121212;
 }
 
 .crm-dashboard-view .crm-dashboard-icon-box,
 .crm-dashboard-view .crm-dashboard-kpi-card.is-orange .crm-dashboard-icon-box,
 .crm-dashboard-view .crm-dashboard-kpi-card.is-purple .crm-dashboard-icon-box,
 .crm-dashboard-view .crm-dashboard-widget-heading svg {
-  color: #aaa6a1;
+  color: rgb(255 255 255 / 65%);
 }
 
 .crm-dashboard-view .crm-dashboard-kpi-card:hover .crm-dashboard-icon-box svg {
-  color: #bacbd4;
+  color: rgb(255 255 255 / 85%);
 }
 
-.crm-dashboard-view .crm-dashboard-sparkline.is-trend-neutral { color: #7999aa; }
-.crm-dashboard-view .crm-dashboard-sparkline.is-trend-up { color: #7da991; }
-.crm-dashboard-view .crm-dashboard-sparkline.is-trend-down { color: #bb858a; }
+.crm-dashboard-view .crm-dashboard-sparkline.is-trend-neutral { color: #aab5c2; }
+.crm-dashboard-view .crm-dashboard-sparkline.is-trend-up { color: #a1b5aa; }
+.crm-dashboard-view .crm-dashboard-sparkline.is-trend-down { color: #bea5ac; }
 
 .crm-dashboard-view .crm-dashboard-marketing-progress,
 .crm-dashboard-view .crm-dashboard-pipeline-stage i {
-  background: #30342f;
+  background: rgb(255 255 255 / 10%);
 }
 
 .crm-dashboard-view .crm-dashboard-marketing-progress::after,
 .crm-dashboard-view .crm-dashboard-pipeline-stage i::after {
-  background: #62856d;
+  background: rgb(161 181 170 / 65%);
   box-shadow: none;
 }
 
 .crm-main-dashboard .button,
 .crm-dashboard-view .crm-panel > header .button {
-  background: #46545a;
+  background: rgb(255 255 255 / 20%);
 }
 
 .crm-main-dashboard .button .blob1 {
-  background: radial-gradient(circle at bottom left, #426071, transparent);
+  background: radial-gradient(circle at bottom left, rgb(255 255 255 / 12%), transparent);
   box-shadow: none;
 }
 
 .crm-main-dashboard .button::after { box-shadow: none; }
-.crm-main-dashboard .button .inner { background: #181b1c; }
-.crm-main-dashboard .button .inner::before { opacity: .25; }
+.crm-main-dashboard .button .inner { background: rgb(3 0 13 / 65%); }
+.crm-main-dashboard .button .inner::before { background: linear-gradient(135deg, rgb(255 255 255 / 7%), transparent); }
 
 .crm-dashboard-view .crm-dashboard-row-icon,
 .crm-dashboard-view .crm-avatar {
   color: #b5c2ca;
-  background: #252b2e;
+  background: rgb(255 255 255 / 7%);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
 }
 
 .crm-dashboard-view .crm-dashboard-row-icon.is-orange {
   color: #c5a18a;
-  background: #32271f;
+  background: rgb(190 177 165 / 9%);
 }
 
 .crm-dashboard-view .crm-dashboard-row-icon.is-purple {
   color: #afa3c5;
-  background: #2b2535;
+  background: rgb(180 175 195 / 9%);
+}
+
+/* Static summary cards do not advertise a click action. */
+.crm-dashboard-view .crm-dashboard-kpi-card:hover,
+.crm-dashboard-view .crm-panel:hover {
+  box-shadow: var(--crm-dashboard-card-shadow);
+}
+.crm-dashboard-view .crm-dashboard-kpi-card:hover .crm-dashboard-icon-box {
+  transform: none;
+}
+
+.crm-main-dashboard .crm-topbar select,
+.crm-main-dashboard .crm-mobile-filterbar select,
+.crm-main-dashboard .crm-command-button,
+.crm-main-dashboard .crm-topbar-icon-button {
+  color: rgb(255 255 255 / 82%);
+  background: rgb(255 255 255 / 6%);
+  border: 1px solid rgb(255 255 255 / 16%);
+}
+.crm-main-dashboard select option { color: rgb(255 255 255 / 90%); background: #121212; }
+.crm-main-dashboard .crm-command-button kbd {
+  color: rgb(255 255 255 / 55%);
+  background: rgb(255 255 255 / 5%);
+  border-color: rgb(255 255 255 / 12%);
+}
+
+.crm-dashboard-view .crm-dashboard-source-donut,
+.crm-dashboard-view .crm-dashboard-source-snapshot li i {
+  filter: saturate(.25);
+}
+.crm-dashboard-view .crm-dashboard-stage-badge,
+.crm-dashboard-view .crm-dashboard-today-list em {
+  color: rgb(255 255 255 / 78%);
+  background: rgb(255 255 255 / 8%);
+  border-color: rgb(255 255 255 / 12%);
+}
+
+.crm-main-dashboard :is(button, a, select) {
+  transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+@media (hover: hover) {
+  .crm-main-dashboard :is(button, a, select):not(:disabled):hover {
+    background-color: rgb(255 255 255 / 13%);
+    border-color: rgb(255 255 255 / 35%);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 18%), 0 4px 14px rgb(3 0 13 / 25%);
+  }
+  .crm-main-dashboard .button:not(:disabled):hover .inner {
+    background: rgb(255 255 255 / 10%);
+  }
+}
+.crm-main-dashboard :is(button, a, select):focus-visible {
+  outline: 2px solid rgb(220 215 241 / 90%);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px rgb(220 215 241 / 12%);
+}
+.crm-main-dashboard :is(button, a):not(:disabled):active {
+  transform: translateY(1px);
+  background-color: rgb(255 255 255 / 18%);
+  box-shadow: inset 0 2px 6px rgb(3 0 13 / 40%);
+}
+.crm-main-dashboard button:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+@media (prefers-reduced-motion: reduce) {
+  .crm-main-dashboard :is(button, a, select) { transition: none; }
 }
