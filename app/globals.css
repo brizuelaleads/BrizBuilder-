@@ -19936,19 +19936,19 @@ canvas {
 }
 
 .crm-dashboard-view .crm-dashboard-kpi-card.is-trend-up {
-  --crm-dashboard-trend-line: #b0c4b9;
+  --crm-dashboard-trend-line: #b9ddc9;
   --crm-dashboard-trend-text: #b2cebd;
   --crm-dashboard-trend-chip: rgb(176 196 185 / 15%);
 }
 
 .crm-dashboard-view .crm-dashboard-kpi-card.is-trend-down {
-  --crm-dashboard-trend-line: #cdb4bb;
+  --crm-dashboard-trend-line: #e3bfc9;
   --crm-dashboard-trend-text: #dfb5b8;
   --crm-dashboard-trend-chip: rgb(205 180 187 / 15%);
 }
 
 .crm-dashboard-view .crm-dashboard-kpi-card.is-trend-neutral {
-  --crm-dashboard-trend-line: #b9c4d1;
+  --crm-dashboard-trend-line: #bed6ed;
   --crm-dashboard-trend-text: #b8c9d2;
   --crm-dashboard-trend-chip: rgb(185 196 209 / 15%);
 }
@@ -20011,9 +20011,9 @@ canvas {
   color: rgb(255 255 255 / 85%);
 }
 
-.crm-dashboard-view .crm-dashboard-sparkline.is-trend-neutral { color: #b9c4d1; }
-.crm-dashboard-view .crm-dashboard-sparkline.is-trend-up { color: #b0c4b9; }
-.crm-dashboard-view .crm-dashboard-sparkline.is-trend-down { color: #cdb4bb; }
+.crm-dashboard-view .crm-dashboard-sparkline.is-trend-neutral { color: #bed6ed; }
+.crm-dashboard-view .crm-dashboard-sparkline.is-trend-up { color: #b9ddc9; }
+.crm-dashboard-view .crm-dashboard-sparkline.is-trend-down { color: #e3bfc9; }
 
 .crm-dashboard-view .crm-dashboard-marketing-progress,
 .crm-dashboard-view .crm-dashboard-pipeline-stage i {
@@ -20022,7 +20022,7 @@ canvas {
 
 .crm-dashboard-view .crm-dashboard-marketing-progress::after,
 .crm-dashboard-view .crm-dashboard-pipeline-stage i::after {
-  background: rgb(176 196 185 / 75%);
+  background: rgb(185 221 201 / 85%);
   box-shadow: none;
 }
 
@@ -20083,7 +20083,7 @@ canvas {
 
 .crm-dashboard-view .crm-dashboard-source-donut,
 .crm-dashboard-view .crm-dashboard-source-snapshot li i {
-  filter: saturate(.25) brightness(1.12);
+  filter: saturate(.35) brightness(1.18);
 }
 .crm-dashboard-view .crm-dashboard-stage-badge,
 .crm-dashboard-view .crm-dashboard-today-list em {
@@ -20228,4 +20228,26 @@ canvas {
 }
 @media (prefers-reduced-motion: reduce) {
   .crm-shell[data-theme] .crm-sidebar .crm-primary-nav button { transition: none; }
+}
+
+/* Soft light around the colored accents; the glass surfaces stay dark. */
+.crm-dashboard-view .crm-dashboard-sparkline.is-trend-up { --dashboard-glow: rgb(151 214 178 / 28%); }
+.crm-dashboard-view .crm-dashboard-sparkline.is-trend-down { --dashboard-glow: rgb(224 162 182 / 28%); }
+.crm-dashboard-view .crm-dashboard-sparkline.is-trend-neutral { --dashboard-glow: rgb(153 197 235 / 28%); }
+.crm-dashboard-view .crm-dashboard-sparkline-line {
+  filter: drop-shadow(0 0 2px var(--dashboard-glow)) drop-shadow(0 0 6px var(--dashboard-glow));
+}
+.crm-dashboard-view .crm-dashboard-marketing-progress::after,
+.crm-dashboard-view .crm-dashboard-pipeline-stage i::after {
+  box-shadow: 0 0 4px rgb(151 214 178 / 26%), 0 0 10px rgb(151 214 178 / 12%);
+}
+.crm-dashboard-view .crm-dashboard-row-icon svg {
+  filter: drop-shadow(0 0 4px rgb(190 204 229 / 22%));
+}
+.crm-shell[data-theme] .crm-sidebar .crm-primary-nav button::before {
+  background: #6ba7f7;
+  box-shadow: 0 0 4px rgb(107 167 247 / 38%), 0 0 10px rgb(107 167 247 / 18%);
+}
+.crm-shell[data-theme] .crm-mobile-dock button.active {
+  box-shadow: inset 0 -3px #6ba7f7, 0 3px 8px rgb(107 167 247 / 18%);
 }
