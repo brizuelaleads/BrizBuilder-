@@ -20704,3 +20704,335 @@ canvas {
     .crm-live-inbox > aside button
   ):hover { background: rgb(255 255 255 / 6%); }
 }
+
+/* Light workspace: pale surround, tinted navigation, and a white app canvas. */
+.crm-shell:not([data-theme]):has(> .crm-main-dashboard) {
+  --crm-ink: #171b1f;
+  --crm-muted: #747c7b;
+  --crm-line: #e1e6e5;
+  --crm-line-strong: #cfd6d5;
+  --crm-card: #ffffff;
+  --crm-surface: #f5f7f6;
+  --crm-text: #202528;
+  --crm-border: var(--crm-line);
+  color-scheme: light;
+  background: #d9ddde;
+}
+
+.crm-shell.crm-shell:not([data-theme]) .crm-sidebar {
+  color: #26302f;
+  border-right: 1px solid rgb(131 146 145 / 18%);
+  background:
+    linear-gradient(155deg, rgb(230 247 247 / 94%), rgb(242 245 244 / 92%));
+  box-shadow: 10px 0 36px rgb(59 69 70 / 8%);
+  color-scheme: light;
+}
+
+.crm-shell.crm-shell:not([data-theme]) .crm-sidebar :is(
+  .crm-brand,
+  .crm-org-card,
+  .crm-org-menu,
+  .crm-theme-picker,
+  .crm-sidebar-foot,
+  .crm-theme-picker select
+) {
+  color: #26302f;
+  border-color: rgb(119 133 132 / 24%);
+  background: rgb(255 255 255 / 45%);
+}
+
+.crm-shell.crm-shell:not([data-theme]) .crm-sidebar :is(
+  .crm-brand-home,
+  .crm-org-card strong,
+  .crm-user-summary strong,
+  .crm-org-menu button
+) { color: #26302f; }
+
+.crm-shell.crm-shell:not([data-theme]) .crm-sidebar :is(
+  .crm-org-card small,
+  .crm-org-card-button > b,
+  .crm-user-summary small,
+  .crm-theme-picker label,
+  .crm-sidebar-foot-actions button,
+  .crm-sidebar-close,
+  .crm-primary-nav.input .crm-nav-section
+) { color: #7d8785; }
+
+.crm-shell.crm-shell:not([data-theme]) .crm-sidebar .crm-primary-nav.input {
+  background: transparent;
+}
+
+.crm-shell.crm-shell:not([data-theme]) .crm-sidebar .crm-primary-nav.input .value {
+  color: #35403f;
+  background: transparent;
+}
+
+.crm-shell.crm-shell:not([data-theme]) .crm-sidebar .crm-primary-nav.input .value i {
+  color: #667372;
+}
+
+.crm-shell.crm-shell:not([data-theme]) .crm-sidebar .crm-primary-nav.input .value.active,
+.crm-shell.crm-shell:not([data-theme]) .crm-sidebar .crm-primary-nav.input .value:focus {
+  color: #171b1f;
+  background: rgb(255 255 255 / 92%);
+  box-shadow: 0 7px 20px rgb(77 91 91 / 8%);
+}
+
+.crm-shell.crm-shell:not([data-theme]) .crm-sidebar :is(.crm-org-card > span, .crm-avatar) {
+  color: #405453;
+  background: rgb(255 255 255 / 70%);
+}
+
+.crm-shell:not([data-theme]) .crm-main-dashboard {
+  color: var(--crm-ink);
+  background: #ffffff;
+  color-scheme: light;
+  box-shadow: 0 22px 55px rgb(58 68 69 / 12%);
+}
+
+.crm-shell:not([data-theme]) .crm-main-dashboard > .crm-topbar,
+.crm-shell:not([data-theme]) .crm-main-dashboard > .crm-mobile-filterbar,
+.crm-shell:not([data-theme]) .crm-main-dashboard > .crm-view,
+.crm-shell:not([data-theme]) .crm-main-dashboard > .crm-dashboard-view {
+  color: var(--crm-ink);
+  border-color: var(--crm-line);
+  background: #ffffff;
+}
+
+.crm-shell:not([data-theme]) .crm-main-dashboard .crm-topbar :is(h1, h2) { color: #171b1f; }
+.crm-shell:not([data-theme]) .crm-main-dashboard .crm-topbar-title span { color: #7b8381; }
+
+.crm-shell:not([data-theme]) .crm-main-dashboard :is(
+  .crm-panel,
+  .crm-table-panel,
+  .crm-filterbar,
+  .crm-contact-grid article,
+  .crm-client-grid article,
+  .crm-company-card,
+  .crm-task-list > article,
+  .crm-calendar-list > article,
+  .crm-report-summary article,
+  .crm-settings-grid > article,
+  .crm-lead-summary,
+  .crm-detail-grid article,
+  .crm-message-card,
+  .crm-related-grid article,
+  .crm-timeline,
+  .crm-definition-list > div,
+  .crm-custom-field-editor,
+  .crm-value-list > div,
+  .crm-future-scope,
+  .crm-workflow-preview,
+  .crm-funnel-preview,
+  .crm-preview-table-card,
+  .crm-form-builder-preview,
+  .crm-website-layout,
+  .crm-connection-card,
+  .crm-workflow-list,
+  .crm-builder-header,
+  .crm-builder-body,
+  .crm-profile-card,
+  .crm-profile-setup,
+  .crm-review-tabs,
+  .crm-review-card,
+  .crm-review-inbox,
+  .crm-phone-settings,
+  .crm-phone-help,
+  .crm-phone-status-grid article,
+  .crm-number-market,
+  .crm-live-inbox,
+  .crm-conversation-metrics article,
+  .crm-run-history,
+  .crm-automation-list,
+  .crm-empty-state
+) {
+  color: var(--crm-ink);
+  border-color: var(--crm-line);
+  background: var(--crm-card);
+  box-shadow: 0 10px 30px rgb(55 65 66 / 6%);
+}
+
+.crm-shell:not([data-theme]) .crm-main-dashboard :is(
+  .crm-table th,
+  .crm-kanban-column,
+  .crm-calendar-list > article > header,
+  .crm-live-messages,
+  .crm-live-messages article,
+  .crm-website-list,
+  .crm-website-status-grid,
+  .crm-website-detail > footer,
+  .crm-review-inbox-filters,
+  .crm-review-inbox > aside,
+  .crm-review-inbox > section,
+  .crm-review-detail,
+  .crm-review-detail > section,
+  .crm-review-consent,
+  .crm-review-switch,
+  .crm-connection-details > div,
+  .crm-ai-connector-steps li,
+  .crm-profile-summary,
+  .crm-profile-details > div,
+  .crm-profile-steps article,
+  .crm-webhook-box,
+  .crm-owner-handoff,
+  .crm-help-note,
+  .crm-capture-setup details,
+  .crm-switch-row,
+  .crm-form-note
+) {
+  color: var(--crm-ink);
+  border-color: var(--crm-line);
+  background: var(--crm-surface);
+}
+
+.crm-shell:not([data-theme]) .crm-main-dashboard :is(
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea,
+  .crm-search,
+  .crm-copy-row code,
+  .crm-capture-setup pre
+) {
+  color: var(--crm-text);
+  border-color: var(--crm-line-strong);
+  background: #ffffff;
+}
+
+.crm-shell:not([data-theme]) .crm-main-dashboard ::placeholder { color: #979e9c; }
+
+.crm-shell:not([data-theme]) .crm-main-dashboard :is(
+  .crm-page-heading h2,
+  .crm-panel h3,
+  .crm-table-person strong,
+  .crm-company-card h3,
+  .crm-website-list > button,
+  .crm-website-detail > header h3,
+  .crm-review-card h3,
+  .crm-review-detail h3,
+  .crm-ai-connector-view h3,
+  .crm-workflow-list > button,
+  .crm-form label > span
+) { color: var(--crm-ink); }
+
+.crm-shell:not([data-theme]) .crm-main-dashboard :is(
+  .crm-page-heading > div > span,
+  .crm-table td,
+  .crm-table-person small,
+  .crm-panel header span,
+  .crm-calendar-list article p,
+  .crm-calendar-list article small,
+  .crm-settings-grid dt,
+  .crm-website-list > button small,
+  .crm-review-card span,
+  .crm-review-card small,
+  .crm-profile-card small,
+  .crm-ai-connector-view small,
+  .crm-ai-connector-view p,
+  .crm-workflow-list p,
+  .crm-live-inbox small,
+  .crm-empty-state p
+) { color: var(--crm-muted); }
+
+.crm-shell:not([data-theme]) .crm-main-dashboard .crm-dashboard-view {
+  --crm-dashboard-card-gradient: #f7f9f8;
+  --crm-dashboard-card-shadow: 0 10px 30px rgb(55 65 66 / 7%), inset 0 0 0 1px var(--crm-line);
+  --crm-dashboard-card-hover-shadow: 0 14px 34px rgb(55 65 66 / 10%), inset 0 0 0 1px #d2d9d7;
+  color: var(--crm-ink);
+}
+
+.crm-shell:not([data-theme]) .crm-dashboard-view :is(.crm-dashboard-card-text, .crm-panel) {
+  border-color: var(--crm-line);
+  background: #ffffff;
+  background-blend-mode: normal;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.crm-shell:not([data-theme]) .crm-dashboard-view .crm-dashboard-card-image { background: #f7f9f8; }
+.crm-shell:not([data-theme]) .crm-dashboard-view .crm-dashboard-card-text { border-top-color: var(--crm-line); }
+
+.crm-shell:not([data-theme]) .crm-dashboard-view :is(
+  .crm-dashboard-card-text .crm-dashboard-kpi-heading,
+  .crm-dashboard-card-text > strong,
+  .crm-dashboard-marketing-card > strong,
+  .crm-dashboard-attention-list strong,
+  .crm-dashboard-today-list strong,
+  .crm-dashboard-today-list time,
+  .crm-dashboard-recent-row strong,
+  .crm-dashboard-pipeline-stage strong,
+  .crm-dashboard-source-snapshot strong,
+  .crm-dashboard-calm-empty strong
+) { color: var(--crm-ink); }
+
+.crm-shell:not([data-theme]) .crm-dashboard-view :is(
+  .crm-dashboard-marketing-card > span,
+  .crm-dashboard-marketing-card > small,
+  .crm-dashboard-attention-list small,
+  .crm-dashboard-today-list small,
+  .crm-dashboard-pipeline-stage span,
+  .crm-dashboard-source-snapshot,
+  .crm-dashboard-source-donut > span,
+  .crm-dashboard-source,
+  .crm-dashboard-recent-row time,
+  .crm-dashboard-recent-head,
+  .crm-dashboard-calm-empty span
+) { color: var(--crm-muted); }
+
+.crm-shell:not([data-theme]) .crm-dashboard-view :is(
+  .crm-dashboard-marketing-card,
+  .crm-dashboard-attention-list > button,
+  .crm-dashboard-today-list > button,
+  .crm-dashboard-pipeline-stage
+) {
+  color: var(--crm-ink);
+  border-color: var(--crm-line);
+  background: #f7f9f8;
+  box-shadow: none;
+}
+
+.crm-shell:not([data-theme]) .crm-dashboard-view .crm-dashboard-source-donut::after { background: #ffffff; }
+
+.crm-shell:not([data-theme]) .crm-main-dashboard .crm-tabs button,
+.crm-shell:not([data-theme]) .crm-main-dashboard .crm-view-switcher button {
+  color: var(--crm-muted);
+  border-color: var(--crm-line);
+  background: #f5f7f6;
+}
+
+.crm-shell:not([data-theme]) .crm-main-dashboard .crm-tabs button.active,
+.crm-shell:not([data-theme]) .crm-main-dashboard .crm-view-switcher button.active {
+  color: #171b1f;
+  border-color: #cfd6d5;
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgb(55 65 66 / 8%);
+}
+
+.crm-shell:not([data-theme]) .crm-main-dashboard :is(.crm-button-secondary, .crm-heading-actions button:not(.crm-button-primary)) {
+  color: var(--crm-ink);
+  border-color: var(--crm-line-strong);
+  background: #ffffff;
+}
+
+.crm-shell:not([data-theme]) .crm-main-dashboard select option {
+  color: var(--crm-ink);
+  background: #ffffff;
+}
+
+.crm-shell:not([data-theme]) .crm-main-dashboard :is(button, a, select):focus-visible {
+  outline-color: rgb(80 111 108 / 78%);
+  box-shadow: 0 0 0 5px rgb(80 111 108 / 10%);
+}
+
+@media (hover: hover) {
+  .crm-shell:not([data-theme]) .crm-main-dashboard :is(button, a, select):not(:disabled):hover {
+    border-color: #c7cfcd;
+    background-color: #f3f6f5;
+    box-shadow: 0 5px 16px rgb(55 65 66 / 7%);
+  }
+}
+
+@media (max-width: 900px) {
+  .crm-shell.crm-shell:not([data-theme]) .crm-sidebar {
+    background: rgb(239 245 244 / 97%);
+  }
+}
