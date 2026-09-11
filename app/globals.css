@@ -20506,3 +20506,201 @@ canvas {
   .crm-dashboard-chart-tooltip, .crm-dashboard-chart-marker, .crm-dashboard-chart-marker > span,
   .crm-dashboard-area-glow, .crm-dashboard-area-fill, .crm-dashboard-area-line { transition: none; }
 }
+
+/* Shared dashboard visual system for every CRM workspace tab. */
+.crm-shell:has(> .crm-main-dashboard) {
+  --crm-ink: #f2f4f7;
+  --crm-muted: #9aa1aa;
+  --crm-line: #30343b;
+  --crm-line-strong: #454b55;
+  --crm-card: #171b21;
+  --crm-surface: #21262c;
+  --crm-text: #f2f4f7;
+  --crm-border: var(--crm-line);
+  color-scheme: dark;
+}
+
+.crm-shell .crm-main-dashboard > .crm-view {
+  min-height: calc(100vh - 72px);
+  color: var(--crm-ink);
+  background: #1a1f24;
+}
+
+.crm-shell .crm-main-dashboard :is(
+  .crm-panel,
+  .crm-table-panel,
+  .crm-filterbar,
+  .crm-contact-grid article,
+  .crm-client-grid article,
+  .crm-company-card,
+  .crm-task-list > article,
+  .crm-calendar-list > article,
+  .crm-report-summary article,
+  .crm-settings-grid > article,
+  .crm-lead-summary,
+  .crm-detail-grid article,
+  .crm-message-card,
+  .crm-related-grid article,
+  .crm-timeline,
+  .crm-definition-list > div,
+  .crm-custom-field-editor,
+  .crm-value-list > div,
+  .crm-future-scope,
+  .crm-workflow-preview,
+  .crm-funnel-preview,
+  .crm-preview-table-card,
+  .crm-form-builder-preview,
+  .crm-website-layout,
+  .crm-connection-card,
+  .crm-workflow-list,
+  .crm-builder-header,
+  .crm-builder-body,
+  .crm-profile-card,
+  .crm-profile-setup,
+  .crm-review-tabs,
+  .crm-review-card,
+  .crm-review-inbox,
+  .crm-phone-settings,
+  .crm-phone-help,
+  .crm-phone-status-grid article,
+  .crm-number-market,
+  .crm-live-inbox,
+  .crm-conversation-metrics article,
+  .crm-run-history,
+  .crm-automation-list,
+  .crm-empty-state
+) {
+  color: var(--crm-ink);
+  border-color: var(--crm-line);
+  background: var(--crm-card);
+  box-shadow: 0 16px 42px rgb(0 0 0 / 20%);
+}
+
+.crm-shell .crm-main-dashboard :is(
+  .crm-table th,
+  .crm-kanban-column,
+  .crm-calendar-list > article > header,
+  .crm-live-messages,
+  .crm-live-messages article,
+  .crm-website-list,
+  .crm-website-status-grid,
+  .crm-website-detail > footer,
+  .crm-review-inbox-filters,
+  .crm-review-inbox > aside,
+  .crm-review-inbox > section,
+  .crm-review-detail,
+  .crm-review-detail > section,
+  .crm-review-consent,
+  .crm-review-switch,
+  .crm-connection-details > div,
+  .crm-ai-connector-steps li,
+  .crm-profile-summary,
+  .crm-profile-details > div,
+  .crm-profile-steps article,
+  .crm-webhook-box,
+  .crm-owner-handoff,
+  .crm-help-note,
+  .crm-capture-setup details,
+  .crm-switch-row,
+  .crm-form-note
+) {
+  color: var(--crm-ink);
+  border-color: var(--crm-line);
+  background: var(--crm-surface);
+}
+
+.crm-shell .crm-main-dashboard :is(
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea,
+  .crm-search,
+  .crm-copy-row code,
+  .crm-capture-setup pre
+) {
+  color: var(--crm-text);
+  border-color: var(--crm-line-strong);
+  background: #0d1117;
+}
+
+.crm-shell .crm-main-dashboard ::placeholder { color: #777f89; }
+
+.crm-shell .crm-main-dashboard :is(
+  .crm-page-heading h2,
+  .crm-panel h3,
+  .crm-table-person strong,
+  .crm-company-card h3,
+  .crm-website-list > button,
+  .crm-website-detail > header h3,
+  .crm-review-card h3,
+  .crm-review-detail h3,
+  .crm-ai-connector-view h3,
+  .crm-workflow-list > button,
+  .crm-modal h2,
+  .crm-form label > span
+) { color: var(--crm-ink); }
+
+.crm-shell .crm-main-dashboard :is(
+  .crm-page-heading > div > span,
+  .crm-table td,
+  .crm-table-person small,
+  .crm-panel header span,
+  .crm-calendar-list article p,
+  .crm-calendar-list article small,
+  .crm-settings-grid dt,
+  .crm-website-list > button small,
+  .crm-review-card span,
+  .crm-review-card small,
+  .crm-profile-card small,
+  .crm-ai-connector-view small,
+  .crm-ai-connector-view p,
+  .crm-workflow-list p,
+  .crm-live-inbox small,
+  .crm-empty-state p
+) { color: var(--crm-muted); }
+
+.crm-shell .crm-main-dashboard :is(
+  .crm-table td,
+  .crm-table th,
+  .crm-panel > header,
+  .crm-calendar-list article > div,
+  .crm-website-list > button,
+  .crm-website-detail > header,
+  .crm-review-card > header,
+  .crm-review-inbox-list > button,
+  .crm-workflow-list > header,
+  .crm-workflow-list > button,
+  .crm-live-inbox > aside,
+  .crm-live-inbox > aside button,
+  .crm-live-inbox > section > header,
+  .crm-live-inbox form
+) { border-color: var(--crm-line); }
+
+.crm-shell .crm-main-dashboard .crm-tabs button,
+.crm-shell .crm-main-dashboard .crm-view-switcher button {
+  color: var(--crm-muted);
+  border-color: var(--crm-line);
+  background: var(--crm-card);
+}
+
+.crm-shell .crm-main-dashboard .crm-tabs button.active,
+.crm-shell .crm-main-dashboard .crm-view-switcher button.active {
+  color: #f2f4f7;
+  border-color: #454b55;
+  background: #21262c;
+}
+
+.crm-shell .crm-main-dashboard :is(.crm-button-secondary, .crm-heading-actions button:not(.crm-button-primary)) {
+  color: var(--crm-ink);
+  border-color: var(--crm-line-strong);
+  background: var(--crm-surface);
+}
+
+@media (hover: hover) {
+  .crm-shell .crm-main-dashboard :is(
+    .crm-table tbody tr,
+    .crm-website-list > button,
+    .crm-review-inbox-list > button,
+    .crm-workflow-list > button,
+    .crm-live-inbox > aside button
+  ):hover { background: rgb(255 255 255 / 6%); }
+}

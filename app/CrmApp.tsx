@@ -1044,7 +1044,7 @@ export function CrmApp({
         />
       ) : null}
 
-      <main className={`crm-main crm-main-${view}`}>
+      <main className={`crm-main crm-main-dashboard crm-main-${view}`}>
         <header className={`crm-topbar crm-topbar-${view}`}>
           <div className="crm-topbar-title">
             <button
