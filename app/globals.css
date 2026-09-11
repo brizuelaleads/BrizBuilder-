@@ -20436,9 +20436,14 @@ canvas {
   }
 }
 
-/* Match the exposed shell to the navigation tabs and keep the dashboard sheet uniform. */
+/* Match the exposed shell and sidebar navigation surface exactly. */
 .crm-shell:has(> .crm-main-dashboard) {
   background: #0d1117;
+}
+.crm-shell.crm-shell:has(> .crm-main-dashboard) .crm-sidebar {
+  background: #0d1117;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 .crm-shell .crm-main-dashboard {
   background: #1a1f24;
