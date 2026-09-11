@@ -20455,7 +20455,7 @@ canvas {
 .crm-shell .crm-main-dashboard {
   position: relative;
   z-index: 1;
-  background: #1a1f24;
+  background: transparent;
 }
 .crm-shell .crm-main-dashboard > .crm-dashboard-view {
   background: #1a1f24;
