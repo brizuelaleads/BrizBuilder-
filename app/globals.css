@@ -20436,35 +20436,19 @@ canvas {
   }
 }
 
-/* Frosted dashboard canvas, using the existing charcoal palette. */
+/* Match the exposed shell to the navigation tabs and keep the dashboard sheet uniform. */
 .crm-shell:has(> .crm-main-dashboard) {
-  background:
-    radial-gradient(ellipse at 14% 8%, rgb(255 255 255 / 10%), transparent 52%),
-    radial-gradient(ellipse at 85% 70%, rgb(255 255 255 / 4%), transparent 58%),
-    #0d1117;
+  background: #0d1117;
 }
 .crm-shell .crm-main-dashboard {
-  background:
-    linear-gradient(155deg, rgb(255 255 255 / 5%), transparent 65%),
-    rgb(13 17 23 / 72%);
-  -webkit-backdrop-filter: blur(22px);
-  backdrop-filter: blur(22px);
+  background: #1a1f24;
 }
 .crm-shell .crm-main-dashboard > .crm-dashboard-view {
-  background: transparent;
+  background: #1a1f24;
 }
 .crm-shell .crm-main-dashboard > .crm-topbar,
 .crm-shell .crm-main-dashboard > .crm-mobile-filterbar {
-  background: rgb(13 17 23 / 64%);
-  -webkit-backdrop-filter: blur(22px);
-  backdrop-filter: blur(22px);
-}
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .crm-shell .crm-main-dashboard,
-  .crm-shell .crm-main-dashboard > .crm-topbar,
-  .crm-shell .crm-main-dashboard > .crm-mobile-filterbar {
-    background-color: #171b21;
-  }
+  background: #1a1f24;
 }
 
 /* Individual metric cards with inspectable area charts. */
