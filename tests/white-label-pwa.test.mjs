@@ -247,9 +247,9 @@ test("label ink stays readable on both light and dark brand fills", () => {
   assert.equal(readableInkOn("garbage"), readableInkOn(DEFAULT_BRANDING.primaryColor));
 });
 
-test("brand tokens are applied inline, where they beat the theme's own rules", () => {
+test("brand tokens are applied inline over the shared light UI rules", () => {
   assert.match(crmAppSource, /style=\{brandingCssVariables\(branding\)/);
-  assert.match(crmAppSource, /data-theme=\{theme === "classic" \? undefined : theme\}/);
+  assert.match(crmAppSource, /data-ui="light"/);
 });
 
 /* -------------------------------------------------------------------------

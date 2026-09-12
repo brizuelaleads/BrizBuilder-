@@ -44,8 +44,6 @@ import {
 } from "lucide-react";
 import { BrandLogo } from "./components/BrandLogo";
 import type { CrmBootstrap, CrmLead, CrmPermission, CrmRole } from "../db/crm";
-import type { CrmTheme } from "../db/theme";
-import { CRM_THEMES } from "../db/theme";
 import type { TenantBranding } from "../db/branding";
 import { DEFAULT_BRANDING, brandingCssVariables } from "../db/branding";
 import { PushOptIn } from "./components/PushOptIn";
@@ -368,10 +366,6 @@ export function CrmApp({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
-  // Optimistic theme: apply instantly, persist through the CRM action, and
-  // fall back to the server value once the bootstrap refresh lands.
-  const [themeOverride, setThemeOverride] = useState<CrmTheme | null>(null);
-  const theme: CrmTheme = themeOverride ?? data.viewer.theme ?? "classic";
   // Workspace switcher: agency users pick which sub-account they are managing.
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const switcherRef = useRef<HTMLDivElement | null>(null);
@@ -693,19 +687,6 @@ export function CrmApp({
     }
   }
 
-  async function switchTheme(next: CrmTheme) {
-    if (next === theme) return;
-    setThemeOverride(next);
-    try {
-      await mutate({ action: "set_theme", theme: next }, "Theme updated.");
-    } catch {
-      // mutate already refreshed and surfaced the error; the override clear
-      // below reverts the UI to the server's stored theme.
-    } finally {
-      setThemeOverride(null);
-    }
-  }
-
   function navigate(next: View) {
     const url = new URL(window.location.href);
     url.searchParams.set("view", next);
@@ -838,12 +819,11 @@ export function CrmApp({
   );
 
   return (
-    // The brand tokens ride on an inline style because `.crm-shell` and the
-    // per-theme blocks both declare `--crm-accent` themselves; a `:root` rule
-    // would lose to them on specificity. Inline wins over every one.
+    // Brand tokens remain inline so each tenant's identity wins over the
+    // shared light component system without duplicating per-view rules.
     <div
-      className="crm-shell"
-      data-theme={theme === "classic" ? undefined : theme}
+      className={`crm-shell crm-shell-view-${view}`}
+      data-ui="light"
       style={brandingCssVariables(branding) as React.CSSProperties}
     >
       <aside className={`crm-sidebar ${mobileNav ? "crm-sidebar-open" : ""}`}>
@@ -857,7 +837,7 @@ export function CrmApp({
             <BrandLogo
               className="crm-brand-logo"
               size={126}
-              tone={theme === "classic" ? "dark" : "light"}
+              tone="dark"
               decorative
               priority
               logoUrl={branding.logoUrl}
@@ -990,26 +970,6 @@ export function CrmApp({
             </div>
           ))}
         </nav>
-        <div className="crm-theme-picker">
-          <label htmlFor="crm-theme">Appearance</label>
-          <select
-            id="crm-theme"
-            value={theme}
-            onChange={(event) =>
-              void switchTheme(event.target.value as CrmTheme)
-            }
-          >
-            {CRM_THEMES.map((option) => (
-              <option key={option} value={option}>
-                {option === "cyberpunk"
-                  ? "Cyber"
-                  : option === "midnight"
-                    ? "Dark"
-                    : "Light"}
-              </option>
-            ))}
-          </select>
-        </div>
         <div className="crm-sidebar-foot">
           <div className="crm-user-summary">
             <span className="crm-avatar">{initials(data.viewer.name)}</span>

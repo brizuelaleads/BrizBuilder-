@@ -82,25 +82,19 @@ test("D1 fallback has viewer theme parity and a validated set_theme branch", () 
   assert.match(block, /persisted: false/, "D1 branch is an honest validated no-op");
 });
 
-test("the localStorage pilot is fully removed and theme derives from the viewer", () => {
+test("the CRM renders one light UI without a browser-side theme override", () => {
   assert.doesNotMatch(dashboardSource, /localStorage|THEME_STORAGE_KEY|cyberpunk/);
   assert.doesNotMatch(crmAppSource, /localStorage/);
-  assert.match(crmAppSource, /data-theme=\{theme === "classic" \? undefined : theme\}/);
-  assert.match(crmAppSource, /themeOverride \?\? data\.viewer\.theme \?\? "classic"/);
+  assert.match(crmAppSource, /data-ui="light"/);
+  assert.match(crmAppSource, /crm-shell-view-\$\{view\}/);
+  assert.doesNotMatch(crmAppSource, /themeOverride|switchTheme|crm-theme-picker/);
 });
 
-test("midnight is the selectable dark CRM theme with dark surfaces", () => {
-  assert.match(crmAppSource, /tone=\{theme === "classic" \? "dark" : "light"\}/);
-  assert.match(crmAppSource, /\? "Dark"/);
-  const midnightTokens = styles.match(
-    /\.crm-shell\[data-theme="midnight"\]\s*\{[\s\S]*?\n  \}/,
-  )?.[0];
-  assert.ok(midnightTokens, "midnight theme tokens exist");
-  assert.match(midnightTokens, /--crm-canvas: #000000/);
-  assert.match(midnightTokens, /--crm-accent: #ffffff/);
-  assert.doesNotMatch(midnightTokens, /#58c98d|#d8f36a|88 201 141|216 243 106/);
-  assert.match(styles, /\.crm-shell\[data-theme="midnight"\]\s*:is\([\s\S]*\.crm-modal/);
-  assert.match(styles, /\.crm-shell\[data-theme="midnight"\]\s*:is\([\s\S]*\.crm-table-panel/);
+test("the light UI system excludes Dashboard from the redesign", () => {
+  assert.match(crmAppSource, /tone="dark"/);
+  assert.match(styles, /Single light CRM system based on the supplied shadcn\/ui Figma library/);
+  assert.match(styles, /\.crm-shell:not\(\.crm-shell-view-dashboard\)/);
+  assert.doesNotMatch(crmAppSource, /CRM_THEMES/);
 });
 
 test("the bootstrap preference read is fault-isolated from the D1 fallback", () => {
