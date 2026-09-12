@@ -22134,3 +22134,41 @@ canvas {
     min-height: 88px;
   }
 }
+
+/* Match the specificity of the legacy Dashboard shell rules. Without the
+   data-ui and :has selectors, those older rules win even when declared first. */
+.crm-shell.crm-shell[data-ui="light"]:has(> .crm-main-dashboard) {
+  background-color: var(--crm-nav-surface);
+  background-image: var(--crm-nav-texture);
+}
+
+.crm-shell.crm-shell[data-ui="light"]:has(> .crm-main-dashboard) > .crm-sidebar {
+  color: var(--crm-ui-text);
+  border-right: 0;
+  background-color: var(--crm-nav-surface);
+  background-image: var(--crm-nav-texture);
+  box-shadow: none;
+}
+
+.crm-shell.crm-shell[data-ui="light"] .crm-sidebar .crm-primary-nav.input .value {
+  color: var(--crm-ui-text);
+  background-color: transparent;
+}
+
+.crm-shell.crm-shell[data-ui="light"] .crm-sidebar .crm-primary-nav.input .value.active {
+  color: var(--crm-ui-ink);
+  background-color: #ffffff;
+  box-shadow: 0 8px 24px rgb(55 79 78 / 9%);
+}
+
+.crm-shell.crm-shell[data-ui="light"] .crm-sidebar .crm-primary-nav.input .value.active::before {
+  display: block;
+  background-color: var(--crm-ui-blue);
+}
+
+@media (max-width: 900px) {
+  .crm-shell.crm-shell[data-ui="light"]:has(> .crm-main-dashboard) > .crm-sidebar {
+    background-color: var(--crm-nav-surface);
+    background-image: var(--crm-nav-texture);
+  }
+}
