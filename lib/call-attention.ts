@@ -1,5 +1,24 @@
 import type { CrmCall } from "../db/crm";
 
+/**
+ * The answered state a provider status implies, for rows without an explicit
+ * `answered` flag. Stored rows use "missed" alongside Twilio's no-answer, busy,
+ * failed and canceled. Leaving "missed" out made those calls neither missed nor
+ * answered, so the Calls summary disagreed with its own table and with the
+ * Dashboard, which already treats every one of these as missed.
+ */
+export function answeredFromCallStatus(status: string | null | undefined): boolean | null {
+  const normalized = (status ?? "").trim().toLowerCase().replaceAll("_", "-");
+  if (["completed", "in-progress", "answered"].includes(normalized)) return true;
+  if (
+    normalized.includes("missed") ||
+    ["no-answer", "busy", "failed", "canceled", "cancelled"].includes(normalized)
+  ) {
+    return false;
+  }
+  return null;
+}
+
 export function isInboundCall(call: CrmCall) {
   return (call.direction ?? "inbound").toLowerCase() !== "outbound";
 }

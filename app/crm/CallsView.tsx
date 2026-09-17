@@ -164,8 +164,8 @@ export function CallsView({
       <section className="crm-call-metrics" aria-label="Call summary">
         <article><PhoneCall /><span>Total calls</span><strong>{ordered.length}</strong><small>Selected period</small></article>
         <article className="missed"><PhoneMissed /><span>Missed calls</span><strong>{missed.length}</strong><small>Inbound calls not answered</small></article>
-        <article><CheckCircle2 /><span>Answered calls</span><strong>{answered.length}</strong><small>{ordered.length ? `${Math.round((answered.length / ordered.length) * 100)}% answer rate` : "No calls yet"}</small></article>
-        <article className={needingFollowUp.length ? "attention" : ""}><Clock3 /><span>Need follow-up</span><strong>{needingFollowUp.length}</strong><small>{averageDuration == null ? "No average yet" : `${duration(averageDuration)} average call`}</small></article>
+        <article><CheckCircle2 /><span>Answered calls</span><strong>{answered.length}</strong><small>{ordered.length ? `${Math.round((answered.length / ordered.length) * 100)}% answer rate${averageDuration == null ? "" : ` · ${duration(averageDuration)} average`}` : "No calls yet"}</small></article>
+        <article className={needingFollowUp.length ? "attention" : ""}><Clock3 /><span>Need follow-up</span><strong>{needingFollowUp.length}</strong><small>Missed calls not returned yet</small></article>
       </section>
 
       <section className="crm-calls-history">

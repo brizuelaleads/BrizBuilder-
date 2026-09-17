@@ -64,6 +64,7 @@ import {
   isSingleAffectedRow,
 } from "../lib/callrail-ingestion-state";
 import { reconcileCallRailIngestion } from "../lib/callrail-ingestion";
+import { answeredFromCallStatus } from "../lib/call-attention";
 import {
   DNI_EXCHANGE_PARAM,
   DNI_EXCHANGE_TTL_MS,
@@ -3159,11 +3160,7 @@ function mapUnifiedCall(row: AnyRecord): CrmCall {
   const answered =
     typeof row.answered === "boolean"
       ? row.answered
-      : ["completed", "in-progress", "answered"].includes(status.toLowerCase())
-        ? true
-        : ["no-answer", "busy", "failed", "canceled"].includes(status.toLowerCase())
-          ? false
-          : null;
+      : answeredFromCallStatus(status);
   const provider = String(row.provider ?? "twilio").toLowerCase();
   const providerCallId = String(row.provider_call_id ?? row.provider_call_sid ?? "");
   return {

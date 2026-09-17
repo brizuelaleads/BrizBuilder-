@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { callNeedsFollowUp } from "../lib/call-attention.ts";
+import {
+  answeredFromCallStatus,
+  callNeedsFollowUp,
+  isAnsweredCall,
+  isMissedCall,
+} from "../lib/call-attention.ts";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const migration = read("supabase/migrations/20260904000000_unified_calls.sql");
@@ -151,6 +156,47 @@ test("missed calls stop needing attention after a successful later call", () => 
     false,
   );
   assert.equal(callNeedsFollowUp(call({ handledAt: "2026-09-01T13:00:00.000Z" }), []), false);
+});
+
+test("a stored 'missed' status counts as missed when answered is not recorded", () => {
+  assert.equal(answeredFromCallStatus("missed"), false);
+  assert.equal(answeredFromCallStatus("Missed_Call"), false);
+  for (const status of ["no-answer", "busy", "failed", "canceled", "cancelled"]) {
+    assert.equal(answeredFromCallStatus(status), false, status);
+  }
+  for (const status of ["completed", "in-progress", "answered"]) {
+    assert.equal(answeredFromCallStatus(status), true, status);
+  }
+  assert.equal(answeredFromCallStatus("ringing"), null);
+  assert.equal(answeredFromCallStatus(null), null);
+});
+
+test("Calls summary and table agree for the production status mix", () => {
+  // 5 completed + answered, 3 "missed" with no answered flag, 1 no-answer + false.
+  const rows = [
+    ...Array.from({ length: 5 }, () => ({ status: "completed", answered: true })),
+    ...Array.from({ length: 3 }, () => ({ status: "missed", answered: null })),
+    { status: "no-answer", answered: false },
+  ].map((row, index) =>
+    call({
+      id: `call-${index}`,
+      status: row.status,
+      answered: typeof row.answered === "boolean" ? row.answered : answeredFromCallStatus(row.status),
+    }),
+  );
+  assert.equal(rows.filter(isMissedCall).length, 4);
+  assert.equal(rows.filter(isAnsweredCall).length, 5);
+  assert.equal(rows.filter((row) => !isMissedCall(row) && !isAnsweredCall(row)).length, 0);
+});
+
+test("the unified call mapper uses the shared status vocabulary", () => {
+  const source = read("db/supabase-crm.ts");
+  const mapper = source.slice(
+    source.indexOf("function mapUnifiedCall"),
+    source.indexOf("function mapConversation"),
+  );
+  assert.match(mapper, /answeredFromCallStatus\(status\)/);
+  assert.doesNotMatch(mapper, /\["no-answer"/);
 });
 
 test("the Calls browser action never submits provider or business number", () => {
