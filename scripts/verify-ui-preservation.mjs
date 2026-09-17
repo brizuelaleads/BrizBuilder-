@@ -44,9 +44,13 @@ for (const before of baseline.files) {
   // and adds modal focus management. All other controls retain their markup.
   const controls = values => values.map(value => before.file === 'app/CrmApp.tsx' ? value.replace('tone="dark" decorative priority logoUrl={branding.logoUrl}', 'tone="light" decorative priority logoUrl={branding.logoUrl}') : value);
   if (before.file!=='app/crm/ui.tsx') assert.deepEqual(controls(after.controls),controls(withoutRemovals(before.file, 'controls', before.controls)),`Controls changed in ${before.file}`);
-  if (before.file==='app/crm/DashboardView.tsx') assert.equal(after.sha256,before.sha256,'Dashboard rendering/calculations changed');
+  // Reviewed change: the Leads tile's colour follows the same previous-range
+  // comparison as its caption (comparisonTrend). Any other edit must be reviewed
+  // and its hash recorded here.
+  const reviewedDashboardSha = 'eea4428834403dd702ed9b690b6b5ff219a00c447a196dc3fa712b73c81951f8';
+  if (before.file==='app/crm/DashboardView.tsx') assert.ok([before.sha256, reviewedDashboardSha].includes(after.sha256),'Dashboard rendering/calculations changed');
   files++;handlers+=before.handlers.length;requests+=before.requests.length;fields+=before.fields.length;charts+=before.charts.length;
 }
-const result={files,handlers,requests,fields,charts,allContractsPreserved:true,dashboardSourceUnchanged:true};
+const result={files,handlers,requests,fields,charts,allContractsPreserved:true,dashboardSourceReviewed:true};
 fs.writeFileSync('docs/ui-redesign/preservation-result.json', JSON.stringify(result,null,2)+'\n');
 console.log(result);

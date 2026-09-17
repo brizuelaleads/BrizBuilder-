@@ -71,6 +71,17 @@ function previousRangeCount(
   }).length;
 }
 
+/**
+ * Tone for a tile whose caption compares this range with the previous one. The
+ * sparkline's own half-over-half tone can disagree with that caption (45 new
+ * leads that all arrived early read "+45 vs previous" in red), so when a
+ * previous count exists the colour follows the same comparison as the words.
+ */
+function comparisonTrend(current: number, previous: number): TrendTone {
+  if (current === previous) return "neutral";
+  return current > previous ? "up" : "down";
+}
+
 function formatLeadDelta(current: number, previous: number | null) {
   if (previous == null) return rangeLabel("all");
   if (previous === 0) return current ? `+${current} vs previous` : "No change";
@@ -689,7 +700,11 @@ export function DashboardView({
           : formatLeadDelta(leads.length, previousLeads),
       icon: UsersRound,
       tone: "green",
-      trend: seriesTrend(leadSparkline),
+      trend:
+        previousLeads == null
+          ? seriesTrend(leadSparkline)
+          : comparisonTrend(leads.length, previousLeads),
+      trendBasis: previousLeads == null ? undefined : "Compared with the previous range",
       sparkline: leadSparkline,
     },
     {
