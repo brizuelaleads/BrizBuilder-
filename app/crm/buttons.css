@@ -1,0 +1,405 @@
+/* Buttons: one system for every button in the app, built from the .cir-btn spec
+ * (ink pill, 48px, Inter 15/500, layered shadow, 140/220ms expo-out easing,
+ * lift on hover, blue focus halo, 1px press).
+ *
+ * Logic
+ *  - Surface decides the tone: ink on light surfaces, cloud on dark ones.
+ *  - Hover moves away from the surface: dark buttons get lighter, light
+ *    buttons get darker, so the change always reads against its background.
+ *  - Emphasis decides the variant: solid for the main action, soft (cloud with
+ *    a hairline) for supporting actions, ghost for inline and icon actions,
+ *    and a red family for destructive ones.
+ *  - Context decides the size: 48 for page and dialog actions, 40 inside cards,
+ *    panels and segmented controls, 32 in table rows and inline links.
+ *
+ * Buttons only declare --btn-* variables; one base rule paints them. The scope
+ * uses the app shell id so it outranks the class-based legacy skins without
+ * !important. Rows, cells and cards that are buttons for accessibility keep
+ * their own shape and only take the shared motion and focus treatment.
+ */
+
+:root {
+  --color-ink: #0e1116;
+  --color-cloud: #ffffff;
+  --cir-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --cir-font: var(--font-crm, "Inter"), "Inter", system-ui, -apple-system, sans-serif;
+}
+
+:is(#crm-app, .client-portal, .auth-page) {
+  /* ---- Base -------------------------------------------------------------- */
+  & :is(button, a.crm-button-primary, a.crm-button-secondary, a.crm-integration-primary, a.crm-google-calendar-link, .crm-lead-contact-actions > a, .crm-lead-status-menu > summary, .client-portal-account > a, a.auth-signin):not(:is(
+      .crm-brand-home, .crm-nav-scrim, .crm-dashboard-chart-targets > button,
+      .crm-dashboard-pipeline-stage, .crm-dashboard-recent-row,
+      .crm-dashboard-attention-list > button, .crm-dashboard-today-list > button,
+      .crm-lead-open, .crm-call-open, .crm-kanban-cards > button, .crm-kanban-card-main,
+      .crm-cal-event > button, .crm-cal-month-day, .crm-live-inbox > aside button,
+      .crm-review-inbox-list button, .crm-website-list > button, .crm-number-results > button,
+      .crm-settings-client-app-entry, .crm-lead-progress-track > button, .crm-lead-task-list button,
+      .crm-task-check, .crm-visual-node, .crm-client-toggle, .crm-ads-disclosure,
+      .crm-ads-campaign-leads button, .crm-workflow-list > button)) {
+    display: var(--btn-display, inline-flex);
+    flex-direction: var(--btn-direction, row);
+    align-items: center;
+    justify-content: var(--btn-justify, center);
+    gap: var(--btn-gap, 10px);
+    box-sizing: border-box;
+    height: var(--btn-h, 48px);
+    min-height: var(--btn-h, 48px);
+    /* Icon-only buttons set --btn-icon-px so context sizes cannot re-pad them. */
+    padding: var(--btn-py, 0px) var(--btn-icon-px, var(--btn-px, 24px));
+    border: 0;
+    border-radius: var(--btn-radius, 999px);
+    background: var(--btn-bg, var(--color-ink));
+    color: var(--btn-fg, var(--color-cloud));
+    font-family: var(--cir-font);
+    font-size: var(--btn-fs, 15px);
+    font-weight: var(--btn-weight, 500);
+    letter-spacing: -0.005em;
+    line-height: var(--btn-lh, 1);
+    text-align: left;
+    text-transform: none;
+    text-decoration: none;
+    white-space: nowrap;
+    list-style: none;
+    cursor: pointer;
+    box-shadow: var(--btn-ring, 0 0 #0000), var(--btn-shadow, 0 1px 1px rgba(14, 17, 22, 0.06), 0 14px 28px -18px rgba(14, 17, 22, 0.4));
+    transition:
+      transform 140ms var(--cir-ease),
+      background-color 220ms var(--cir-ease),
+      color 220ms var(--cir-ease),
+      box-shadow 220ms var(--cir-ease);
+    -webkit-tap-highlight-color: transparent;
+
+    &[hidden] { display: none; }
+    &::-webkit-details-marker { display: none; }
+    & svg { width: var(--btn-icon, 16px); height: var(--btn-icon, 16px); flex-shrink: 0; transition: transform 220ms var(--cir-ease); }
+
+    &:hover:not(:disabled, .disabled, [aria-disabled="true"]) {
+      background: var(--btn-bg-hover, #1a1f28);
+      color: var(--btn-fg-hover, var(--btn-fg, var(--color-cloud)));
+      box-shadow: var(--btn-ring-hover, var(--btn-ring, 0 0 #0000)), var(--btn-shadow-hover, 0 1px 1px rgba(14, 17, 22, 0.08), 0 20px 36px -16px rgba(14, 17, 22, 0.48));
+    }
+    &:hover:not(:disabled, .disabled, [aria-disabled="true"]) :is(.lucide-arrow-up-right, .lucide-move-up-right) { transform: translate(2px, -2px); }
+    &:hover:not(:disabled, .disabled, [aria-disabled="true"]) :is(.lucide-arrow-right, .lucide-chevron-right) { transform: translateX(2px); }
+    &:focus-visible {
+      outline: none;
+      box-shadow: var(--btn-ring, 0 0 #0000), var(--btn-focus, 0 0 0 3px rgba(46, 125, 239, 0.32)), var(--btn-shadow, 0 14px 28px -18px rgba(14, 17, 22, 0.4));
+    }
+    &:active:not(:disabled, .disabled, [aria-disabled="true"]) { transform: translateY(1px); }
+    &:is(:disabled, .disabled, [aria-disabled="true"]) {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: var(--btn-ring, 0 0 #0000);
+    }
+  }
+
+  /* ---- Tone and emphasis ------------------------------------------------- */
+  /* Anything not classified below reads as a supporting action on a light card. */
+  & :is(button, a, summary) {
+    --btn-bg: var(--color-cloud);
+    --btn-fg: var(--color-ink);
+    --btn-bg-hover: #f1f2f4;
+    --btn-ring: inset 0 0 0 1px rgba(14, 17, 22, 0.14);
+    --btn-ring-hover: inset 0 0 0 1px rgba(14, 17, 22, 0.22);
+    --btn-shadow: 0 1px 1px rgba(14, 17, 22, 0.04), 0 10px 20px -16px rgba(14, 17, 22, 0.28);
+    --btn-shadow-hover: 0 1px 1px rgba(14, 17, 22, 0.06), 0 16px 28px -16px rgba(14, 17, 22, 0.34);
+    --btn-focus: inset 0 0 0 1px rgba(46, 125, 239, 0.85), 0 0 0 3px rgba(46, 125, 239, 0.32);
+    --btn-h: 40px; --btn-px: 18px; --btn-fs: 14px; --btn-gap: 8px;
+  }
+
+  /* Solid ink: the main action wherever it sits on a light surface (the spec as written). */
+  & :is(.crm-button-primary, .crm-topbar-action-primary, .crm-integration-primary, .crm-integrations-browse,
+      .crm-cal-empty button, .crm-lead-won-button, .crm-form-preview-card button, button[type="submit"],
+      .crm-client-app-primary-actions > button, .crm-client-advanced-save button,
+      .crm-client-install-actions > button:not(.secondary), .crm-lead-contact-actions > a.primary, .auth-signin) {
+    --btn-bg: var(--color-ink);
+    --btn-fg: var(--color-cloud);
+    --btn-bg-hover: #1a1f28;
+    --btn-ring: 0 0 #0000;
+    --btn-ring-hover: 0 0 #0000;
+    --btn-shadow: 0 1px 1px rgba(14, 17, 22, 0.06), 0 14px 28px -18px rgba(14, 17, 22, 0.4);
+    --btn-shadow-hover: 0 1px 1px rgba(14, 17, 22, 0.08), 0 20px 36px -16px rgba(14, 17, 22, 0.48);
+    --btn-focus: 0 0 0 3px rgba(46, 125, 239, 0.32);
+  }
+  /* A secondary-classed submit (e.g. "Save as draft") stays secondary. */
+  & :is(.crm-button-secondary, .secondary)[type="submit"] {
+    --btn-bg: var(--color-cloud); --btn-fg: var(--color-ink); --btn-bg-hover: #f1f2f4;
+    --btn-ring: inset 0 0 0 1px rgba(14, 17, 22, 0.14); --btn-ring-hover: inset 0 0 0 1px rgba(14, 17, 22, 0.22);
+    --btn-shadow: 0 1px 1px rgba(14, 17, 22, 0.04), 0 10px 20px -16px rgba(14, 17, 22, 0.28);
+    --btn-focus: inset 0 0 0 1px rgba(46, 125, 239, 0.85), 0 0 0 3px rgba(46, 125, 239, 0.32);
+  }
+
+  /* Ghost: inline, icon and close actions. Transparent until hovered. */
+  & :is([aria-label^="Close"], .crm-call-lead-link, .crm-contact-calls-toggle, .crm-call-detail-facts button,
+      .crm-integration-learn, .crm-integration-more, .crm-review-edit-template, .crm-call-transcript button,
+      .crm-cal-month .crm-cal-icon-pair button, .crm-topbar-title > button, .crm-remove-node) {
+    --btn-bg: transparent;
+    --btn-fg: var(--color-ink);
+    --btn-bg-hover: rgba(14, 17, 22, 0.06);
+    --btn-ring: 0 0 #0000;
+    --btn-ring-hover: 0 0 #0000;
+    --btn-shadow: 0 0 #0000;
+    --btn-shadow-hover: 0 0 #0000;
+    --btn-focus: inset 0 0 0 1px rgba(46, 125, 239, 0.85), 0 0 0 3px rgba(46, 125, 239, 0.32);
+  }
+
+  /* Destructive: same shapes in red. Solid gets lighter on hover, soft gets darker. */
+  & :is(.crm-button-danger) {
+    --btn-bg: #b42318;
+    --btn-fg: var(--color-cloud);
+    --btn-bg-hover: #c9372c;
+    --btn-ring: 0 0 #0000;
+    --btn-ring-hover: 0 0 #0000;
+    --btn-shadow: 0 1px 1px rgba(180, 35, 24, 0.1), 0 14px 28px -18px rgba(180, 35, 24, 0.55);
+    --btn-shadow-hover: 0 1px 1px rgba(180, 35, 24, 0.12), 0 20px 36px -16px rgba(180, 35, 24, 0.6);
+    --btn-focus: 0 0 0 3px rgba(220, 38, 38, 0.28);
+  }
+  & :is(.crm-cal-delete, .crm-calendar-list-actions > button, .crm-website-footer-actions .danger, .crm-payments-view .danger, button.danger:not(.crm-lead-status-menu button)) {
+    --btn-bg: var(--color-cloud);
+    --btn-fg: #b42318;
+    --btn-bg-hover: #fff1f0;
+    --btn-ring: inset 0 0 0 1px rgba(180, 35, 24, 0.28);
+    --btn-ring-hover: inset 0 0 0 1px rgba(180, 35, 24, 0.4);
+    --btn-shadow: 0 1px 1px rgba(180, 35, 24, 0.04), 0 10px 20px -16px rgba(180, 35, 24, 0.3);
+    --btn-shadow-hover: 0 1px 1px rgba(180, 35, 24, 0.06), 0 16px 28px -16px rgba(180, 35, 24, 0.36);
+    --btn-focus: inset 0 0 0 1px rgba(220, 38, 38, 0.8), 0 0 0 3px rgba(220, 38, 38, 0.24);
+  }
+  & :is(.crm-row-action, .crm-danger-link, .crm-client-grid footer button, .crm-error-toast button, .crm-definition-list button, .crm-value-list button) {
+    --btn-bg: transparent;
+    --btn-fg: #b42318;
+    --btn-bg-hover: rgba(180, 35, 24, 0.08);
+    --btn-ring: 0 0 #0000;
+    --btn-ring-hover: 0 0 #0000;
+    --btn-shadow: 0 0 #0000;
+    --btn-shadow-hover: 0 0 #0000;
+    --btn-focus: inset 0 0 0 1px rgba(220, 38, 38, 0.8), 0 0 0 3px rgba(220, 38, 38, 0.24);
+  }
+
+  /* Calendar sync link carries its connection state in tone. */
+  & .crm-google-calendar-link.connected { --btn-bg: #f0fdf4; --btn-fg: #166534; --btn-bg-hover: #dcfce7; --btn-ring: inset 0 0 0 1px #bbf7d0; --btn-ring-hover: inset 0 0 0 1px #86efac; }
+  & .crm-google-calendar-link.needs-attention { --btn-bg: #fffbeb; --btn-fg: #92400e; --btn-bg-hover: #fef3c7; --btn-ring: inset 0 0 0 1px #fcd34d; --btn-ring-hover: inset 0 0 0 1px #f59e0b; }
+  & .crm-google-calendar-link > span { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 999px; }
+
+  /* ---- Size by context ---------------------------------------------------- */
+  & :is(.crm-topbar-actions > :is(button, a), .crm-page-heading :is(button, a), .crm-empty button, .crm-empty-state button,
+      .crm-modal footer :is(button, a), .crm-form footer :is(button, a), .crm-cal-toolbar-start button, .crm-cal-today, .crm-cal-empty button,
+      .crm-integrations-toolbar button, .crm-call-detail-actions button,
+      .crm-stripe-connect-actions :is(button, a), .crm-profile-setup-actions :is(button, a), .crm-live-inbox > .crm-button-primary,
+      .crm-profile-review-form .crm-button-primary, .crm-form-preview-card button, .auth-signin) {
+    --btn-h: 48px; --btn-px: 24px; --btn-fs: 15px; --btn-gap: 10px;
+  }
+  & :is(.crm-table button, .crm-calls-table button, .crm-lead-actions button, .crm-row-action, .crm-call-lead-link,
+      .crm-contact-calls-toggle, .crm-call-detail-facts button, .crm-danger-link, .crm-client-grid footer button,
+      .crm-error-toast button, .crm-call-transcript button, .crm-definition-list button, .crm-value-list button,
+      .crm-review-edit-template, .crm-copy-row button, .crm-client-asset-actions button) {
+    --btn-h: 32px; --btn-px: 14px; --btn-fs: 13px; --btn-gap: 6px; --btn-icon: 14px;
+  }
+  & :is(.crm-call-lead-link, .crm-contact-calls-toggle, .crm-call-detail-facts button, .crm-danger-link, .crm-client-grid footer button) {
+    --btn-h: 28px; --btn-px: 10px;
+  }
+
+  /* Icon-only buttons are circles of their context's height. */
+  & :is(.crm-topbar-icon-button, .crm-cal-icon-pair button, .crm-lead-back, [aria-label^="Close"], .crm-topbar-title > button,
+      .crm-sidebar-foot-actions button, .crm-sidebar-close, .crm-lead-contact-actions > a, .crm-lead-followup-actions > button,
+      .crm-integration-more, .crm-remove-node) {
+    --btn-icon-px: 0px;
+    width: var(--btn-h);
+    min-width: var(--btn-h);
+    flex: none;
+  }
+  & :is(.crm-topbar-icon-button, .crm-cal-toolbar .crm-cal-icon-pair button) { --btn-h: 48px; --btn-icon: 18px; }
+  & :is(.crm-lead-contact-actions > a, .crm-lead-followup-actions > button) { --btn-h: 40px; }
+  /* The lead drawer is a narrow panel: its toolbar and tabs step down a size. */
+  & :is(.crm-lead-back, .crm-lead-won-button, .crm-lead-edit-button, .crm-lead-status-menu > summary) { --btn-h: 40px; --btn-px: 16px; --btn-fs: 14px; --btn-gap: 8px; }
+  /* Doubled class: must outrank the generic segmented item size declared later. */
+  & .crm-lead-tabs.crm-lead-tabs { gap: 2px; }
+  & .crm-lead-tabs.crm-lead-tabs > button::after { content: none; }
+  /* Status menu rows keep the menu's original rhythm so all options fit its height. */
+  & .crm-lead-status-menu.crm-lead-status-menu button { --btn-h: 36px; }
+  & .crm-lead-tabs.crm-lead-tabs > button { min-width: 0; --btn-h: 36px; --btn-px: 12px; --btn-fs: 13px; --btn-gap: 6px; }
+  & :is([aria-label^="Close"], .crm-cal-month .crm-cal-icon-pair button, .crm-integration-more, .crm-remove-node) { --btn-h: 32px; --btn-icon: 16px; }
+  & .crm-topbar-title > button { --btn-h: 44px; --btn-icon: 20px; }
+  & .crm-topbar-icon-button > span { border-radius: 999px; }
+
+  & .auth-signin { --btn-justify: space-between; }
+  /* Block-level buttons that align themselves (margin-left: auto) stay block-level. */
+  & .crm-dashboard-marketing-link { --btn-display: flex; }
+
+  /* Search opens the command menu: a soft pill with its shortcut hint. */
+  & .crm-command-button {
+    --btn-justify: flex-start;
+    --btn-fg: #5b6068;
+    --btn-fg-hover: var(--color-ink);
+    min-width: 220px;
+    & kbd { margin-left: auto; padding: 3px 8px; border: 0; border-radius: 999px; background: #f1f2f4; color: #5b6068; font-size: 11px; }
+  }
+
+  /* ---- Segmented controls: a light track whose active option is the ink pill. */
+  & :is(.crm-view-switcher, .crm-calls-filters, .crm-tabs, .crm-review-tabs, .crm-lead-tabs, .crm-leads-view-switcher, .crm-reviews-tabs, .crm-stripe-tabs) {
+    gap: 4px;
+    padding: 4px;
+    border: 0;
+    border-radius: 999px;
+    background: #eef0f2;
+    box-shadow: inset 0 0 0 1px rgba(14, 17, 22, 0.06);
+    & > button {
+      --btn-bg: transparent;
+      --btn-fg: #52565e;
+      --btn-bg-hover: rgba(14, 17, 22, 0.06);
+      --btn-fg-hover: var(--color-ink);
+      --btn-ring: 0 0 #0000;
+      --btn-ring-hover: 0 0 #0000;
+      --btn-shadow: 0 0 #0000;
+      --btn-shadow-hover: 0 0 #0000;
+      --btn-focus: inset 0 0 0 1px rgba(46, 125, 239, 0.85), 0 0 0 3px rgba(46, 125, 239, 0.32);
+      --btn-h: 40px; --btn-px: 18px; --btn-fs: 14px;
+    }
+    & > button:is(.active, [aria-selected="true"]) {
+      --btn-bg: var(--color-ink);
+      --btn-fg: var(--color-cloud);
+      --btn-bg-hover: #1a1f28;
+      --btn-fg-hover: var(--color-cloud);
+      --btn-shadow: 0 1px 2px rgba(14, 17, 22, 0.18), 0 8px 18px -12px rgba(14, 17, 22, 0.45);
+      --btn-shadow-hover: 0 1px 2px rgba(14, 17, 22, 0.2), 0 10px 22px -12px rgba(14, 17, 22, 0.5);
+      --btn-focus: 0 0 0 3px rgba(46, 125, 239, 0.32);
+    }
+  }
+  & .crm-calls-filters > button { --btn-h: 36px; --btn-px: 14px; --btn-fs: 13px; }
+
+  /* ---- Menus: full-width rows on light surfaces. --------------------------- */
+  & :is(.crm-lead-status-menu button, .crm-settings-workspace > aside button, .crm-settings-workspace > nav button, .crm-command > div > button) {
+    --btn-bg: transparent;
+    --btn-fg: var(--color-ink);
+    --btn-bg-hover: rgba(14, 17, 22, 0.06);
+    --btn-ring: 0 0 #0000;
+    --btn-ring-hover: 0 0 #0000;
+    --btn-shadow: 0 0 #0000;
+    --btn-shadow-hover: 0 0 #0000;
+    --btn-justify: flex-start;
+    --btn-h: 40px; --btn-px: 14px; --btn-fs: 14px;
+    width: 100%;
+  }
+  & .crm-command > div > button { --btn-h: auto; --btn-py: 10px; --btn-lh: 1.35; white-space: normal; }
+  & .crm-settings-workspace :is(aside, nav) button.active { --btn-bg: var(--color-ink); --btn-fg: var(--color-cloud); --btn-bg-hover: #1a1f28; }
+  & .crm-lead-status-menu button.active { --btn-bg: rgba(14, 17, 22, 0.08); --btn-weight: 600; }
+  & .crm-lead-status-menu button.danger { --btn-fg: #b42318; --btn-bg-hover: rgba(180, 35, 24, 0.08); }
+
+  /* ---- Dark surfaces: the sidebar and its menus flip the logic. ------------- */
+  & .crm-sidebar :is(.crm-primary-nav .value, .crm-sidebar-foot-actions button, .crm-sidebar-close, .crm-org-menu button) {
+    --btn-bg: transparent;
+    --btn-fg: #d4d4d8;
+    --btn-fg-hover: #ffffff;
+    --btn-bg-hover: rgba(255, 255, 255, 0.08);
+    --btn-ring: 0 0 #0000;
+    --btn-ring-hover: 0 0 #0000;
+    --btn-shadow: 0 0 #0000;
+    --btn-shadow-hover: 0 0 #0000;
+    --btn-focus: inset 0 0 0 1px rgba(147, 197, 253, 0.9), 0 0 0 3px rgba(96, 165, 250, 0.45);
+  }
+  & .crm-sidebar .crm-primary-nav .value { --btn-justify: flex-start; --btn-h: 40px; --btn-px: 12px; --btn-fs: 14px; --btn-icon: 18px; width: 100%; }
+  & .crm-sidebar :is(.crm-sidebar-foot-actions button, .crm-sidebar-close) { --btn-h: 36px; }
+  & .crm-sidebar .crm-org-menu button { --btn-lh: 1.35; --btn-justify: flex-start; --btn-h: auto; --btn-py: 10px; --btn-px: 12px; --btn-fs: 13px; width: 100%; }
+  /* Selected item on the dark surface is the light pill; hover darkens it. */
+  & .crm-sidebar :is(.crm-primary-nav .value, .crm-org-menu button).active {
+    --btn-bg: var(--color-cloud);
+    --btn-fg: var(--color-ink);
+    --btn-fg-hover: var(--color-ink);
+    --btn-bg-hover: #e6e8eb;
+    --btn-shadow: 0 1px 1px rgba(0, 0, 0, 0.25), 0 14px 28px -18px rgba(0, 0, 0, 0.7);
+    --btn-shadow-hover: 0 1px 1px rgba(0, 0, 0, 0.3), 0 20px 36px -16px rgba(0, 0, 0, 0.75);
+    --btn-focus: 0 0 0 3px rgba(96, 165, 250, 0.55);
+    --btn-weight: 600;
+    & em { background: var(--color-ink); color: var(--color-cloud); }
+    & :is(small, strong) { color: inherit; }
+  }
+  & .crm-sidebar .crm-org-card-button {
+    --btn-bg: rgba(255, 255, 255, 0.06);
+    --btn-fg: #f4f4f5;
+    --btn-fg-hover: #ffffff;
+    --btn-bg-hover: rgba(255, 255, 255, 0.12);
+    --btn-ring: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+    --btn-ring-hover: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+    --btn-shadow: 0 0 #0000;
+    --btn-shadow-hover: 0 0 #0000;
+    --btn-focus: inset 0 0 0 1px rgba(147, 197, 253, 0.9), 0 0 0 3px rgba(96, 165, 250, 0.45);
+    --btn-justify: flex-start;
+    --btn-h: auto; --btn-py: 10px; --btn-px: 14px; --btn-fs: 13px; --btn-lh: 1.35;
+    width: 100%;
+    & > span { border-radius: 999px; }
+  }
+
+  /* ---- Mobile dock: stacked icon and label; the current view is the ink pill. */
+  & .crm-mobile-dock button {
+    --btn-bg: transparent;
+    --btn-fg: #52565e;
+    --btn-fg-hover: var(--color-ink);
+    --btn-bg-hover: rgba(14, 17, 22, 0.06);
+    --btn-ring: 0 0 #0000;
+    --btn-ring-hover: 0 0 #0000;
+    --btn-shadow: 0 0 #0000;
+    --btn-shadow-hover: 0 0 #0000;
+    --btn-direction: column;
+    --btn-gap: 4px;
+    --btn-h: 56px; --btn-px: 4px; --btn-fs: 12px; --btn-icon: 18px;
+  }
+  & .crm-mobile-dock button.active { --btn-bg: var(--color-ink); --btn-fg: var(--color-cloud); --btn-fg-hover: var(--color-cloud); --btn-bg-hover: #1a1f28; --btn-shadow: 0 1px 1px rgba(14, 17, 22, 0.06), 0 14px 28px -18px rgba(14, 17, 22, 0.4); }
+
+  /* Controls that sit in a row of buttons match their height and shape. */
+  & :is(.crm-topbar-actions, .crm-cal-toolbar-end) > select { height: 48px; min-height: 48px; padding: 0 36px 0 18px; border-radius: 999px; font-size: 14px; }
+
+  /* ---- Rows, cells and cards that are buttons for accessibility ------------ */
+  & :is(.crm-dashboard-pipeline-stage, .crm-dashboard-recent-row, .crm-dashboard-attention-list > button, .crm-dashboard-today-list > button,
+      .crm-lead-open, .crm-call-open, .crm-kanban-cards > button, .crm-kanban-card-main, .crm-cal-event > button, .crm-live-inbox > aside button,
+      .crm-review-inbox-list button, .crm-website-list > button, .crm-number-results > button, .crm-settings-client-app-entry,
+      .crm-lead-progress-track > button, .crm-ads-disclosure, .crm-ads-campaign-leads button, .crm-workflow-list > button, .crm-visual-node) {
+    transition: background-color 220ms var(--cir-ease), box-shadow 220ms var(--cir-ease), transform 140ms var(--cir-ease);
+    -webkit-tap-highlight-color: transparent;
+    &:focus-visible { outline: none; box-shadow: inset 0 0 0 2px rgba(46, 125, 239, 0.6); }
+  }
+  & :is(.crm-dashboard-pipeline-stage, .crm-kanban-card-main, .crm-settings-client-app-entry, .crm-number-results > button) {
+    &:hover { box-shadow: 0 1px 1px rgba(14, 17, 22, 0.06), 0 14px 28px -18px rgba(14, 17, 22, 0.4); }
+    &:active { transform: translateY(1px); }
+    &:focus-visible { box-shadow: 0 0 0 3px rgba(46, 125, 239, 0.32), inset 0 0 0 1px rgba(46, 125, 239, 0.85); }
+  }
+  & .crm-brand-home:focus-visible { outline: none; border-radius: 12px; box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.55); }
+
+  /* Month cells: circles; today is the ink pill. */
+  & .crm-cal-month-day {
+    & span { border-radius: 999px; transition: background-color 220ms var(--cir-ease), color 220ms var(--cir-ease); }
+    &:hover span { background: rgba(14, 17, 22, 0.06); }
+    &.today span, &.today:hover span { background: var(--color-ink); color: var(--color-cloud); }
+    &:focus-visible { outline: none; }
+    &:focus-visible span { box-shadow: inset 0 0 0 1px rgba(46, 125, 239, 0.85), 0 0 0 3px rgba(46, 125, 239, 0.32); }
+    &:active span { transform: translateY(1px); }
+  }
+  /* Task toggles: circles that fill with ink when complete. */
+  & :is(.crm-task-check, .crm-lead-task-list button) {
+    border-radius: 999px;
+    transition: background-color 220ms var(--cir-ease), box-shadow 220ms var(--cir-ease), transform 140ms var(--cir-ease);
+    &:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(46, 125, 239, 0.32); }
+    &:active { transform: translateY(1px); }
+  }
+  & .crm-task-complete .crm-task-check, & .crm-lead-task-list button.complete { background: var(--color-ink); border-color: var(--color-ink); color: var(--color-cloud); }
+  & .crm-client-toggle:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(46, 125, 239, 0.32); }
+}
+
+/* The drawer's open and close buttons only exist below the drawer breakpoint. */
+@media (min-width: 901px) {
+  #crm-app :is(.crm-sidebar-close, .crm-topbar-title > button) { --btn-display: none; }
+}
+
+/* Phones: the topbar steps down to a 44px touch row; search collapses to a circle. */
+@media (max-width: 640px) {
+  #crm-app .crm-topbar {
+    & .crm-topbar-actions > :is(button, a) { --btn-h: 44px; --btn-px: 14px; }
+    & .crm-topbar-actions > .crm-command-button { --btn-icon-px: 0px; --btn-justify: center; width: 44px; min-width: 44px; }
+    & .crm-topbar-actions > .crm-topbar-icon-button { --btn-h: 44px; }
+    & .crm-topbar-actions > select { height: 44px; min-height: 44px; }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(#crm-app, .client-portal, .auth-page) :is(button, a, summary) { transition: none; }
+  :is(#crm-app, .client-portal, .auth-page) :is(button, a, summary):active { transform: none; }
+}
