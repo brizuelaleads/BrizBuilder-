@@ -128,7 +128,9 @@
   & .crm-sidebar-foot-actions { gap: 2px; }
   & .crm-sidebar-foot-actions button { width: 30px; min-height: 32px; color: #d4d4d8; }
   & .crm-sidebar-foot-actions svg { width: 16px; height: 16px; }
-  & .crm-topbar { height: auto; min-height: 88px; padding: 16px 32px; gap: 16px; border-color: var(--crm-line); background: var(--crm-card); backdrop-filter: none; flex-wrap: wrap; }
+  /* Views cap at 1480px and centre; past that width the topbar insets to the
+   * same column so the title and actions line up with the content edges. */
+  & .crm-topbar { height: auto; min-height: 88px; padding: 16px max(32px, calc((100% - 1480px) / 2 + 32px)); gap: 16px; border-color: var(--crm-line); background: var(--crm-card); backdrop-filter: none; flex-wrap: wrap; }
   & .crm-topbar-title { min-width: 0; }
   & .crm-topbar-title > div { display: grid; gap: 2px; }
   & .crm-topbar h1 { margin: 0; color: var(--crm-ink); font-size: 24px; line-height: 32px; }
@@ -304,6 +306,11 @@
   & .crm-dashboard-card-text > small { justify-self: start; margin: 0; padding: 0; min-height: 0; border: 0; border-radius: 0; color: var(--crm-muted); background: transparent; font-size: 12px; font-weight: 400; }
   & .crm-dashboard-card-image { min-height: 64px; height: 64px; padding: 8px 20px 12px; border: 0; border-radius: 0; background: none; }
   & .crm-dashboard-card-image { position: static; }
+  /* The interactive trend chart is absolutely placed against the card. Legacy
+   * sizing (72px, 12px from the bottom) reached 20px into the helper text, so a
+   * trend that peaks early drew across "+45 vs previous". Fit it to the image
+   * box's 44px content area instead; the series and its geometry are unchanged. */
+  & .crm-dashboard-kpi-card .crm-dashboard-area-chart { top: auto; left: 20px; right: 20px; bottom: 12px; height: 44px; }
   & .crm-dashboard-icon-box { position: absolute; top: 20px; right: 20px; bottom: auto; margin: 0; transform: none; min-width: 20px; width: 20px; height: 20px; background: transparent; border: 0; box-shadow: none; color: var(--crm-muted); }
   & .crm-dashboard-icon-box svg { width: 18px; height: 18px; }
   & .crm-dashboard-sparkline { filter: none; }
@@ -577,6 +584,7 @@
     & .crm-dashboard-card-text { padding: 16px 16px 0; }
     & .crm-dashboard-card-text > strong { font-size: 26px; }
     & .crm-dashboard-card-image { padding-inline: 16px; }
+    & .crm-dashboard-kpi-card .crm-dashboard-area-chart { left: 16px; right: 16px; }
     & .crm-dashboard-icon-box { display: none; }
     & .crm-dashboard-marketing-grid { grid-template-columns: 1fr; padding: 20px; gap: 20px; }
     & .crm-dashboard-marketing-card { min-height: 120px; }
