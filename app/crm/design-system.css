@@ -465,7 +465,7 @@
   & .crm-settings-content > header { padding: 0 0 24px; border-color: var(--crm-line); }
   & .crm-settings-section { padding: 20px; }
   & .crm-settings-facts > div { border-color: var(--crm-line); }
-  & :is(.crm-integrations-toolbar,.crm-calendar-toolbar,.crm-client-app-toolbar) { gap: 12px; flex-wrap: wrap; }
+  & :is(.crm-integrations-toolbar,.crm-client-app-toolbar) { gap: 12px; flex-wrap: wrap; }
   & .crm-integrations-toolbar > * { min-width: 0; }
   & :is(.crm-integration-card > header,.crm-review-card > header,.crm-website-list > article > header,.crm-stripe-workspace-header) { gap: 16px; border-color: var(--crm-line); }
   & .crm-integration-card button, & .crm-review-card > header button, & .crm-website-list article > footer button { border-radius: 6px; min-height: 36px; padding: 6px 12px; font-size: 13px; box-shadow: none; }
@@ -487,37 +487,193 @@
   & .crm-node-settings { padding: 20px; }
   & .crm-node-settings label { display: grid; gap: 6px; margin-bottom: 16px; }
   & .crm-node-settings input, & .crm-node-settings textarea { width: 100%; }
-  & .crm-calendar-toolbar { background: var(--crm-card); border-color: var(--crm-line); padding: 16px; border-radius: 8px 8px 0 0; }
-  & .crm-calendar-toolbar button { min-height: 36px; font-size: 13px; border-radius: 6px; }
-  & :is(.crm-calendar-week,.crm-calendar-month,.crm-calendar-list) { background: var(--crm-card); border-color: var(--crm-line); }
-  & .crm-calendar-list article { border-radius: 8px; border-color: var(--crm-line); background: var(--crm-card); }
-  & .crm-calendar-list strong { color: var(--crm-ink); font-size: 14px; }
-  & .crm-calendar-list p { color: var(--crm-muted); font-size: 13px; }
-  /* A one-hour block is 62px. At a readable 12px: time + name share a line,
-   * service below, then a compact status select. Position, height and lane
-   * width stay inline from the view, so scheduling geometry is unchanged. */
-  /* 62px minus 2px border and 6px padding leaves 52px = 15 + 15 + 20 + two 1px gaps. */
-  & .crm-calendar-event {
-    border-radius: 4px; padding: 3px 25px 3px 8px; display: grid;
-    grid-template-columns: auto minmax(0,1fr); align-content: start; gap: 1px 6px;
-  }
-  & .crm-calendar-event > :is(time,strong,span) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 15px; }
-  & .crm-calendar-event > time { font-weight: 600; }
-  & .crm-calendar-event > strong { font-weight: 500; }
-  & .crm-calendar-event > span { grid-column: 1 / -1; }
-  /* Doubled class + :not() pair matches the shared field rule (0,7,1); being
-   * later in the file is what lets this compact select win inside an event. */
-  & .crm-calendar-event.crm-calendar-event > select:not([multiple]):not([size]) {
-    grid-column: 1 / -1; width: 100%; min-height: 0; height: 20px; margin: 0;
-    padding: 0 20px 0 6px; border-radius: 4px; font-size: 12px; line-height: 18px;
-  }
   & :is(.crm-integrations-summary,.crm-integrations-search,.crm-integrations-filter-wrap > button,.crm-settings-client-app-entry,.crm-integrations-banner button) { background: var(--crm-card); color: var(--crm-ink); border-color: var(--crm-line); border-radius: 6px; }
   & .crm-integrations-summary-icon { background: var(--crm-subtle); color: var(--crm-purple); }
   & .crm-view-switcher { background: var(--crm-subtle); border-color: var(--crm-line); padding: 5px; border-radius: 6px; gap: 2px; }
   & .crm-view-switcher button { background: transparent; color: var(--crm-muted); padding: 6px 12px; border: 0; border-radius: 3px; }
   & .crm-view-switcher button.active { background: var(--crm-card); color: var(--crm-ink); box-shadow: 0 1px 3px #00000012; }
-  & :is(.crm-week-calendar,.crm-week-header,.crm-week-body,.crm-week-times,.crm-week-day) { background-color: var(--crm-card); color: var(--crm-ink); border-color: var(--crm-line); }
-  & .crm-week-header > div, & .crm-week-times > div { color: var(--crm-muted); border-color: var(--crm-line); }
+  /* ---------------------------------------------------------------------------
+   * Calendar. Figma kit contracts: Button 40px / 8-16 / r6, icon button 40x40,
+   * Tabs frame p5 r6 with items 6-12 r3, Popover p17 gap16 r6, Checkbox row gap 8,
+   * Input stack gap 6, Card r8 + 1px border. Every container is a flex or grid
+   * stack (auto layout: gap + padding, FILL = 1fr/flex:1, HUG = auto). Only the
+   * time axis places things absolutely: events, hour labels and the now line.
+   * ------------------------------------------------------------------------- */
+  & .crm-calendar-view { --cal-hour: 64px; --cal-hue: var(--crm-accent, #6757e8); }
+  & .crm-calendar-view .status-scheduled { --cal-hue: var(--crm-accent, #6757e8); }
+  & .crm-calendar-view .status-confirmed { --cal-hue: #16a34a; }
+  & .crm-calendar-view .status-completed { --cal-hue: #0284c7; }
+  & .crm-calendar-view .status-no-show { --cal-hue: #d97706; }
+  & .crm-calendar-view .status-canceled { --cal-hue: #e11d48; }
+  /* Tint and ink resolve per element so each status keeps its own pair.
+   * Ink on tint measures 5.4:1 (amber) to 7.5:1 (rose). */
+  & .crm-calendar-view [class*="status-"] {
+    --cal-tint: color-mix(in srgb, var(--cal-hue) 12%, #fff);
+    --cal-ink: color-mix(in srgb, var(--cal-hue) 62%, #18181b);
+  }
+
+  & .crm-cal-layout { display: grid; grid-template-columns: 288px minmax(0,1fr); gap: 24px; align-items: start; }
+  & .crm-cal-sidebar { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  & .crm-cal-main { position: relative; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  & .crm-cal-card { display: flex; flex-direction: column; gap: 16px; padding: 20px; border: 1px solid var(--crm-line); border-radius: 8px; background: var(--crm-card); }
+  & .crm-cal-card > header { display: flex; flex-direction: column; gap: 2px; }
+  & .crm-cal-card h3 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; letter-spacing: -.01em; }
+  & .crm-cal-card header p { margin: 0; color: var(--crm-muted); font-size: 13px; line-height: 20px; }
+  & .crm-cal-icon-pair { display: flex; gap: 4px; }
+  & .crm-cal-icon-pair button {
+    display: grid; place-items: center; width: 40px; height: 40px; padding: 0;
+    border: 1px solid var(--crm-control-border); border-radius: 6px; background: var(--crm-card); color: var(--crm-ink);
+  }
+  & .crm-cal-icon-pair button:hover { background: var(--crm-subtle); }
+  & .crm-cal-icon-pair svg { width: 16px; height: 16px; }
+
+  /* Month: shadcn Calendar proportions (36px cells, r6 nav, muted 12px heads). */
+  & .crm-cal-month > header { flex-direction: row; align-items: center; justify-content: space-between; }
+  & .crm-cal-month .crm-cal-icon-pair button { width: 28px; height: 28px; }
+  & .crm-cal-month-grid { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); row-gap: 2px; }
+  & .crm-cal-month-weekday { display: grid; place-items: center; height: 28px; color: var(--crm-muted); font-size: 12px; font-weight: 500; }
+  & .crm-cal-month-day {
+    position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 36px; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--crm-ink);
+    font-size: 14px; font-weight: 400; font-variant-numeric: tabular-nums;
+  }
+  & .crm-cal-month-day.outside { color: var(--crm-muted); }
+  /* The week on screen reads as one band across the grid row. */
+  & .crm-cal-month-day.in-week { background: var(--crm-subtle); }
+  & .crm-cal-month-day.in-week:nth-child(7n + 1) { border-radius: 6px 0 0 6px; }
+  & .crm-cal-month-day.in-week:nth-child(7n) { border-radius: 0 6px 6px 0; }
+  & .crm-cal-month-day:hover span { background: var(--crm-hover); }
+  & .crm-cal-month-day span { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 6px; }
+  & .crm-cal-month-day.today span { background: var(--crm-accent, #6757e8); color: var(--crm-on-accent, #fff); font-weight: 600; }
+  & .crm-cal-month-day > i { position: absolute; bottom: 1px; display: flex; gap: 2px; }
+  & .crm-cal-month-day > i > b { width: 4px; height: 4px; border-radius: 50%; background: var(--cal-hue); }
+
+  /* Status legend: checkbox rows, gap 8, label fills, booked time hugs. */
+  & .crm-cal-status-list { display: flex; flex-direction: column; gap: 12px; }
+  & .crm-cal-status { display: flex; align-items: center; gap: 8px; min-height: 24px; cursor: pointer; }
+  & .crm-cal-status > input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var(--cal-hue); cursor: pointer; }
+  & .crm-cal-status > span { flex: 1; min-width: 0; color: var(--crm-ink); font-size: 14px; line-height: 20px; font-weight: 500; }
+  & .crm-cal-status > small { display: inline-flex; align-items: center; gap: 4px; color: var(--crm-muted); font-size: 13px; line-height: 20px; font-variant-numeric: tabular-nums; }
+  & .crm-cal-status > small svg { width: 14px; height: 14px; }
+
+  & .crm-cal-field { display: flex; flex-direction: column; gap: 6px; }
+  & .crm-cal-field > span { color: var(--crm-ink); font-size: 14px; line-height: 20px; font-weight: 500; }
+  & .crm-cal-field > select { width: 100%; }
+  & .crm-cal-sync .crm-google-calendar-link {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 40px; padding: 8px 16px;
+    border: 1px solid var(--crm-control-border); border-radius: 6px; background: var(--crm-card); color: var(--crm-ink);
+    font-size: 14px; line-height: 22px; font-weight: 500; text-decoration: none; box-shadow: none;
+  }
+  & .crm-cal-sync a.crm-google-calendar-link:hover { background: var(--crm-subtle); }
+  & .crm-cal-sync .crm-google-calendar-link > span { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 4px; background: var(--crm-subtle); color: var(--crm-ink); font-size: 12px; font-weight: 600; }
+  & .crm-cal-sync .crm-google-calendar-link.connected { border-color: #bbf7d0; background: #f0fdf4; color: #166534; }
+  & .crm-cal-sync .crm-google-calendar-link.needs-attention { border-color: #fcd34d; background: #fffbeb; color: #92400e; }
+
+  /* Toolbar: start group hugs and truncates, end group hugs; wraps on narrow widths. */
+  & .crm-cal-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; }
+  & .crm-cal-toolbar-start, & .crm-cal-toolbar-end { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  & .crm-cal-toolbar-end { gap: 8px; }
+  & .crm-cal-toolbar h2 { margin: 0; font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
+  & .crm-cal-week-badge { display: inline-flex; align-items: center; min-height: 24px; padding: 2px 10px; border-radius: 999px; background: var(--crm-subtle); color: var(--crm-ink); font-size: 12px; line-height: 20px; font-weight: 600; white-space: nowrap; }
+  & .crm-cal-today {
+    min-height: 40px; padding: 8px 16px; border: 1px solid var(--crm-control-border); border-radius: 6px;
+    background: var(--crm-card); color: var(--crm-ink);
+  }
+  & .crm-cal-today:hover { background: var(--crm-subtle); }
+  & .crm-cal-toolbar-end > select { width: auto; min-width: 168px; }
+
+  /* Week card. The scroller keeps its test-pinned class; height fits under the
+   * topbar and toolbar so the page itself does not scroll. */
+  & .crm-week-calendar {
+    height: calc(100dvh - 216px); min-height: 520px; overflow: auto; scroll-padding-top: 84px;
+    border: 1px solid var(--crm-line); border-radius: 8px; background: var(--crm-card); scrollbar-width: thin;
+  }
+  & .crm-cal-grid { min-width: 820px; }
+  & :is(.crm-cal-days-header,.crm-cal-body) { display: grid; grid-template-columns: 64px minmax(0,1fr); }
+  & .crm-cal-days-header { position: sticky; top: 0; z-index: 6; grid-template-columns: 64px repeat(7, minmax(0,1fr)); border-bottom: 1px solid var(--crm-line); background: var(--crm-card); }
+  & .crm-cal-days-header > span { position: sticky; left: 0; z-index: 1; background: var(--crm-card); }
+  & .crm-cal-days-header > div { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 4px; border-left: 1px solid var(--crm-line); }
+  & .crm-cal-days-header small { color: var(--crm-muted); font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; }
+  & .crm-cal-days-header strong { color: var(--crm-ink); font-size: 24px; line-height: 32px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  & .crm-cal-days-header .today :is(small,strong) { color: var(--crm-accent-ink); }
+  & .crm-cal-hours { position: sticky; left: 0; z-index: 4; height: calc(24 * var(--cal-hour)); background: var(--crm-card); }
+  & .crm-cal-hours > span { position: absolute; right: 8px; transform: translateY(-50%); color: var(--crm-muted); font-size: 12px; line-height: 16px; white-space: nowrap; }
+  & .crm-cal-days { position: relative; display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); height: calc(24 * var(--cal-hour)); }
+  & .crm-cal-day {
+    position: relative; min-width: 0; border-left: 1px solid var(--crm-line);
+    background-image: linear-gradient(to bottom, var(--crm-line) 1px, transparent 1px);
+    background-size: 100% var(--cal-hour);
+  }
+
+  /* Event: status tint, 3px status bar, vertical auto layout; time pins to the bottom. */
+  & .crm-cal-event { position: absolute; z-index: 2; container-type: size; border-radius: 6px; background: var(--cal-tint); box-shadow: inset 3px 0 0 var(--cal-hue); overflow: hidden; }
+  & .crm-cal-event > button {
+    display: flex; flex-direction: column; align-items: stretch; gap: 2px; width: 100%; height: 100%; padding: 6px 8px 6px 11px;
+    border: 0; border-radius: inherit; background: transparent; color: var(--cal-ink); text-align: left; cursor: pointer;
+  }
+  & .crm-cal-event > button:hover, & .crm-cal-event.open > button { background: color-mix(in srgb, var(--cal-hue) 8%, transparent); }
+  & .crm-cal-event > button:focus-visible { outline-offset: -2px; }
+  & .crm-cal-event > button > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  & .crm-cal-event > button > strong { font-size: 13px; line-height: 18px; font-weight: 600; }
+  & .crm-cal-event > button > span { font-size: 12px; line-height: 16px; }
+  & .crm-cal-event > button > time { margin-top: auto; font-size: 12px; line-height: 16px; font-weight: 500; }
+  & .crm-cal-event.open { z-index: 5; box-shadow: inset 3px 0 0 var(--cal-hue), 0 0 0 2px var(--cal-hue); }
+  & .crm-cal-now { position: absolute; left: 0; right: 0; z-index: 3; height: 2px; background: var(--crm-accent, #6757e8); pointer-events: none; }
+  & .crm-cal-now::before { content: ""; position: absolute; left: -5px; top: -4px; width: 10px; height: 10px; border-radius: 50%; background: var(--crm-accent, #6757e8); }
+
+  /* Popover: vertical auto layout p17 gap16 r6, shadcn shadow-md. */
+  & .crm-cal-popover {
+    position: absolute; z-index: 9; display: flex; flex-direction: column; gap: 16px; width: min(320px, calc(100% - 16px)); padding: 17px;
+    border: 1px solid var(--crm-line); border-radius: 6px; background: var(--crm-card); color: var(--crm-ink);
+    box-shadow: 0 4px 6px -1px #0000001a, 0 2px 4px -2px #0000001a;
+  }
+  & .crm-cal-popover > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  & .crm-cal-popover-status { display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 2px 10px 2px 8px; border-radius: 999px; background: var(--cal-tint); color: var(--cal-ink); font-size: 12px; line-height: 20px; font-weight: 600; }
+  & .crm-cal-popover-status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--cal-hue); }
+  & .crm-cal-popover > header button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--crm-muted); }
+  & .crm-cal-popover > header button:hover { background: var(--crm-subtle); color: var(--crm-ink); }
+  & .crm-cal-popover > header svg { width: 16px; height: 16px; }
+  & .crm-cal-popover-title { display: flex; flex-direction: column; gap: 2px; }
+  & .crm-cal-popover-title h3 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; }
+  & .crm-cal-popover-title p { margin: 0; color: var(--crm-muted); font-size: 14px; line-height: 20px; }
+  & .crm-cal-popover dl { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+  & .crm-cal-popover dl > div { display: grid; grid-template-columns: 64px minmax(0,1fr); gap: 8px; }
+  & .crm-cal-popover dt { color: var(--crm-muted); font-size: 13px; line-height: 20px; }
+  & .crm-cal-popover dd { margin: 0; color: var(--crm-ink); font-size: 13px; line-height: 20px; overflow-wrap: anywhere; }
+  & .crm-cal-popover > footer { display: flex; }
+  & .crm-cal-delete {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 16px;
+    border: 1px solid #fecdd3; border-radius: 6px; background: var(--crm-card); color: #b91c1c;
+  }
+  & .crm-cal-delete:hover { background: #fff1f2; }
+  & .crm-cal-delete svg { width: 16px; height: 16px; }
+
+  & .crm-cal-empty {
+    position: absolute; left: 50%; top: calc(56px + 42%); z-index: 7; transform: translate(-50%, -50%);
+    display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 20px 24px;
+    border: 1px solid var(--crm-line); border-radius: 8px; background: var(--crm-card); box-shadow: 0 4px 6px -1px #0000001a;
+  }
+  & .crm-cal-empty strong { color: var(--crm-ink); font-size: 14px; line-height: 20px; font-weight: 600; }
+  & .crm-cal-empty button { min-height: 40px; padding: 8px 16px; border: 0; border-radius: 6px; background: var(--crm-accent, #6757e8); color: var(--crm-on-accent, #fff); }
+
+  /* Agenda keeps its list, now on the same card, status bar and type scale. */
+  & .crm-calendar-list { display: flex; flex-direction: column; gap: 16px; }
+  & .crm-calendar-list > article { overflow: hidden; border: 1px solid var(--crm-line); border-radius: 8px; background: var(--crm-card); }
+  & .crm-calendar-list > article > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 0 20px; background: var(--crm-subtle); }
+  & .crm-calendar-list > article > header strong { color: var(--crm-ink); font-size: 14px; font-weight: 600; }
+  & .crm-calendar-list > article > header span { color: var(--crm-muted); font-size: 13px; }
+  & .crm-calendar-list .crm-cal-agenda-row {
+    display: grid; grid-template-columns: 76px 32px minmax(0,1fr) auto; align-items: center; gap: 12px; min-height: 72px;
+    padding: 12px 20px 12px 23px; border-top: 1px solid var(--crm-line); box-shadow: inset 3px 0 0 var(--cal-hue);
+  }
+  & .crm-cal-agenda-row > time { color: var(--crm-ink); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  & .crm-cal-agenda-row > div:not(.crm-calendar-list-actions) { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  & .crm-cal-agenda-row strong { color: var(--crm-ink); font-size: 14px; font-weight: 500; }
+  & .crm-cal-agenda-row p { margin: 0; color: var(--crm-muted); font-size: 13px; line-height: 20px; }
+  & .crm-cal-agenda-row small { color: var(--crm-muted); font-size: 12px; line-height: 18px; }
+  & .crm-calendar-list-actions { display: flex; align-items: center; gap: 8px; }
+  & .crm-calendar-list-actions > select { min-width: 140px; }
+  & .crm-calendar-list-actions > button { min-height: 40px; padding: 8px 16px; border: 1px solid #fecdd3; border-radius: 6px; background: var(--crm-card); color: #b91c1c; }
   & .crm-task-list > article { padding: 16px 24px; border-color: var(--crm-line); }
   & .crm-task-list strong { color: var(--crm-ink); font-size: 14px; font-weight: 500; }
   & .crm-task-list small { color: var(--crm-muted); font-size: 12px; }
@@ -614,6 +770,56 @@
     & .crm-page-heading > div:first-child:has(> h2) { flex: none; }
     & .crm-page-heading > :not(:first-child) { margin-left: 0; }
     & :is(.crm-toast,.crm-error-toast) { bottom: 84px; }
+  }
+}
+/* Short appointments shed lines instead of clipping them: under ~1h the
+ * service line goes, under ~40 minutes only the name remains. */
+/* A full "10:34 – 11:34 AM" needs ~124px; narrower blocks show the start time. */
+.crm-shell.crm-design-system.crm-design-system .crm-cal-time-short { display: none; }
+@container (max-width: 124px) {
+  .crm-shell.crm-design-system.crm-design-system .crm-cal-time-full { display: none; }
+  .crm-shell.crm-design-system.crm-design-system .crm-cal-time-short { display: inline; }
+}
+/* Overlapping lanes can get very narrow: keep the name, let it wrap, drop the rest. */
+@container (max-width: 80px) {
+  .crm-shell.crm-design-system.crm-design-system .crm-cal-event > button { padding-inline: 7px 4px; }
+  .crm-shell.crm-design-system.crm-design-system .crm-cal-event > button > strong { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; font-size: 12px; line-height: 16px; }
+  .crm-shell.crm-design-system.crm-design-system .crm-cal-event > button > :not(strong) { display: none; }
+}
+@container (max-height: 70px) {
+  .crm-shell.crm-design-system.crm-design-system .crm-cal-event > button > span { display: none; }
+}
+@container (max-height: 44px) {
+  .crm-shell.crm-design-system.crm-design-system .crm-cal-event > button { padding-block: 4px; }
+  .crm-shell.crm-design-system.crm-design-system .crm-cal-event > button > time { display: none; }
+}
+/* Below the two-column width the week comes first and the tool cards wrap
+ * underneath as a responsive row (auto layout with wrap). */
+@media (max-width: 1180px) {
+  .crm-shell.crm-design-system.crm-design-system {
+    & .crm-cal-layout { grid-template-columns: minmax(0,1fr); }
+    & .crm-cal-main { order: -1; }
+    & .crm-cal-sidebar { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); align-items: start; }
+  }
+}
+@media (max-width: 640px) {
+  .crm-shell.crm-design-system.crm-design-system {
+    & .crm-cal-toolbar-start { flex-wrap: wrap; gap: 8px 12px; }
+    & .crm-cal-toolbar h2 { order: -1; width: 100%; font-size: 20px; line-height: 28px; }
+    & .crm-cal-toolbar-end { width: 100%; }
+    & .crm-cal-toolbar-end > .crm-calendar-switcher { flex: 1; }
+    & .crm-cal-toolbar-end > .crm-calendar-switcher button { flex: 1; }
+    & .crm-cal-toolbar-end > select { flex: 1; min-width: 0; }
+    & .crm-week-calendar { height: calc(100dvh - 300px); min-height: 440px; }
+    & .crm-cal-grid { min-width: 760px; }
+    /* The inline position targets the desktop column; on phones the details
+     * open as a sheet above the dock, so the inline offsets must yield. */
+    & .crm-cal-popover { position: fixed; top: auto !important; left: 16px !important; right: 16px !important; bottom: 88px; width: auto; max-height: calc(100dvh - 176px); overflow: auto; }
+    & .crm-cal-empty { top: calc(120px + 40%); width: calc(100% - 32px); }
+    & .crm-calendar-list .crm-cal-agenda-row { grid-template-columns: 64px minmax(0,1fr); padding-inline: 16px 16px; padding-left: 19px; }
+    & .crm-cal-agenda-row > .crm-avatar { display: none; }
+    & .crm-cal-agenda-row > .crm-calendar-list-actions { grid-column: 1 / -1; }
+    & .crm-calendar-list-actions > select { flex: 1; }
   }
 }
 @media (prefers-reduced-motion: reduce) {

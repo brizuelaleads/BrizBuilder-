@@ -33,17 +33,48 @@ const withoutRemovals = (file, contract, values) => {
   }
   return out;
 };
+// Views rebuilt structurally rather than restyled. Requests and charts must stay
+// identical. Every baseline handler and field must still exist (new ones may be
+// added), and controls may differ only where they belong to the rebuilt view.
+const restructured = {
+  'app/crm/OperationsViews.tsx': {
+    reason: 'Calendar rebuilt as a week planner: month picker, status filters, event popover',
+    controls: /shiftWeek|setAnchorDate|pageMonth|monthLabel|weekStart\.toLocaleDateString|CALENDAR_WEEK_RANGE|toggleStatus|hiddenStatuses|crm-cal-|setOpenEvent|onClose|closeRef|update_appointment_status|deleteAppointment|onAddAppointment|<option key=\{status\}|crm-google-calendar|appointment\.contactName/,
+  },
+};
+const multisetDiff = (expected, actual) => {
+  const missing = [...expected];
+  const extra = [];
+  for (const value of actual) {
+    const index = missing.indexOf(value);
+    if (index >= 0) missing.splice(index, 1);
+    else extra.push(value);
+  }
+  return {missing, extra};
+};
 let files=0, handlers=0, requests=0, fields=0, charts=0;
 for (const before of baseline.files) {
   const after=current.files.find(f=>f.file===before.file);
   assert.ok(after, `Removed screen: ${before.file}`);
+  const rebuilt = restructured[before.file];
   for (const contract of ['handlers','requests','fields','charts']) {
-    assert.deepEqual(after[contract],withoutRemovals(before.file, contract, before[contract]), `${contract} changed in ${before.file}`);
+    const expected = withoutRemovals(before.file, contract, before[contract]);
+    if (rebuilt && (contract === 'handlers' || contract === 'fields')) {
+      const {missing} = multisetDiff(expected, after[contract]);
+      assert.deepEqual(missing, [], `${contract} lost in rebuilt ${before.file}`);
+    } else {
+      assert.deepEqual(after[contract], expected, `${contract} changed in ${before.file}`);
+    }
+  }
+  if (rebuilt) {
+    const {missing, extra} = multisetDiff(withoutRemovals(before.file, 'controls', before.controls), after.controls);
+    const outside = [...missing, ...extra].filter(value => !rebuilt.controls.test(value));
+    assert.deepEqual(outside, [], `Controls outside the rebuilt view changed in ${before.file}`);
   }
   // Shared ui.tsx intentionally replaces decorative glyphs with Lucide icons
   // and adds modal focus management. All other controls retain their markup.
   const controls = values => values.map(value => before.file === 'app/CrmApp.tsx' ? value.replace('tone="dark" decorative priority logoUrl={branding.logoUrl}', 'tone="light" decorative priority logoUrl={branding.logoUrl}') : value);
-  if (before.file!=='app/crm/ui.tsx') assert.deepEqual(controls(after.controls),controls(withoutRemovals(before.file, 'controls', before.controls)),`Controls changed in ${before.file}`);
+  if (!rebuilt && before.file!=='app/crm/ui.tsx') assert.deepEqual(controls(after.controls),controls(withoutRemovals(before.file, 'controls', before.controls)),`Controls changed in ${before.file}`);
   // Reviewed change: the Leads tile's colour follows the same previous-range
   // comparison as its caption (comparisonTrend). Any other edit must be reviewed
   // and its hash recorded here.
