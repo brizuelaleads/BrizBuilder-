@@ -1,0 +1,599 @@
+[
+  {
+    "theme": "classic",
+    "title": "Dashboard",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 56,
+    "graphs": 6,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Leads",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 37,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Pipeline",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 30,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Calls",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 10,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Contacts",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 21,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Companies",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 10,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Calendar",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 14,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Tasks",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 10,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Ads",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 6,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Conversations",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 3,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Connections",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 27,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Phone & Texting",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 6,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Automations",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 6,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Websites",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 5,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Reviews",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 12,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Google Profiles",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 8,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Forms",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 7,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Funnels",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 3,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Reports",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 6,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Payments",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 6,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Sub-accounts",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 7,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Team",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 6,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "AI Connector",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 6,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Custom data",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 10,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Audit log",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 4,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Settings",
+    "width": 1440,
+    "scroll": 1440,
+    "controls": 9,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "width": 1440,
+    "errors": []
+  },
+  {
+    "theme": "classic",
+    "title": "Dashboard",
+    "width": 390,
+    "scroll": 390,
+    "controls": 56,
+    "graphs": 6,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Leads",
+    "width": 390,
+    "scroll": 390,
+    "controls": 37,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Pipeline",
+    "width": 390,
+    "scroll": 390,
+    "controls": 30,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Calls",
+    "width": 390,
+    "scroll": 390,
+    "controls": 10,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Contacts",
+    "width": 390,
+    "scroll": 390,
+    "controls": 21,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Companies",
+    "width": 390,
+    "scroll": 390,
+    "controls": 10,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Calendar",
+    "width": 390,
+    "scroll": 390,
+    "controls": 14,
+    "graphs": 0,
+    "overflow": [
+      {
+        "tag": "HEADER",
+        "cls": "crm-week-header",
+        "right": 1016
+      },
+      {
+        "tag": "DIV",
+        "cls": "",
+        "right": 486
+      },
+      {
+        "tag": "SMALL",
+        "cls": "",
+        "right": 430
+      },
+      {
+        "tag": "STRONG",
+        "cls": "",
+        "right": 438
+      },
+      {
+        "tag": "DIV",
+        "cls": "today",
+        "right": 618
+      },
+      {
+        "tag": "SMALL",
+        "cls": "",
+        "right": 565
+      },
+      {
+        "tag": "STRONG",
+        "cls": "",
+        "right": 570
+      },
+      {
+        "tag": "DIV",
+        "cls": "",
+        "right": 751
+      },
+      {
+        "tag": "SMALL",
+        "cls": "",
+        "right": 697
+      },
+      {
+        "tag": "STRONG",
+        "cls": "",
+        "right": 703
+      },
+      {
+        "tag": "DIV",
+        "cls": "",
+        "right": 883
+      },
+      {
+        "tag": "SMALL",
+        "cls": "",
+        "right": 826
+      }
+    ],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Tasks",
+    "width": 390,
+    "scroll": 390,
+    "controls": 10,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Ads",
+    "width": 390,
+    "scroll": 390,
+    "controls": 6,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Conversations",
+    "width": 390,
+    "scroll": 390,
+    "controls": 3,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Connections",
+    "width": 390,
+    "scroll": 390,
+    "controls": 27,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Phone & Texting",
+    "width": 390,
+    "scroll": 390,
+    "controls": 6,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Automations",
+    "width": 390,
+    "scroll": 390,
+    "controls": 6,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Websites",
+    "width": 390,
+    "scroll": 390,
+    "controls": 5,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Reviews",
+    "width": 390,
+    "scroll": 390,
+    "controls": 12,
+    "graphs": 0,
+    "overflow": [
+      {
+        "tag": "BUTTON",
+        "cls": "",
+        "right": 401
+      }
+    ],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Google Profiles",
+    "width": 390,
+    "scroll": 390,
+    "controls": 8,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Forms",
+    "width": 390,
+    "scroll": 390,
+    "controls": 7,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Funnels",
+    "width": 390,
+    "scroll": 390,
+    "controls": 3,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Reports",
+    "width": 390,
+    "scroll": 390,
+    "controls": 6,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Payments",
+    "width": 390,
+    "scroll": 390,
+    "controls": 6,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Sub-accounts",
+    "width": 390,
+    "scroll": 390,
+    "controls": 7,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Team",
+    "width": 390,
+    "scroll": 390,
+    "controls": 6,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "AI Connector",
+    "width": 390,
+    "scroll": 390,
+    "controls": 6,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Custom data",
+    "width": 390,
+    "scroll": 390,
+    "controls": 10,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Audit log",
+    "width": 390,
+    "scroll": 390,
+    "controls": 4,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "title": "Settings",
+    "width": 390,
+    "scroll": 390,
+    "controls": 9,
+    "graphs": 0,
+    "overflow": [],
+    "contentParity": true
+  },
+  {
+    "theme": "classic",
+    "width": 390,
+    "errors": []
+  }
+]

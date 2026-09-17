@@ -822,7 +822,7 @@ export function CrmApp({
     // Brand tokens remain inline so each tenant's identity wins over the
     // shared light component system without duplicating per-view rules.
     <div
-      className={`crm-shell crm-shell-view-${view}`}
+      className={`crm-shell crm-design-system crm-shell-view-${view}`}
       data-ui="light"
       style={brandingCssVariables(branding) as React.CSSProperties}
     >
@@ -837,7 +837,7 @@ export function CrmApp({
             <BrandLogo
               className="crm-brand-logo"
               size={126}
-              tone="dark"
+              tone="light"
               decorative
               priority
               logoUrl={branding.logoUrl}

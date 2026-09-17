@@ -12,7 +12,7 @@ const d1Source = read("db/crm.ts");
 const themeSource = read("db/theme.ts");
 const crmAppSource = read("app/CrmApp.tsx");
 const dashboardSource = read("app/crm/DashboardView.tsx");
-const styles = read("app/globals.css");
+const componentStyles = read("app/crm/design-system.css");
 const migration = read("supabase/migrations/20260726053015_user_preferences.sql");
 
 function themesFromTs() {
@@ -90,11 +90,11 @@ test("the CRM renders one light UI without a browser-side theme override", () =>
   assert.doesNotMatch(crmAppSource, /themeOverride|switchTheme|crm-theme-picker/);
 });
 
-test("the light UI system excludes Dashboard from the redesign", () => {
-  assert.match(crmAppSource, /tone="dark"/);
-  assert.match(styles, /Single light CRM system based on the supplied shadcn\/ui Figma library/);
-  assert.match(styles, /\.crm-shell:not\(\.crm-shell-view-dashboard\)/);
-  assert.doesNotMatch(crmAppSource, /CRM_THEMES/);
+test("the redesigned CRM uses branded components and a charcoal sidebar", () => {
+  assert.match(crmAppSource, /tone="light"/);
+  assert.match(crmAppSource, /crm-design-system/);
+  assert.match(componentStyles, /--crm-purple: var\(--crm-accent/);
+  assert.match(componentStyles, /--crm-navy: #18181b/);
 });
 
 test("the bootstrap preference read is fault-isolated from the D1 fallback", () => {

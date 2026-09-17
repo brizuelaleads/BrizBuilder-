@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import {
   Geist,
+  Inter,
   Geist_Mono,
   Instrument_Serif,
   Rajdhani,
@@ -8,8 +9,10 @@ import {
 } from "next/font/google";
 import "@fontsource-variable/anybody/wdth.css";
 import "./globals.css";
+import "./crm/design-system.css";
 
 const geist = Geist({ variable: "--font-sans", subsets: ["latin"] });
+const crmInter = Inter({ variable: "--font-crm", subsets: ["latin"] });
 const mono = Geist_Mono({ variable: "--font-mono", subsets: ["latin"] });
 const display = Instrument_Serif({
   variable: "--font-display",
@@ -74,7 +77,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body
-        className={`${geist.variable} ${mono.variable} ${display.variable} ${cyberDisplay.variable} ${cyberMono.variable}`}
+        className={`${geist.variable} ${crmInter.variable} ${mono.variable} ${display.variable} ${cyberDisplay.variable} ${cyberMono.variable}`}
       >
         {children}
       </body>

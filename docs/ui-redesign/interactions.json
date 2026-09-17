@@ -1,0 +1,59 @@
+[
+  {
+    "width": 1440,
+    "modalFields": 16,
+    "focusTrap": true,
+    "escape": true,
+    "commandSearch": true,
+    "clientTabs": [
+      "Dashboard",
+      "Leads",
+      "Pipeline",
+      "Calls",
+      "Calendar",
+      "Ads",
+      "Connections"
+    ],
+    "clientScope": true,
+    "agencyRouteRejected": true,
+    "emptyGraphs": true
+  },
+  {
+    "width": 390,
+    "modalFields": 16,
+    "focusTrap": true,
+    "escape": true,
+    "commandSearch": true,
+    "clientTabs": [
+      "Dashboard",
+      "Leads",
+      "Pipeline",
+      "Calls",
+      "Calendar",
+      "Ads",
+      "Connections"
+    ],
+    "clientScope": true,
+    "agencyRouteRejected": true,
+    "emptyGraphs": true
+  },
+  {
+    "width": 320,
+    "modalFields": 16,
+    "focusTrap": true,
+    "escape": true,
+    "commandSearch": true,
+    "clientTabs": [
+      "Dashboard",
+      "Leads",
+      "Pipeline",
+      "Calls",
+      "Calendar",
+      "Ads",
+      "Connections"
+    ],
+    "clientScope": true,
+    "agencyRouteRejected": true,
+    "emptyGraphs": true
+  }
+]
