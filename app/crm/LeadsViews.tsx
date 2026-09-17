@@ -217,9 +217,6 @@ export function LeadsView({
           <button className="crm-button-secondary" onClick={exportCsv}>
             Export CSV
           </button>
-          <button className="crm-button-primary" onClick={onAddLead}>
-            + Add lead
-          </button>
         </div>
       </section>
 

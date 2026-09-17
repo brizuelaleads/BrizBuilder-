@@ -1286,8 +1286,6 @@ export function CrmApp({
             clients={data.clients}
             calls={data.calls}
             onAddContact={() => setModal("contact")}
-            onImportContacts={() => setModal("contact-import")}
-            canImport={data.viewer.permissions.includes("contacts.import")}
           />
         )}
         {view === "companies" && (
@@ -1326,14 +1324,12 @@ export function CrmApp({
             tasks={filteredTasks}
             clients={data.clients}
             mutate={mutate}
-            onAddTask={() => setModal("task")}
           />
         )}
         {view === "clients" && data.viewer.isAgency && (
           <ClientsView
             clients={data.clients}
             leads={data.leads}
-            onAddClient={() => setModal("client")}
             onDeleted={() => setSelectedClientId("all")}
             mutate={mutate}
             canDelete={data.viewer.permissions.includes("clients.delete")}
