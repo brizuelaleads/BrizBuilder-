@@ -1,4 +1,5 @@
-/* Buttons: one system for every button in the app, built from the .cir-btn spec
+/* Controls: buttons, tabs, search and checkboxes as one system, built from the
+ * .cir-btn, .cir-tabs, .cir-search and .cir-check specs. Buttons follow .cir-btn
  * (ink pill, 48px, Inter 15/500, layered shadow, 140/220ms expo-out easing,
  * lift on hover, blue focus halo, 1px press).
  *
@@ -451,6 +452,57 @@
     --btn-h: 56px; --btn-px: 4px; --btn-fs: 12px; --btn-icon: 18px;
   }
   & .crm-mobile-dock button.active { --btn-bg: var(--color-ink); --btn-fg: var(--color-cloud); --btn-fg-hover: var(--color-cloud); --btn-bg-hover: #1a1f28; --btn-shadow: 0 1px 1px rgba(14, 17, 22, 0.06), 0 14px 28px -18px rgba(14, 17, 22, 0.4); }
+
+  /* ---- Checkboxes (the .cir-check spec) ----------------------------------
+   * A 20px rounded box that fills with ink and stamps a white check. The mark
+   * is painted as a background so it works on a native input without relying
+   * on pseudo-elements, and it scales in from 60% the same way.
+   * --check-fill lets a checkbox that doubles as a colour key (the calendar
+   * status filters) fill with the colour it stands for. */
+  & input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: none;
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    border: 1.5px solid var(--color-edge);
+    border-radius: 8px;
+    background-color: var(--color-cloud);
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 0 0;
+    cursor: pointer;
+    transition:
+      background-color 220ms var(--cir-ease),
+      background-size 220ms var(--cir-ease),
+      border-color 220ms var(--cir-ease),
+      box-shadow 220ms var(--cir-ease);
+
+    &:checked {
+      background-color: var(--check-fill, var(--color-ink));
+      border-color: var(--check-fill, var(--color-ink));
+      background-size: 11px 11px;
+    }
+    &:hover:not(:disabled) { border-color: var(--check-fill, #c7d0dc); }
+    &:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(46, 125, 239, 0.32); }
+    &:disabled { opacity: 0.45; cursor: not-allowed; }
+  }
+  /* Only checkbox-led rows take the spec's row layout. Settings rows that put
+   * their label first keep their own grid and just inherit the new box. */
+  & label:has(> input[type="checkbox"]:first-child) {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 15px;
+    line-height: 1.2;
+    color: var(--color-ink);
+    cursor: pointer;
+  }
+  /* The calendar's status filters are the colour key for the week, so each
+   * box fills with its own status colour rather than ink. */
+  & .crm-cal-status { --check-fill: var(--cal-hue); gap: 12px; }
 
   /* Selects that share a row with a search or buttons take the same shell. */
   & :is(.crm-topbar-actions, .crm-cal-toolbar-end, .crm-filterbar, .crm-mobile-filterbar, .crm-integrations-toolbar) > select {
