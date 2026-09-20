@@ -21,6 +21,8 @@
 :root {
   --color-ink: #0e1116;
   --color-cloud: #ffffff;
+  --color-edge: #e3e8ee;
+  --color-mist: #5b6472;
   --cir-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --cir-font: var(--font-crm, "Inter"), "Inter", system-ui, -apple-system, sans-serif;
 }
@@ -235,37 +237,42 @@
     & kbd { margin-left: auto; padding: 3px 8px; border: 0; border-radius: 999px; background: #f1f2f4; color: #5b6068; font-size: 11px; }
   }
 
-  /* ---- Segmented controls: a light track whose active option is the ink pill. */
+  /* ---- Segmented controls (the .cir-tabs spec): a raised white track whose
+   * selected option is the ink pill. Hover only darkens the label, so the
+   * track itself never flickers as the pointer crosses it. */
   & :is(.crm-view-switcher, .crm-calls-filters, .crm-tabs, .crm-review-tabs, .crm-lead-tabs, .crm-leads-view-switcher, .crm-reviews-tabs, .crm-stripe-tabs) {
+    display: inline-flex;
+    align-items: center;
     gap: 4px;
-    padding: 4px;
-    border: 0;
+    padding: 6px;
+    border: 1px solid var(--color-edge);
     border-radius: 999px;
-    background: #eef0f2;
-    box-shadow: inset 0 0 0 1px rgba(14, 17, 22, 0.06);
+    background: var(--color-cloud);
+    box-shadow:
+      0 1px 1px rgba(14, 17, 22, 0.04),
+      0 20px 40px -24px rgba(14, 17, 22, 0.18);
     & > button {
       --btn-bg: transparent;
-      --btn-fg: #52565e;
-      --btn-bg-hover: rgba(14, 17, 22, 0.06);
+      --btn-fg: var(--color-mist);
+      --btn-bg-hover: transparent;
       --btn-fg-hover: var(--color-ink);
       --btn-ring: 0 0 #0000;
       --btn-ring-hover: 0 0 #0000;
       --btn-shadow: 0 0 #0000;
       --btn-shadow-hover: 0 0 #0000;
-      --btn-focus: inset 0 0 0 1px rgba(46, 125, 239, 0.85), 0 0 0 3px rgba(46, 125, 239, 0.32);
-      --btn-h: 40px; --btn-px: 18px; --btn-fs: 14px;
+      --btn-focus: 0 0 0 3px rgba(46, 125, 239, 0.32);
+      --btn-h: 36px; --btn-px: 18px; --btn-fs: 14px;
     }
     & > button:is(.active, [aria-selected="true"]) {
       --btn-bg: var(--color-ink);
       --btn-fg: var(--color-cloud);
+      /* Selected is dark, so its hover lightens, like every other dark control. */
       --btn-bg-hover: #1a1f28;
       --btn-fg-hover: var(--color-cloud);
-      --btn-shadow: 0 1px 2px rgba(14, 17, 22, 0.18), 0 8px 18px -12px rgba(14, 17, 22, 0.45);
-      --btn-shadow-hover: 0 1px 2px rgba(14, 17, 22, 0.2), 0 10px 22px -12px rgba(14, 17, 22, 0.5);
-      --btn-focus: 0 0 0 3px rgba(46, 125, 239, 0.32);
+      --btn-shadow: 0 1px 1px rgba(14, 17, 22, 0.06), 0 8px 18px -10px rgba(14, 17, 22, 0.5);
+      --btn-shadow-hover: 0 1px 1px rgba(14, 17, 22, 0.08), 0 10px 22px -10px rgba(14, 17, 22, 0.55);
     }
   }
-  & .crm-calls-filters > button { --btn-h: 36px; --btn-px: 14px; --btn-fs: 13px; }
 
   /* ---- Menus: full-width rows on light surfaces. --------------------------- */
   & :is(.crm-lead-status-menu button, .crm-settings-workspace > aside button, .crm-settings-workspace > nav button, .crm-command > div > button) {
