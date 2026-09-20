@@ -504,6 +504,89 @@
    * box fills with its own status colour rather than ink. */
   & .crm-cal-status { --check-fill: var(--cal-hue); gap: 12px; }
 
+  /* ---- Switches (the .cir-toggle spec) -----------------------------------
+   * A 44x26 track with an 18px knob that slides on the same easing and turns
+   * ink when on. Settings rows keep their existing label-then-control layout,
+   * so the switch sits at the end of the row rather than the spec's leading
+   * column; the control itself is the spec.
+   * Native inputs paint the knob as a background (no pseudo-elements on
+   * inputs); the branding switches are buttons with a real knob element. */
+  & :is(.crm-switch-row, .crm-review-switch) > input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    /* Legacy pins these inputs to 20px with !important, so the track matches it. */
+    width: 44px !important;
+    min-width: 44px;
+    height: 26px !important;
+    min-height: 26px;
+    flex: none;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--color-edge);
+    border-radius: 999px;
+    background-color: #f3f6fa;
+    background-image:
+      radial-gradient(circle at center, #ffffff 0 9px, transparent 9.5px),
+      radial-gradient(circle at center, rgba(14, 17, 22, 0.16) 0 9px, transparent 9.5px);
+    background-size: 18px 18px, 18px 18px;
+    background-position: 3px center, 3px calc(50% + 1.5px);
+    background-repeat: no-repeat;
+    cursor: pointer;
+    transition:
+      background-color 220ms var(--cir-ease),
+      background-position 220ms var(--cir-ease),
+      border-color 220ms var(--cir-ease),
+      box-shadow 220ms var(--cir-ease);
+
+    &:checked {
+      background-color: var(--color-ink);
+      border-color: var(--color-ink);
+      background-position: calc(100% - 3px) center, calc(100% - 3px) calc(50% + 1.5px);
+    }
+    &:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(46, 125, 239, 0.32); }
+    &:disabled { opacity: 0.45; cursor: not-allowed; }
+  }
+  & :is(.crm-switch-row, .crm-review-switch) > span {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    & > strong { color: var(--color-ink); font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+    & > small { color: var(--color-mist); font-size: 12.5px; line-height: 1.45; }
+  }
+  /* Branding notification switches: a button with its own knob element. */
+  & .crm-client-toggle {
+    position: relative;
+    flex: none;
+    width: 44px;
+    min-width: 44px;
+    height: 26px;
+    min-height: 26px;
+    padding: 0;
+    border: 1px solid var(--color-edge);
+    border-radius: 999px;
+    background: #f3f6fa;
+    box-shadow: none;
+    cursor: pointer;
+    transition: background-color 220ms var(--cir-ease), border-color 220ms var(--cir-ease), box-shadow 220ms var(--cir-ease);
+
+    & > i {
+      position: absolute;
+      top: 50%;
+      left: 3px;
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      background: var(--color-cloud);
+      transform: translateY(-50%);
+      box-shadow: 0 1px 1px rgba(14, 17, 22, 0.06), 0 4px 8px -4px rgba(14, 17, 22, 0.18);
+      transition: left 220ms var(--cir-ease);
+    }
+    &[aria-checked="true"] { background: var(--color-ink); border-color: var(--color-ink); }
+    &[aria-checked="true"] > i { left: calc(100% - 21px); }
+    &:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(46, 125, 239, 0.32); }
+    &:disabled { opacity: 0.45; cursor: not-allowed; }
+  }
+
   /* Selects that share a row with a search or buttons take the same shell. */
   & :is(.crm-topbar-actions, .crm-cal-toolbar-end, .crm-filterbar, .crm-mobile-filterbar, .crm-integrations-toolbar) > select {
     height: 48px;
