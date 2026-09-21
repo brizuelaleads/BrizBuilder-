@@ -41,6 +41,10 @@ const restructured = {
     reason: 'Calendar rebuilt as a week planner: month picker, status filters, event popover',
     controls: /shiftWeek|setAnchorDate|pageMonth|monthLabel|weekStart\.toLocaleDateString|CALENDAR_WEEK_RANGE|toggleStatus|hiddenStatuses|crm-cal-|setOpenEvent|onClose|closeRef|update_appointment_status|deleteAppointment|onAddAppointment|<option key=\{status\}|crm-google-calendar|appointment\.contactName/,
   },
+  'app/CrmApp.tsx': {
+    reason: 'Toasts carry an icon, a title and detail, an action and a close',
+    controls: /crm-toast/,
+  },
 };
 const multisetDiff = (expected, actual) => {
   const missing = [...expected];
@@ -66,14 +70,14 @@ for (const before of baseline.files) {
       assert.deepEqual(after[contract], expected, `${contract} changed in ${before.file}`);
     }
   }
-  if (rebuilt) {
-    const {missing, extra} = multisetDiff(withoutRemovals(before.file, 'controls', before.controls), after.controls);
-    const outside = [...missing, ...extra].filter(value => !rebuilt.controls.test(value));
-    assert.deepEqual(outside, [], `Controls outside the rebuilt view changed in ${before.file}`);
-  }
   // Shared ui.tsx intentionally replaces decorative glyphs with Lucide icons
   // and adds modal focus management. All other controls retain their markup.
   const controls = values => values.map(value => before.file === 'app/CrmApp.tsx' ? value.replace('tone="dark" decorative priority logoUrl={branding.logoUrl}', 'tone="light" decorative priority logoUrl={branding.logoUrl}') : value);
+  if (rebuilt) {
+    const {missing, extra} = multisetDiff(controls(withoutRemovals(before.file, 'controls', before.controls)), controls(after.controls));
+    const outside = [...missing, ...extra].filter(value => !rebuilt.controls.test(value));
+    assert.deepEqual(outside, [], `Controls outside the rebuilt view changed in ${before.file}`);
+  }
   if (!rebuilt && before.file!=='app/crm/ui.tsx') assert.deepEqual(controls(after.controls),controls(withoutRemovals(before.file, 'controls', before.controls)),`Controls changed in ${before.file}`);
   // Reviewed change: the Leads tile's colour follows the same previous-range
   // comparison as its caption (comparisonTrend). Any other edit must be reviewed

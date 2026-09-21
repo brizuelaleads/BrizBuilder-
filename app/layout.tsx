@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import {
   Geist,
   Inter,
+  Inter_Tight,
   Geist_Mono,
   Instrument_Serif,
   Rajdhani,
@@ -14,6 +15,8 @@ import "./crm/controls.css";
 
 const geist = Geist({ variable: "--font-sans", subsets: ["latin"] });
 const crmInter = Inter({ variable: "--font-crm", subsets: ["latin"] });
+// Notification titles are set in Inter Tight; self-hosted like the rest.
+const crmInterTight = Inter_Tight({ variable: "--font-crm-tight", subsets: ["latin"], weight: ["600"] });
 const mono = Geist_Mono({ variable: "--font-mono", subsets: ["latin"] });
 const display = Instrument_Serif({
   variable: "--font-display",
@@ -78,7 +81,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body
-        className={`${geist.variable} ${crmInter.variable} ${mono.variable} ${display.variable} ${cyberDisplay.variable} ${cyberMono.variable}`}
+        className={`${geist.variable} ${crmInter.variable} ${crmInterTight.variable} ${mono.variable} ${display.variable} ${cyberDisplay.variable} ${cyberMono.variable}`}
       >
         {children}
       </body>

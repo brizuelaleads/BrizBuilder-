@@ -14,6 +14,7 @@ import {
   Building2,
   CalendarDays,
   ChartNoAxesCombined,
+  Check,
   CircleUserRound,
   ContactRound,
   CreditCard,
@@ -40,6 +41,7 @@ import {
   UserRoundSearch,
   UsersRound,
   Workflow,
+  TriangleAlert,
   X,
 } from "lucide-react";
 import { BrandLogo } from "./components/BrandLogo";
@@ -1697,13 +1699,36 @@ export function CrmApp({
       )}
       {toast ? (
         <div className="crm-toast" role="status">
-          ✓ {toast}
+          <span className="crm-toast-icon" aria-hidden="true">
+            <Check />
+          </span>
+          <div className="crm-toast-body">
+            <p className="crm-toast-title">{toast}</p>
+          </div>
+          <div className="crm-toast-actions">
+            <button
+              type="button"
+              className="crm-toast-close"
+              onClick={() => setToast("")}
+              aria-label="Dismiss notification"
+            >
+              <X aria-hidden="true" />
+            </button>
+          </div>
         </div>
       ) : null}
       {error ? (
         <div className="crm-error-toast" role="alert">
-          <span>{error}</span>
-          <button onClick={() => setError("")}>Dismiss</button>
+          <span className="crm-toast-icon" aria-hidden="true">
+            <TriangleAlert />
+          </span>
+          <div className="crm-toast-body">
+            <p className="crm-toast-title">That did not go through</p>
+            <p className="crm-toast-detail">{error}</p>
+          </div>
+          <div className="crm-toast-actions">
+            <button onClick={() => setError("")}>Dismiss</button>
+          </div>
         </div>
       ) : null}
       {busy ? <div className="crm-busy" aria-hidden="true" /> : null}

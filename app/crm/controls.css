@@ -587,6 +587,80 @@
     &:disabled { opacity: 0.45; cursor: not-allowed; }
   }
 
+  /* ---- Notifications (the .cir-note spec) --------------------------------
+   * A floating card: icon tile, title and detail, then the action and close.
+   * Success speaks in signal blue, failure in red, and both keep their live
+   * region roles so screen readers still announce them. */
+  & :is(.crm-toast, .crm-error-toast) {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 16px;
+    width: min(440px, calc(100vw - 32px));
+    max-width: min(440px, calc(100vw - 32px));
+    min-height: 0;
+    padding: 16px 16px 16px 18px;
+    border: 1px solid var(--color-edge);
+    border-radius: 22px;
+    background: var(--color-cloud);
+    box-shadow:
+      0 1px 1px rgba(14, 17, 22, 0.05),
+      0 24px 48px -24px rgba(14, 17, 22, 0.25);
+    font-family: var(--cir-font);
+    color: var(--color-ink);
+
+    & > .crm-toast-icon {
+      display: inline-grid;
+      place-items: center;
+      width: 40px;
+      height: 40px;
+      border-radius: 14px;
+      background: #f3f6fa;
+      color: var(--color-signal);
+      & svg { width: 18px; height: 18px; }
+    }
+    & > .crm-toast-body { min-width: 0; }
+    & .crm-toast-title {
+      margin: 0 0 2px;
+      font-family: var(--font-crm-tight, "Inter Tight"), var(--cir-font);
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--color-ink);
+    }
+    & .crm-toast-detail {
+      margin: 0;
+      color: var(--color-mist);
+      font-size: 12.5px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+    & > .crm-toast-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      /* The action is the ink pill at note scale; close is a quiet circle. */
+      & > button {
+        --btn-h: 32px; --btn-px: 14px; --btn-fs: 13px; --btn-gap: 6px;
+        --btn-bg: var(--color-ink); --btn-fg: var(--color-cloud); --btn-bg-hover: #1a1f28;
+        --btn-ring: 0 0 #0000; --btn-ring-hover: 0 0 #0000;
+        --btn-shadow: 0 0 #0000; --btn-shadow-hover: 0 0 #0000;
+        --btn-focus: 0 0 0 3px rgba(46, 125, 239, 0.32);
+      }
+      & > .crm-toast-close {
+        --btn-icon-px: 0px;
+        --btn-h: 32px; --btn-icon: 14px;
+        --btn-bg: transparent; --btn-fg: var(--color-mist);
+        --btn-bg-hover: rgba(14, 17, 22, 0.05); --btn-fg-hover: var(--color-ink);
+        width: 32px;
+        min-width: 32px;
+      }
+    }
+  }
+  & .crm-error-toast {
+    & > .crm-toast-icon { background: #fff1f0; color: #b42318; }
+  }
+
   /* Selects that share a row with a search or buttons take the same shell. */
   & :is(.crm-topbar-actions, .crm-cal-toolbar-end, .crm-filterbar, .crm-mobile-filterbar, .crm-integrations-toolbar) > select {
     height: 48px;
