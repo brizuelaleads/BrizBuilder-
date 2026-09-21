@@ -18,12 +18,9 @@ import {
   ClipboardList,
   FileText,
   Mail,
-  MapPin,
   MessageCircle,
   NotebookPen,
-  Pencil,
   Phone,
-  ShieldCheck,
   X,
 } from "lucide-react";
 import type {
@@ -67,10 +64,6 @@ function statusTone(
   )
     return "blue";
   return "orange";
-}
-
-function statusClassName(status: string) {
-  return `is-${status.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
 }
 
 function LeadsViewSwitcher({
@@ -714,11 +707,8 @@ export function LeadDetail({
   const latestCall = leadCalls[0] ?? null;
   const [activeTab, setActiveTab] = useState<LeadDetailTab>("overview");
   const tabListRef = useRef<HTMLElement | null>(null);
-  const activeStageIndex = stages.findIndex((stage) => stage.id === lead.stageId);
-  const activeStageName =
-    stages.find((stage) => stage.id === lead.stageId)?.name ?? "Unassigned";
   const primaryTask =
-    leadTasks.find((task) => task.status !== "COMPLETED") ?? leadTasks[0];
+    leadTasks.find((task) => task.status !== "COMPLETED");
   const timeline = [
     ...leadActivities.map((item) => ({
       id: item.id,
@@ -813,7 +803,7 @@ export function LeadDetail({
       }}
     >
       <section
-        className="crm-lead-page"
+        className="crm-lead-page crm-lead-simple"
         role="dialog"
         aria-modal="true"
         aria-label={`Lead details for ${displayName}`}
@@ -833,6 +823,12 @@ export function LeadDetail({
               <strong>{lead.serviceRequested || lead.source || "Lead"}</strong>
             </div>
             <div className="crm-lead-toolbar-actions">
+              <details className="crm-lead-status-menu">
+                <summary>
+                  <span>{humanizeLeadValue(lead.status)}</span>
+                  <ChevronDown aria-hidden="true" />
+                </summary>
+                <div>
               <button
                 type="button"
                 className="crm-lead-won-button"
@@ -853,30 +849,7 @@ export function LeadDetail({
                 <Award aria-hidden="true" />
                 <span>Mark as won</span>
               </button>
-              <button
-                type="button"
-                className="crm-lead-edit-button"
-                onClick={() => {
-                  setActiveTab("overview");
-                  requestAnimationFrame(() =>
-                    document
-                      .querySelector<HTMLInputElement>(
-                        ".crm-lead-value-inline input",
-                      )
-                      ?.focus(),
-                  );
-                }}
-              >
-                <Pencil aria-hidden="true" />
-                Edit lead
-              </button>
-              <details className="crm-lead-status-menu">
-                <summary>
-                  <span>Change status</span>
-                  <ChevronDown aria-hidden="true" />
-                </summary>
-                <div>
-                  {leadStatuses.map((status) => (
+                  {leadStatuses.filter((status) => status !== "WON").map((status) => (
                     <button
                       key={status}
                       type="button"
@@ -922,15 +895,9 @@ export function LeadDetail({
               <div>
                 <div className="crm-lead-title-line">
                   <h2>{displayName}</h2>
-                  <span
-                    className={`crm-lead-current-status ${statusClassName(lead.status)}`}
-                  >
-                    <i aria-hidden="true" />
-                    {humanizeLeadValue(lead.status)}
-                  </span>
                 </div>
                 <strong>{lead.clientName}</strong>
-                <p>Added {dateTime(lead.createdAt)}</p>
+                <p className="crm-lead-quick-contact">{lead.phone ? <a href={`tel:${lead.phone}`}>{formatLeadPhone(lead.phone)}</a> : null}{lead.email ? <a href={`mailto:${lead.email}`}>{lead.email}</a> : null}{[lead.city, lead.state].filter(Boolean).join(", ")}</p>
               </div>
             </div>
             <div className="crm-lead-contact-actions" aria-label="Contact lead">
@@ -941,7 +908,7 @@ export function LeadDetail({
                 aria-label="Call lead"
                 title="Call lead"
               >
-                <Phone aria-hidden="true" />
+                <Phone aria-hidden="true" /><span>Call</span>
               </a>
               <a
                 className="primary"
@@ -950,7 +917,7 @@ export function LeadDetail({
                 aria-label="Text lead"
                 title="Text lead"
               >
-                <MessageCircle aria-hidden="true" />
+                <MessageCircle aria-hidden="true" /><span>Text</span>
               </a>
               <a
                 href={lead.email ? `mailto:${lead.email}` : undefined}
@@ -958,36 +925,8 @@ export function LeadDetail({
                 aria-label="Email lead"
                 title="Email lead"
               >
-                <Mail aria-hidden="true" />
+                <Mail aria-hidden="true" /><span>Email</span>
               </a>
-            </div>
-          </section>
-
-          <section className="crm-lead-fact-bar" aria-label="Lead summary">
-            <div>
-              <span>Last contact</span>
-              <strong>
-                {lead.lastContactedAt ? dateTime(lead.lastContactedAt) : "Not provided"}
-              </strong>
-            </div>
-            <div className="crm-lead-value-inline">
-              <span>Est. value</span>
-              <strong>
-                <span aria-hidden="true">$</span>
-                <EstimatedValueEditor
-                  key={`${lead.id}:${lead.estimatedValueCents}`}
-                  lead={lead}
-                  mutate={mutate}
-                />
-              </strong>
-            </div>
-            <div className="crm-lead-score-inline">
-              <span>Lead score</span>
-              <strong>{lead.leadScore}<small>/100</small></strong>
-              <i
-                aria-hidden="true"
-                style={{ "--lead-score": `${lead.leadScore}%` } as CSSProperties}
-              />
             </div>
           </section>
 
@@ -1014,66 +953,6 @@ export function LeadDetail({
           <main className="crm-lead-tab-content" role="tabpanel">
             {activeTab === "overview" ? (
               <div className="crm-lead-overview">
-                <section className="crm-lead-section-card crm-lead-contact-card">
-                  <h3>Contact &amp; attribution</h3>
-                  <div className="crm-lead-contact-layout">
-                    <div className="crm-lead-contact-list">
-                      <div>
-                        <Phone aria-hidden="true" />
-                        <p>
-                          <a href={lead.phone ? `tel:${lead.phone}` : undefined}>
-                            {formatLeadPhone(lead.phone)}
-                          </a>
-                          <span>Phone</span>
-                        </p>
-                      </div>
-                      <div>
-                        <Mail aria-hidden="true" />
-                        <p>
-                          <a href={lead.email ? `mailto:${lead.email}` : undefined}>
-                            {lead.email ?? "Not provided"}
-                          </a>
-                          <span>Email</span>
-                        </p>
-                      </div>
-                      <div>
-                        <MapPin aria-hidden="true" />
-                        <p>
-                          <strong>
-                            {[lead.address, lead.city, lead.state, lead.zip]
-                              .filter(Boolean)
-                              .join(", ") || "Not provided"}
-                          </strong>
-                          <span>Address</span>
-                        </p>
-                      </div>
-                      <div>
-                        <ShieldCheck aria-hidden="true" />
-                        <p>
-                          <strong>{humanizeLeadValue(lead.consentStatus)}</strong>
-                          <span>Consent</span>
-                        </p>
-                      </div>
-                    </div>
-                    <dl className="crm-lead-attribution-list">
-                      <div><dt>Source</dt><dd>{lead.source}</dd></div>
-                      <div><dt>Campaign</dt><dd>{metaAd?.campaignName || lead.campaign || "Not captured"}</dd></div>
-                      {lead.metaCampaignId ? (
-                        <div><dt>Meta ad</dt><dd>{metaAd?.adName || "Awaiting next ad sync"}</dd></div>
-                      ) : null}
-                      <div><dt>Requested service</dt><dd>{lead.serviceRequested || "Not provided"}</dd></div>
-                      <div><dt>First contact</dt><dd>{dateTime(lead.firstContactedAt ?? lead.createdAt)}</dd></div>
-                      <div><dt>Last contact</dt><dd>{lead.lastContactedAt ? dateTime(lead.lastContactedAt) : "Not provided"}</dd></div>
-                      <div><dt>Appointment status</dt><dd>{humanizeLeadValue(lead.appointmentStatus) || "Not set"}</dd></div>
-                      <div><dt>Appointment</dt><dd>{lead.appointmentStart ? dateTime(lead.appointmentStart) : "Not provided"}</dd></div>
-                      <div><dt>Tracking number</dt><dd>{latestCall ? formatLeadPhone(latestCall.trackingPhoneNumber) : "Not provided"}</dd></div>
-                      <div><dt>Number called</dt><dd>{latestCall ? formatLeadPhone(latestCall.businessPhoneNumber) : "Not provided"}</dd></div>
-                      <div><dt>Latest call</dt><dd>{latestCall ? `${latestCall.answered === true ? "Answered" : latestCall.answered === false ? "Missed" : "Unknown"} · ${formatCallDuration(latestCall.durationSeconds)}` : "Not provided"}</dd></div>
-                      <div><dt>Assigned to</dt><dd>{lead.assignedUser?.trim() || "Unassigned"}</dd></div>
-                    </dl>
-                  </div>
-                </section>
-
                 <section className="crm-lead-section-card crm-lead-message-card">
                   <MessageCircle aria-hidden="true" />
                   <div>
@@ -1082,49 +961,67 @@ export function LeadDetail({
                   </div>
                 </section>
 
-                <section className="crm-lead-section-card crm-lead-progress-card">
-                  <h3>Lead progress</h3>
-                  <div
-                    className="crm-lead-progress-track"
-                    aria-label={`Pipeline progress: ${activeStageName}`}
-                    style={
-                      {
-                        "--lead-stage-count": Math.max(stages.length, 1),
-                      } as CSSProperties
-                    }
-                  >
-                    {stages.map((stage, index) => (
-                      <button
-                        key={stage.id}
-                        type="button"
-                        className={
-                          index === activeStageIndex
-                            ? "active"
-                            : index < activeStageIndex
-                              ? "complete"
-                              : ""
-                        }
-                        aria-current={index === activeStageIndex ? "step" : undefined}
-                        aria-label={`Move lead to ${stage.name}`}
-                        onClick={() =>
-                          void mutate(
-                            {
-                              action: "move_lead",
-                              leadId: lead.id,
-                              stageId: stage.id,
-                            },
-                            "Pipeline stage updated",
-                          )
-                        }
-                      >
-                        <i aria-hidden="true">{index + 1}</i>
-                        <span>{stage.name}</span>
-                      </button>
-                    ))}
-                  </div>
+                <section className="crm-lead-section-card crm-lead-next-step">
+                  <h3>At a glance</h3>
+                  <dl>
+                    {lead.appointmentStart ? <div><dt>Appointment</dt><dd>{dateTime(lead.appointmentStart)} &middot; {humanizeLeadValue(lead.appointmentStatus) || "Not set"}</dd></div> : null}
+                    {lead.lastContactedAt ? <div><dt>Last contact</dt><dd>{dateTime(lead.lastContactedAt)}</dd></div> : null}
+                    {lead.serviceRequested ? <div><dt>Requested service</dt><dd>{lead.serviceRequested}</dd></div> : null}
+                  </dl>
                 </section>
+                <details className="crm-lead-section-card crm-lead-more-details">
+                  <summary>Lead details <span>Value, pipeline &amp; tracking</span><ChevronDown aria-hidden="true" /></summary>
+          <section className="crm-lead-fact-bar" aria-label="Lead summary">
+            <div className="crm-lead-value-inline">
+              <span>Est. value</span>
+              <strong>
+                <span aria-hidden="true">$</span>
+                <EstimatedValueEditor
+                  key={`${lead.id}:${lead.estimatedValueCents}`}
+                  lead={lead}
+                  mutate={mutate}
+                />
+              </strong>
+            </div>
+            <div className="crm-lead-score-inline">
+              <span>Lead score</span>
+              <strong>{lead.leadScore}<small>/100</small></strong>
+              <i
+                aria-hidden="true"
+                style={{ "--lead-score": `${lead.leadScore}%` } as CSSProperties}
+              />
+            </div>
+          </section>
 
-                <section className="crm-lead-followup-card">
+
+                  <label className="crm-lead-pipeline-select">Pipeline stage
+                    <select aria-label="Pipeline stage" value={lead.stageId ?? ""} onChange={(event) => void mutate({ action: "move_lead", leadId: lead.id, stageId: event.target.value }, "Pipeline stage updated")}>
+                      {!stages.some((stage) => stage.id === lead.stageId) ? <option value={lead.stageId ?? ""} disabled>Unassigned</option> : null}
+                      {stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
+                    </select>
+                  </label>
+                    <dl className="crm-lead-attribution-list">
+                      <div><dt>Source</dt><dd>{lead.source}</dd></div>
+                      <div><dt>Campaign</dt><dd>{metaAd?.campaignName || lead.campaign || "Not captured"}</dd></div>
+                      {lead.metaCampaignId ? (
+                        <div><dt>Meta ad</dt><dd>{metaAd?.adName || "Awaiting next ad sync"}</dd></div>
+                      ) : null}
+                      <div><dt>First contact</dt><dd>{dateTime(lead.firstContactedAt ?? lead.createdAt)}</dd></div>
+                      <div><dt>Appointment status</dt><dd>{humanizeLeadValue(lead.appointmentStatus) || "Not set"}</dd></div>
+                      <div><dt>Appointment</dt><dd>{lead.appointmentStart ? dateTime(lead.appointmentStart) : "Not provided"}</dd></div>
+                      <div><dt>Tracking number</dt><dd>{latestCall ? formatLeadPhone(latestCall.trackingPhoneNumber) : "Not provided"}</dd></div>
+                      <div><dt>Number called</dt><dd>{latestCall ? formatLeadPhone(latestCall.businessPhoneNumber) : "Not provided"}</dd></div>
+                      <div><dt>Latest call</dt><dd>{latestCall ? `${latestCall.answered === true ? "Answered" : latestCall.answered === false ? "Missed" : "Unknown"} · ${formatCallDuration(latestCall.durationSeconds)}` : "Not provided"}</dd></div>
+                      <div><dt>Assigned to</dt><dd>{lead.assignedUser?.trim() || "Unassigned"}</dd></div>
+                    </dl>
+                  <dl className="crm-lead-attribution-list">
+                    <div><dt>Address</dt><dd>{[lead.address, lead.city, lead.state, lead.zip].filter(Boolean).join(", ") || "Not provided"}</dd></div>
+                    <div><dt>Consent</dt><dd>{humanizeLeadValue(lead.consentStatus)}</dd></div>
+                    <div><dt>Added</dt><dd>{dateTime(lead.createdAt)}</dd></div>
+                  </dl>
+                </details>
+
+                {primaryTask ? <section className="crm-lead-followup-card">
                   <span><Phone aria-hidden="true" /></span>
                   <div>
                     <strong>
@@ -1151,7 +1048,7 @@ export function LeadDetail({
                       <ChevronDown aria-hidden="true" />
                     </button>
                   </div>
-                </section>
+                </section> : null}
 
                 <section className="crm-lead-related-grid crm-lead-reference-extras">
                   <article className="crm-lead-section-card">
