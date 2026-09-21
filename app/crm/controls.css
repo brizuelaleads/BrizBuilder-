@@ -1106,126 +1106,105 @@
   40% { transform: scale(1); opacity: 1; }
 }
 
-/* Lead workspace: a single reading surface with dedicated secondary sections. */
-#crm-app .crm-lead-page.crm-lead-focused {
-  width: min(720px, 100vw);
-  background: var(--crm-card, #fff);
-  color: var(--crm-ink, #18202b);
+/* Lead record: one column, explicit section hierarchy, no nested card layout. */
+#crm-app .lead-record-backdrop {
+  position: fixed; inset: 0; z-index: 100; display: flex; justify-content: flex-end;
+  background: rgb(20 28 40 / 32%); padding: 0; overflow: hidden;
 }
-#crm-app .crm-lead-focused .crm-lead-page-shell {
-  padding: 0 32px 40px;
-  max-width: none;
-  background: var(--crm-card, #fff);
+#crm-app .lead-record {
+  box-sizing: border-box; width: min(780px, 100%); height: 100dvh; overflow-y: auto;
+  overscroll-behavior: contain; scrollbar-gutter: stable;
+  background: #fff; color: #202733; box-shadow: -16px 0 60px #18202b18;
+  font-family: var(--font-crm, Inter), system-ui, sans-serif;
+  font-size: 14px; line-height: 1.5;
 }
-#crm-app .crm-lead-focused .crm-lead-page-toolbar {
-  position: static;
-  margin: 0;
-  padding: 16px 0;
-  min-height: 68px;
-  display: flex;
-  flex-wrap: nowrap;
-  justify-content: space-between;
-  border: 0;
-  background: transparent;
-  backdrop-filter: none;
-}
-#crm-app .crm-lead-focused .crm-lead-toolbar-title { gap: 10px; }
-#crm-app .crm-lead-focused .crm-lead-toolbar-title > strong { max-width: none; font-size: 13px; font-weight: 500; color: var(--crm-muted); }
-#crm-app .crm-lead-focused .crm-lead-back { width: 32px; min-width: 32px; min-height: 32px; height: 32px; flex-basis: 32px; background: transparent; }
-#crm-app .crm-lead-focused .crm-lead-toolbar-actions { display: flex; width: auto; }
-#crm-app .crm-lead-focused .crm-lead-status-menu > summary { min-width: 0; min-height: 34px; height: auto; padding: 6px 10px; gap: 8px; font-size: 12px; background: var(--crm-subtle, #f5f6f8); box-shadow: none; border: 0; border-radius: 6px; }
-#crm-app .crm-lead-focused .crm-lead-identity-card {
-  display: flex;
-  align-items: flex-start;
-  flex-direction: column;
-  gap: 20px;
-  padding: 14px 0 28px;
-  margin: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-#crm-app .crm-lead-focused .crm-lead-identity { gap: 14px; min-width: 0; width: 100%; align-items: flex-start; }
-#crm-app .crm-lead-focused .crm-lead-avatar { width: 44px; min-width: 44px; height: 44px; border-radius: 12px; font-size: 15px; background: var(--crm-subtle, #f3f5f7); }
-#crm-app .crm-lead-focused .crm-lead-identity > div { min-width: 0; }
-#crm-app .crm-lead-focused .crm-lead-title-line h2 { max-width: none; margin: 0 0 6px; font-size: 25px; line-height: 1.2; letter-spacing: -.025em; white-space: normal; overflow-wrap: anywhere; }
-#crm-app .crm-lead-focused .crm-lead-identity > div > strong { font-size: 13px; font-weight: 400; color: var(--crm-muted); }
-#crm-app .crm-lead-focused .crm-lead-identity .crm-lead-quick-contact { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 14px; line-height: 1.5; }
-#crm-app .crm-lead-focused .crm-lead-quick-contact a { color: inherit; text-decoration: none; overflow-wrap: anywhere; }
-#crm-app .crm-lead-focused .crm-lead-quick-contact a:hover { text-decoration: underline; }
-#crm-app .crm-lead-focused .crm-lead-contact-actions { display: flex; flex-wrap: wrap; width: auto; gap: 8px; margin-left: 58px; }
-#crm-app .crm-lead-focused .crm-lead-contact-actions a,
-#crm-app .crm-lead-focused .crm-lead-contact-actions a:nth-child(2) { display: inline-flex; justify-content: center; width: auto; min-width: 88px; height: 38px; padding: 0 14px; gap: 7px; border-radius: 7px; font-size: 13px; box-shadow: none; }
-#crm-app .crm-lead-focused .crm-lead-contact-actions a:not(:first-child) { color: var(--crm-ink); background: transparent; border: 1px solid var(--crm-line); }
-#crm-app .crm-lead-focused .crm-lead-contact-actions svg { width: 15px; height: 15px; }
-#crm-app .crm-lead-focused .crm-lead-tabs {
-  width: 100%; margin: 0; padding: 0; min-height: 46px;
-  display: flex; justify-content: flex-start; align-items: center; gap: 20px;
-  overflow: visible; border: 0; border-bottom: 1px solid var(--crm-line);
-  border-radius: 0; background: transparent; box-shadow: none;
-}
-#crm-app .crm-lead-focused .crm-lead-tabs > button {
-  --btn-bg: transparent; --btn-shadow: none;
-  flex: 0 0 auto; min-width: 0; min-height: 46px; height: 46px;
-  padding: 0; gap: 5px; border: 0; border-bottom: 2px solid transparent;
-  border-radius: 0; background: transparent; box-shadow: none;
-  color: var(--crm-muted); font-size: 13px; font-weight: 500;
-}
-#crm-app .crm-lead-focused .crm-lead-tabs > button.active { border-bottom-color: var(--crm-ink); color: var(--crm-ink); background: transparent; box-shadow: none; }
-#crm-app .crm-lead-focused .crm-lead-tabs button small { min-width: 0; height: auto; padding: 0; color: var(--crm-muted); background: transparent; font-size: 11px; }
-#crm-app .crm-lead-focused .crm-lead-more-nav { margin-left: auto; width: auto; max-width: 112px; min-height: 36px; padding: 4px 20px 4px 6px; font: inherit; font-size: 13px; color: var(--crm-muted); border: 0; border-radius: 4px; background-color: transparent; box-shadow: none; }
-#crm-app .crm-lead-focused .crm-lead-tab-content { padding: 26px 0 0; background: transparent; }
-#crm-app .crm-lead-focused .crm-lead-overview { display: flex; flex-direction: column; gap: 0; }
-#crm-app .crm-lead-focused .crm-lead-appointment-strip { display: flex; align-items: center; gap: 12px; padding: 16px; margin-bottom: 26px; border-radius: 8px; background: var(--crm-subtle, #f5f7fa); }
-#crm-app .crm-lead-focused .crm-lead-appointment-icon svg { width: 20px; height: 20px; color: var(--crm-muted); }
-#crm-app .crm-lead-focused .crm-lead-appointment-strip > div { display: grid; gap: 4px; }
-#crm-app .crm-lead-focused .crm-lead-appointment-strip > div > span { font-size: 12px; color: var(--crm-muted); }
-#crm-app .crm-lead-focused .crm-lead-appointment-strip strong { font-size: 15px; font-weight: 600; }
-#crm-app .crm-lead-focused .crm-lead-appointment-state { margin-left: auto; font-size: 12px; color: var(--crm-muted); }
-#crm-app .crm-lead-focused .crm-lead-next-task { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 26px; padding-bottom: 20px; border-bottom: 1px solid var(--crm-line); }
-#crm-app .crm-lead-focused .crm-lead-next-task > div { display: grid; gap: 6px; }
-#crm-app .crm-lead-focused .crm-lead-next-task span { color: var(--crm-muted); font-size: 12px; }
-#crm-app .crm-lead-focused .crm-lead-next-task strong { font-size: 14px; font-weight: 500; }
-#crm-app .crm-lead-focused .crm-lead-next-task button { --btn-h: 32px; --btn-fs: 12px; flex-shrink: 0; }
-#crm-app .crm-lead-focused .crm-lead-conversation-summary h3,
-#crm-app .crm-lead-focused .crm-lead-record-details > h3 { margin: 0 0 14px; font-size: 15px; font-weight: 600; }
-#crm-app .crm-lead-focused .crm-lead-conversation-summary p { margin: 0; font-size: 15px; line-height: 1.8; color: var(--crm-ink); overflow-wrap: anywhere; white-space: pre-wrap; }
-#crm-app .crm-lead-focused .crm-lead-conversation-summary p.crm-lead-service { margin-bottom: 8px; font-size: 13px; color: var(--crm-muted); }
-#crm-app .crm-lead-focused .crm-lead-text-link { --btn-bg: transparent; --btn-shadow: none; display: inline-flex; min-height: 36px; margin-top: 12px; padding: 0; border: 0; border-radius: 0; font-size: 13px; color: var(--crm-ink); background: transparent; box-shadow: none; }
-#crm-app .crm-lead-focused .crm-lead-recent-contact { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--crm-line); }
-#crm-app .crm-lead-focused .crm-lead-recent-contact h3 { margin: 0; font-size: 12px; font-weight: 400; color: var(--crm-muted); }
-#crm-app .crm-lead-focused .crm-lead-recent-contact > div { display: grid; gap: 5px; text-align: right; }
-#crm-app .crm-lead-focused .crm-lead-recent-contact strong { font-size: 13px; font-weight: 500; }
-#crm-app .crm-lead-focused .crm-lead-recent-contact span { font-size: 12px; color: var(--crm-muted); }
-#crm-app .crm-lead-focused .crm-lead-fact-bar { display: grid; grid-template-columns: 1fr 1fr; padding: 0 0 20px; margin: 0 0 20px; border: 0; border-bottom: 1px solid var(--crm-line); border-radius: 0; background: transparent; box-shadow: none; }
-#crm-app .crm-lead-focused .crm-lead-fact-bar > div { min-height: 60px; padding: 0 16px 0 0; border: 0; }
-#crm-app .crm-lead-focused .crm-lead-fact-bar > div > strong { font-size: 20px; }
-#crm-app .crm-lead-focused .crm-lead-pipeline-select { display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 13px; }
-#crm-app .crm-lead-focused .crm-lead-pipeline-select select { max-width: 65%; min-height: 38px; padding: 6px 12px; font: inherit; border: 1px solid var(--crm-line); border-radius: 6px; color: inherit; background: transparent; }
-#crm-app .crm-lead-focused .crm-lead-attribution-list { display: block; margin: 20px 0 0; padding: 0; border: 0; }
-#crm-app .crm-lead-focused .crm-lead-attribution-list > div { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 20px; padding: 10px 0; border-bottom: 1px solid var(--crm-line); }
-#crm-app .crm-lead-focused .crm-lead-attribution-list dt { font-size: 13px; color: var(--crm-muted); }
-#crm-app .crm-lead-focused .crm-lead-attribution-list dd { margin: 0; font-size: 13px; font-weight: 400; overflow-wrap: anywhere; }
-#crm-app .crm-lead-focused .crm-lead-appointment-history { margin-top: 26px; }
-#crm-app .crm-lead-focused .crm-lead-appointment-history > div { display: grid; gap: 6px; margin: 14px 0; font-size: 13px; }
-#crm-app .crm-lead-focused .crm-lead-appointment-history span { color: var(--crm-muted); }
-#crm-app .crm-lead-focused .crm-lead-section-card { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
-#crm-app .crm-lead-focused :is(button, a, select, summary):focus-visible { outline: 2px solid var(--color-signal); outline-offset: 3px; }
+#crm-app .lead-record *, #crm-app .lead-record *::before, #crm-app .lead-record *::after { box-sizing: border-box; }
+#crm-app .lead-record :is(button, a, select, summary, input, textarea):focus-visible { outline: 2px solid #426b98; outline-offset: 3px; }
+#crm-app .lead-record :is(button, a) { -webkit-tap-highlight-color: transparent; }
+#crm-app .lead-record svg { width: 17px; height: 17px; flex-shrink: 0; }
+#crm-app .lead-record-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 30px 36px 18px; }
+#crm-app .lead-record-heading { min-width: 0; }
+#crm-app .lead-record-heading > p { margin: 0 0 10px; color: #707885; font-size: 12px; }
+#crm-app .lead-record-heading > p > span { padding: 0 8px; color: #bdc3cc; }
+#crm-app .lead-record-heading h2 { margin: 0 0 10px; font: 650 28px/1.25 var(--font-crm, Inter), system-ui, sans-serif; letter-spacing: -.025em; overflow-wrap: anywhere; }
+#crm-app .lead-record-status { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500; color: #476454; }
+#crm-app .lead-record-status::before { content: ''; width: 6px; height: 6px; background: currentColor; border-radius: 50%; }
+#crm-app .lead-record button.lead-record-close { --btn-h: 34px; --btn-px: 0; width: 34px; min-width: 34px; border-radius: 6px; background: #f5f6f8; color: #59616e; box-shadow: none; }
+#crm-app .lead-record-contact-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 36px 24px; }
+#crm-app .lead-record-contact-bar > span { font-size: 15px; color: #525d6a; overflow-wrap: anywhere; }
+#crm-app .lead-record-contact-bar > div { display: flex; gap: 8px; }
+#crm-app .lead-record-contact-bar a { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 0 14px; border: 1px solid #dfe3e8; border-radius: 7px; color: #384250; background: #fff; font-size: 13px; font-weight: 500; text-decoration: none; }
+#crm-app .lead-record-contact-bar a.lead-record-call { background: #253e42; color: #fff; border-color: #253e42; }
+#crm-app .lead-record-contact-bar a[aria-disabled="true"] { opacity: .4; pointer-events: none; }
+#crm-app .lead-record-nav { position: sticky; top: 0; z-index: 3; display: flex; gap: 22px; padding: 0 36px; overflow-x: auto; background: #fff; border-top: 1px solid #f0f1f3; border-bottom: 1px solid #e6e9ed; }
+#crm-app .lead-record-nav > button { --btn-h: 48px; --btn-px: 0; --btn-gap: 5px; flex: 0 0 auto; color: #717986; background: transparent; box-shadow: none; font-size: 13px; font-weight: 500; border-radius: 0; border-bottom: 2px solid transparent; }
+#crm-app .lead-record-nav > button.active { color: #253e42; border-bottom-color: #253e42; }
+#crm-app .lead-record-nav > button > span { color: #9198a3; font-size: 11px; }
+#crm-app .lead-record-content { padding: 0 36px 24px; }
+#crm-app .lead-record-section { padding: 26px 0; border-bottom: 1px solid #e8ebef; }
+#crm-app .lead-record-section > header { display: flex; align-items: baseline; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin-bottom: 17px; }
+#crm-app .lead-record-section h3 { margin: 0; color: #25303d; font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+#crm-app .lead-record-section > header > span { color: #818995; font-size: 12px; }
+#crm-app .lead-record-request > p { margin: 0; font-size: 14px; line-height: 1.85; color: #4b5563; white-space: pre-wrap; overflow-wrap: anywhere; }
+#crm-app .lead-record button.lead-record-link { --btn-h: 32px; --btn-px: 0; background: transparent; color: #426568; font-size: 12px; border-radius: 4px; box-shadow: none; }
+#crm-app .lead-record-request > button { margin-top: 10px; }
+#crm-app .lead-record-facts { display: grid; gap: 12px; margin: 0; }
+#crm-app .lead-record-facts > div { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 20px; align-items: baseline; }
+#crm-app .lead-record-facts dt { font-size: 13px; color: #7a8390; font-weight: 400; }
+#crm-app .lead-record-facts dd { margin: 0; font-size: 14px; color: #374151; overflow-wrap: anywhere; }
+#crm-app .lead-record-facts a { color: inherit; text-decoration: none; }
+#crm-app .lead-record-facts a:hover { text-decoration: underline; }
+#crm-app .lead-record .lead-record-missing { margin: 0; color: #9299a3; font-size: 13px; }
+#crm-app .lead-record-appointment { display: flex; align-items: center; gap: 13px; padding: 14px 16px; background: #f3f6f5; border-left: 3px solid #6e9081; border-radius: 0 6px 6px 0; }
+#crm-app .lead-record-appointment > svg { color: #668273; }
+#crm-app .lead-record-appointment > div { display: flex; flex: 1; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 16px; }
+#crm-app .lead-record-appointment strong { font-size: 14px; font-weight: 550; color: #385348; }
+#crm-app .lead-record-appointment span { color: #6d8278; font-size: 12px; }
+#crm-app .lead-record-followup { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-top: 18px; }
+#crm-app .lead-record-followup > div { display: grid; gap: 4px; }
+#crm-app .lead-record-followup span { color: #7a8390; font-size: 12px; }
+#crm-app .lead-record-followup strong { font-size: 13px; font-weight: 500; }
+#crm-app .lead-record button.lead-record-secondary { --btn-h: 36px; --btn-px: 12px; --btn-gap: 7px; flex-shrink: 0; color: #465260; border: 1px solid #dfe3e8; border-radius: 6px; background: #fff; font-size: 12px; box-shadow: none; }
+#crm-app .lead-record button:disabled { cursor: default; opacity: .5; }
+#crm-app .lead-record-fields { display: grid; gap: 14px; }
+#crm-app .lead-record-fields > :is(label, div) { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 20px; align-items: center; color: #78818e; font-size: 13px; }
+#crm-app .lead-record-fields :is(select, input) { width: 100%; min-width: 0; min-height: 40px; padding: 8px 12px; border: 1px solid #dfe4e9; border-radius: 6px; background-color: #fff; color: #374151; font: inherit; font-size: 14px; box-shadow: none; }
+#crm-app .lead-record-money { display: flex; align-items: center; gap: 8px; padding-left: 12px; border: 1px solid #dfe4e9; border-radius: 6px; }
+#crm-app .lead-record-fields .lead-record-money > input { border: 0; padding-left: 0; }
+#crm-app .lead-record-assignee strong { padding: 4px 0; color: #596370; font-size: 14px; font-weight: 400; }
+#crm-app .lead-record-management-footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 22px; }
+#crm-app .lead-record-management-footer > span { color: #7a8390; font-size: 12px; }
+#crm-app .lead-record-management-footer strong { margin-left: 8px; color: #465260; font-weight: 550; }
+#crm-app .lead-record-management-footer strong span { color: #9aa1aa; font-weight: 400; }
+#crm-app .lead-record-disclosure > summary { display: flex; align-items: center; gap: 12px; cursor: pointer; list-style: none; color: #465260; font-size: 13px; font-weight: 550; }
+#crm-app .lead-record-disclosure > summary::-webkit-details-marker { display: none; }
+#crm-app .lead-record-disclosure > summary > span { color: #939ba6; font-size: 12px; font-weight: 400; }
+#crm-app .lead-record-disclosure > summary > svg { margin-left: auto; width: 15px; height: 15px; color: #939ba6; }
+#crm-app .lead-record-disclosure[open] > summary > svg { transform: rotate(180deg); }
+#crm-app .lead-record-disclosure > dl { padding-top: 22px; }
+#crm-app .lead-record-section > .lead-record-disclosure { margin-top: 18px; }
+#crm-app .lead-record-appointment-history > div { display: grid; gap: 4px; margin-top: 14px; font-size: 13px; }
+#crm-app .lead-record-appointment-history span { color: #78818e; font-size: 12px; }
+#crm-app .lead-record-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 0; }
+#crm-app .lead-record-footer > span { color: #a0a6af; font-size: 11px; }
+#crm-app .lead-record button.lead-record-archive { color: #8f7777; font-size: 11px; }
+#crm-app .lead-record-content > .crm-lead-section-card { margin-top: 26px; padding: 0; border: 0; border-radius: 0; background: #fff; box-shadow: none; }
+#crm-app .lead-record-content > .crm-lead-transcripts { margin-top: 26px; }
+#crm-app .lead-record .crm-lead-section-heading { margin-bottom: 20px; }
+#crm-app .lead-record .crm-lead-section-heading h3 { font-size: 18px; }
+#crm-app .lead-record .crm-lead-section-heading p { font-size: 12px; }
+#crm-app .lead-record .crm-lead-notes-panel textarea { width: 100%; min-height: 110px; font-size: 14px; line-height: 1.6; }
 @media (max-width: 600px) {
-  #crm-app .crm-lead-page.crm-lead-focused { width: 100vw; }
-  #crm-app .crm-lead-focused .crm-lead-page-shell { padding: 0 20px 32px; }
-  #crm-app .crm-lead-focused .crm-lead-title-line h2 { font-size: 22px; }
-  #crm-app .crm-lead-focused .crm-lead-contact-actions { margin-left: 0; width: 100%; }
-  #crm-app .crm-lead-focused .crm-lead-contact-actions a { flex: 1; min-width: 0; }
-  #crm-app .crm-lead-focused .crm-lead-tabs { gap: 14px; }
-  #crm-app .crm-lead-focused .crm-lead-tabs > button { font-size: 12px; }
-  #crm-app .crm-lead-focused .crm-lead-more-nav { max-width: 90px; font-size: 12px; }
-  #crm-app .crm-lead-focused .crm-lead-appointment-strip { flex-wrap: wrap; }
-  #crm-app .crm-lead-focused .crm-lead-attribution-list > div { grid-template-columns: 110px minmax(0, 1fr); gap: 12px; }
+  #crm-app .lead-record-header { padding: 24px 22px 16px; }
+  #crm-app .lead-record-heading h2 { font-size: 23px; }
+  #crm-app .lead-record-contact-bar { padding: 0 22px 20px; flex-wrap: wrap; }
+  #crm-app .lead-record-nav { gap: 20px; padding-inline: 22px; }
+  #crm-app .lead-record-content { padding-inline: 22px; }
+  #crm-app .lead-record-facts > div, #crm-app .lead-record-fields > :is(label, div) { grid-template-columns: 105px minmax(0, 1fr); gap: 14px; }
+  #crm-app .lead-record-section { padding-block: 23px; }
+  #crm-app .lead-record-section > header { align-items: flex-start; flex-direction: column; }
 }
 @media (max-width: 380px) {
-  #crm-app .crm-lead-focused .crm-lead-page-shell { padding-inline: 14px; }
-  #crm-app .crm-lead-focused .crm-lead-tabs { gap: 10px; }
-  #crm-app .crm-lead-focused .crm-lead-tabs button small { display: none; }
+  #crm-app .lead-record-fields > :is(label, div) { grid-template-columns: 1fr; gap: 6px; }
+  #crm-app .lead-record-facts > div { grid-template-columns: 85px minmax(0, 1fr); gap: 10px; }
 }
