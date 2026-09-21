@@ -13,9 +13,9 @@ import {
 import {
   Activity as ActivityIcon,
   Award,
-  Check,
   ChevronDown,
-  ClipboardList,
+  CalendarDays,
+  Check,
   FileText,
   Mail,
   MessageCircle,
@@ -610,7 +610,8 @@ type LeadDetailTab =
   | "notes"
   | "tasks"
   | "files"
-  | "transcript";
+  | "transcript"
+  | "details";
 
 function formatLeadPhone(value: string | null) {
   if (!value) return "Not provided";
@@ -774,17 +775,10 @@ export function LeadDetail({
   }
 
   const tabs = [
-    { id: "overview", label: "Overview", icon: ClipboardList },
-    { id: "activity", label: "Activity", icon: ActivityIcon },
-    { id: "notes", label: "Notes", icon: NotebookPen, count: leadNotes.length },
-    { id: "tasks", label: "Tasks", icon: Check, count: leadTasks.length },
-    { id: "files", label: "Files", icon: FileText },
-    {
-      id: "transcript",
-      label: "Transcript",
-      icon: MessageCircle,
-      count: leadCalls.length,
-    },
+    { id: "overview", label: "Overview" },
+    { id: "transcript", label: "Calls", count: leadCalls.length },
+    { id: "notes", label: "Notes", count: leadNotes.length },
+    { id: "details", label: "Details" },
   ] as const;
   const displayName =
     [lead.firstName, lead.lastName].filter(Boolean).join(" ") || "Unknown lead";
@@ -803,7 +797,7 @@ export function LeadDetail({
       }}
     >
       <section
-        className="crm-lead-page crm-lead-simple"
+        className="crm-lead-page crm-lead-focused"
         role="dialog"
         aria-modal="true"
         aria-label={`Lead details for ${displayName}`}
@@ -820,7 +814,7 @@ export function LeadDetail({
               >
                 <X aria-hidden="true" />
               </button>
-              <strong>{lead.serviceRequested || lead.source || "Lead"}</strong>
+              <strong>Lead details</strong>
             </div>
             <div className="crm-lead-toolbar-actions">
               <details className="crm-lead-status-menu">
@@ -930,47 +924,57 @@ export function LeadDetail({
             </div>
           </section>
 
-          <nav ref={tabListRef} className="crm-lead-tabs" aria-label="Lead details">
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={activeTab === tab.id}
-                  className={activeTab === tab.id ? "active" : ""}
-                  onClick={() => setActiveTab(tab.id)}
-                >
-                  <Icon aria-hidden="true" />
-                  <span>{tab.label}</span>
-                  {"count" in tab && tab.count ? <small>{tab.count}</small> : null}
-                </button>
-              );
-            })}
+          <nav ref={tabListRef} className="crm-lead-tabs" aria-label="Lead sections">
+            {tabs.map((tab) => (
+              <button key={tab.id} type="button" aria-current={activeTab === tab.id ? "page" : undefined}
+                className={activeTab === tab.id ? "active" : ""} onClick={() => setActiveTab(tab.id)}>
+                {tab.label}{"count" in tab && tab.count ? <small>{tab.count}</small> : null}
+              </button>
+            ))}
+            <select className="crm-lead-more-nav" aria-label="More lead sections"
+              value={["activity", "tasks", "files"].includes(activeTab) ? activeTab : ""}
+              onChange={(event) => setActiveTab(event.target.value as LeadDetailTab)}>
+              <option value="" disabled>More</option>
+              <option value="activity">Activity</option>
+              <option value="tasks">Tasks{leadTasks.length ? ` (${leadTasks.length})` : ""}</option>
+              <option value="files">Files</option>
+            </select>
           </nav>
 
-          <main className="crm-lead-tab-content" role="tabpanel">
+          <main className="crm-lead-tab-content" aria-label={activeTab === "transcript" ? "Calls" : activeTab}>
             {activeTab === "overview" ? (
               <div className="crm-lead-overview">
-                <section className="crm-lead-section-card crm-lead-message-card">
-                  <MessageCircle aria-hidden="true" />
-                  <div>
-                    <h3>Customer message</h3>
-                    <p>{lead.message || "No customer message available"}</p>
+                {lead.appointmentStart ? (
+                  <section className="crm-lead-appointment-strip" aria-label="Appointment">
+                    <span className="crm-lead-appointment-icon"><CalendarDays aria-hidden="true" /></span>
+                    <div><span>Appointment</span><strong>{dateTime(lead.appointmentStart)}</strong></div>
+                    <span className="crm-lead-appointment-state">{humanizeLeadValue(lead.appointmentStatus) || "Scheduled"}</span>
+                  </section>
+                ) : null}
+                {primaryTask ? (
+                  <section className="crm-lead-next-task">
+                    <div><span>Next task &middot; {shortDate(primaryTask.dueAt)}</span><strong>{primaryTask.title}</strong></div>
+                    <button type="button" onClick={() => setActiveTab("tasks")}>View task</button>
+                  </section>
+                ) : null}
+                <section className="crm-lead-conversation-summary">
+                  <h3>Customer message</h3>
+                  {lead.serviceRequested && lead.serviceRequested.toLowerCase() !== "phone call" ? <p className="crm-lead-service">{lead.serviceRequested}</p> : null}
+                  <p>{lead.message || "No customer message recorded yet."}</p>
+                  {leadCalls.length ? <button type="button" className="crm-lead-text-link" onClick={() => setActiveTab("transcript")}>View calls &amp; transcripts <span aria-hidden="true">&rarr;</span></button> : null}
+                </section>
+                <section className="crm-lead-recent-contact">
+                  <h3>Last contact</h3>
+                  <div><strong>{lead.lastContactedAt ? dateTime(lead.lastContactedAt) : "No contact recorded"}</strong>
+                    {latestCall ? <span>{latestCall.answered === true ? "Answered call" : latestCall.answered === false ? "Missed call" : "Phone call"} &middot; {formatCallDuration(latestCall.durationSeconds)}</span> : null}
                   </div>
                 </section>
+              </div>
+            ) : null}
 
-                <section className="crm-lead-section-card crm-lead-next-step">
-                  <h3>At a glance</h3>
-                  <dl>
-                    {lead.appointmentStart ? <div><dt>Appointment</dt><dd>{dateTime(lead.appointmentStart)} &middot; {humanizeLeadValue(lead.appointmentStatus) || "Not set"}</dd></div> : null}
-                    {lead.lastContactedAt ? <div><dt>Last contact</dt><dd>{dateTime(lead.lastContactedAt)}</dd></div> : null}
-                    {lead.serviceRequested ? <div><dt>Requested service</dt><dd>{lead.serviceRequested}</dd></div> : null}
-                  </dl>
-                </section>
-                <details className="crm-lead-section-card crm-lead-more-details">
-                  <summary>Lead details <span>Value, pipeline &amp; tracking</span><ChevronDown aria-hidden="true" /></summary>
+            {activeTab === "details" ? (
+              <section className="crm-lead-record-details">
+                <h3>Lead details</h3>
           <section className="crm-lead-fact-bar" aria-label="Lead summary">
             <div className="crm-lead-value-inline">
               <span>Est. value</span>
@@ -1019,63 +1023,12 @@ export function LeadDetail({
                     <div><dt>Consent</dt><dd>{humanizeLeadValue(lead.consentStatus)}</dd></div>
                     <div><dt>Added</dt><dd>{dateTime(lead.createdAt)}</dd></div>
                   </dl>
-                </details>
 
-                {primaryTask ? <section className="crm-lead-followup-card">
-                  <span><Phone aria-hidden="true" /></span>
-                  <div>
-                    <strong>
-                      {primaryTask?.title ?? `Follow up with ${displayName}`}
-                    </strong>
-                    <p>
-                      Outbound call
-                      {primaryTask ? ` · Due ${shortDate(primaryTask.dueAt)}` : ""}
-                    </p>
-                  </div>
-                  <div className="crm-lead-followup-actions">
-                    <a
-                      href={lead.phone ? `tel:${lead.phone}` : undefined}
-                      aria-disabled={!lead.phone}
-                    >
-                      Call now
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("tasks")}
-                      aria-label="View lead tasks"
-                      title="View lead tasks"
-                    >
-                      <ChevronDown aria-hidden="true" />
-                    </button>
-                  </div>
+                {leadAppointments.length ? <section className="crm-lead-appointment-history">
+                  <h3>Appointments</h3>
+                  {leadAppointments.map((appointment) => <div key={appointment.id}><strong>{appointment.serviceType}</strong><span>{dateTime(appointment.startsAt)} &middot; {humanizeLeadValue(appointment.status)}</span></div>)}
                 </section> : null}
-
-                <section className="crm-lead-related-grid crm-lead-reference-extras">
-                  <article className="crm-lead-section-card">
-                    <header><h3>Tasks</h3><Badge tone="neutral">{leadTasks.length}</Badge></header>
-                    {leadTasks.slice(0, 3).map((task) => (
-                      <div key={task.id}>
-                        <strong>{task.title}</strong>
-                        <span>{humanizeLeadValue(task.status)} · {shortDate(task.dueAt)}</span>
-                      </div>
-                    ))}
-                    {!leadTasks.length ? <p>No tasks for this lead.</p> : null}
-                    {leadTasks.length > 3 ? (
-                      <button type="button" onClick={() => setActiveTab("tasks")}>View all tasks</button>
-                    ) : null}
-                  </article>
-                  <article className="crm-lead-section-card">
-                    <header><h3>Appointments</h3><Badge tone="neutral">{leadAppointments.length}</Badge></header>
-                    {leadAppointments.slice(0, 3).map((appointment) => (
-                      <div key={appointment.id}>
-                        <strong>{appointment.serviceType}</strong>
-                        <span>{dateTime(appointment.startsAt)} · {humanizeLeadValue(appointment.status)}</span>
-                      </div>
-                    ))}
-                    {!leadAppointments.length ? <p>No appointments for this lead.</p> : null}
-                  </article>
-                </section>
-              </div>
+              </section>
             ) : null}
 
             {activeTab === "activity" ? (
