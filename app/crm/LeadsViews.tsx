@@ -1064,12 +1064,12 @@ export function LeadDetail({
                       <div><dt>Requested service</dt><dd>{lead.serviceRequested || "Not provided"}</dd></div>
                       <div><dt>First contact</dt><dd>{dateTime(lead.firstContactedAt ?? lead.createdAt)}</dd></div>
                       <div><dt>Last contact</dt><dd>{lead.lastContactedAt ? dateTime(lead.lastContactedAt) : "Not provided"}</dd></div>
-                      <div><dt>Appointment status</dt><dd>{humanizeLeadValue(lead.appointmentStatus)}</dd></div>
+                      <div><dt>Appointment status</dt><dd>{humanizeLeadValue(lead.appointmentStatus) || "Not set"}</dd></div>
                       <div><dt>Appointment</dt><dd>{lead.appointmentStart ? dateTime(lead.appointmentStart) : "Not provided"}</dd></div>
                       <div><dt>Tracking number</dt><dd>{latestCall ? formatLeadPhone(latestCall.trackingPhoneNumber) : "Not provided"}</dd></div>
                       <div><dt>Number called</dt><dd>{latestCall ? formatLeadPhone(latestCall.businessPhoneNumber) : "Not provided"}</dd></div>
                       <div><dt>Latest call</dt><dd>{latestCall ? `${latestCall.answered === true ? "Answered" : latestCall.answered === false ? "Missed" : "Unknown"} · ${formatCallDuration(latestCall.durationSeconds)}` : "Not provided"}</dd></div>
-                      <div><dt>Assigned to</dt><dd>{lead.assignedUser ?? "Unassigned"}</dd></div>
+                      <div><dt>Assigned to</dt><dd>{lead.assignedUser?.trim() || "Unassigned"}</dd></div>
                     </dl>
                   </div>
                 </section>
