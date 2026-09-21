@@ -708,6 +708,11 @@ function InboxPanel({
           </div>
           {reviewLoadStatus === "loading" ? (
             <div className="crm-review-inbox-list-empty" aria-live="polite">
+              <span className="crm-loading-dots" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
               <strong>Loading from Google</strong>
               <p>Only real reviews will appear here.</p>
             </div>

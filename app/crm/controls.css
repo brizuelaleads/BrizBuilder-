@@ -1,6 +1,6 @@
 /* Controls: buttons, tabs, search, checkboxes, switches, notifications and stat
  * cards as one system, built from the .cir-btn, .cir-tabs, .cir-search,
- * .cir-check, .cir-toggle, .cir-note and .cir-stat specs. Buttons follow .cir-btn
+ * .cir-check, .cir-toggle, .cir-note, .cir-stat and .cir-load specs. Buttons follow .cir-btn
  * (ink pill, 48px, Inter 15/500, layered shadow, 140/220ms expo-out easing,
  * lift on hover, blue focus halo, 1px press).
  *
@@ -26,6 +26,8 @@
   --color-edge: #e3e8ee;
   --color-mist: #5b6472;
   --color-signal: #2e7def;
+  --color-citrus: #ff7a3d;
+  --color-meadow: #2bc48a;
   --cir-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --cir-font: var(--font-crm, "Inter"), "Inter", system-ui, -apple-system, sans-serif;
 }
@@ -776,6 +778,50 @@
     & i, & span::before { border-radius: 50%; }
   }
 
+  /* ---- Loading (the .cir-load spec) --------------------------------------
+   * Three dots pulsing in sequence, in a quiet pill when the whole app is
+   * working. The dots are reusable on their own for a panel that is loading. */
+  & .crm-loading-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    & > i {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--color-signal);
+      animation: cir-load-pulse 1.2s var(--cir-ease) infinite;
+    }
+    & > i:nth-child(2) { background: var(--color-citrus); animation-delay: 0.16s; }
+    & > i:nth-child(3) { background: var(--color-meadow); animation-delay: 0.32s; }
+  }
+  /* The app-wide indicator: a pill that floats clear of the page content. */
+  & .crm-busy {
+    position: fixed;
+    inset: auto auto 24px 50%;
+    z-index: 150;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    width: auto;
+    height: auto;
+    padding: 10px 18px 10px 14px;
+    border: 1px solid var(--color-edge);
+    border-radius: 999px;
+    background: var(--color-cloud);
+    box-shadow:
+      0 1px 1px rgba(14, 17, 22, 0.04),
+      0 18px 36px -24px rgba(14, 17, 22, 0.18);
+    font-family: var(--cir-font);
+    font-size: 13.5px;
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    color: var(--color-ink);
+    animation: none;
+  }
+  & .crm-review-inbox-list-empty .crm-loading-dots { margin-bottom: 10px; }
+
   /* Selects that share a row with a search or buttons take the same shell. */
   & :is(.crm-topbar-actions, .crm-cal-toolbar-end, .crm-filterbar, .crm-mobile-filterbar, .crm-integrations-toolbar) > select {
     height: 48px;
@@ -846,4 +892,11 @@
 @media (prefers-reduced-motion: reduce) {
   :is(#crm-app, .client-portal, .auth-page) :is(button, a, summary) { transition: none; }
   :is(#crm-app, .client-portal, .auth-page) :is(button, a, summary):active { transform: none; }
+  /* The loading dots hold still rather than pulsing. */
+  :is(#crm-app, .client-portal, .auth-page) .crm-loading-dots > i { animation: none; opacity: 1; transform: none; }
+}
+
+@keyframes cir-load-pulse {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
 }

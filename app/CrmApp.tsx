@@ -1731,7 +1731,16 @@ export function CrmApp({
           </div>
         </div>
       ) : null}
-      {busy ? <div className="crm-busy" aria-hidden="true" /> : null}
+      {busy ? (
+        <div className="crm-busy" role="status">
+          <span className="crm-loading-dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+          <span className="crm-busy-text">Working…</span>
+        </div>
+      ) : null}
     </div>
   );
 }
