@@ -815,10 +815,11 @@ export function LeadDetail({
         <main className="lead-record-content" aria-label={activeTab === "transcript" ? "Calls" : activeTab}>
           {activeTab === "overview" ? (
             <div className="lead-record-overview">
-              <section className="lead-record-section lead-record-request">
-                <header><h3>Customer request</h3>{lead.serviceRequested ? <span>{lead.serviceRequested}</span> : null}</header>
-                <p>{lead.message || "No customer message recorded yet."}</p>
-                {leadCalls.length ? <button className="lead-record-link" type="button" onClick={() => setActiveTab("transcript")}>Read call transcripts <span aria-hidden="true">&rarr;</span></button> : null}
+              <section className="lead-record-section">
+                <header><h3>Appointment &amp; follow-up</h3></header>
+                {lead.appointmentStart ? <div className="lead-record-appointment"><CalendarDays aria-hidden="true" /><div><strong>{dateTime(lead.appointmentStart)}</strong><span>{humanizeLeadValue(lead.appointmentStatus) || "Scheduled"}</span></div></div> : <p className="lead-record-missing">No appointment scheduled.</p>}
+                {primaryTask ? <div className="lead-record-followup"><div><span>Next task &middot; {shortDate(primaryTask.dueAt)}</span><strong>{primaryTask.title}</strong></div><button type="button" className="lead-record-secondary" onClick={() => setActiveTab("tasks")}>View task</button></div> : null}
+                {leadAppointments.length ? <details className="lead-record-disclosure"><summary>Appointment history <span>{leadAppointments.length}</span><ChevronDown aria-hidden="true" /></summary><div className="lead-record-appointment-history">{leadAppointments.map((appointment) => <div key={appointment.id}><strong>{appointment.serviceType}</strong><span>{dateTime(appointment.startsAt)} &middot; {humanizeLeadValue(appointment.status)}</span></div>)}</div></details> : null}
               </section>
 
               <section className="lead-record-section">
@@ -829,13 +830,6 @@ export function LeadDetail({
                   <div><dt>Address</dt><dd>{[lead.address, lead.city, lead.state, lead.zip].filter(Boolean).join(", ") || <span className="lead-record-missing">Not provided</span>}</dd></div>
                   <div><dt>Last contact</dt><dd>{lead.lastContactedAt ? dateTime(lead.lastContactedAt) : <span className="lead-record-missing">No contact recorded</span>}</dd></div>
                 </dl>
-              </section>
-
-              <section className="lead-record-section">
-                <header><h3>Appointment &amp; follow-up</h3></header>
-                {lead.appointmentStart ? <div className="lead-record-appointment"><CalendarDays aria-hidden="true" /><div><strong>{dateTime(lead.appointmentStart)}</strong><span>{humanizeLeadValue(lead.appointmentStatus) || "Scheduled"}</span></div></div> : <p className="lead-record-missing">No appointment scheduled.</p>}
-                {primaryTask ? <div className="lead-record-followup"><div><span>Next task &middot; {shortDate(primaryTask.dueAt)}</span><strong>{primaryTask.title}</strong></div><button type="button" className="lead-record-secondary" onClick={() => setActiveTab("tasks")}>View task</button></div> : null}
-                {leadAppointments.length ? <details className="lead-record-disclosure"><summary>Appointment history <span>{leadAppointments.length}</span><ChevronDown aria-hidden="true" /></summary><div className="lead-record-appointment-history">{leadAppointments.map((appointment) => <div key={appointment.id}><strong>{appointment.serviceType}</strong><span>{dateTime(appointment.startsAt)} &middot; {humanizeLeadValue(appointment.status)}</span></div>)}</div></details> : null}
               </section>
 
               <section className="lead-record-section">
@@ -852,6 +846,12 @@ export function LeadDetail({
                   <div className="lead-record-assignee"><span>Assigned to</span><strong>{lead.assignedUser?.trim() || "Unassigned"}</strong></div>
                 </div>
                 <div className="lead-record-management-footer"><span>Lead score <strong>{lead.leadScore}<span> / 100</span></strong></span><button type="button" className="lead-record-secondary" disabled={lead.status === "WON"} onClick={() => void mutate({ action: "update_lead", leadId: lead.id, status: "WON", finalRevenueCents: lead.finalRevenueCents || lead.estimatedValueCents }, "Lead marked as won")}><Award aria-hidden="true" />{lead.status === "WON" ? "Won" : "Mark as won"}</button></div>
+              </section>
+
+              <section className="lead-record-section lead-record-request">
+                <header><h3>Call summary</h3>{lead.serviceRequested ? <span>{lead.serviceRequested}</span> : null}</header>
+                <p>{lead.message || "No customer message recorded yet."}</p>
+                {leadCalls.length ? <button className="lead-record-link" type="button" onClick={() => setActiveTab("transcript")}>Read call transcripts <span aria-hidden="true">&rarr;</span></button> : null}
               </section>
 
               <details className="lead-record-section lead-record-disclosure">
