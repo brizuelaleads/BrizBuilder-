@@ -1,5 +1,6 @@
-/* Controls: buttons, tabs, search and checkboxes as one system, built from the
- * .cir-btn, .cir-tabs, .cir-search and .cir-check specs. Buttons follow .cir-btn
+/* Controls: buttons, tabs, search, checkboxes, switches, notifications and stat
+ * cards as one system, built from the .cir-btn, .cir-tabs, .cir-search,
+ * .cir-check, .cir-toggle, .cir-note and .cir-stat specs. Buttons follow .cir-btn
  * (ink pill, 48px, Inter 15/500, layered shadow, 140/220ms expo-out easing,
  * lift on hover, blue focus halo, 1px press).
  *
@@ -659,6 +660,120 @@
   }
   & .crm-error-toast {
     & > .crm-toast-icon { background: #fff1f0; color: #b42318; }
+  }
+
+  /* ---- Stat cards (the .cir-stat spec) -----------------------------------
+   * Label in mist, the number large in Inter Tight, the change under it, and
+   * the card's own progress bar or trend line kept where it already was.
+   * Cards that stand on their own take the 28px radius; tiles nested inside a
+   * panel take 16px so the panel still reads as the outer surface. */
+  & :is(.crm-dashboard-kpi-card, .crm-call-metrics > article, .crm-ads-metrics > article,
+      .crm-review-metrics > article, .crm-review-request-metrics > article, .crm-website-metrics > article,
+      .crm-conversation-metrics > article, .crm-preview-metrics > article, .crm-lead-summary-strip > article,
+      .crm-integrations-summary > article) {
+    padding: 22px 24px 18px;
+    border: 1px solid var(--color-edge);
+    border-radius: 28px;
+    background: var(--color-cloud);
+    box-shadow:
+      0 1px 1px rgba(14, 17, 22, 0.04),
+      0 20px 40px -24px rgba(14, 17, 22, 0.18);
+    color: var(--color-ink);
+
+    /* Label */
+    & > :is(span, .crm-dashboard-kpi-heading), & .crm-dashboard-kpi-heading {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--color-mist);
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      & svg { width: 14px; height: 14px; }
+    }
+    /* Value */
+    & > strong, & .crm-dashboard-card-text > strong {
+      font-family: var(--font-crm-tight, "Inter Tight"), var(--cir-font);
+      font-size: 36px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.025em;
+      font-variant-numeric: tabular-nums;
+      color: var(--color-ink);
+    }
+    /* Change */
+    & > small, & .crm-dashboard-card-text > small {
+      margin-top: 8px;
+      color: var(--color-mist);
+      font-size: 13px;
+      font-weight: 500;
+    }
+  }
+  /* The trend colours the change line: green up, red down, mist when flat.
+   * The spec green (#2bc48a) reads 2.25:1 on white, so the text uses a darker
+   * green of the same hue at 4.9:1 and the shared danger red at 6.5:1. */
+  & .crm-dashboard-kpi-card.is-trend-up .crm-dashboard-card-text > small { color: #12805a; }
+  & .crm-dashboard-kpi-card.is-trend-down .crm-dashboard-card-text > small { color: #b42318; }
+  & .crm-dashboard-kpi-card {
+    & .crm-dashboard-card-text { padding: 0; gap: 8px; }
+    & .crm-dashboard-card-image { margin-top: 18px; padding: 0; height: 56px; min-height: 56px; }
+    & .crm-dashboard-icon-box { top: 22px; right: 24px; width: 28px; height: 28px; border-radius: 999px; background: #f3f6fa; color: var(--color-mist); }
+    & .crm-dashboard-icon-box svg { width: 14px; height: 14px; }
+    & .crm-dashboard-kpi-card-image { padding: 0; }
+  }
+  /* Metric icons match the stat card's tile: a quiet round mark, not a chip. */
+  & :is(.crm-call-metrics, .crm-ads-metrics, .crm-review-metrics, .crm-conversation-metrics) > article > svg {
+    width: 28px;
+    height: 28px;
+    padding: 7px;
+    border-radius: 999px;
+    background: #f3f6fa;
+    color: var(--color-mist);
+  }
+  /* The strip is now a row of cards, so it drops its own frame. */
+  & .crm-lead-summary-strip {
+    gap: 16px;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    & > article { min-height: 0; border-color: var(--color-edge); }
+  }
+
+  /* Tiles that sit inside a panel keep the language at panel scale. */
+  & :is(.crm-dashboard-pipeline-stage, .crm-dashboard-marketing-card) {
+    border-radius: 16px;
+    & > span { color: var(--color-mist); font-size: 12px; font-weight: 500; letter-spacing: 0.01em; }
+    & > strong {
+      font-family: var(--font-crm-tight, "Inter Tight"), var(--cir-font);
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.025em;
+      font-variant-numeric: tabular-nums;
+    }
+    & > small { color: var(--color-mist); font-size: 13px; font-weight: 500; }
+  }
+  /* Progress bars stay where they are, in the spec's track. */
+  & :is(.crm-dashboard-pipeline-stage > i, .crm-dashboard-marketing-progress, .crm-funnel i) {
+    height: 8px;
+    margin-top: 18px;
+    border-radius: 999px;
+    background: #f3f6fa;
+    overflow: hidden;
+  }
+  & :is(.crm-dashboard-pipeline-stage > i, .crm-dashboard-marketing-progress)::after,
+  & .crm-funnel i > b {
+    border-radius: 999px;
+    background: var(--color-ink);
+    box-shadow: none;
+  }
+  /* Legends read as small keyed dots. */
+  & .crm-dashboard-source-snapshot li {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--color-mist);
+    & i, & span::before { border-radius: 50%; }
   }
 
   /* Selects that share a row with a search or buttons take the same shell. */
