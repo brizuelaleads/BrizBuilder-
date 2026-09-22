@@ -1356,3 +1356,7 @@
 #crm-app .crm-website-toolbar > div:first-child > p.crm-website-overview { display: flex; margin: 0; gap: 8px 20px; flex-wrap: wrap; font-size: 12px; line-height: 18px; }
 #crm-app .crm-website-toolbar > .crm-button-primary { --btn-h: 40px; --btn-px: 18px; --btn-fs: 14px; flex-shrink: 0; }
 @media(max-width: 600px) { #crm-app .crm-websites-view .crm-website-toolbar { align-items: flex-start; } #crm-app .crm-website-toolbar > div:first-child { flex: none; } }
+
+#crm-app .crm-websites-view .crm-website-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 0; }
+#crm-app .crm-websites-view .crm-website-metrics > article { min-width: 0; display: grid; gap: 8px; }
+@media(max-width: 600px) { #crm-app .crm-websites-view .crm-website-metrics { grid-template-columns: 1fr; } }
