@@ -137,13 +137,9 @@ export function WebsitesView({ websites, clients, leads, connections, mutate, ca
   }
 
   return <div className="crm-view crm-websites-view">
-    <section className="crm-page-heading"><div><p>WEBSITE CONNECTIONS</p><h2>Send website leads into the CRM</h2><span>Add a website, then send the provided instructions to whoever manages that website. New form requests will appear as CRM leads.</span></div>{canManage ? <button className="crm-button-primary" onClick={() => setEditing(null)}>+ Add a Website</button> : null}</section>
+    <section className="crm-page-heading"><div><h2>Websites</h2><span>Manage your websites and connect their forms to BrizBuilder.</span></div>{canManage ? <button className="crm-button-primary" onClick={() => setEditing(null)}>+ Add website</button> : null}</section>
 
-    <section className="crm-website-metrics">
-      <article><span>Connected websites</span><strong>{connected}</strong><small>{websites.length - connected} disconnected</small></article>
-      <article><span>Website leads</span><strong>{websiteLeads.length}</strong><small>Captured into this CRM view</small></article>
-      <article><span>Lead capture setup</span><strong>{connected ? "Ready" : "Not set"}</strong><small>{connected ? "Send the setup message to your website person" : "Add a website to begin"}</small></article>
-    </section>
+    <div className="crm-website-overview" aria-label="Website overview"><span><strong>{websites.length}</strong> websites</span><span><strong>{connected}</strong> enabled</span><span><strong>{websiteLeads.length}</strong> website leads</span></div>
 
     {!websites.length ? <EmptyState title="No websites added yet" description="Start by entering the client’s website address. BrizBuilder will then give you a ready-to-send message for the person who manages the website." action={canManage && clients.length ? <button className="crm-button-primary" onClick={() => setEditing(null)}>Add your first website</button> : null} /> : <div className="crm-website-layout">
       <section className="crm-website-list" aria-label="Website connections">
@@ -151,7 +147,7 @@ export function WebsitesView({ websites, clients, leads, connections, mutate, ca
         {websites.map((website) => {
           const client = clients.find((item) => item.id === website.clientId);
           const leadCount = websiteLeads.filter((lead) => lead.clientId === website.clientId).length;
-          return <button key={website.id} className={selected?.id === website.id ? "active" : ""} onClick={() => setSelectedId(website.id)}>
+          return <button key={website.id} className={selected?.id === website.id ? "active" : ""} aria-pressed={selected?.id === website.id} onClick={() => { setSelectedId(website.id); setDniLink(""); }}>
             <span className="crm-website-icon">{website.name.slice(0, 1).toUpperCase()}</span>
             <span><strong>{website.name}</strong><small>{client?.businessName ?? "Client"} · {leadCount} website lead{leadCount === 1 ? "" : "s"}</small></span>
             <Badge tone={website.status !== "connected" ? "neutral" : website.lastLeadAt ? "green" : "orange"}>{website.status !== "connected" ? "Disconnected" : website.lastLeadAt ? "Working" : "Setup needed"}</Badge>
@@ -160,7 +156,7 @@ export function WebsitesView({ websites, clients, leads, connections, mutate, ca
       </section>
 
       {selected ? <section className="crm-website-detail">
-        <header><div><p>CONNECTION DETAILS</p><h3>{selected.name}</h3><span>{clients.find((client) => client.id === selected.clientId)?.businessName}</span></div><div className="crm-website-actions">{selected.domain ? <a className="crm-button-secondary" href={`https://${selected.domain}`} target="_blank" rel="noreferrer">Open Site</a> : null}{canManage ? <button className="crm-button-secondary" onClick={() => setEditing(selected)}>Edit</button> : null}</div></header>
+        <header><div><h3>{selected.name}</h3><span>{clients.find((client) => client.id === selected.clientId)?.businessName}</span></div><div className="crm-website-actions">{selected.domain ? <a className="crm-button-secondary" href={`https://${selected.domain}`} target="_blank" rel="noreferrer">Open Site</a> : null}{canManage ? <button className="crm-button-secondary" onClick={() => setEditing(selected)}>Edit</button> : null}</div></header>
         <div className="crm-website-status-grid">
           <div><span>Domain</span><strong>{selected.domain ?? "Not set"}</strong></div>
           <div><span>Platform</span><strong>{platformNames[selected.platform] ?? selected.platform}</strong></div>
@@ -168,14 +164,9 @@ export function WebsitesView({ websites, clients, leads, connections, mutate, ca
           <div><span>Last website lead</span><strong>{selected.lastLeadAt ? shortDate(selected.lastLeadAt) : "None yet"}</strong></div>
         </div>
         <section className="crm-capture-setup">
-          <div><p>STEP 2 OF 2</p><h4>Ask your website person to connect the form</h4><span>You do not need to understand code. Follow these three steps.</span></div>
-          <div className="crm-owner-steps">
-            <article><b>1</b><span><strong>Copy the setup message</strong><small>Use the copy button below.</small></span></article>
-            <article><b>2</b><span><strong>Send it to your website person</strong><small>Email or text it to whoever built or manages the website.</small></span></article>
-            <article><b>3</b><span><strong>Submit one test form</strong><small>When the test lead appears in the CRM, the status changes to Working.</small></span></article>
-          </div>
-          <div className="crm-owner-handoff"><div><strong>Message for your website person</strong><p>Everything they need—including the special connection URL—is already included.</p></div><button onClick={() => void copyText(handoffMessage(selected), () => markCopied("message"))}>{copied === "message" ? "Message copied!" : "Copy Message to Send"}</button></div>
-          <div className="crm-help-note"><span>?</span><p><strong>Not sure who manages the website?</strong> Ask the person or company you pay for website updates, hosting, or online marketing. Send them the copied message.</p></div>
+          <div><h4>{selected.lastLeadAt ? "Form connection" : "Connect your website form"}</h4><span>{selected.lastLeadAt ? "Setup instructions are available whenever your website needs an update." : "Send the setup message to your website manager, then submit a test form."}</span></div>
+          <div className="crm-owner-handoff"><div><strong>Website setup message</strong><p>Includes your connection URL, required fields, and testing instructions.</p></div><button onClick={() => void copyText(handoffMessage(selected), () => markCopied("message"))}>{copied === "message" ? "Message copied!" : "Copy setup message"}</button></div>
+          <details className="crm-website-help"><summary>Who should I send this to?</summary><p>Send the message to the person or company who manages your website, hosting, or online marketing. Ask them to submit a test form after connecting it.</p></details>
           <CallRailDniSetup
             connection={connections.find((item) => item.clientId === selected.clientId && item.provider === "callrail") ?? null}
             canManage={canManage}
@@ -187,7 +178,7 @@ export function WebsitesView({ websites, clients, leads, connections, mutate, ca
               setDniLink(result?.url ?? "");
             }}
           />
-          <details><summary>For website professionals only</summary><p>Lead-capture URL:</p><div className="crm-copy-row"><code>{endpointFor(selected.id)}</code><button onClick={() => void copyText(endpointFor(selected.id), () => markCopied("url"))}>{copied === "url" ? "Copied" : "Copy URL"}</button></div><p>Send a JSON POST request with at least a phone number or email. Supported fields: firstName, lastName, name, phone, email, service, message, address, city, state, zip, campaign, and consent. For paid traffic also send pageUrl, fbclid and any utm_ values from the landing page URL, plus eventId if the page runs a Meta Pixel.</p><pre>{captureSnippet(selected.id)}</pre><button className="crm-button-secondary" onClick={() => void copyText(captureSnippet(selected.id), () => markCopied("code"))}>{copied === "code" ? "Code copied" : "Copy example code"}</button></details>
+          <details><summary>Developer instructions</summary><p>Lead-capture URL:</p><div className="crm-copy-row"><code>{endpointFor(selected.id)}</code><button onClick={() => void copyText(endpointFor(selected.id), () => markCopied("url"))}>{copied === "url" ? "Copied" : "Copy URL"}</button></div><p>Send a JSON POST request with at least a phone number or email. Supported fields: firstName, lastName, name, phone, email, service, message, address, city, state, zip, campaign, and consent. For paid traffic also send pageUrl, fbclid and any utm_ values from the landing page URL, plus eventId if the page runs a Meta Pixel.</p><pre>{captureSnippet(selected.id)}</pre><button className="crm-button-secondary" onClick={() => void copyText(captureSnippet(selected.id), () => markCopied("code"))}>{copied === "code" ? "Code copied" : "Copy example code"}</button></details>
         </section>
         <footer><span>Connected {shortDate(selected.createdAt)}</span>{canManage ? <div className="crm-website-footer-actions">{selected.status === "connected" ? <button onClick={() => void disconnect(selected)}>Disconnect</button> : null}<button className="danger" onClick={() => void remove(selected)}>Delete website</button></div> : null}</footer>
       </section> : null}
