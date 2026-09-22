@@ -142,9 +142,10 @@ export function WebsitesView({ websites, clients, leads, connections, mutate, ca
   }
 
   return <div className="crm-view crm-websites-view">
-    <section className="crm-page-heading"><div><h2>Websites</h2><span>Manage your websites and connect their forms to BrizBuilder.</span></div>{canManage ? <button className="crm-button-primary" onClick={() => setEditing(null)}>+ Add website</button> : null}</section>
-
-    <div className="crm-website-overview" aria-label="Website overview"><span><strong>{websites.length}</strong> websites</span><span><strong>{connected}</strong> enabled</span><span><strong>{websiteLeads.length}</strong> website leads</span></div>
+    <section className="crm-page-heading crm-website-toolbar" aria-label="Website overview">
+      <div><h2>Websites</h2><span>Manage website connections</span><p className="crm-website-overview"><span><strong>{websites.length}</strong> {websites.length === 1 ? "website" : "websites"}</span><span><strong>{connected}</strong> enabled</span><span><strong>{websiteLeads.length}</strong> {websiteLeads.length === 1 ? "website lead" : "website leads"}</span></p></div>
+      {canManage ? <button className="crm-button-primary" onClick={() => setEditing(null)}>+ Add website</button> : null}
+    </section>
 
     {!websites.length ? <EmptyState title="No websites added yet" description="Start by entering the client’s website address. BrizBuilder will then give you a ready-to-send message for the person who manages the website." action={canManage && clients.length ? <button className="crm-button-primary" onClick={() => setEditing(null)}>Add your first website</button> : null} /> : <div className="crm-website-layout">
       <section className="crm-website-list" aria-label="Website connections">
