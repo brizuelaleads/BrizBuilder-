@@ -344,7 +344,7 @@
   /* ---- Segmented controls (the .cir-tabs spec): a raised white track whose
    * selected option is the ink pill. Hover only darkens the label, so the
    * track itself never flickers as the pointer crosses it. */
-  & :is(.crm-view-switcher, .crm-calls-filters, .crm-tabs, .crm-review-tabs, .crm-lead-tabs, .crm-leads-view-switcher, .crm-reviews-tabs, .crm-stripe-tabs) {
+  & :is(.crm-view-switcher, .crm-calls-filters, .crm-tabs, .crm-review-tabs, .crm-lead-tabs, .crm-leads-view-switcher, .crm-reviews-tabs, .crm-stripe-tabs, .lead-record-nav) {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -1136,10 +1136,22 @@
 #crm-app .lead-record-contact-bar a { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 0 14px; border: 1px solid #dfe3e8; border-radius: 7px; color: #384250; background: #fff; font-size: 13px; font-weight: 500; text-decoration: none; }
 #crm-app .lead-record-contact-bar a.lead-record-call { background: #253e42; color: #fff; border-color: #253e42; }
 #crm-app .lead-record-contact-bar a[aria-disabled="true"] { opacity: .4; pointer-events: none; }
-#crm-app .lead-record-nav { position: sticky; top: 0; z-index: 3; display: flex; gap: 22px; padding: 0 36px; overflow-x: auto; background: #fff; border-top: 1px solid #f0f1f3; border-bottom: 1px solid #e6e9ed; }
-#crm-app .lead-record-nav > button { --btn-h: 48px; --btn-px: 0; --btn-gap: 5px; flex: 0 0 auto; color: #717986; background: transparent; box-shadow: none; font-size: 13px; font-weight: 500; border-radius: 0; border-bottom: 2px solid transparent; }
-#crm-app .lead-record-nav > button.active { color: #253e42; border-bottom-color: #253e42; }
-#crm-app .lead-record-nav > button > span { color: #9198a3; font-size: 11px; }
+/* Reuse the shared segmented-control tokens, including hover and focus. */
+#crm-app .lead-record .lead-record-nav {
+  position: sticky; top: 8px; z-index: 3;
+  display: flex; width: calc(100% - 72px); margin: 0 36px 8px;
+  gap: 4px; padding: 6px; overflow-x: auto; scrollbar-width: thin;
+  border: 1px solid var(--color-edge); border-radius: 999px;
+  background: var(--color-cloud);
+}
+#crm-app .lead-record .lead-record-nav > button {
+  --btn-h: 36px; --btn-px: 16px; --btn-gap: 6px; --btn-fs: 13px;
+  --btn-radius: 999px;
+  flex: 1 0 auto; white-space: nowrap;
+}
+#crm-app .lead-record .lead-record-nav > button > span {
+  color: inherit; opacity: .7; font-size: 11px; line-height: 1;
+}
 #crm-app .lead-record-content { padding: 0 36px 24px; }
 #crm-app .lead-record-section { padding: 26px 0; border-bottom: 1px solid #e8ebef; }
 #crm-app .lead-record-section > header { display: flex; align-items: baseline; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin-bottom: 17px; }
@@ -1198,7 +1210,8 @@
   #crm-app .lead-record-header { padding: 24px 22px 16px; }
   #crm-app .lead-record-heading h2 { font-size: 23px; }
   #crm-app .lead-record-contact-bar { padding: 0 22px 20px; flex-wrap: wrap; }
-  #crm-app .lead-record-nav { gap: 20px; padding-inline: 22px; }
+  #crm-app .lead-record .lead-record-nav { width: calc(100% - 32px); margin-inline: 16px; }
+  #crm-app .lead-record .lead-record-nav > button { --btn-px: 13px; flex: 0 0 auto; }
   #crm-app .lead-record-content { padding-inline: 22px; }
   #crm-app .lead-record-facts > div, #crm-app .lead-record-fields > :is(label, div) { grid-template-columns: 105px minmax(0, 1fr); gap: 14px; }
   #crm-app .lead-record-section { padding-block: 23px; }
