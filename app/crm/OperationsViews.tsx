@@ -176,6 +176,8 @@ function formatBookedTime(milliseconds: number) {
 
 export function CalendarView({
   appointments,
+  leads,
+  onOpenLead,
   mutate,
   onAddAppointment,
   selectedClientId,
@@ -185,6 +187,8 @@ export function CalendarView({
   canConnectGoogleCalendar,
 }: {
   appointments: CrmAppointment[];
+  leads: CrmLead[];
+  onOpenLead: (lead: CrmLead) => void;
   mutate: Mutate;
   onAddAppointment: () => void;
   selectedClientId: string | null;
@@ -603,6 +607,10 @@ export function CalendarView({
                     {openAppointment && openEvent ? (
                       <CalendarEventPopover
                         appointment={openAppointment}
+                        onOpenLead={(() => {
+                          const matches = leads.filter((lead) => lead.clientId === openAppointment.clientId && (openAppointment.leadId ? lead.id === openAppointment.leadId : lead.contactId === openAppointment.contactId));
+                          return matches.length === 1 ? () => { closeEvent(); onOpenLead(matches[0]); } : undefined;
+                        })()}
                         dayIndex={openEvent.dayIndex}
                         top={openEvent.top}
                         closeRef={popoverCloseRef}
@@ -662,6 +670,7 @@ export function CalendarView({
 /** shadcn Popover: vertical auto layout, 17px padding, 16px gap, 6px radius. */
 function CalendarEventPopover({
   appointment,
+  onOpenLead,
   dayIndex,
   top,
   closeRef,
@@ -670,6 +679,7 @@ function CalendarEventPopover({
   onDelete,
 }: {
   appointment: CrmAppointment;
+  onOpenLead?: () => void;
   dayIndex: number;
   top: number;
   closeRef: React.RefObject<HTMLButtonElement | null>;
@@ -700,7 +710,7 @@ function CalendarEventPopover({
         <button type="button" ref={closeRef} onClick={onClose} aria-label="Close appointment details"><X aria-hidden="true" /></button>
       </header>
       <div className="crm-cal-popover-title">
-        <h3>{appointment.contactName}</h3>
+        <h3>{onOpenLead ? <button type="button" className="crm-cal-lead-link" onClick={onOpenLead} aria-label={`Open lead details for ${appointment.contactName}`}>{appointment.contactName}</button> : appointment.contactName}</h3>
         <p>{appointment.serviceType}</p>
       </div>
       <dl>

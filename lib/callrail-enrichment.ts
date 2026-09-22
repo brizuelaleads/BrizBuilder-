@@ -70,6 +70,7 @@ export function shouldApplyTranscriptField(
   placeholder = false,
 ) {
   if (!field || field.confidence < minimumConfidence) return false;
+  if (metadata?.source === "manual" && metadata.verified === true) return false;
   const blank =
     existing == null || (typeof existing === "string" && !existing.trim());
   if (blank || placeholder) return true;

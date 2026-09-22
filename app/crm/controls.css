@@ -1221,3 +1221,23 @@
   #crm-app .lead-record-fields > :is(label, div) { grid-template-columns: 1fr; gap: 6px; }
   #crm-app .lead-record-facts > div { grid-template-columns: 85px minmax(0, 1fr); gap: 10px; }
 }
+
+/* Lead corrections use the same compact fields and buttons as the record. */
+#crm-app .lead-record-header-actions { display: flex; align-items: center; gap: 10px; }
+#crm-app .lead-record-edit { padding-block: 24px; }
+#crm-app .lead-record-edit > h3 { margin: 0 0 8px; font-size: 20px; }
+#crm-app .lead-record-edit p { color: #78818e; font-size: 13px; line-height: 1.6; }
+#crm-app .lead-record-edit fieldset { margin: 24px 0; padding: 20px 0; border: 0; border-top: 1px solid #e8ebef; display: grid; gap: 14px; min-width: 0; }
+#crm-app .lead-record-edit legend { padding-right: 12px; font-size: 14px; font-weight: 600; }
+#crm-app .lead-record-edit label, #crm-app .lead-record-appointment-status { display: grid; grid-template-columns: 140px minmax(0,1fr); gap: 16px; align-items: baseline; font-size: 13px; color: #78818e; }
+#crm-app .lead-record-edit :is(input,select,textarea), #crm-app .lead-record-appointment-status select { min-width: 0; width: 100%; min-height: 40px; padding: 8px 12px; border: 1px solid #dfe4e9; border-radius: 6px; background: #fff; color: #374151; font: inherit; font-size: 14px; }
+#crm-app .lead-record-edit textarea { resize: vertical; line-height: 1.6; }
+#crm-app .lead-record-edit footer { display: flex; justify-content: flex-end; gap: 10px; position: sticky; bottom: 0; padding: 14px 0; background: #fff; border-top: 1px solid #e8ebef; }
+#crm-app .lead-record-edit footer button { --btn-h: 40px; --btn-fs: 13px; --btn-radius: 6px; }
+#crm-app .lead-record-edit .lead-record-edit-error { color: #a92c34; background: #fff3f3; padding: 12px; border-radius: 6px; }
+#crm-app .lead-record-appointment-status { margin-top: 16px; }
+#crm-app .crm-cal-popover-title .crm-cal-lead-link { --btn-bg: transparent; --btn-bg-hover: transparent; --btn-fg: var(--color-ink); --btn-fg-hover: var(--color-signal); --btn-shadow: none; --btn-shadow-hover: none; --btn-ring: 0 0 #0000; --btn-h: auto; --btn-px: 0; --btn-radius: 0; --btn-justify: flex-start; --btn-weight: 600; --btn-fs: 18px; text-align: left; text-decoration: underline; text-underline-offset: 4px; white-space: normal; }
+@media(max-width: 600px) {
+  #crm-app .lead-record-header-actions { gap: 6px; }
+  #crm-app .lead-record-edit label, #crm-app .lead-record-appointment-status { grid-template-columns: 1fr; gap: 6px; }
+}

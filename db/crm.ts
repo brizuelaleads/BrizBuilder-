@@ -1,3 +1,4 @@
+import { linkAppointmentRows, appointmentTimePatch, projectLeadAppointment, leadCorrectionPatch } from "../lib/lead-corrections";
 import { env } from "cloudflare:workers";
 import type { ChatGPTUser } from "../app/chatgpt-auth";
 import { MAIN_ADMIN_EMAIL } from "../app/auth-config";
@@ -1038,11 +1039,13 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
     rolePermissions[context.role].includes("audit.read") ? db.prepare(`SELECT id, actor_email, action, record_type, record_id, metadata_json, created_at FROM audit_logs WHERE organization_id = ? ORDER BY created_at DESC LIMIT 150`).bind(context.organizationId).all<Record<string, unknown>>() : Promise.resolve({ results: [] as Record<string, unknown>[] }),
   ]);
 
+  const linkedAppointmentRows = linkAppointmentRows(appointmentRows.results, leadRows.results.map(mapLead));
+
   return {
     viewer: { name: context.name, email: context.email, role: context.role, clientId: context.clientId, isAgency: !context.clientId, canViewAllClients: clientAccessList(context) === null, permissions: rolePermissions[context.role], theme: "classic" },
     organization: { id: context.organizationId, name: context.organizationName },
     clients: clientRows.results.map(mapClient),
-    leads: leadRows.results.map(mapLead),
+    leads: leadRows.results.map(row => projectLeadAppointment(mapLead(row), linkedAppointmentRows)),
     contacts: contactRows.results.map(mapContact),
     companies: companyRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), name: String(row.name), industry: nullable(row.industry), website: nullable(row.website), phone: nullable(row.phone), email: nullable(row.email), address: nullable(row.address), city: nullable(row.city), state: nullable(row.state), zip: nullable(row.zip), tags: parseStringArray(row.tags_json), notes: String(row.notes ?? ""), contactCount: Number(row.contact_count ?? 0), createdAt: String(row.created_at) })),
     websites: websiteRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), name: String(row.name), domain: nullable(row.domain), status: String(row.status), platform: String(row.platform ?? "other"), leadCaptureEnabled: Boolean(row.lead_capture_enabled), lastLeadAt: nullable(row.last_lead_at), createdAt: String(row.created_at), updatedAt: String(row.updated_at) })),
@@ -1071,7 +1074,7 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
     featureFlags: featureFlagRows.results.map((row) => ({ id: String(row.id), clientId: nullable(row.client_id), moduleKey: String(row.module_key), enabled: Boolean(row.enabled), rolloutStatus: String(row.rollout_status) as CrmFeatureFlag["rolloutStatus"], source: String(row.source) })),
     stages: stageRows.results.map((row) => ({ id: String(row.id), name: String(row.name), slug: String(row.slug), color: String(row.color), position: Number(row.position), isWon: Boolean(row.is_won), isLost: Boolean(row.is_lost) })),
     tasks: taskRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), leadId: nullable(row.lead_id), contactId: nullable(row.contact_id), title: String(row.title), description: String(row.description ?? ""), assignee: nullable(row.assignee), dueAt: nullable(row.due_at), priority: String(row.priority), status: String(row.status), createdAt: String(row.created_at) })),
-    appointments: appointmentRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), clientName: String(row.client_name), leadId: nullable(row.lead_id), contactId: String(row.contact_id), contactName: String(row.contact_name), assignedEmployee: nullable(row.assigned_employee), serviceType: String(row.service_type), startsAt: String(row.starts_at), endsAt: String(row.ends_at), address: nullable(row.address), notes: String(row.notes ?? ""), status: String(row.status) })),
+    appointments: linkedAppointmentRows.map((row) => ({ id: String(row.id), clientId: String(row.client_id), clientName: String(row.client_name), leadId: nullable(row.lead_id), contactId: String(row.contact_id), contactName: String(row.contact_name), assignedEmployee: nullable(row.assigned_employee), serviceType: String(row.service_type), startsAt: String(row.starts_at), endsAt: String(row.ends_at), address: nullable(row.address), notes: String(row.notes ?? ""), status: String(row.status) })),
     activities: activityRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), leadId: nullable(row.lead_id), contactId: nullable(row.contact_id), type: String(row.type), title: String(row.title), detail: nullable(row.detail), occurredAt: String(row.occurred_at) })),
     notes: noteRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), leadId: nullable(row.lead_id), contactId: nullable(row.contact_id), body: String(row.body), authorEmail: String(row.author_email), createdAt: String(row.created_at) })),
     // CallRail ingestion writes to Supabase, not D1. This loader has no
@@ -1316,14 +1319,25 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
     const lead = await db.prepare("SELECT * FROM crm_leads WHERE id = ? AND organization_id = ? AND archived_at IS NULL LIMIT 1").bind(leadId, context.organizationId).first<Record<string, unknown>>();
     if (!lead) throw new Error("Lead not found.");
     await requireClient(context, String(lead.client_id));
+    const corrections = leadCorrectionPatch(input);
+    const correctionStatements = [];
+    if (Object.keys(corrections.contact).length) {
+      requirePermission(context, "contacts.write");
+      const entries = Object.entries(corrections.contact);
+      correctionStatements.push(db.prepare(`UPDATE contacts SET ${entries.map(([key]) => key + " = ?").join(", ")} WHERE id = ? AND client_id = ? AND organization_id = ?`).bind(...entries.map(([,value]) => value), String(lead.contact_id), String(lead.client_id), context.organizationId));
+    }
+    if (Object.keys(corrections.lead).length) {
+      const entries = Object.entries(corrections.lead);
+      correctionStatements.push(db.prepare(`UPDATE crm_leads SET ${entries.map(([key]) => key + " = ?").join(", ")} WHERE id = ? AND organization_id = ?`).bind(...entries.map(([,value]) => value), leadId, context.organizationId));
+      Object.assign(lead, corrections.lead);
+    }
     const allowedStatuses = new Set(["NEW", "CONTACTED", "QUALIFIED", "APPOINTMENT_BOOKED", "ESTIMATE_SENT", "WON", "LOST", "SPAM", "UNRESPONSIVE"]);
     const status = typeof input.status === "string" && allowedStatuses.has(input.status) ? input.status : String(lead.status);
-    await db.prepare(`UPDATE crm_leads SET status = ?, assigned_user = ?, estimated_value_cents = ?, final_revenue_cents = ?, lost_reason = ?, next_follow_up_at = ?, last_contacted_at = CASE WHEN ? IN ('CONTACTED','QUALIFIED','APPOINTMENT_BOOKED','ESTIMATE_SENT','WON','LOST') THEN CURRENT_TIMESTAMP ELSE last_contacted_at END, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?`)
-      .bind(status, optionalText(input.assignedUser, 120) ?? nullable(lead.assigned_user), input.estimatedValueCents === undefined ? Number(lead.estimated_value_cents) : cents(input.estimatedValueCents), input.finalRevenueCents === undefined ? Number(lead.final_revenue_cents) : cents(input.finalRevenueCents), optionalText(input.lostReason, 240) ?? nullable(lead.lost_reason), optionalText(input.nextFollowUpAt, 40) ?? nullable(lead.next_follow_up_at), status, leadId, context.organizationId)
-      .run();
-    await db.prepare(`INSERT INTO activities (id, organization_id, client_id, lead_id, contact_id, type, title, detail) VALUES (?, ?, ?, ?, ?, 'status_changed', 'Lead status updated', ?)`)
-      .bind(`activity_${crypto.randomUUID()}`, context.organizationId, String(lead.client_id), leadId, String(lead.contact_id), status)
-      .run();
+    correctionStatements.push(db.prepare(`UPDATE crm_leads SET status = ?, assigned_user = ?, estimated_value_cents = ?, final_revenue_cents = ?, lost_reason = ?, next_follow_up_at = ?, last_contacted_at = CASE WHEN ? != status AND ? IN ('CONTACTED','QUALIFIED','APPOINTMENT_BOOKED','ESTIMATE_SENT','WON','LOST') THEN CURRENT_TIMESTAMP ELSE last_contacted_at END, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?`)
+      .bind(status, optionalText(input.assignedUser, 120) ?? nullable(lead.assigned_user), input.estimatedValueCents === undefined ? Number(lead.estimated_value_cents) : cents(input.estimatedValueCents), input.finalRevenueCents === undefined ? Number(lead.final_revenue_cents) : cents(input.finalRevenueCents), optionalText(input.lostReason, 240) ?? nullable(lead.lost_reason), optionalText(input.nextFollowUpAt, 40) ?? nullable(lead.next_follow_up_at), status, status, leadId, context.organizationId));
+    correctionStatements.push(db.prepare(`INSERT INTO activities (id, organization_id, client_id, lead_id, contact_id, type, title, detail) VALUES (?, ?, ?, ?, ?, 'status_changed', 'Lead status updated', ?)`)
+      .bind(`activity_${crypto.randomUUID()}`, context.organizationId, String(lead.client_id), leadId, String(lead.contact_id), status));
+    await db.batch(correctionStatements);
     await audit(context, "lead.updated", "lead", leadId, { status });
     return { id: leadId };
   }
@@ -1405,26 +1419,32 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
     const contactId = requireText(input.contactId, "Contact", 100);
     const contact = await db.prepare("SELECT id FROM contacts WHERE id = ? AND client_id = ? AND organization_id = ? LIMIT 1").bind(contactId, clientId, context.organizationId).first();
     if (!contact) throw new Error("Contact not found.");
+    const leadId = optionalText(input.leadId, 100);
+    if (leadId) {
+      const linkedLead = await db.prepare("SELECT id FROM crm_leads WHERE id = ? AND client_id = ? AND contact_id = ? AND organization_id = ? AND archived_at IS NULL").bind(leadId, clientId, contactId, context.organizationId).first();
+      if (!linkedLead) throw new Error("The selected lead must belong to this contact and client.");
+    }
     const startsAt = requireText(input.startsAt, "Start time", 40);
     const endsAt = requireText(input.endsAt, "End time", 40);
-    if (Date.parse(endsAt) <= Date.parse(startsAt)) throw new Error("End time must be after the start time.");
+    if (!Number.isFinite(Date.parse(startsAt)) || !Number.isFinite(Date.parse(endsAt)) || Date.parse(endsAt) <= Date.parse(startsAt)) throw new Error("End time must be after the start time.");
     const id = `appointment_${crypto.randomUUID()}`;
     await db.prepare(`INSERT INTO appointments (id, organization_id, client_id, lead_id, contact_id, assigned_employee, service_type, starts_at, ends_at, address, notes, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SCHEDULED')`)
-      .bind(id, context.organizationId, clientId, optionalText(input.leadId, 100), contactId, optionalText(input.assignedEmployee, 120), requireText(input.serviceType, "Service", 160), startsAt, endsAt, optionalText(input.address, 240), optionalText(input.notes, 1000) ?? "")
+      .bind(id, context.organizationId, clientId, leadId, contactId, optionalText(input.assignedEmployee, 120), requireText(input.serviceType, "Service", 160), startsAt, endsAt, optionalText(input.address, 240), optionalText(input.notes, 1000) ?? "")
       .run();
     await audit(context, "appointment.created", "appointment", id);
     return { id };
   }
 
-  if (action === "update_appointment_status") {
+  if (action === "update_appointment_status" || action === "update_appointment") {
     requirePermission(context, "appointments.write");
     const appointmentId = requireText(input.appointmentId, "Appointment", 100);
     const status = requireText(input.status, "Status", 30);
     if (!["SCHEDULED", "CONFIRMED", "COMPLETED", "CANCELED", "NO_SHOW"].includes(status)) throw new Error("Invalid appointment status.");
-    const appointment = await db.prepare("SELECT client_id FROM appointments WHERE id = ? AND organization_id = ? LIMIT 1").bind(appointmentId, context.organizationId).first<{ client_id: string }>();
+    const appointment = await db.prepare("SELECT client_id, starts_at, ends_at FROM appointments WHERE id = ? AND organization_id = ? LIMIT 1").bind(appointmentId, context.organizationId).first<{ client_id: string; starts_at: string; ends_at: string }>();
     if (!appointment) throw new Error("Appointment not found.");
     await requireClient(context, appointment.client_id);
-    await db.prepare("UPDATE appointments SET status = ? WHERE id = ? AND organization_id = ?").bind(status, appointmentId, context.organizationId).run();
+    const timePatch = appointmentTimePatch(input, { startsAt: appointment.starts_at, endsAt: appointment.ends_at });
+    await db.prepare("UPDATE appointments SET status = ?, starts_at = ?, ends_at = ? WHERE id = ? AND organization_id = ?").bind(status, timePatch.starts_at, timePatch.ends_at, appointmentId, context.organizationId).run();
     await audit(context, "appointment.status_changed", "appointment", appointmentId, { status });
     return { id: appointmentId, status };
   }

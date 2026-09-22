@@ -1585,7 +1585,7 @@ async function processTranscriptEnrichment(input: {
       const name = splitName(enrichment.customerName.value, null);
       const placeholder = placeholderName(contact.first_name, contact.last_name);
       if (
-        placeholder ||
+        (placeholder && !(contactProvenance.first_name?.source === "manual" && contactProvenance.first_name.verified === true)) ||
         shouldApplyTranscriptField(
           `${contact.first_name ?? ""} ${contact.last_name ?? ""}`,
           enrichment.customerName,
@@ -1666,12 +1666,8 @@ async function processTranscriptEnrichment(input: {
       }
     }
     if (
-      blank(lead.message) ||
-      (isSystemCallMetadataMessage(lead.message) &&
-        !(
-          leadProvenance.message?.source === "manual" &&
-          leadProvenance.message.verified === true
-        ))
+      !(leadProvenance.message?.source === "manual" && leadProvenance.message.verified === true) &&
+      (blank(lead.message) || isSystemCallMetadataMessage(lead.message))
     ) {
       leadPatch.message = enrichment.summary;
       leadProvenance.message = sourceMetadata(

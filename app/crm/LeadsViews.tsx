@@ -12,6 +12,7 @@ import {
 import {
   Activity as ActivityIcon,
   Award,
+  Pencil,
   ChevronDown,
   CalendarDays,
   Check,
@@ -33,6 +34,8 @@ import type {
   CrmTask,
 } from "../../db/crm";
 import { Badge, dateTime, EmptyState, money, shortDate } from "./ui";
+import { LeadEditForm } from "./LeadEditForm";
+import { latestLinkedAppointment } from "../../lib/lead-corrections";
 import { CallTranscriptCard } from "./CallTranscriptCard";
 
 type Mutate = (
@@ -705,6 +708,8 @@ export function LeadDetail({
     : null;
   const latestCall = leadCalls[0] ?? null;
   const [activeTab, setActiveTab] = useState<LeadDetailTab>("overview");
+  const [editing, setEditing] = useState(false);
+  const linkedAppointment = latestLinkedAppointment(lead, appointments);
   const tabListRef = useRef<HTMLElement | null>(null);
   const primaryTask =
     leadTasks.find((task) => task.status !== "COMPLETED");
@@ -799,8 +804,9 @@ export function LeadDetail({
             <h2>{displayName}</h2>
             <span className="lead-record-status">{humanizeLeadValue(lead.status)}</span>
           </div>
-          <button type="button" className="lead-record-close" onClick={onClose} aria-label="Close lead"><X aria-hidden="true" /></button>
+          <div className="lead-record-header-actions">{!editing ? <button type="button" className="lead-record-secondary" onClick={() => setEditing(true)}><Pencil aria-hidden="true" />Edit</button> : null}<button type="button" className="lead-record-close" onClick={onClose} aria-label="Close lead"><X aria-hidden="true" /></button></div>
         </header>
+        {!editing ? <>
         <div className="lead-record-contact-bar">
           <span>{lead.phone ? formatLeadPhone(lead.phone) : lead.email || "No contact information"}</span>
           <div>
@@ -812,12 +818,16 @@ export function LeadDetail({
         <nav ref={tabListRef} className="lead-record-nav" aria-label="Lead sections">
           {tabs.map((tab) => <button type="button" key={tab.id} className={activeTab === tab.id ? "active" : ""} aria-current={activeTab === tab.id ? "page" : undefined} onClick={() => setActiveTab(tab.id)}>{tab.label}{"count" in tab && tab.count ? <span>{tab.count}</span> : null}</button>)}
         </nav>
-        <main className="lead-record-content" aria-label={activeTab === "transcript" ? "Calls" : activeTab}>
+        </> : null}
+        {editing ? <main className="lead-record-content"><LeadEditForm key={lead.id} lead={lead} appointment={linkedAppointment} mutate={mutate} onDone={() => setEditing(false)} /></main> : <main className="lead-record-content" aria-label={activeTab === "transcript" ? "Calls" : activeTab}>
           {activeTab === "overview" ? (
             <div className="lead-record-overview">
               <section className="lead-record-section">
                 <header><h3>Appointment &amp; follow-up</h3></header>
-                {lead.appointmentStart ? <div className="lead-record-appointment"><CalendarDays aria-hidden="true" /><div><strong>{dateTime(lead.appointmentStart)}</strong><span>{humanizeLeadValue(lead.appointmentStatus) || "Scheduled"}</span></div></div> : <p className="lead-record-missing">No appointment scheduled.</p>}
+                {lead.appointmentStart ? <div className="lead-record-appointment"><CalendarDays aria-hidden="true" /><div><strong>{dateTime(lead.appointmentStart)}</strong><span>{humanizeLeadValue(linkedAppointment?.status ?? lead.appointmentStatus) || "Scheduled"}</span></div></div> : <p className="lead-record-missing">No appointment scheduled.</p>}
+                {linkedAppointment ? <label className="lead-record-appointment-status">Appointment status<select aria-label="Appointment status" value={linkedAppointment.status} onChange={(event) => void mutate({ action: "update_appointment_status", appointmentId: linkedAppointment.id, status: event.target.value }, "Appointment status updated in the calendar")}>
+                  {["SCHEDULED", "CONFIRMED", "COMPLETED", "CANCELED", "NO_SHOW"].map(status => <option key={status} value={status}>{humanizeLeadValue(status)}</option>)}
+                </select></label> : null}
                 {primaryTask ? <div className="lead-record-followup"><div><span>Next task &middot; {shortDate(primaryTask.dueAt)}</span><strong>{primaryTask.title}</strong></div><button type="button" className="lead-record-secondary" onClick={() => setActiveTab("tasks")}>View task</button></div> : null}
                 {leadAppointments.length ? <details className="lead-record-disclosure"><summary>Appointment history <span>{leadAppointments.length}</span><ChevronDown aria-hidden="true" /></summary><div className="lead-record-appointment-history">{leadAppointments.map((appointment) => <div key={appointment.id}><strong>{appointment.serviceType}</strong><span>{dateTime(appointment.startsAt)} &middot; {humanizeLeadValue(appointment.status)}</span></div>)}</div></details> : null}
               </section>
@@ -977,7 +987,7 @@ export function LeadDetail({
                 ) : null}
               </div>
             ) : null}
-        </main>
+        </main>}
       </section>
     </div>
   );

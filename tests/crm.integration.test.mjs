@@ -435,6 +435,31 @@ test("Phase 1 CRM authentication, tenant isolation, imports, custom data, compan
     assert.equal(createdLead.stageId, "stage_qualified");
     assert.equal(createdLead.status, "QUALIFIED");
 
+    // Manual corrections and calendar state survive a fresh bootstrap.
+    const editAction = async (input) => {
+      const response = await mf.dispatchFetch("http://crm.test/api/crm", { method: "POST", headers: { ...authHeaders(), "content-type": "application/json", origin: "http://crm.test" }, body: JSON.stringify(input) });
+      const body = await response.json(); assert.equal(response.status, 200, JSON.stringify(body)); return body.result;
+    };
+    const reloadLead = async () => (await (await mf.dispatchFetch("http://crm.test/api/crm", { headers: authHeaders() })).json()).data.leads.find(lead => lead.id === createdLeadId);
+    await editAction({ action: "update_lead", leadId: createdLeadId, firstName: "Corrected", lastName: "Name", phone: "5125550144", email: "corrected@example.com", address: "10 Main St", campaign: "", assignedUser: "", message: "Corrected summary", serviceRequested: "Repair", leadScore: 70 });
+    const corrected = await reloadLead();
+    assert.equal(corrected.firstName, "Corrected"); assert.equal(corrected.phone, "5125550144"); assert.equal(corrected.email, "corrected@example.com"); assert.equal(corrected.message, "Corrected summary"); assert.equal(corrected.leadScore, 70);
+    assert.equal(corrected.lastContactedAt, createdLead.lastContactedAt, "editing details is not a new contact event");
+    await editAction({ action: "update_lead", leadId: createdLeadId, email: "", address: "" });
+    assert.equal((await reloadLead()).email, null);
+    const appointmentResult = await editAction({ action: "create_appointment", clientId: primaryClient.id, contactId: createdLead.contactId, leadId: createdLeadId, serviceType: "Repair", startsAt: "2026-10-01T15:00:00Z", endsAt: "2026-10-01T16:00:00Z" });
+    assert.equal((await reloadLead()).appointmentStatus, "scheduled");
+    await editAction({ action: "update_appointment", appointmentId: appointmentResult.id, status: "CONFIRMED", startsAt: "2026-10-02T15:00:00Z", endsAt: "2026-10-02T16:00:00Z" });
+    assert.equal((await reloadLead()).appointmentStart, "2026-10-02T15:00:00.000Z");
+    for (const status of ["COMPLETED", "NO_SHOW", "CANCELED"]) {
+      await editAction({ action: "update_appointment_status", appointmentId: appointmentResult.id, status });
+      assert.equal((await reloadLead()).appointmentStatus, status.toLowerCase());
+    }
+    await editAction({ action: "delete_appointment", appointmentId: appointmentResult.id });
+    assert.equal((await reloadLead()).appointmentStatus, "none"); assert.equal((await reloadLead()).appointmentStart, null);
+
+    await editAction({ action: "update_lead", leadId: createdLeadId, firstName: createdLead.firstName, lastName: createdLead.lastName, phone: createdLead.phone });
+
     const db = await mf.getD1Database("DB");
     const history = await db.prepare("SELECT COUNT(*) AS total FROM lead_stage_history WHERE lead_id = ?").bind(createdLeadId).first();
     assert.equal(Number(history.total), 1, "pipeline history is recorded");
@@ -513,6 +538,10 @@ test("Phase 1 CRM authentication, tenant isolation, imports, custom data, compan
       body: JSON.stringify({ action: "create_lead", clientId: secondClientId, firstName: "Other", lastName: "Tenant", phone: "(512) 555-0100", serviceRequested: "Roof inspection", source: "Manual", estimatedValueCents: 25000 }),
     });
     assert.equal(createSecondClientLead.status, 200);
+
+    const secondLeadId = (await createSecondClientLead.json()).result.id;
+    const forbiddenCorrection = await mf.dispatchFetch("http://crm.test/api/crm", { method: "POST", headers: { ...authHeaders("client@tenant-one.example", "Tenant One Owner"), "content-type": "application/json", origin: "http://crm.test" }, body: JSON.stringify({ action: "update_lead", leadId: secondLeadId, firstName: "Unauthorized edit" }) });
+    assert.equal(forbiddenCorrection.status, 403, "contact corrections cannot cross client boundaries");
 
     const createSecondClientCompany = await mf.dispatchFetch("http://crm.test/api/crm", {
       method: "POST",

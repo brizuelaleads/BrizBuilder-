@@ -1302,6 +1302,8 @@ export function CrmApp({
         )}
         {view === "calendar" && (
           <CalendarView
+            leads={data.leads}
+            onOpenLead={openLead}
             appointments={filteredAppointments}
             mutate={mutate}
             onAddAppointment={() => setModal("appointment")}

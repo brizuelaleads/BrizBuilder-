@@ -1,3 +1,4 @@
+import { linkAppointmentRows, appointmentTimePatch, projectLeadAppointment, leadCorrectionPatch, manualProvenance } from "../lib/lead-corrections";
 import type { ChatGPTUser } from "../app/chatgpt-auth";
 import { MAIN_ADMIN_EMAIL } from "../app/auth-config";
 import { getSupabaseAdminClient } from "../lib/supabase/server";
@@ -3763,7 +3764,7 @@ export async function getSupabaseCrmBootstrap(
   const leadRows = (leads ?? []) as AnyRecord[];
   const stageRows = (stages ?? []) as AnyRecord[];
   const taskRows = (tasks ?? []) as AnyRecord[];
-  const appointmentRows = (appointments ?? []) as AnyRecord[];
+  const appointmentRows = linkAppointmentRows((appointments ?? []) as AnyRecord[], leadRows.map(mapLead));
   const noteRows = (notes ?? []) as AnyRecord[];
   const phoneNumberRows = (phoneNumbers ?? []) as AnyRecord[];
   const phoneCallRows = (phoneCalls ?? []) as AnyRecord[];
@@ -4023,7 +4024,7 @@ export async function getSupabaseCrmBootstrap(
       vapidPublicKey: vapidPublicKey(),
       subscribedDevices,
     },
-    leads: leadRows.map(mapLead),
+    leads: leadRows.map((row: AnyRecord) => projectLeadAppointment(mapLead(row), appointmentRows)),
     contacts: contactRows.map(mapContact),
     companies: companyRows.map(mapCompany),
     websites: websiteRows.map(mapWebsite),
@@ -7773,6 +7774,13 @@ export async function executeSupabaseCrmAction(
     );
     if (!lead) throw new Error("Lead not found.");
     await requireClient(context, lead.client_id);
+    const corrections = leadCorrectionPatch(input);
+    if (Object.keys(corrections.contact).length) {
+      requirePermission(context, "contacts.write");
+      const contact = await assertOk(supabase().from("contacts").select("id,field_provenance").eq("id", lead.contact_id).eq("client_id", lead.client_id).eq("organization_id", context.organizationId).maybeSingle());
+      if (!contact) throw new Error("Contact not found.");
+      await assertOk(supabase().from("contacts").update({ ...corrections.contact, field_provenance: manualProvenance(contact.field_provenance, [...Object.keys(corrections.contact), ...("first_name" in corrections.contact || "last_name" in corrections.contact ? ["first_name", "last_name"] : [])]), updated_at: new Date().toISOString() }).eq("id", lead.contact_id).eq("client_id", lead.client_id).eq("organization_id", context.organizationId));
+    }
     const allowedStatuses = new Set([
       "NEW",
       "CONTACTED",
@@ -7855,10 +7863,11 @@ export async function executeSupabaseCrmAction(
             "ESTIMATE_SENT",
             "WON",
             "LOST",
-          ].includes(status)
+          ].includes(status) && status !== String(lead.status)
             ? new Date().toISOString()
             : lead.last_contacted_at,
-          field_provenance: fieldProvenance,
+          ...corrections.lead,
+          field_provenance: manualProvenance(fieldProvenance, Object.keys(corrections.lead)),
           updated_at: new Date().toISOString(),
         })
         .eq("id", leadId)
@@ -8140,9 +8149,14 @@ export async function executeSupabaseCrmAction(
         .maybeSingle(),
     );
     if (!contact) throw new Error("Contact not found.");
+    const leadId = optionalText(input.leadId, 100);
+    if (leadId) {
+      const linkedLead = await assertOk(supabase().from("leads").select("id").eq("id", leadId).eq("client_id", clientId).eq("contact_id", contactId).eq("organization_id", context.organizationId).is("archived_at", null).maybeSingle());
+      if (!linkedLead) throw new Error("The selected lead must belong to this contact and client.");
+    }
     const startsAt = requireText(input.startsAt, "Start time", 40);
     const endsAt = requireText(input.endsAt, "End time", 40);
-    if (Date.parse(endsAt) <= Date.parse(startsAt))
+    if (!Number.isFinite(Date.parse(startsAt)) || !Number.isFinite(Date.parse(endsAt)) || Date.parse(endsAt) <= Date.parse(startsAt))
       throw new Error("End time must be after the start time.");
     const appointment = await assertOk(
       supabase()
@@ -8150,7 +8164,7 @@ export async function executeSupabaseCrmAction(
         .insert({
           organization_id: context.organizationId,
           client_id: clientId,
-          lead_id: optionalText(input.leadId, 100),
+          lead_id: leadId,
           contact_id: contactId,
           assigned_employee: optionalText(input.assignedEmployee, 120),
           service_type: requireText(input.serviceType, "Service", 160),
@@ -8192,7 +8206,7 @@ export async function executeSupabaseCrmAction(
     return { id: createdAppointment.id };
   }
 
-  if (action === "update_appointment_status") {
+  if (action === "update_appointment_status" || action === "update_appointment") {
     requirePermission(context, "appointments.write");
     const appointmentId = requireText(input.appointmentId, "Appointment", 100);
     const status = requireText(input.status, "Status", 30);
@@ -8214,10 +8228,11 @@ export async function executeSupabaseCrmAction(
     );
     if (!appointment) throw new Error("Appointment not found.");
     await requireClient(context, appointment.client_id);
+    const timePatch = appointmentTimePatch(input, { startsAt: String(appointment.starts_at), endsAt: String(appointment.ends_at) });
     await assertOk(
       supabase()
         .from("appointments")
-        .update({ status })
+        .update({ status, ...timePatch })
         .eq("id", appointmentId)
         .eq("organization_id", context.organizationId),
     );
@@ -8242,8 +8257,8 @@ export async function executeSupabaseCrmAction(
           `${appointmentContact.first_name ?? ""} ${appointmentContact.last_name ?? ""}`.trim() ||
           "Customer",
         serviceType: String(appointment.service_type),
-        startsAt: String(appointment.starts_at),
-        endsAt: String(appointment.ends_at),
+        startsAt: timePatch.starts_at,
+        endsAt: timePatch.ends_at,
         notes: String(appointment.notes ?? ""),
         status,
       },
