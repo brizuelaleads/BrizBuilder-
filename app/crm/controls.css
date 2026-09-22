@@ -1254,3 +1254,49 @@
   #crm-app .lead-record-header-actions { gap: 6px; }
   #crm-app .lead-record-edit label, #crm-app .lead-record-appointment-status { grid-template-columns: 1fr; gap: 6px; }
 }
+
+/* Shared soft-card treatment throughout the lead record. */
+#crm-app .lead-record { background: #f7f9fc; }
+#crm-app .lead-record-header { background: linear-gradient(120deg, #edf5fd, #f7f9fc); }
+#crm-app .lead-record-status { padding: 5px 10px; border-radius: 999px; background: #eaf2ed; }
+#crm-app .lead-record-contact-bar { padding-top: 8px; }
+#crm-app .lead-record-contact-bar a { min-height: 40px; border-radius: 12px; }
+#crm-app .lead-record-overview { display: grid; gap: 18px; padding-top: 18px; }
+#crm-app .lead-record-overview > .lead-record-section { padding: 22px; border: 1px solid #e1e8ef; border-radius: 22px; background: #fff; box-shadow: 0 3px 10px rgba(32, 54, 73, .035); min-width: 0; }
+#crm-app .lead-record-overview > .lead-record-section > header { margin: -22px -22px 22px; padding: 18px 22px; border-radius: 21px 21px 0 0; background: linear-gradient(120deg, #edf5fd, #f6f9fc); align-items: center; justify-content: flex-start; flex-direction: row; flex-wrap: nowrap; gap: 10px; }
+#crm-app .lead-record .lead-record-card-icon { display: grid; place-items: center; width: 32px; height: 32px; flex: 0 0 32px; border-radius: 10px; color: #426568; background: #fff; }
+#crm-app .lead-record-overview > .lead-record-request { padding: 0; border: 0; background: transparent; box-shadow: none; }
+#crm-app .lead-record-appointment { background: #f1f7f5; border: 1px solid #dfebe5; border-radius: 14px; padding: 16px; }
+#crm-app .lead-record-facts { gap: 0; }
+#crm-app .lead-record-facts > div { padding: 12px 0; border-bottom: 1px solid #eff2f6; }
+#crm-app .lead-record-facts > div:first-child { padding-top: 0; }
+#crm-app .lead-record-facts > div:last-child { padding-bottom: 0; border-bottom: 0; }
+#crm-app .lead-record :is(.lead-record-fields select, .lead-record-fields input, .lead-record-money, .lead-record-edit input, .lead-record-edit select, .lead-record-edit textarea, .lead-record-appointment-status select) { border-radius: 12px; }
+#crm-app .lead-record-management-footer { padding-top: 18px; border-top: 1px solid #eff2f6; flex-wrap: wrap; }
+#crm-app .lead-record-overview > .lead-record-disclosure { padding: 0; }
+#crm-app .lead-record-overview > .lead-record-disclosure > summary { padding: 18px 22px; border-radius: 21px; background: linear-gradient(120deg, #edf5fd, #f6f9fc); color: #25303d; font-size: 15px; font-weight: 650; gap: 10px; }
+#crm-app .lead-record-source-name { margin-left: auto; max-width: 35%; overflow-wrap: anywhere; }
+#crm-app .lead-record-overview > .lead-record-disclosure > summary > svg { margin-left: 0; }
+#crm-app .lead-record-overview > .lead-record-disclosure[open] > summary { border-radius: 21px 21px 0 0; }
+#crm-app .lead-record-overview > .lead-record-disclosure > dl { padding: 22px; }
+#crm-app .lead-record-footer { padding: 0 4px 12px; flex-wrap: wrap; }
+#crm-app .lead-record button.lead-record-secondary { --btn-h: 40px; --btn-px: 14px; --btn-radius: 12px; --btn-fs: 13px; --btn-bg: #fff; --btn-fg: #29494c; --btn-bg-hover: #f0f6f6; --btn-fg-hover: #203c3f; --btn-ring: inset 0 0 0 1px #d7e2e3; --btn-ring-hover: inset 0 0 0 1px #a9c0c2; --btn-shadow: none; --btn-shadow-hover: none; }
+#crm-app .lead-record button.lead-record-close { --btn-radius: 12px; --btn-bg: #fff; --btn-bg-hover: #eaf0f6; --btn-fg: #59616e; --btn-shadow: none; --btn-shadow-hover: none; }
+#crm-app .lead-record button.lead-record-archive { --btn-bg: transparent; --btn-bg-hover: #f5ecec; --btn-fg: #8f6262; --btn-fg-hover: #774848; --btn-fs: 12px; --btn-px: 10px; --btn-radius: 10px; --btn-shadow: none; --btn-shadow-hover: none; }
+#crm-app .lead-record-content > .crm-lead-section-card { margin-top: 18px; padding: 22px; border: 1px solid #e1e8ef; border-radius: 22px; box-shadow: 0 3px 10px rgba(32, 54, 73, .035); }
+#crm-app .lead-record-content > .crm-lead-section-card > .crm-lead-section-heading { margin: -22px -22px 22px; padding: 20px 22px; border-radius: 21px 21px 0 0; background: linear-gradient(120deg, #edf5fd, #f6f9fc); }
+#crm-app .lead-record-edit fieldset { padding: 22px; border: 1px solid #e1e8ef; border-radius: 22px; background: linear-gradient(120deg, #edf5fd, #f6f9fc) top / 100% 48px no-repeat, #fff; box-shadow: 0 3px 10px rgba(32, 54, 73, .035); }
+#crm-app .lead-record-edit legend { padding: 0 8px; color: #25303d; }
+#crm-app .lead-record-edit footer { border-radius: 16px; padding: 14px; border: 1px solid #e1e8ef; }
+#crm-app .lead-record-edit footer button { --btn-radius: 12px; }
+@media (max-width: 600px) {
+  #crm-app .lead-record-content { padding-inline: 16px; }
+  #crm-app .lead-record-overview > .lead-record-section:not(.lead-record-request):not(.lead-record-disclosure) { padding: 16px; }
+  #crm-app .lead-record-overview > .lead-record-section > header { margin: -16px -16px 18px; padding: 16px; }
+  #crm-app .lead-record-overview > .lead-record-disclosure > summary { padding: 16px; flex-wrap: wrap; }
+  #crm-app .lead-record-overview > .lead-record-disclosure > dl { padding: 16px; }
+  #crm-app .lead-record-followup { flex-wrap: wrap; }
+  #crm-app .lead-record-edit fieldset { padding: 16px; }
+  #crm-app .lead-record-content > .crm-lead-section-card { padding: 16px; }
+  #crm-app .lead-record-content > .crm-lead-section-card > .crm-lead-section-heading { margin: -16px -16px 18px; padding: 16px; }
+}

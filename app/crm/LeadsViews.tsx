@@ -12,6 +12,9 @@ import {
 import {
   Activity as ActivityIcon,
   Award,
+  UserRound,
+  SlidersHorizontal,
+  Waypoints,
   ArrowRight,
   Pencil,
   ChevronDown,
@@ -824,7 +827,7 @@ export function LeadDetail({
           {activeTab === "overview" ? (
             <div className="lead-record-overview">
               <section className="lead-record-section">
-                <header><h3>Appointment &amp; follow-up</h3></header>
+                <header><span className="lead-record-card-icon"><CalendarDays aria-hidden="true" /></span><h3>Appointment &amp; follow-up</h3></header>
                 {lead.appointmentStart ? <div className="lead-record-appointment"><CalendarDays aria-hidden="true" /><div><strong>{dateTime(lead.appointmentStart)}</strong><span>{humanizeLeadValue(linkedAppointment?.status ?? lead.appointmentStatus) || "Scheduled"}</span></div></div> : <p className="lead-record-missing">No appointment scheduled.</p>}
                 {linkedAppointment ? <label className="lead-record-appointment-status">Appointment status<select aria-label="Appointment status" value={linkedAppointment.status} onChange={(event) => void mutate({ action: "update_appointment_status", appointmentId: linkedAppointment.id, status: event.target.value }, "Appointment status updated in the calendar")}>
                   {["SCHEDULED", "CONFIRMED", "COMPLETED", "CANCELED", "NO_SHOW"].map(status => <option key={status} value={status}>{humanizeLeadValue(status)}</option>)}
@@ -834,7 +837,7 @@ export function LeadDetail({
               </section>
 
               <section className="lead-record-section">
-                <header><h3>Contact details</h3></header>
+                <header><span className="lead-record-card-icon"><UserRound aria-hidden="true" /></span><h3>Contact details</h3></header>
                 <dl className="lead-record-facts">
                   <div><dt>Phone</dt><dd>{lead.phone ? <a href={`tel:${lead.phone}`}>{formatLeadPhone(lead.phone)}</a> : <span className="lead-record-missing">Not provided</span>}</dd></div>
                   <div><dt>Email</dt><dd>{lead.email ? <a href={`mailto:${lead.email}`}>{lead.email}</a> : <span className="lead-record-missing">Not provided</span>}</dd></div>
@@ -844,7 +847,7 @@ export function LeadDetail({
               </section>
 
               <section className="lead-record-section">
-                <header><h3>Lead management</h3><span>Keep this opportunity up to date</span></header>
+                <header><span className="lead-record-card-icon"><SlidersHorizontal aria-hidden="true" /></span><h3>Lead management</h3></header>
                 <div className="lead-record-fields">
                   <label>Status<select value={lead.status} onChange={(event) => void mutate({ action: "update_lead", leadId: lead.id, status: event.target.value, ...(event.target.value === "WON" ? { finalRevenueCents: lead.finalRevenueCents || lead.estimatedValueCents } : {}) }, "Lead status updated")}>
                     {leadStatuses.map((status) => <option key={status} value={status}>{humanizeLeadValue(status)}</option>)}
@@ -874,7 +877,7 @@ export function LeadDetail({
               </section>
 
               <details className="lead-record-section lead-record-disclosure">
-                <summary>Source &amp; tracking <span>{lead.source}</span><ChevronDown aria-hidden="true" /></summary>
+                <summary><span className="lead-record-card-icon"><Waypoints aria-hidden="true" /></span>Source &amp; tracking <span className="lead-record-source-name">{lead.source}</span><ChevronDown aria-hidden="true" /></summary>
                 <dl className="lead-record-facts">
                   <div><dt>Source</dt><dd>{lead.source}</dd></div>
                   <div><dt>Campaign</dt><dd>{metaAd?.campaignName || lead.campaign || "Not captured"}</dd></div>
