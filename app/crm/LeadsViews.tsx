@@ -12,6 +12,7 @@ import {
 import {
   Activity as ActivityIcon,
   Award,
+  ArrowRight,
   Pencil,
   ChevronDown,
   CalendarDays,
@@ -859,9 +860,17 @@ export function LeadDetail({
               </section>
 
               <section className="lead-record-section lead-record-request">
-                <header><h3>Call summary</h3>{lead.serviceRequested ? <span>{lead.serviceRequested}</span> : null}</header>
-                <p>{lead.message || "No customer message recorded yet."}</p>
-                {leadCalls.length ? <button className="lead-record-link" type="button" onClick={() => setActiveTab("transcript")}>Read call transcripts <span aria-hidden="true">&rarr;</span></button> : null}
+                <div className="lead-record-summary-card">
+                  <header className="lead-record-summary-header">
+                    <span className="lead-record-summary-icon"><MessageCircle aria-hidden="true" /></span>
+                    <h3>Call summary</h3>
+                    {lead.serviceRequested ? <span className="lead-record-summary-type">{lead.serviceRequested}</span> : null}
+                  </header>
+                  <div className="lead-record-summary-content">
+                    <p>{lead.message || "No call summary recorded yet."}</p>
+                  </div>
+                  {leadCalls.length ? <footer className="lead-record-summary-footer"><button className="lead-record-summary-button" type="button" onClick={() => setActiveTab("transcript")}><FileText aria-hidden="true" />Read call transcripts<ArrowRight aria-hidden="true" /></button></footer> : null}
+                </div>
               </section>
 
               <details className="lead-record-section lead-record-disclosure">
