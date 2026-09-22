@@ -547,6 +547,30 @@ export function DashboardView({
     hasReportedAdSpend && attributedRevenueCents > 0
       ? attributedRevenueCents / reportedAdSpendCents
       : null;
+  // The Marketing Snapshot names the revenue the ads actually produced, beside
+  // the spend that produced it. Without it the panel shows what was paid and
+  // leaves the return to be guessed from the much larger Revenue tile, which is
+  // the guess that made ROAS look like a number the ads had earned.
+  const attributedRevenueShare =
+    revenue > 0 && attributedRevenueCents > 0
+      ? Math.round((attributedRevenueCents / revenue) * 100)
+      : null;
+  const adRevenueSupport = attributedWonLeads.length
+    ? [
+        `${attributedWonLeads.length} won from ads`,
+        attributedRevenueShare == null
+          ? null
+          : `${attributedRevenueShare}% of revenue`,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : attributedLeads.length
+      ? `${attributedLeads.length} ad ${attributedLeads.length === 1 ? "lead" : "leads"}, none won yet`
+      : hasReportedAdSpend
+        ? "No leads carried a campaign ID"
+        : adReportingConnected
+          ? "No spend in this range"
+          : "No ad account connected";
 
   const activeAppointments = appointments.filter(
     (appointment) => !["CANCELED", "CANCELLED"].includes(appointment.status),
@@ -889,6 +913,15 @@ export function DashboardView({
               }
               aria-hidden="true"
             />
+          </article>
+          <article className="crm-dashboard-marketing-card">
+            <span>Revenue from Ads</span>
+            <strong>
+              {attributedRevenueCents > 0
+                ? formatProviderSpend(attributedRevenueCents / 100)
+                : "-"}
+            </strong>
+            <small>{adRevenueSupport}</small>
           </article>
           <article className="crm-dashboard-marketing-card">
             <span>Appointments Booked</span>

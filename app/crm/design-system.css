@@ -322,7 +322,7 @@
   & .crm-dashboard-view .crm-panel > header { min-height: 68px; padding: 16px 24px; background: none; border-bottom: 1px solid var(--crm-line); }
   & .crm-dashboard-widget-heading { gap: 10px; }
   & .crm-dashboard-widget-heading svg { width: 18px; height: 18px; padding: 0; border: 0; border-radius: 0; color: var(--crm-muted); background: none; box-shadow: none; }
-  & .crm-dashboard-marketing-grid { padding: 24px; gap: 24px; grid-template-columns: 1fr 1fr 1.25fr; }
+  & .crm-dashboard-marketing-grid { padding: 24px; gap: 24px; grid-template-columns: 1fr 1fr 1fr 1.25fr; }
   & .crm-dashboard-marketing-card { min-height: 160px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
   & .crm-dashboard-marketing-card + .crm-dashboard-marketing-card { border-left: 1px solid var(--crm-line); padding-left: 24px; }
   & .crm-dashboard-marketing-card > span { color: var(--crm-muted); font-size: 13px; font-weight: 500; text-transform: none; letter-spacing: 0; }
@@ -711,6 +711,8 @@
     & .crm-command-button :is(span,kbd) { display: none; }
     & .crm-dashboard-kpi-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
     & .crm-dashboard-marketing-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    /* Wrapped rows start a new column, so the divider belongs to the second card only. */
+    & .crm-dashboard-marketing-card:nth-child(2n+1) { padding-left: 0; border-left: 0; }
     & .crm-dashboard-marketing-card.is-sources { grid-column: 1/-1; border-left: 0; border-top: 1px solid var(--crm-line); padding: 20px 0 0; }
   }
 }

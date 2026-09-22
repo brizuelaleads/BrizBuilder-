@@ -1342,7 +1342,7 @@ export function CrmApp({
           />
         )}
         {view === "reports" && (
-          <ReportsView leads={filteredLeads} clients={filteredClients} />
+          <ReportsView leads={filteredLeads} clients={filteredClients} metaAdInsights={filteredMetaAdInsights} />
         )}
         {view === "ads" && (
           <AdsView

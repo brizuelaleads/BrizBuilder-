@@ -866,11 +866,15 @@ export function LeadDetail({
                 <div className="lead-record-summary-card">
                   <header className="lead-record-summary-header">
                     <span className="lead-record-summary-icon"><MessageCircle aria-hidden="true" /></span>
-                    <h3>Call summary</h3>
+                    {/* lead.message holds an AI call summary for a lead that came
+                      * from a tracked call, and the customer's own words for one
+                      * that came from a form. Calling a customer's message a call
+                      * summary misreads it back to the person working the lead. */}
+                    <h3>{leadCalls.length ? "Call summary" : "Customer message"}</h3>
                     {lead.serviceRequested ? <span className="lead-record-summary-type">{lead.serviceRequested}</span> : null}
                   </header>
                   <div className="lead-record-summary-content">
-                    <p>{lead.message || "No call summary recorded yet."}</p>
+                    <p>{lead.message || (leadCalls.length ? "No call summary recorded yet." : "No customer message available")}</p>
                   </div>
                   {leadCalls.length ? <footer className="lead-record-summary-footer"><button className="lead-record-summary-button" type="button" onClick={() => setActiveTab("transcript")}><FileText aria-hidden="true" />Read call transcripts<ArrowRight aria-hidden="true" /></button></footer> : null}
                 </div>

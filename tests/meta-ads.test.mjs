@@ -290,6 +290,54 @@ test("ROAS credits ad spend only with the revenue that spend attracted", () => {
   );
 });
 
+test("the Marketing Snapshot names the revenue the ads brought in", () => {
+  // Spend on its own invites the reader to measure it against total revenue,
+  // which is the mistake the tile used to make for them.
+  assert.match(dashboardSource, /<span>Revenue from Ads<\/span>/);
+  assert.match(
+    dashboardSource,
+    /formatProviderSpend\(attributedRevenueCents \/ 100\)/,
+  );
+  assert.match(dashboardSource, /<small>\{adRevenueSupport\}<\/small>/);
+  // The caption says how much of the business it is, and stays honest when
+  // there is nothing to report rather than showing a zero.
+  assert.match(dashboardSource, /\$\{attributedRevenueShare\}% of revenue/);
+  for (const copy of [
+    "won from ads",
+    "none won yet",
+    "No leads carried a campaign ID",
+    "No ad account connected",
+  ]) {
+    assert.ok(dashboardSource.includes(copy), `${copy} is handled`);
+  }
+});
+
+test("the agency report divides reported spend, not the budget", () => {
+  // It used to divide every won job by the configured monthly budget: a return
+  // on money that may never have been spent, credited with revenue the ads
+  // never touched.
+  const report = read("app/crm/OperationsViews.tsx");
+  assert.ok(
+    !/\(revenue \/ spend\)\.toFixed/.test(report),
+    "total revenue is no longer divided by the budget",
+  );
+  assert.match(
+    report,
+    /const spend = metaAdInsights\.reduce\(\(sum, insight\) => sum \+ insight\.spendCents, 0\)/,
+  );
+  assert.match(
+    report,
+    /const adRevenue = leads\.reduce\(\(sum, lead\) => sum \+ \(lead\.status === "WON" && lead\.metaCampaignId \? lead\.finalRevenueCents : 0\), 0\)/,
+  );
+  assert.match(
+    report,
+    /const roas = spend > 0 && adRevenue > 0 \? adRevenue \/ spend : null/,
+  );
+  // A ratio it cannot compute shows a dash, never a fabricated 0x.
+  assert.match(report, /roas == null \? "—"/);
+  assert.ok(!/: "0x"/.test(report), "the fake zero ROAS is gone");
+});
+
 test("a lead is joined to a campaign only by a Meta-shaped id", () => {
   // utm_campaign is caller-controlled on the public lead endpoint, so a
   // free-text label must never be presented as a join into an ad account.

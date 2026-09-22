@@ -538,9 +538,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .crm-client-grid footer button { border: 0; color: #a04454; background: transparent; font-size: 7px; }
 .crm-report-note { margin-bottom: 13px; padding: 12px 14px; display: flex; align-items: center; gap: 10px; border: 1px solid #ddd8ff; border-radius: 9px; background: #f5f3ff; }
 .crm-report-note p { margin: 0; color: #77728d; font-size: 8px; }
-.crm-report-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.crm-report-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
 .crm-report-summary article { padding: 17px; display: grid; gap: 6px; border: 1px solid var(--crm-line); border-radius: 10px; background: #fff; }
 .crm-report-summary span { color: #858894; font-size: 8px; }
+.crm-report-summary small { color: #5b6472; font-size: 11px; }
 .crm-report-summary strong { font-size: 20px; }
 .crm-funnel { padding: 17px; display: grid; gap: 11px; }
 .crm-funnel > div { display: grid; grid-template-columns: 105px 1fr 24px; align-items: center; gap: 9px; }
@@ -15610,7 +15611,7 @@ canvas {
 
 .crm-dashboard-marketing-grid {
   display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 0.85fr) minmax(260px, 1fr);
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 0.85fr) minmax(0, 0.85fr) minmax(240px, 1fr);
   gap: 16px;
   padding: 0 18px 12px;
 }
