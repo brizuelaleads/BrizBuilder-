@@ -521,11 +521,6 @@ export function DashboardView({
       providerIsAdReporting(connection) &&
       (connection.isActive || connection.isLinked),
   );
-  const roas =
-    hasReportedAdSpend && revenue > 0
-      ? revenue / 100 / reportedAdSpend
-      : null;
-
   // Only leads carrying a campaign id can be costed. Counting all of them
   // against Meta spend would credit Meta with referrals and organic calls, so
   // the attributed subset is tracked separately and shown as its own number.
@@ -539,6 +534,19 @@ export function DashboardView({
   const costPerWonCents = attributedWonLeads.length
     ? Math.round(reportedAdSpendCents / attributedWonLeads.length)
     : null;
+  // ROAS divides the same attributed subset, never total revenue. A referral,
+  // a repeat customer or a job that came off an organic call was not bought
+  // with this spend, so counting it would report a return the ads did not
+  // earn -- and the busier the rest of the business is, the better the ads
+  // would look. Same rule as the Ads tab (lib/meta-ads-report.ts).
+  const attributedRevenueCents = attributedWonLeads.reduce(
+    (sum, lead) => sum + lead.finalRevenueCents,
+    0,
+  );
+  const roas =
+    hasReportedAdSpend && attributedRevenueCents > 0
+      ? attributedRevenueCents / reportedAdSpendCents
+      : null;
 
   const activeAppointments = appointments.filter(
     (appointment) => !["CANCELED", "CANCELLED"].includes(appointment.status),
@@ -673,6 +681,15 @@ export function DashboardView({
     (lead) => lead.updatedAt,
     (lead) => Math.max(0, lead.finalRevenueCents / 100),
   );
+  // The tile's ROAS trend divides this, not revenueSparkline, so the arrow
+  // moves with the return on the spend rather than with total sales.
+  const attributedRevenueSparkline = bucketSeries(
+    attributedWonLeads,
+    generatedAtTimestamp,
+    range,
+    (lead) => lead.updatedAt,
+    (lead) => Math.max(0, lead.finalRevenueCents / 100),
+  );
   const adSpendSparkline = bucketSeries(
     metaAdInsights,
     generatedAtTimestamp,
@@ -750,7 +767,7 @@ export function DashboardView({
               : `${money(costPerLeadCents, true)} per lead`,
           ]
             .filter(Boolean)
-            .join(" · ") || "No revenue recorded yet"
+            .join(" · ") || "No attributed revenue yet"
         : adReportingConnected
           ? "No spend in this range"
           : configuredBudgetCents
@@ -758,7 +775,7 @@ export function DashboardView({
             : "No ad account connected",
       icon: TrendingUp,
       tone: "purple",
-      trend: ratioTrend(revenueSparkline, adSpendSparkline),
+      trend: ratioTrend(attributedRevenueSparkline, adSpendSparkline),
       trendBasis: "ROAS",
       sparkline: bucketSeries(
         metaAdInsights,

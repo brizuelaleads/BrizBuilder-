@@ -262,6 +262,34 @@ test("cost per lead counts only leads that carry a campaign", () => {
   );
 });
 
+test("ROAS credits ad spend only with the revenue that spend attracted", () => {
+  // The tile once divided every won job by ad spend, so a referral, a repeat
+  // customer or an organic call raised the return the ads appeared to earn --
+  // and a client reading it would keep paying for a result it did not produce.
+  assert.ok(
+    !/revenue \/ 100 \/ reportedAdSpend/.test(dashboardSource),
+    "total revenue is no longer divided by ad spend",
+  );
+  assert.match(
+    dashboardSource,
+    /const attributedRevenueCents = attributedWonLeads\.reduce\(/,
+  );
+  assert.match(
+    dashboardSource,
+    /attributedRevenueCents > 0\s*\?\s*attributedRevenueCents \/ reportedAdSpendCents/,
+  );
+  // The arrow on the same tile has to answer for the same subset, or the
+  // number and its direction would be measuring two different businesses.
+  assert.match(
+    dashboardSource,
+    /const attributedRevenueSparkline = bucketSeries\(\s*attributedWonLeads,/,
+  );
+  assert.match(
+    dashboardSource,
+    /trend: ratioTrend\(attributedRevenueSparkline, adSpendSparkline\)/,
+  );
+});
+
 test("a lead is joined to a campaign only by a Meta-shaped id", () => {
   // utm_campaign is caller-controlled on the public lead endpoint, so a
   // free-text label must never be presented as a join into an ad account.

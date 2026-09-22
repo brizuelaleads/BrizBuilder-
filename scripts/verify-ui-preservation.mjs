@@ -79,10 +79,15 @@ for (const before of baseline.files) {
     assert.deepEqual(outside, [], `Controls outside the rebuilt view changed in ${before.file}`);
   }
   if (!rebuilt && before.file!=='app/crm/ui.tsx') assert.deepEqual(controls(after.controls),controls(withoutRemovals(before.file, 'controls', before.controls)),`Controls changed in ${before.file}`);
-  // Reviewed change: the Leads tile's colour follows the same previous-range
-  // comparison as its caption (comparisonTrend). Any other edit must be reviewed
-  // and its hash recorded here.
-  const reviewedDashboardSha = 'eea4428834403dd702ed9b690b6b5ff219a00c447a196dc3fa712b73c81951f8';
+  // Reviewed changes, newest last. Any other edit must be reviewed and its hash
+  // recorded here.
+  //  1. The Leads tile's colour follows the same previous-range comparison as
+  //     its caption (comparisonTrend).
+  //  2. ROAS on the Ad spend tile, and that tile's trend arrow, divide only the
+  //     revenue from leads carrying a Meta campaign id instead of every won
+  //     job, so organic and referral revenue no longer inflates the return
+  //     credited to ad spend (tests/meta-ads.test.mjs).
+  const reviewedDashboardSha = '106dcf48ba6691a47a48feb155bef1444e30da469952e29eb03498a67342fd48';
   if (before.file==='app/crm/DashboardView.tsx') assert.ok([before.sha256, reviewedDashboardSha].includes(after.sha256),'Dashboard rendering/calculations changed');
   files++;handlers+=before.handlers.length;requests+=before.requests.length;fields+=before.fields.length;charts+=before.charts.length;
 }
