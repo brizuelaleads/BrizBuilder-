@@ -1,5 +1,6 @@
 "use client";
 
+import { Search } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import type {
   CrmClient,
@@ -148,7 +149,7 @@ export function WebsitesView({ websites, clients, leads, connections, mutate, ca
     {!websites.length ? <EmptyState title="No websites added yet" description="Start by entering the client’s website address. BrizBuilder will then give you a ready-to-send message for the person who manages the website." action={canManage && clients.length ? <button className="crm-button-primary" onClick={() => setEditing(null)}>Add your first website</button> : null} /> : <div className="crm-website-layout">
       <section className="crm-website-list" aria-label="Website connections">
         <header><div><strong>Websites</strong><small>{websites.length} total connection{websites.length === 1 ? "" : "s"}</small></div></header>
-        <label className="crm-website-search">Find a website<input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search name, domain, or client" /></label>
+        <label className="crm-search crm-website-search"><Search aria-hidden="true" /><input aria-label="Find a website" type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search name, domain, or client" /></label>
         {!visibleWebsites.length ? <p className="crm-website-no-results">No websites match your search.</p> : null}
         {visibleWebsites.map((website) => {
           const client = clients.find((item) => item.id === website.clientId);
@@ -163,7 +164,7 @@ export function WebsitesView({ websites, clients, leads, connections, mutate, ca
 
       {selected ? <section className="crm-website-detail">
         <header><div><h3>{selected.name}</h3><span>{clients.find((client) => client.id === selected.clientId)?.businessName}</span></div><div className="crm-website-actions">{selected.domain ? <a className="crm-button-secondary" href={`https://${selected.domain}`} target="_blank" rel="noreferrer">Open Site</a> : null}{canManage ? <button className="crm-button-secondary" onClick={() => setEditing(selected)}>Edit</button> : null}</div></header>
-        <nav className="crm-website-nav" aria-label="Website details">{(["overview", "setup", "settings"] as const).map(tab => <button type="button" key={tab} aria-current={section === tab ? "page" : undefined} onClick={() => setSection(tab)}>{tab === "overview" ? "Overview" : tab === "setup" ? "Form setup" : "Settings"}</button>)}</nav>
+        <nav className="crm-tabs crm-website-nav" aria-label="Website details">{(["overview", "setup", "settings"] as const).map(tab => <button type="button" key={tab} className={section === tab ? "active" : ""} aria-current={section === tab ? "page" : undefined} onClick={() => setSection(tab)}>{tab === "overview" ? "Overview" : tab === "setup" ? "Form setup" : "Settings"}</button>)}</nav>
         {section === "overview" ? <div className="crm-website-overview-panel">
           <div className="crm-website-connection-state"><Badge tone={!captureEnabled ? "neutral" : selected.lastLeadAt ? "green" : "orange"}>{!captureEnabled ? "Disconnected" : selected.lastLeadAt ? "Lead received" : "Awaiting first lead"}</Badge><h4>{!captureEnabled ? "Lead capture is off" : selected.lastLeadAt ? "Your website has sent leads" : "Finish connecting your form"}</h4><p>{!captureEnabled ? "Update this website in Settings to enable lead capture again." : selected.lastLeadAt ? "New form submissions appear in your Leads tab. You can find the last received date below." : "Send the setup instructions to your website manager, then submit a test form to check the connection."}</p><button className="crm-button-secondary" onClick={() => setSection(captureEnabled ? "setup" : "settings")}>{captureEnabled ? selected.lastLeadAt ? "View setup instructions" : "Set up form" : "Open settings"}</button></div>
         <div className="crm-website-status-grid">
