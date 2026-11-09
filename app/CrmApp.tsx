@@ -46,7 +46,7 @@ import {
 } from "lucide-react";
 import { BrandLogo } from "./components/BrandLogo";
 import type { CrmBootstrap, CrmLead, CrmPermission, CrmRole } from "../db/crm";
-import { CRM_PICKER_THEMES, type CrmTheme } from "../db/theme";
+import { CRM_PICKER_THEMES, DEFAULT_CRM_BACKDROP, DEFAULT_CRM_BACKDROP_BLUR, backdropTint, isCrmBackdrop, isCrmBackdropBlur, type CrmBackdrop, type CrmBackdropBlur, type CrmTheme } from "../db/theme";
 import { GlassBackdrop } from "./crm/GlassBackdrop";
 import type { TenantBranding } from "../db/branding";
 import { DEFAULT_BRANDING, brandingCssVariables } from "../db/branding";
@@ -373,6 +373,12 @@ export function CrmApp({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [theme, setTheme] = useState<CrmTheme>(initialData.viewer.theme);
+  const [backdrop, setBackdrop] = useState<CrmBackdrop>(
+    isCrmBackdrop(initialData.viewer.backdrop) ? initialData.viewer.backdrop : DEFAULT_CRM_BACKDROP,
+  );
+  const [backdropBlur, setBackdropBlur] = useState<CrmBackdropBlur>(
+    isCrmBackdropBlur(initialData.viewer.backdropBlur) ? initialData.viewer.backdropBlur : DEFAULT_CRM_BACKDROP_BLUR,
+  );
   const [search, setSearch] = useState("");
   // Workspace switcher: agency users pick which sub-account they are managing.
   const [switcherOpen, setSwitcherOpen] = useState(false);
@@ -700,6 +706,37 @@ export function CrmApp({
     }
   }
 
+  // Same contract as chooseTheme: shown immediately, saved for next sign-in.
+  async function chooseBackdrop(next: CrmBackdrop) {
+    if (next === backdrop) return;
+    setBackdrop(next);
+    try {
+      const response = await fetch("/api/crm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_backdrop", backdrop: next }),
+      });
+      if (!response.ok) throw new Error();
+    } catch {
+      setError("Your background could not be saved. It will reset next time you sign in.");
+    }
+  }
+
+  async function chooseBackdropBlur(next: CrmBackdropBlur) {
+    if (next === backdropBlur) return;
+    setBackdropBlur(next);
+    try {
+      const response = await fetch("/api/crm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_backdrop_blur", blur: next }),
+      });
+      if (!response.ok) throw new Error();
+    } catch {
+      setError("Your blur setting could not be saved. It will reset next time you sign in.");
+    }
+  }
+
   async function changeOwnPassword() {
     const password = window.prompt(
       "Choose a new password for your own account (at least 12 characters):",
@@ -856,9 +893,16 @@ export function CrmApp({
       className={`crm-shell crm-design-system crm-shell-view-${view}`}
       data-ui="light"
       data-theme={theme === "glass" ? "glass" : undefined}
-      style={brandingCssVariables(shellBranding) as React.CSSProperties}
+      data-backdrop-blur={theme === "glass" && backdropBlur !== "none" ? backdropBlur : undefined}
+      style={
+        {
+          ...brandingCssVariables(shellBranding),
+          // Glass panels take their smoke from the chosen backdrop.
+          ...(theme === "glass" ? { "--glass-tint": backdropTint(backdrop) } : {}),
+        } as React.CSSProperties
+      }
     >
-      {theme === "glass" ? <GlassBackdrop /> : null}
+      {theme === "glass" ? <GlassBackdrop variant={backdrop} /> : null}
       <aside className={`crm-sidebar ${mobileNav ? "crm-sidebar-open" : ""}`}>
         <div className="crm-brand">
           <button
@@ -1553,6 +1597,14 @@ export function CrmApp({
             branding={data.branding}
             mutate={mutate}
             tenantRootDomain={data.pwaRuntime.tenantRootDomain}
+            appearance={{
+              glass: theme === "glass",
+              backdrop,
+              onBackdrop: (next) => void chooseBackdrop(next),
+              blur: backdropBlur,
+              onBlur: (next) => void chooseBackdropBlur(next),
+              onUseGlass: () => void chooseTheme("glass"),
+            }}
           />
         )}
       </main>

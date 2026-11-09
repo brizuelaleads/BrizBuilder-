@@ -399,3 +399,96 @@
   backdrop-filter: blur(28px) saturate(1.25) brightness(1.05);
   -webkit-backdrop-filter: blur(28px) saturate(1.25) brightness(1.05);
 }
+
+/* Over the bright red backdrop the frost needs more body: a darker, slightly
+ * warm smoke keeps muted text and red brand marks legible while the red still
+ * glows through. Overrides the fills above (same selectors, later in file). */
+#crm-app[data-theme="glass"] :is(
+    .crm-panel, .crm-dashboard-view .crm-panel, .crm-filterbar, .crm-table-panel, .crm-cal-card, .crm-week-calendar,
+    .crm-calendar-list > article, .crm-empty, .crm-empty-state, .crm-settings-workspace > aside, .crm-settings-workspace > nav,
+    .crm-kanban-column, .crm-live-inbox, .crm-review-inbox, .crm-lead-hero, .crm-lead-header, .crm-lead-page-toolbar,
+    .crm-topbar, .crm-sidebar, .crm-integrations-summary, .crm-integration-card, .crm-connection-card, .crm-integrations-banner,
+    .crm-dashboard-kpi-card, .crm-call-metrics > article, .crm-ads-metrics > article, .crm-review-metrics > article,
+    .crm-review-request-metrics > article, .crm-website-metrics > article, .crm-conversation-metrics > article,
+    .crm-preview-metrics > article, .crm-lead-summary-strip > article, .crm-form-builder-preview, .crm-funnel-preview, .crm-future-scope) {
+  background-color: rgb(var(--glass-tint, 14 11 12) / 62%);
+}
+#crm-app[data-theme="glass"] { --crm-muted: #c3bcbe; --color-mist: #c3bcbe; }
+#crm-app[data-theme="glass"] :is(.crm-integrations-summary article small, .crm-integration-facts span, .crm-page-heading p) { color: #c3bcbe; }
+
+/* ---- Settings > Appearance: backdrop picker (both themes) --------------- */
+.crm-shell.crm-design-system.crm-design-system .crm-appearance-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-top: 4px;
+}
+/* A card button: listed with the structural buttons in controls.css, so it
+ * keeps its own shape and its preview is not sized as an icon. */
+.crm-shell.crm-design-system.crm-design-system .crm-appearance-option {
+  display: flex; flex-direction: column; align-items: stretch; padding: 0; overflow: hidden; text-align: left; cursor: pointer;
+  border: 1px solid var(--crm-line); border-radius: 16px; background: var(--crm-card); color: var(--crm-ink);
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+.crm-shell.crm-design-system.crm-design-system .crm-appearance-option:hover { border-color: var(--crm-control-border); transform: translateY(-1px); }
+.crm-shell.crm-design-system.crm-design-system .crm-appearance-option[aria-checked="true"] { border-color: var(--crm-accent, #6757e8); box-shadow: 0 0 0 1px var(--crm-accent, #6757e8); }
+.crm-shell.crm-design-system.crm-design-system .crm-appearance-preview { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; }
+/* Image backdrops: full height, tiled side by side, no zoom. */
+.crm-shell.crm-design-system.crm-design-system .crm-backdrop-image { background-color: #050505; background-repeat: repeat-x; background-size: auto 100%; background-position: left top; }
+.crm-shell.crm-design-system.crm-design-system .crm-appearance-label { display: grid; gap: 4px; padding: 14px 16px 16px; }
+.crm-shell.crm-design-system.crm-design-system .crm-appearance-label strong { font-size: 14px; font-weight: 600; color: var(--crm-ink); }
+.crm-shell.crm-design-system.crm-design-system .crm-appearance-label small { font-size: 12px; line-height: 1.45; font-weight: 400; color: var(--crm-muted); white-space: normal; }
+.crm-shell.crm-design-system.crm-design-system .crm-appearance-note { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+
+/* Photo backdrops can be bright (white, pink). A light smoke wash over the
+ * full-screen one and a soft shadow under text that sits directly on it keep
+ * page headings readable; previews in Settings stay untouched. */
+#crm-app[data-theme="glass"] > .crm-glass-backdrop.crm-backdrop-image::after {
+  content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgb(0 0 0 / 38%), rgb(0 0 0 / 28%));
+}
+#crm-app[data-theme="glass"] .crm-view :is(h1, h2, h3, h4, p, span, small, strong, label, dt, dd) { text-shadow: 0 1px 10px rgb(0 0 0 / 55%); }
+
+/* Backdrop blur (Settings > Appearance). Scaled slightly so the blurred edge
+ * never shows a soft halo at the window border. */
+#crm-app[data-theme="glass"][data-backdrop-blur] > .crm-glass-backdrop { transform: scale(1.06); }
+#crm-app[data-theme="glass"][data-backdrop-blur="soft"] > .crm-glass-backdrop { filter: blur(8px); }
+#crm-app[data-theme="glass"][data-backdrop-blur="strong"] > .crm-glass-backdrop { filter: blur(22px); }
+.crm-shell.crm-design-system.crm-design-system .crm-appearance-blur {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px;
+  margin-bottom: 18px; padding: 16px 18px; border: 1px solid var(--crm-line); border-radius: 14px;
+}
+.crm-shell.crm-design-system.crm-design-system .crm-appearance-blur strong { display: block; font-size: 14px; font-weight: 600; color: var(--crm-ink); }
+.crm-shell.crm-design-system.crm-design-system .crm-appearance-blur small { display: block; margin-top: 2px; font-size: 12px; color: var(--crm-muted); }
+
+/* Desktop layout: the top bar and the page share one column with the same
+ * edges, 16px from the sidebar and the window, so nothing floats off-centre on
+ * wide screens. The bar stays 16px from the top while scrolling, level with the
+ * floating sidebar, instead of snapping flush to the window edge. */
+@media (min-width: 901px) {
+  .crm-shell.crm-design-system.crm-design-system[data-theme="glass"] {
+    & .crm-topbar {
+      position: sticky; top: 16px; z-index: 35;
+      margin: 16px 16px 0 0; padding-inline: 24px;
+    }
+    & .crm-view { width: auto; max-width: none; margin: 0; padding: 16px 16px 48px 0; }
+  }
+}
+
+/* Block titles ("Leads", "Missed Calls", "Ad Spend", pipeline stages, metric
+ * cards on other views): larger, bolder and near-white so each block reads at a
+ * glance, instead of the small muted caption the shared cards use. */
+#crm-app[data-theme="glass"] {
+  & :is(.crm-dashboard-kpi-card, .crm-call-metrics > article, .crm-ads-metrics > article,
+      .crm-review-metrics > article, .crm-review-request-metrics > article, .crm-website-metrics > article,
+      .crm-conversation-metrics > article, .crm-preview-metrics > article, .crm-lead-summary-strip > article,
+      .crm-integrations-summary > article) :is(.crm-dashboard-kpi-heading),
+  & :is(.crm-call-metrics, .crm-ads-metrics, .crm-review-metrics, .crm-review-request-metrics, .crm-website-metrics,
+      .crm-conversation-metrics, .crm-preview-metrics, .crm-lead-summary-strip) > article > span:first-of-type,
+  & :is(.crm-dashboard-marketing-card, .crm-dashboard-pipeline-stage) > span:first-child,
+  & .crm-dashboard-source-card > span:first-child {
+    color: #f4f4f5;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0;
+    line-height: 1.3;
+  }
+  & .crm-dashboard-kpi-heading svg { width: 16px; height: 16px; }
+  & .crm-integrations-summary article b { font-size: 15px; font-weight: 600; color: #f4f4f5; }
+}

@@ -653,8 +653,9 @@ export type CrmWorkflowRun = {
 
 export type { CrmTheme } from "./theme";
 export { CRM_THEMES } from "./theme";
-import { CRM_THEMES } from "./theme";
-import type { CrmTheme } from "./theme";
+export type { CrmBackdrop } from "./theme";
+import { CRM_THEMES, isCrmBackdrop, isCrmBackdropBlur } from "./theme";
+import type { CrmBackdrop, CrmBackdropBlur, CrmTheme } from "./theme";
 export type { TenantBranding } from "./branding";
 import type { TenantBranding } from "./branding";
 
@@ -668,6 +669,8 @@ export type CrmBootstrap = {
     canViewAllClients: boolean;
     permissions: CrmPermission[];
     theme: CrmTheme;
+    backdrop: CrmBackdrop;
+    backdropBlur: CrmBackdropBlur;
   };
   organization: { id: string; name: string };
   clients: CrmClient[];
@@ -1042,7 +1045,7 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
   const linkedAppointmentRows = linkAppointmentRows(appointmentRows.results, leadRows.results.map(mapLead));
 
   return {
-    viewer: { name: context.name, email: context.email, role: context.role, clientId: context.clientId, isAgency: !context.clientId, canViewAllClients: clientAccessList(context) === null, permissions: rolePermissions[context.role], theme: "classic" },
+    viewer: { name: context.name, email: context.email, role: context.role, clientId: context.clientId, isAgency: !context.clientId, canViewAllClients: clientAccessList(context) === null, permissions: rolePermissions[context.role], theme: "classic", backdrop: "red", backdropBlur: "none" },
     organization: { id: context.organizationId, name: context.organizationName },
     clients: clientRows.results.map(mapClient),
     leads: leadRows.results.map(row => projectLeadAppointment(mapLead(row), linkedAppointmentRows)),
@@ -1233,6 +1236,19 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
     const theme = requireText(input.theme, "Theme", 20) as CrmTheme;
     if (!CRM_THEMES.includes(theme)) throw new Error("Unknown theme.");
     return { saved: true, persisted: false, theme };
+  }
+
+  if (action === "set_backdrop") {
+    // Same honest no-op as set_theme: validated, never persisted on D1.
+    const backdrop = requireText(input.backdrop, "Backdrop", 20);
+    if (!isCrmBackdrop(backdrop)) throw new Error("Unknown backdrop.");
+    return { saved: true, persisted: false, backdrop };
+  }
+
+  if (action === "set_backdrop_blur") {
+    const blur = requireText(input.blur, "Blur", 20);
+    if (!isCrmBackdropBlur(blur)) throw new Error("Unknown blur.");
+    return { saved: true, persisted: false, blur };
   }
 
   if (action === "save_client_branding") {

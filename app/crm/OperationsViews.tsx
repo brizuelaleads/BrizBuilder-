@@ -14,6 +14,8 @@ import type {
 import type { TenantBranding } from "../../db/branding";
 import { ChevronLeft, ChevronRight, Clock3, Trash2, X } from "lucide-react";
 import { BrandingSettings } from "./BrandingSettings";
+import { GlassBackdrop } from "./GlassBackdrop";
+import { CRM_BACKDROP_BLURS, CRM_BACKDROPS, type CrmBackdrop, type CrmBackdropBlur } from "../../db/theme";
 import { Badge, dateTime, EmptyState, Modal, money, shortDate } from "./ui";
 
 type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
@@ -839,6 +841,7 @@ export function SettingsView({
   branding,
   mutate,
   tenantRootDomain,
+  appearance,
 }: {
   organizationName: string;
   viewerRole: string;
@@ -846,11 +849,20 @@ export function SettingsView({
   branding: TenantBranding[];
   mutate: Mutate;
   tenantRootDomain: string | null;
+  appearance: {
+    glass: boolean;
+    backdrop: CrmBackdrop;
+    onBackdrop: (backdrop: CrmBackdrop) => void;
+    blur: CrmBackdropBlur;
+    onBlur: (blur: CrmBackdropBlur) => void;
+    onUseGlass: () => void;
+  };
 }) {
-  const [section, setSection] = useState<"workspace" | "branding" | "security" | "integrations" | "privacy">("workspace");
+  const [section, setSection] = useState<"workspace" | "branding" | "appearance" | "security" | "integrations" | "privacy">("workspace");
   const sections = [
     { id: "workspace" as const, label: "Workspace", icon: "B" },
     { id: "branding" as const, label: "Client App", icon: "C" },
+    { id: "appearance" as const, label: "Appearance", icon: "A" },
     { id: "security" as const, label: "Access & security", icon: "A" },
     { id: "integrations" as const, label: "Integrations", icon: "I" },
     { id: "privacy" as const, label: "Privacy", icon: "P" },
@@ -930,6 +942,58 @@ export function SettingsView({
                 mutate={mutate}
                 tenantRootDomain={tenantRootDomain}
               />
+            </>
+          ) : null}
+          {section === "appearance" ? (
+            <>
+              <header>
+                <h3>Appearance</h3>
+                <p>Choose the background behind the Glass theme. This is your own setting; everyone else keeps theirs.</p>
+              </header>
+              {appearance.glass ? null : (
+                <article className="crm-settings-section crm-appearance-note">
+                  <p>Backgrounds show with the Glass theme. You&apos;re using Classic right now.</p>
+                  <button type="button" className="crm-button-secondary" onClick={appearance.onUseGlass}>Switch to Glass</button>
+                </article>
+              )}
+              <div className="crm-appearance-blur">
+                <div>
+                  <strong>Background blur</strong>
+                  <small>Soften the background so it sits further behind your work.</small>
+                </div>
+                <div className="crm-tabs" role="radiogroup" aria-label="Background blur">
+                  {CRM_BACKDROP_BLURS.map((level) => (
+                    <button
+                      key={level.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={appearance.blur === level.id}
+                      className={appearance.blur === level.id ? "active" : ""}
+                      onClick={() => appearance.onBlur(level.id)}
+                    >
+                      {level.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="crm-appearance-grid" role="radiogroup" aria-label="Glass background">
+                {CRM_BACKDROPS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={appearance.backdrop === option.id}
+                    className="crm-appearance-option"
+                    onClick={() => appearance.onBackdrop(option.id)}
+                  >
+                    <GlassBackdrop variant={option.id} className="crm-appearance-preview" idPrefix="crm-bd-preview" />
+                    <span className="crm-appearance-label">
+                      <strong>{option.label}</strong>
+                      <small>{option.description}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
             </>
           ) : null}
           {section === "security" ? (

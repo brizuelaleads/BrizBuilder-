@@ -43,7 +43,7 @@
       .crm-review-inbox-list button, .crm-website-list > button, .crm-number-results > button,
       .crm-settings-client-app-entry, .crm-lead-progress-track > button, .crm-lead-task-list button,
       .crm-task-check, .crm-visual-node, .crm-client-toggle, .crm-ads-disclosure,
-      .crm-ads-campaign-leads button, .crm-workflow-list > button)) {
+      .crm-ads-campaign-leads button, .crm-workflow-list > button, .crm-appearance-option)) {
     display: var(--btn-display, inline-flex);
     flex-direction: var(--btn-direction, row);
     align-items: center;

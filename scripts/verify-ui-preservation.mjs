@@ -59,18 +59,22 @@ const restructured = {
       .map(lost => ({lost, now: /<SignInPanel returnTo=\{safeLoginReturnTo\(return_to\)\}/, why: `${lost} now lives in app/WorkspaceLogin.tsx, rendered by SignInPanel`})),
   },
   'app/crm/OperationsViews.tsx': {
-    reason: 'Calendar rebuilt as a week planner: month picker, status filters, event popover',
-    controls: /shiftWeek|setAnchorDate|pageMonth|monthLabel|weekStart\.toLocaleDateString|CALENDAR_WEEK_RANGE|toggleStatus|hiddenStatuses|crm-cal-|setOpenEvent|onClose|closeRef|update_appointment_status|deleteAppointment|onAddAppointment|<option key=\{status\}|crm-google-calendar|appointment\.contactName/,
+    reason: 'Calendar rebuilt as a week planner: month picker, status filters, event popover. Settings gained an Appearance section (Glass backdrop picker).',
+    controls: /crm-appearance|appearance\.on|appearance\.blur|CRM_BACKDROPS|CRM_BACKDROP_BLURS|level\.|option\.id|<h3>Appearance<\/h3>|shiftWeek|setAnchorDate|pageMonth|monthLabel|weekStart\.toLocaleDateString|CALENDAR_WEEK_RANGE|toggleStatus|hiddenStatuses|crm-cal-|setOpenEvent|onClose|closeRef|update_appointment_status|deleteAppointment|onAddAppointment|<option key=\{status\}|crm-google-calendar|appointment\.contactName/,
   },
   'app/CrmApp.tsx': {
     reason: 'Toasts carry an icon, a title and detail, an action and a close; the sidebar foot gained the Classic/Glass theme switch',
-    controls: /crm-toast|crm-theme-switch|chooseTheme|CRM_PICKER_THEMES|option\.label/,
+    controls: /crm-toast|crm-theme-switch|chooseTheme|chooseBackdrop|chooseBackdropBlur|CRM_PICKER_THEMES|option\.label/,
     requests: {
       gone: [],
       added: [
         // New capability: the theme switch saves through the existing, validated
         // set_theme action (identity from the session, value from the allowlist).
         'fetch("/api/crm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "set_theme", theme: next }), })',
+        // Settings > Appearance saves the Glass backdrop the same way, through
+        // the validated set_backdrop action.
+        'fetch("/api/crm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "set_backdrop", backdrop: next }), })',
+        'fetch("/api/crm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "set_backdrop_blur", blur: next }), })',
       ],
     },
   },

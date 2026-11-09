@@ -169,6 +169,7 @@ import type {
   CrmTheme,
 } from "./crm";
 import { CRM_THEMES } from "./crm";
+import { DEFAULT_CRM_BACKDROP, DEFAULT_CRM_BACKDROP_BLUR, isCrmBackdrop, isCrmBackdropBlur, type CrmBackdrop, type CrmBackdropBlur } from "./theme";
 import type { TenantBranding } from "./branding";
 import { resolveBranding } from "./branding";
 import { saveClientBranding } from "./supabase-branding";
@@ -3929,16 +3930,24 @@ export async function getSupabaseCrmBootstrap(
   // Fault-isolated: a preferences hiccup must degrade to the classic theme,
   // never bubble up and trip the silent whole-bootstrap fallback to D1.
   let viewerTheme: CrmTheme = "classic";
+  let viewerBackdrop: CrmBackdrop = DEFAULT_CRM_BACKDROP;
+  let viewerBackdropBlur: CrmBackdropBlur = DEFAULT_CRM_BACKDROP_BLUR;
   try {
     const preference = await assertOk(
       supabase()
         .from("user_preferences")
-        .select("theme")
+        // "*" rather than a column list: a database that has not yet run the
+        // backdrop migration must still yield the theme, not trip this read.
+        .select("*")
         .eq("email", context.email)
         .maybeSingle(),
     );
     if (preference && CRM_THEMES.includes(preference.theme as CrmTheme))
       viewerTheme = preference.theme as CrmTheme;
+    if (preference && isCrmBackdrop(preference.backdrop))
+      viewerBackdrop = preference.backdrop;
+    if (preference && isCrmBackdropBlur(preference.backdrop_blur))
+      viewerBackdropBlur = preference.backdrop_blur;
   } catch (error) {
     console.error("User theme preference could not be loaded.", error);
   }
@@ -4008,6 +4017,8 @@ export async function getSupabaseCrmBootstrap(
       canViewAllClients: clientAccessList(context) === null,
       permissions: rolePermissions[context.role],
       theme: viewerTheme,
+      backdrop: viewerBackdrop,
+      backdropBlur: viewerBackdropBlur,
     },
     organization: {
       id: context.organizationId,
@@ -4364,6 +4375,45 @@ export async function executeSupabaseCrmAction(
         ),
     );
     return { saved: true, theme };
+  }
+
+  if (action === "set_backdrop") {
+    // Per-user cosmetic preference, written exactly like set_theme: identity
+    // from the authenticated context, value only from the allowlist.
+    const backdrop = requireText(input.backdrop, "Backdrop", 20);
+    if (!isCrmBackdrop(backdrop)) throw new Error("Unknown backdrop.");
+    await assertOk(
+      supabase()
+        .from("user_preferences")
+        .upsert(
+          {
+            email: context.email,
+            backdrop,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "email" },
+        ),
+    );
+    return { saved: true, backdrop };
+  }
+
+  if (action === "set_backdrop_blur") {
+    // Same contract as set_backdrop: context identity, allowlisted value.
+    const blur = requireText(input.blur, "Blur", 20);
+    if (!isCrmBackdropBlur(blur)) throw new Error("Unknown blur.");
+    await assertOk(
+      supabase()
+        .from("user_preferences")
+        .upsert(
+          {
+            email: context.email,
+            backdrop_blur: blur,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "email" },
+        ),
+    );
+    return { saved: true, blur };
   }
 
   if (action === "place_outbound_call") {
