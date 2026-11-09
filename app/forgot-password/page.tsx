@@ -1,53 +1,38 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight } from "lucide-react";
-import { AuthShell } from "../auth/AuthShell";
+import { ArrowRight, Mail } from "lucide-react";
+import { WorkspaceShell } from "../auth/WorkspaceShell";
+import styles from "../landing.module.css";
 
 export const dynamic = "force-dynamic";
-
-export const metadata: Metadata = {
-  title: "Reset password",
-  description: "Request a BrizBuilder password reset link.",
-};
-
-export default async function ForgotPasswordPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ sent?: string }>;
-}) {
+export const metadata: Metadata = { title: "Reset password", description: "Request a BrizBuilder password reset link." };
+export default async function ForgotPasswordPage({ searchParams }: { searchParams: Promise<{ sent?: string }> }) {
   const { sent } = await searchParams;
-
   return (
-    <AuthShell
-      eyebrow="Account security"
-      title="Reset your password."
-      description="Request a secure email link without exposing whether an account exists."
-      trustItems={["Single-use links", "Server checked", "Private by default"]}
-    >
-      <p>ACCOUNT RECOVERY</p>
-      <h2>Forgot password</h2>
-      <span className="auth-card-copy">
-        Enter your email. If it belongs to a BrizBuilder account, we will send
-        the next step.
-      </span>
-      {sent ? (
-        <div className="local-login-success" role="status">
-          Check your email for a secure reset link.
-        </div>
-      ) : null}
-      <form className="local-login-form" action="/api/auth/forgot-password" method="post">
-        <label>
-          <span>Email</span>
-          <input name="email" type="email" autoComplete="username" required autoFocus />
-        </label>
-        <button className="auth-signin" type="submit">
-          <span>Send reset link</span>
-          <ArrowRight aria-hidden="true" />
-        </button>
-      </form>
-      <p className="auth-secondary-link">
-        <Link href="/login"><ArrowLeft aria-hidden="true" /> Back to sign in</Link>
-      </p>
-    </AuthShell>
+    <WorkspaceShell>
+      <main className={styles.main} id="main">
+        <section className={styles.glassPanel} aria-label="Password recovery">
+          <div className={styles.loginSide}>
+            <h1>Forgot password?</h1>
+            <p className={styles.loginCopy}>Enter the email you use for BrizBuilder.</p>
+            {sent ? <p className={styles.formMessage} role="status">If that email belongs to a BrizBuilder account, we will send a password reset link. Check your inbox and spam folder.</p> : null}
+            <form className={styles.loginForm} action="/api/auth/forgot-password" method="post">
+              <label className={styles.field}>
+                <span className={styles.srOnly}>Email address</span>
+                <span className={styles.inputRow}><Mail aria-hidden="true" /><input name="email" type="email" autoComplete="username" placeholder="Email" required /></span>
+              </label>
+              <button className={styles.signIn} type="submit"><span>{sent ? "Send another link" : "Send reset link"}</span><ArrowRight aria-hidden="true" /></button>
+            </form>
+            <p className={styles.recovery}><Link href="/login">Back to sign in</Link></p>
+          </div>
+          <div className={styles.welcomeSide}>
+            <p className={styles.kicker}>Account recovery</p>
+            <h2>Let&apos;s get <br />you back in.</h2>
+            <p className={styles.welcomeCopy}>Use the link in your email to choose a new password, then sign in to your workspace.</p>
+            <div className={styles.invitation}><p>Need help accessing your account?</p><a href="mailto:brizuelaleads@gmail.com">Contact LB Marketing <ArrowRight aria-hidden="true" /></a></div>
+          </div>
+        </section>
+      </main>
+    </WorkspaceShell>
   );
 }

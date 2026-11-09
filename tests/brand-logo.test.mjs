@@ -30,7 +30,7 @@ test("shared brand component replaces legacy BB placeholders", () => {
   assert.match(component, /width: displayWidth/);
 
   for (const rel of [
-    "app/page.tsx",
+    "app/auth/WorkspaceShell.tsx",
     "app/auth/AuthShell.tsx",
     "app/CrmApp.tsx",
     "app/ClientPortal.tsx",
