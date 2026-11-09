@@ -14,6 +14,10 @@ const crmAppSource = read("app/CrmApp.tsx");
 const dashboardSource = read("app/crm/DashboardView.tsx");
 const componentStyles = read("app/crm/design-system.css");
 const migration = read("supabase/migrations/20260726053015_user_preferences.sql");
+// The newest migration that rewrites the theme check is the one in force.
+const themeCheckMigration = read("supabase/migrations/20261108000000_glass_theme.sql");
+const glassStyles = read("app/crm/theme-glass.css");
+const layoutSource = read("app/layout.tsx");
 
 function themesFromTs() {
   const match = themeSource.match(/CRM_THEMES[^=]*=\s*\[([^\]]+)\]/);
@@ -22,7 +26,7 @@ function themesFromTs() {
 }
 
 function themesFromSql() {
-  const match = migration.match(/check \(theme in \(([^)]+)\)\)/i);
+  const match = themeCheckMigration.match(/check \(theme in \(([^)]+)\)\)/i);
   assert.ok(match, "theme check constraint exists in the migration");
   return match[1].match(/'([a-z]+)'/g).map((item) => item.replaceAll("'", ""));
 }
@@ -82,7 +86,7 @@ test("D1 fallback has viewer theme parity and a validated set_theme branch", () 
   assert.match(block, /persisted: false/, "D1 branch is an honest validated no-op");
 });
 
-test("the CRM renders one light UI without a browser-side theme override", () => {
+test("the CRM theme comes only from the saved preference, never the browser", () => {
   assert.doesNotMatch(dashboardSource, /localStorage|THEME_STORAGE_KEY|cyberpunk/);
   assert.doesNotMatch(crmAppSource, /localStorage/);
   assert.match(crmAppSource, /data-ui="light"/);
@@ -104,4 +108,15 @@ test("the bootstrap preference read is fault-isolated from the D1 fallback", () 
   assert.ok(block, "prefs read wrapped in its own try/catch");
   assert.match(block, /from\("user_preferences"\)/);
   assert.match(block, /console\.error/);
+});
+
+test("Glass is an opt-in theme that leaves classic untouched", () => {
+  assert.match(themeSource, /\{ id: "glass", label: "Glass" \}/);
+  assert.match(crmAppSource, /useState<CrmTheme>\(initialData\.viewer\.theme\)/, "starts from the saved preference");
+  assert.match(crmAppSource, /data-theme=\{theme === "glass" \? "glass" : undefined\}/, "classic keeps no data-theme");
+  assert.match(crmAppSource, /action: "set_theme", theme: next/, "saves through the validated action");
+  assert.match(layoutSource, /import "\.\/crm\/controls\.css";\r?\nimport "\.\/crm\/theme-glass\.css";/, "loads after the shared controls");
+  for (const line of glassStyles.split(/\r?\n/).filter((l) => /^[.#][^{]*\{/.test(l) && !l.includes("crm-theme-switch") && !l.includes("crm-sidebar-foot"))) {
+    assert.match(line, /\[data-theme="glass"\]/, `glass rule is scoped to the glass theme: ${line.trim()}`);
+  }
 });

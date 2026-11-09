@@ -46,6 +46,8 @@ import {
 } from "lucide-react";
 import { BrandLogo } from "./components/BrandLogo";
 import type { CrmBootstrap, CrmLead, CrmPermission, CrmRole } from "../db/crm";
+import { CRM_PICKER_THEMES, type CrmTheme } from "../db/theme";
+import { GlassBackdrop } from "./crm/GlassBackdrop";
 import type { TenantBranding } from "../db/branding";
 import { DEFAULT_BRANDING, brandingCssVariables } from "../db/branding";
 import { PushOptIn } from "./components/PushOptIn";
@@ -91,6 +93,9 @@ import { AiConnectorView } from "./crm/AiConnectorView";
 import { CallsView } from "./crm/CallsView";
 import { Badge, initials, Modal } from "./crm/ui";
 import { callNeedsFollowUp } from "../lib/call-attention";
+
+// The Glass theme's own accent, used while a tenant keeps the default brand colour.
+const GLASS_ACCENT = "#f25c3b";
 
 type View =
   | "dashboard"
@@ -367,6 +372,7 @@ export function CrmApp({
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [theme, setTheme] = useState<CrmTheme>(initialData.viewer.theme);
   const [search, setSearch] = useState("");
   // Workspace switcher: agency users pick which sub-account they are managing.
   const [switcherOpen, setSwitcherOpen] = useState(false);
@@ -677,6 +683,23 @@ export function CrmApp({
     }
   }
 
+  // Applied immediately; the saved preference only decides the next sign-in,
+  // so a failed save keeps the chosen theme for this session and says so.
+  async function chooseTheme(next: CrmTheme) {
+    if (next === theme) return;
+    setTheme(next);
+    try {
+      const response = await fetch("/api/crm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_theme", theme: next }),
+      });
+      if (!response.ok) throw new Error();
+    } catch {
+      setError("Your theme could not be saved. It will reset next time you sign in.");
+    }
+  }
+
   async function changeOwnPassword() {
     const password = window.prompt(
       "Choose a new password for your own account (at least 12 characters):",
@@ -819,6 +842,11 @@ export function CrmApp({
   const showRangeFilter = ["dashboard", "leads", "calls", "reports", "ads"].includes(
     view,
   );
+  // Glass brings its own accent unless the tenant chose a brand colour.
+  const shellBranding =
+    theme === "glass" && branding.primaryColor === DEFAULT_BRANDING.primaryColor
+      ? { ...branding, primaryColor: GLASS_ACCENT }
+      : branding;
 
   return (
     // Brand tokens remain inline so each tenant's identity wins over the
@@ -827,8 +855,10 @@ export function CrmApp({
       id="crm-app"
       className={`crm-shell crm-design-system crm-shell-view-${view}`}
       data-ui="light"
-      style={brandingCssVariables(branding) as React.CSSProperties}
+      data-theme={theme === "glass" ? "glass" : undefined}
+      style={brandingCssVariables(shellBranding) as React.CSSProperties}
     >
+      {theme === "glass" ? <GlassBackdrop /> : null}
       <aside className={`crm-sidebar ${mobileNav ? "crm-sidebar-open" : ""}`}>
         <div className="crm-brand">
           <button
@@ -974,6 +1004,19 @@ export function CrmApp({
           ))}
         </nav>
         <div className="crm-sidebar-foot">
+          <div className="crm-theme-switch" role="radiogroup" aria-label="Theme">
+            {CRM_PICKER_THEMES.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                role="radio"
+                aria-checked={(theme === "glass" ? "glass" : "classic") === option.id}
+                onClick={() => void chooseTheme(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
           <div className="crm-user-summary">
             <span className="crm-avatar">{initials(data.viewer.name)}</span>
             <p>

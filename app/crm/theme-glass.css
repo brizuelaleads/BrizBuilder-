@@ -1,0 +1,401 @@
+/* Glass theme: frosted dark panels floating over a fractured backdrop
+ * (app/crm/GlassBackdrop.tsx). Opt-in per user via data-theme="glass" on the
+ * shell; classic is untouched. Loaded after design-system.css and controls.css.
+ *
+ * Scopes
+ *  - Surfaces/tokens: the design-system scope plus [data-theme] -> (0,4,0),
+ *    one step above every design-system rule.
+ *  - Buttons: #crm-app[data-theme] -> one class above the controls.css lists,
+ *    which only ever set --btn-* variables.
+ * Surfaces stay translucent; anything sticky or layered (modals, calendar
+ * headers, menus) gets a near-opaque fill so content never shows through.
+ */
+
+.crm-shell.crm-design-system.crm-design-system[data-theme="glass"] {
+  --glass-fill: rgb(22 22 26 / 52%);
+  --glass-fill-strong: rgb(24 24 28 / 92%);
+  --glass-edge: rgb(255 255 255 / 11%);
+  --glass-edge-strong: rgb(255 255 255 / 18%);
+  --glass-blur: blur(22px) saturate(0.6);
+  --glass-shadow: inset 0 1px 0 rgb(255 255 255 / 7%), 0 24px 60px -24px rgb(0 0 0 / 70%);
+  --crm-canvas: transparent;
+  --crm-card: var(--glass-fill);
+  --crm-surface: var(--glass-fill);
+  --crm-ink: #f4f4f5;
+  --crm-text: var(--crm-ink);
+  --crm-muted: #a8a8b3;
+  --crm-line: var(--glass-edge);
+  --crm-border: var(--glass-edge);
+  --crm-control-border: rgb(255 255 255 / 16%);
+  --crm-subtle: rgb(255 255 255 / 5%);
+  --crm-soft: var(--crm-subtle);
+  --crm-hover: rgb(255 255 255 / 7%);
+  --crm-accent-soft: color-mix(in srgb, var(--crm-accent, #f25c3b) 18%, transparent);
+  --crm-accent-ink: color-mix(in srgb, var(--crm-accent, #f25c3b) 55%, white);
+  --crm-purple: color-mix(in srgb, var(--crm-accent, #f25c3b) 70%, white);
+  --crm-radius-card: 16px;
+  --crm-radius: 16px;
+  position: relative;
+  isolation: isolate;
+  background: #030304;
+  color: var(--crm-ink);
+  color-scheme: dark;
+
+  /* Behind every sibling inside the shell's own stacking context (isolation),
+   * so fixed and sticky children keep their positioning untouched. */
+  & .crm-glass-backdrop { position: fixed; inset: 0; z-index: -1; width: 100%; height: 100%; pointer-events: none; }
+  & :is(.crm-main, .crm-view, .crm-mobile-filterbar) { background: transparent; }
+
+  /* ---- Sidebar: a floating glass column ------------------------------- */
+  & .crm-sidebar {
+    z-index: 30;
+    background: rgb(16 16 19 / 58%);
+    border: 1px solid var(--glass-edge);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+  }
+  & .crm-org-card { background: rgb(255 255 255 / 5%); border-color: var(--glass-edge); border-radius: 12px; }
+  & .crm-org-menu { background: var(--glass-fill-strong); border-color: var(--glass-edge-strong); border-radius: 12px; backdrop-filter: var(--glass-blur); }
+  & .crm-org-menu button:is(:hover, .active) { background: rgb(255 255 255 / 8%); }
+  & :is(.crm-org-card > span, .crm-sidebar .crm-avatar) { background: var(--crm-accent, #f25c3b); color: var(--crm-on-accent, #fff); border-radius: 9px; }
+  & .crm-sidebar .crm-primary-nav.input .crm-nav-section { color: #8b8b96; }
+  & .crm-sidebar .crm-primary-nav.input .value { border-radius: 10px; color: #c9c9d1; border: 1px solid transparent; }
+  & .crm-sidebar .crm-primary-nav.input .value:hover { background: rgb(255 255 255 / 5%); }
+  & .crm-sidebar .crm-primary-nav.input .value.active,
+  & .crm-sidebar .crm-primary-nav.input .value.active:hover {
+    background: rgb(255 255 255 / 9%); border-color: rgb(255 255 255 / 14%); color: #fff;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+  }
+  & .crm-sidebar .crm-primary-nav.input .value.active svg { color: var(--crm-accent, #f25c3b); }
+
+  /* ---- Top bar: a glass strip above the content ----------------------- */
+  & .crm-topbar {
+    background: rgb(16 16 19 / 55%);
+    border-color: var(--glass-edge);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+  }
+
+  /* ---- Cards and panels ----------------------------------------------- */
+  & :is(.crm-panel, .crm-dashboard-kpi-card, .crm-dashboard-view .crm-panel, .crm-filterbar, .crm-table-panel, .crm-cal-card,
+      .crm-calendar-list > article, .crm-empty, .crm-empty-state, .crm-settings-workspace > aside, .crm-settings-workspace > nav,
+      .crm-kanban-column, .crm-live-inbox, .crm-review-inbox, .crm-integrations-summary, .crm-lead-hero, .crm-lead-header, .crm-lead-page-toolbar) {
+    border-color: var(--glass-edge);
+    border-radius: 16px;
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+  }
+  & .crm-dashboard-source-donut::after { background: #141417; }
+  & .crm-dashboard-pipeline-stage { background: rgb(255 255 255 / 4%); border-radius: 12px; }
+
+  /* ---- Fields --------------------------------------------------------- */
+  & :is(input:not([type=checkbox], [type=radio], [type=range]), select, textarea, .crm-search) {
+    background-color: rgb(255 255 255 / 5%);
+    border-color: var(--crm-control-border);
+    color: var(--crm-ink);
+  }
+  & ::placeholder { color: #8b8b96; }
+  & select option { background: #1b1b1f; color: var(--crm-ink); }
+
+  /* ---- Layers that must stay legible over moving content -------------- */
+  & :is(.crm-modal, .crm-ads-drawer, .crm-lead-drawer) { background: var(--glass-fill-strong); border-color: var(--glass-edge-strong); border-radius: 18px; backdrop-filter: var(--glass-blur); }
+  & :is(.crm-toast, .crm-error-toast) { background: var(--glass-fill-strong); border-color: var(--glass-edge-strong); backdrop-filter: var(--glass-blur); }
+  & :is(.crm-cal-days-header, .crm-cal-days-header > span, .crm-cal-hours, .crm-mobile-dock) { background: #131316; }
+  & .crm-mobile-dock { border-color: var(--glass-edge); }
+
+  /* ---- Tables --------------------------------------------------------- */
+  & :is(table th, .crm-table thead th) { background: rgb(255 255 255 / 3%); color: #9d9da8; }
+  & :is(table td, table th) { border-color: rgb(255 255 255 / 7%); }
+  & table tbody tr:hover { background: rgb(255 255 255 / 4%); }
+
+  /* ---- Theme switch (also styled for classic below) ------------------- */
+  & .crm-theme-switch { background: rgb(255 255 255 / 5%); border-color: var(--glass-edge); }
+  & .crm-theme-switch [aria-checked="true"] { background: var(--crm-accent, #f25c3b); color: var(--crm-on-accent, #fff); }
+}
+
+@media (min-width: 901px) {
+  .crm-shell.crm-design-system.crm-design-system[data-theme="glass"] {
+    & .crm-sidebar { top: 16px; left: 16px; bottom: 16px; height: auto; width: 232px; border-radius: 20px; }
+    & .crm-main { margin-left: 264px; }
+    & .crm-topbar { margin: 16px 16px 0 0; border: 1px solid var(--glass-edge); border-radius: 18px; padding-inline: 24px; box-shadow: var(--glass-shadow); }
+    & .crm-view { padding-left: 0; padding-right: 16px; }
+  }
+}
+
+/* Theme switch in the sidebar foot (both themes). */
+.crm-shell.crm-design-system.crm-design-system .crm-theme-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  margin: 0 4px 12px;
+  padding: 3px;
+  border: 1px solid #3f3f46;
+  border-radius: 999px;
+  background: #202023;
+}
+#crm-app .crm-theme-switch > button {
+  --btn-h: 30px; --btn-px: 10px; --btn-fs: 12px;
+  --btn-bg: transparent; --btn-fg: #c9c9d1; --btn-bg-hover: rgb(255 255 255 / 6%);
+  --btn-ring: 0 0 #0000; --btn-ring-hover: 0 0 #0000; --btn-shadow: 0 0 #0000; --btn-shadow-hover: 0 0 #0000;
+  font-weight: 500;
+}
+#crm-app .crm-theme-switch > button[aria-checked="true"] { --btn-bg: #fafafa; --btn-fg: #18181b; --btn-bg-hover: #fafafa; }
+#crm-app[data-theme="glass"] .crm-theme-switch > button[aria-checked="true"] { --btn-bg: var(--crm-accent, #f25c3b); --btn-fg: var(--crm-on-accent, #fff); --btn-bg-hover: var(--crm-accent, #f25c3b); }
+
+/* ---- Buttons ------------------------------------------------------------ */
+#crm-app[data-theme="glass"] {
+  & :is(button, a, summary) {
+    --btn-bg: rgb(255 255 255 / 6%);
+    --btn-fg: #f4f4f5;
+    --btn-bg-hover: rgb(255 255 255 / 12%);
+    --btn-ring: inset 0 0 0 1px rgb(255 255 255 / 14%);
+    --btn-ring-hover: inset 0 0 0 1px rgb(255 255 255 / 26%);
+    --btn-shadow: 0 0 #0000;
+    --btn-shadow-hover: 0 10px 24px -14px rgb(0 0 0 / 80%);
+    --btn-focus: inset 0 0 0 1px rgb(255 255 255 / 70%), 0 0 0 3px color-mix(in srgb, var(--crm-accent, #f25c3b) 40%, transparent);
+  }
+  & :is(.crm-button-primary, .crm-topbar-action-primary, .crm-integration-primary, .crm-integrations-browse,
+      .crm-cal-empty button, .crm-lead-won-button, .crm-form-preview-card button, button[type="submit"],
+      .crm-client-app-primary-actions > button, .crm-client-advanced-save button,
+      .crm-client-install-actions > button:not(.secondary), .crm-lead-contact-actions > a.primary, .auth-signin) {
+    --btn-bg: var(--crm-accent, #f25c3b);
+    --btn-fg: var(--crm-on-accent, #fff);
+    --btn-bg-hover: color-mix(in srgb, var(--crm-accent, #f25c3b) 86%, white);
+    --btn-ring: inset 0 1px 0 rgb(255 255 255 / 22%);
+    --btn-ring-hover: inset 0 1px 0 rgb(255 255 255 / 28%);
+    --btn-shadow: 0 10px 28px -12px color-mix(in srgb, var(--crm-accent, #f25c3b) 70%, transparent);
+    --btn-shadow-hover: 0 14px 34px -12px color-mix(in srgb, var(--crm-accent, #f25c3b) 80%, transparent);
+    --btn-focus: 0 0 0 3px color-mix(in srgb, var(--crm-accent, #f25c3b) 40%, transparent);
+  }
+  & :is(.crm-button-secondary, .secondary)[type="submit"] {
+    --btn-bg: rgb(255 255 255 / 6%); --btn-fg: #f4f4f5; --btn-bg-hover: rgb(255 255 255 / 12%);
+    --btn-ring: inset 0 0 0 1px rgb(255 255 255 / 14%); --btn-ring-hover: inset 0 0 0 1px rgb(255 255 255 / 26%);
+    --btn-shadow: 0 0 #0000;
+  }
+  & :is([aria-label^="Close"], .crm-call-lead-link, .crm-contact-calls-toggle, .crm-call-detail-facts button,
+      .crm-integration-learn, .crm-integration-more, .crm-review-edit-template, .crm-call-transcript button,
+      .crm-cal-month .crm-cal-icon-pair button, .crm-topbar-title > button, .crm-remove-node) {
+    --btn-bg: transparent; --btn-fg: #e4e4e7; --btn-bg-hover: rgb(255 255 255 / 8%);
+    --btn-ring: 0 0 #0000; --btn-ring-hover: 0 0 #0000;
+  }
+  & :is(.crm-cal-delete, .crm-calendar-list-actions > button, .crm-website-footer-actions .danger, .crm-payments-view .danger, button.danger:not(.crm-lead-status-menu button)) {
+    --btn-bg: rgb(239 68 68 / 10%); --btn-fg: #fca5a5; --btn-bg-hover: rgb(239 68 68 / 18%);
+    --btn-ring: inset 0 0 0 1px rgb(239 68 68 / 30%); --btn-ring-hover: inset 0 0 0 1px rgb(239 68 68 / 45%);
+    --btn-shadow: 0 0 #0000;
+  }
+  & :is(.crm-row-action, .crm-danger-link, .crm-client-grid footer button, .crm-error-toast button, .crm-definition-list button, .crm-value-list button) {
+    --btn-fg: #fca5a5; --btn-bg-hover: rgb(239 68 68 / 12%);
+  }
+}
+
+/* ---- controls.css palette ----------------------------------------------
+ * controls.css paints stat cards, search, segmented controls and the sidebar
+ * pill from four global colours. Glass flips them (ink = light text, cloud =
+ * dark fill) so inverted pairs such as "ink pill, cloud label" stay legible,
+ * then the stand-alone surfaces below are turned back into glass. */
+#crm-app[data-theme="glass"] {
+  --color-ink: #f4f4f5;
+  --color-cloud: #1a1a1e;
+  --color-edge: rgb(255 255 255 / 11%);
+  --color-mist: #a8a8b3;
+
+  & :is(.crm-dashboard-kpi-card, .crm-call-metrics > article, .crm-ads-metrics > article,
+      .crm-review-metrics > article, .crm-review-request-metrics > article, .crm-website-metrics > article,
+      .crm-conversation-metrics > article, .crm-preview-metrics > article, .crm-lead-summary-strip > article,
+      .crm-integrations-summary > article) {
+    border-color: rgb(255 255 255 / 11%);
+    border-radius: 18px;
+    background: rgb(22 22 26 / 52%);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 7%), 0 24px 60px -24px rgb(0 0 0 / 70%);
+    backdrop-filter: blur(22px) saturate(0.6);
+    -webkit-backdrop-filter: blur(22px) saturate(0.6);
+  }
+  & .crm-dashboard-kpi-card .crm-dashboard-icon-box { background: rgb(255 255 255 / 8%); color: #d4d4d8; }
+  & .crm-dashboard-kpi-card.is-trend-up .crm-dashboard-card-text > small { color: #4ade80; }
+  & .crm-dashboard-kpi-card.is-trend-down .crm-dashboard-card-text > small { color: #f87171; }
+  & :is(.crm-search, .crm-integrations-search, .crm-command > label) { background: rgb(255 255 255 / 5%); border-color: rgb(255 255 255 / 14%); }
+  & :is(.crm-search, .crm-integrations-search, .crm-command > label) kbd { background: rgb(255 255 255 / 8%); border-color: rgb(255 255 255 / 12%); color: #c9c9d1; }
+
+  /* Sidebar: the current page is a lit glass pill, not the classic white one. */
+  & .crm-sidebar :is(.crm-primary-nav .value, .crm-org-menu button).active {
+    --btn-bg: rgb(255 255 255 / 10%);
+    --btn-fg: #ffffff;
+    --btn-fg-hover: #ffffff;
+    --btn-bg-hover: rgb(255 255 255 / 13%);
+    --btn-ring: inset 0 0 0 1px rgb(255 255 255 / 14%);
+    --btn-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+    --btn-shadow-hover: inset 0 1px 0 rgb(255 255 255 / 8%);
+    & em { background: var(--crm-accent, #f25c3b); color: var(--crm-on-accent, #fff); }
+  }
+  & .crm-sidebar .crm-primary-nav .value em { background: rgb(255 255 255 / 10%); color: #f4f4f5; }
+  /* Sidebar foot icons stay quiet even though sign-out is a submit button. */
+  & .crm-sidebar .crm-sidebar-foot-actions :is(button, button[type="submit"]) {
+    --btn-bg: transparent; --btn-fg: #d4d4d8; --btn-bg-hover: rgb(255 255 255 / 8%);
+    --btn-ring: 0 0 #0000; --btn-ring-hover: 0 0 #0000; --btn-shadow: 0 0 #0000; --btn-shadow-hover: 0 0 #0000;
+  }
+}
+
+/* The switch takes its own row above the account summary. */
+.crm-shell.crm-design-system.crm-design-system .crm-sidebar-foot { flex-wrap: wrap; }
+.crm-shell.crm-design-system.crm-design-system .crm-sidebar-foot > .crm-theme-switch { flex: 1 0 100%; }
+
+/* Topbar search (a button that opens the palette) and its shortcut chip. */
+#crm-app[data-theme="glass"] {
+  & .crm-command-button {
+    --btn-bg: rgb(255 255 255 / 5%); --btn-bg-hover: rgb(255 255 255 / 9%);
+    --btn-ring: inset 0 0 0 1px rgb(255 255 255 / 14%); --btn-ring-hover: inset 0 0 0 1px rgb(255 255 255 / 24%);
+    --btn-shadow: 0 0 #0000; --btn-shadow-hover: 0 0 #0000;
+  }
+  & :is(.crm-search, .crm-integrations-search, .crm-command > label, .crm-command-button) kbd {
+    background: rgb(255 255 255 / 8%); border-color: rgb(255 255 255 / 12%); color: #c9c9d1;
+  }
+}
+.crm-shell.crm-design-system.crm-design-system[data-theme="glass"] .crm-week-calendar {
+  border-color: var(--glass-edge);
+  border-radius: 16px;
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+/* ---- Hard-coded light surfaces found by work/ui-review/glass-light-scan.mjs.
+ * Each one painted a white or pastel fill (or a light hairline) that the token
+ * swap above cannot reach. Grouped by role so new screens can join a group. */
+#crm-app[data-theme="glass"] {
+  /* Segmented controls: the chosen option is a lit glass pill, not white. */
+  & :is(.crm-view-switcher, .crm-calls-filters, .crm-tabs, .crm-review-tabs, .crm-lead-tabs, .crm-leads-view-switcher, .crm-reviews-tabs, .crm-stripe-tabs, .lead-record-nav) > button:is(.active, [aria-selected="true"]) {
+    --btn-bg: rgb(255 255 255 / 14%); --btn-fg: #ffffff; --btn-bg-hover: rgb(255 255 255 / 18%);
+    --btn-ring: inset 0 0 0 1px rgb(255 255 255 / 18%); --btn-shadow: inset 0 1px 0 rgb(255 255 255 / 10%);
+  }
+  & .crm-settings-workspace nav button.active { --btn-bg: rgb(255 255 255 / 12%); --btn-fg: #ffffff; --btn-bg-hover: rgb(255 255 255 / 16%); }
+
+  /* Notices and banners: tinted glass that keeps their tone. */
+  & :is(.crm-integrations-banner, .crm-review-access-banner, .crm-report-note, .crm-preview-status, .crm-ai-connector-compatibility, .crm-profile-review-fallback) {
+    background: rgb(255 255 255 / 5%); border-color: rgb(255 255 255 / 12%); color: #d4d4d8;
+    & :is(h2, h3, strong) { color: #f4f4f5; }
+    & :is(p, span, small) { color: #b4b4be; }
+  }
+  & :is(.crm-ai-connector-runtime-warning, .crm-calls-attention) { background: rgb(242 92 59 / 10%); border-color: rgb(242 92 59 / 35%); }
+  & .crm-ai-connector-runtime-warning { background: rgb(234 179 8 / 10%); border-color: rgb(234 179 8 / 35%); & * { color: #fde68a; } }
+  & .crm-calls-attention :is(span, strong, svg) { color: #fca5a5; }
+
+  /* Icon tiles and small marks. */
+  & .crm-integrations-summary-icon { border: 1px solid rgb(255 255 255 / 12%); background: rgb(255 255 255 / 6%); }
+  & .crm-integrations-summary-icon.connected { color: #c4b5fd; }
+  & .crm-integrations-summary-icon.setup { color: #fdba74; }
+  & .crm-integrations-summary-icon.available { color: #93c5fd; }
+  & .crm-integrations-summary-icon.total { color: #d4d4d8; }
+  & .crm-call-metrics article > svg { background: rgb(255 255 255 / 8%); color: #e4e4e7; }
+  & .crm-call-metrics article:is(.missed, .attention) > svg { background: rgb(239 68 68 / 14%); color: #fca5a5; }
+  & :is(.crm-profile-setup-icon, .crm-provider-logo, .crm-settings-client-app-entry > span, .crm-review-honest-empty > span) { background: rgb(255 255 255 / 8%); color: #f4f4f5; }
+  & .crm-kanban-column header span { background: rgb(255 255 255 / 10%); color: #f4f4f5; }
+  & .crm-cal-month-day.today > span { background: var(--crm-accent, #f25c3b); color: var(--crm-on-accent, #fff); }
+  & :is(.crm-task-check, .crm-lead-task-list button) { background: transparent; border: 1.5px solid rgb(255 255 255 / 35%); }
+  & :is(.crm-task-complete .crm-task-check, .crm-lead-task-list button.complete) { background: var(--crm-accent, #f25c3b); border-color: var(--crm-accent, #f25c3b); }
+
+  /* Status chips: same hues, dark-glass tints. */
+  & .crm-call-list-status.answered { background: rgb(34 197 94 / 14%); color: #86efac; }
+  & .crm-call-list-status.missed { background: rgb(239 68 68 / 14%); color: #fca5a5; }
+  & .crm-call-list-status.pending { background: rgb(234 179 8 / 14%); color: #fde68a; }
+
+  /* Hairlines that were drawn in light grey. */
+  & .crm-integration-facts, & .crm-integration-facts > div { border-color: rgb(255 255 255 / 10%); }
+  & .crm-kanban-empty { border-color: rgb(255 255 255 / 14%); }
+
+  /* Progress tracks and the report funnel. */
+  & :is(.crm-dashboard-pipeline-stage i, .crm-dashboard-marketing-progress, .crm-funnel i) { background: rgb(255 255 255 / 8%); }
+  & :is(.crm-dashboard-pipeline-stage i b, .crm-dashboard-marketing-progress > *, .crm-funnel i b) { background: var(--crm-accent, #f25c3b); }
+
+  /* Preview modules (Forms, Funnels): glass canvases instead of white sheets. */
+  & :is(.crm-form-builder-preview, .crm-funnel-preview, .crm-future-scope) {
+    background: rgb(22 22 26 / 52%); border-color: rgb(255 255 255 / 11%); color: #e4e4e7;
+    backdrop-filter: blur(22px) saturate(0.6); -webkit-backdrop-filter: blur(22px) saturate(0.6);
+    & :is(section, article, li, aside) { background: rgb(255 255 255 / 4%); border-color: rgb(255 255 255 / 10%); }
+    & :is(h2, h3, h4, strong, b) { color: #f4f4f5; }
+    & :is(p, span, small, label) { color: #b4b4be; }
+  }
+  & .crm-ai-connector-simple-steps li { background: rgb(255 255 255 / 5%); border-color: rgb(255 255 255 / 10%); & :is(strong, span, p) { color: #e4e4e7; } }
+
+  /* Error toast action: a quiet ghost button on the dark toast. */
+  & .crm-error-toast button { --btn-bg: rgb(255 255 255 / 8%); --btn-fg: #f4f4f5; --btn-bg-hover: rgb(255 255 255 / 14%); --btn-ring: inset 0 0 0 1px rgb(255 255 255 / 16%); }
+}
+#crm-app[data-theme="glass"] {
+  /* Conversation and preview avatars were a pale green disc. */
+  & :is(.crm-live-inbox > aside button > span, .crm-future-view span[aria-hidden="true"]) { background: rgb(255 255 255 / 10%); color: #f4f4f5; }
+  & .crm-live-inbox > aside button.active { background: rgb(255 255 255 / 7%); border-left-color: var(--crm-accent, #f25c3b); }
+  /* The unread dot sits on the dark top bar, so its ring matches the bar. */
+  & .crm-topbar-icon-button > span { border-color: #17171a; }
+}
+#crm-app[data-theme="glass"] .crm-form-builder-preview aside > span { background: rgb(255 255 255 / 5%); border-color: rgb(255 255 255 / 10%); color: #d4d4d8; }
+#crm-app[data-theme="glass"] .crm-future-scope :is(article, li) > span:first-child { background: rgb(255 255 255 / 10%); color: #f4f4f5; }
+#crm-app[data-theme="glass"] {
+  & :is(.crm-toast, .crm-error-toast) > .crm-toast-icon { background: rgb(255 255 255 / 8%); color: #e4e4e7; }
+  & .crm-error-toast > .crm-toast-icon { background: rgb(239 68 68 / 15%); color: #fca5a5; }
+}
+
+/* ---- Glassier surfaces -------------------------------------------------
+ * A lighter top-left sheen, a brighter top edge and a stronger blur, so panels
+ * read as frosted glass over the backdrop rather than dark cards. Applied on
+ * top of the fills above. */
+.crm-shell.crm-design-system.crm-design-system[data-theme="glass"] {
+  --glass-fill: rgb(28 28 33 / 38%);
+  --glass-sheen: linear-gradient(145deg, rgb(255 255 255 / 9%) 0%, rgb(255 255 255 / 2%) 38%, rgb(255 255 255 / 0%) 60%, rgb(255 255 255 / 4%) 100%);
+  --glass-edge: rgb(255 255 255 / 13%);
+  --glass-blur: blur(28px) saturate(1.25) brightness(1.05);
+  --glass-shadow: inset 0 1px 0 rgb(255 255 255 / 14%), inset 0 -1px 0 rgb(255 255 255 / 3%), 0 30px 70px -30px rgb(0 0 0 / 85%);
+}
+#crm-app[data-theme="glass"] :is(
+    .crm-panel, .crm-dashboard-view .crm-panel, .crm-filterbar, .crm-table-panel, .crm-cal-card, .crm-week-calendar,
+    .crm-calendar-list > article, .crm-empty, .crm-empty-state, .crm-settings-workspace > aside, .crm-settings-workspace > nav,
+    .crm-kanban-column, .crm-live-inbox, .crm-review-inbox, .crm-lead-hero, .crm-lead-header, .crm-lead-page-toolbar,
+    .crm-topbar, .crm-sidebar, .crm-integrations-summary,
+    .crm-dashboard-kpi-card, .crm-call-metrics > article, .crm-ads-metrics > article, .crm-review-metrics > article,
+    .crm-review-request-metrics > article, .crm-website-metrics > article, .crm-conversation-metrics > article,
+    .crm-preview-metrics > article, .crm-lead-summary-strip > article) {
+  background-color: rgb(28 28 33 / 38%);
+  background-image: linear-gradient(145deg, rgb(255 255 255 / 9%) 0%, rgb(255 255 255 / 2%) 38%, rgb(255 255 255 / 0%) 60%, rgb(255 255 255 / 4%) 100%);
+  border-color: rgb(255 255 255 / 13%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 14%), inset 0 -1px 0 rgb(255 255 255 / 3%), 0 30px 70px -30px rgb(0 0 0 / 85%);
+  backdrop-filter: blur(28px) saturate(1.25) brightness(1.05);
+  -webkit-backdrop-filter: blur(28px) saturate(1.25) brightness(1.05);
+}
+
+/* Stat strips: one joined glass bar split by hairlines, not a frame holding
+ * separate framed cards (which drew every border twice). */
+#crm-app[data-theme="glass"] .crm-integrations-summary {
+  gap: 0; padding: 0; overflow: hidden; border: 1px solid rgb(255 255 255 / 13%); border-radius: 20px;
+  & > article {
+    margin: 0; border: 0; border-radius: 0; background: none; box-shadow: none;
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+    border-right: 1px solid rgb(255 255 255 / 9%);
+  }
+  & > article:last-child { border-right: 0; }
+}
+#crm-app[data-theme="glass"] .crm-integrations-summary-icon {
+  display: grid; place-items: center; border-radius: 14px;
+  background: linear-gradient(145deg, rgb(255 255 255 / 12%), rgb(255 255 255 / 3%));
+  border: 1px solid rgb(255 255 255 / 14%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 16%);
+  & svg { margin: 0; width: 20px; height: 20px; }
+}
+
+/* Card groups sit closer, like the reference's tiled panels. */
+#crm-app[data-theme="glass"] :is(.crm-dashboard-kpi-grid, .crm-dashboard-kpis, .crm-call-metrics, .crm-ads-metrics, .crm-review-metrics,
+    .crm-review-request-metrics, .crm-website-metrics, .crm-conversation-metrics, .crm-preview-metrics, .crm-lead-summary-strip, .crm-integration-grid) { gap: 12px; }
+@media (max-width: 900px) {
+  #crm-app[data-theme="glass"] .crm-integrations-summary > article:nth-child(2) { border-right: 0; }
+  #crm-app[data-theme="glass"] .crm-integrations-summary > article:nth-child(-n+2) { border-bottom: 1px solid rgb(255 255 255 / 9%); }
+}
+/* The shared design system makes this tile a flex row; centre within that. */
+#crm-app[data-theme="glass"] .crm-integrations-summary > article > .crm-integrations-summary-icon { display: flex; align-items: center; justify-content: center; }
+#crm-app[data-theme="glass"] .crm-integrations-summary > article > .crm-integrations-summary-icon svg { width: 20px; height: 20px; }
+#crm-app[data-theme="glass"] :is(.crm-integration-card, .crm-connection-card, .crm-integrations-banner) {
+  background-color: rgb(28 28 33 / 38%);
+  background-image: linear-gradient(145deg, rgb(255 255 255 / 9%) 0%, rgb(255 255 255 / 2%) 38%, rgb(255 255 255 / 0%) 60%, rgb(255 255 255 / 4%) 100%);
+  border-color: rgb(255 255 255 / 13%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 14%), 0 30px 70px -30px rgb(0 0 0 / 85%);
+  backdrop-filter: blur(28px) saturate(1.25) brightness(1.05);
+  -webkit-backdrop-filter: blur(28px) saturate(1.25) brightness(1.05);
+}

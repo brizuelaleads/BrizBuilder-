@@ -41,13 +41,38 @@ const withoutRemovals = (file, contract, values) => {
 // identical. Every baseline handler and field must still exist (new ones may be
 // added), and controls may differ only where they belong to the rebuilt view.
 const restructured = {
+  // Entry pages rebuilt as the glass sign-in (commit 330aade). What they submit
+  // is pinned by tests/landing-page.test.mjs (action, method, return_to,
+  // current-password, recovery link); here every field must still exist.
+  'app/page.tsx': {
+    reason: 'Landing rebuilt as a single screen: headline, sign-in links and the animated CRM showcase',
+    controls: /./,
+  },
+  'app/forgot-password/page.tsx': {
+    reason: 'Recovery form moved into the shared glass panel; same email field posting to /api/auth/forgot-password',
+    controls: /./,
+  },
+  'app/login/page.tsx': {
+    reason: 'Sign-in form moved into WorkspaceLogin, rendered through the shared SignInPanel; same fields posting to /api/auth/login',
+    controls: /./,
+    replacements: ['type="hidden"', 'name="return_to"', 'name="email"', 'type="email"', 'required', 'name="password"', 'type="password"', 'type="submit"']
+      .map(lost => ({lost, now: /<SignInPanel returnTo=\{safeLoginReturnTo\(return_to\)\}/, why: `${lost} now lives in app/WorkspaceLogin.tsx, rendered by SignInPanel`})),
+  },
   'app/crm/OperationsViews.tsx': {
     reason: 'Calendar rebuilt as a week planner: month picker, status filters, event popover',
     controls: /shiftWeek|setAnchorDate|pageMonth|monthLabel|weekStart\.toLocaleDateString|CALENDAR_WEEK_RANGE|toggleStatus|hiddenStatuses|crm-cal-|setOpenEvent|onClose|closeRef|update_appointment_status|deleteAppointment|onAddAppointment|<option key=\{status\}|crm-google-calendar|appointment\.contactName/,
   },
   'app/CrmApp.tsx': {
-    reason: 'Toasts carry an icon, a title and detail, an action and a close',
-    controls: /crm-toast/,
+    reason: 'Toasts carry an icon, a title and detail, an action and a close; the sidebar foot gained the Classic/Glass theme switch',
+    controls: /crm-toast|crm-theme-switch|chooseTheme|CRM_PICKER_THEMES|option\.label/,
+    requests: {
+      gone: [],
+      added: [
+        // New capability: the theme switch saves through the existing, validated
+        // set_theme action (identity from the session, value from the allowlist).
+        'fetch("/api/crm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "set_theme", theme: next }), })',
+      ],
+    },
   },
   'app/crm/WebsitesView.tsx': {
     reason: 'Websites rebuilt around a searchable list and a sectioned detail panel; the page header took the standard title. Nothing it sends changed.',

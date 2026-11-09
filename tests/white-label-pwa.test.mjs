@@ -248,7 +248,9 @@ test("label ink stays readable on both light and dark brand fills", () => {
 });
 
 test("brand tokens are applied inline over the shared light UI rules", () => {
-  assert.match(crmAppSource, /style=\{brandingCssVariables\(branding\)/);
+  assert.match(crmAppSource, /style=\{brandingCssVariables\(shellBranding\)/);
+  // Only the Glass theme swaps the accent, and only while the tenant keeps the default.
+  assert.match(crmAppSource, /theme === "glass" && branding\.primaryColor === DEFAULT_BRANDING\.primaryColor\s*\? \{ \.\.\.branding, primaryColor: GLASS_ACCENT \}\s*: branding;/);
   assert.match(crmAppSource, /data-ui="light"/);
 });
 
