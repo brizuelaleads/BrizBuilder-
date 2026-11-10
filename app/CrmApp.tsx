@@ -369,6 +369,19 @@ export function CrmApp({
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalName>(null);
   const [mobileNav, setMobileNav] = useState(false);
+  // While the phone menu sheet is open it is the only thing that scrolls: the
+  // page behind it is locked, the way native apps behave. The CSS lock in
+  // mobile.css covers browsers with :has(); this covers the rest.
+  useEffect(() => {
+    if (!mobileNav) return;
+    const root = document.documentElement;
+    const previous = [root.style.overflow, document.body.style.overflow];
+    root.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    return () => {
+      [root.style.overflow, document.body.style.overflow] = previous;
+    };
+  }, [mobileNav]);
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);

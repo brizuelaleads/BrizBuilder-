@@ -541,3 +541,32 @@
     background: rgb(var(--glass-tint, 14 11 12)); backdrop-filter: none; -webkit-backdrop-filter: none;
   }
 }
+
+/* The backdrop is sized to the largest viewport (toolbars hidden), so when a
+ * phone's address bar collapses mid-scroll there is never an unpainted strip
+ * below it. */
+.crm-shell.crm-design-system.crm-design-system[data-theme="glass"] .crm-glass-backdrop { inset: 0 0 auto 0; height: 100vh; height: 100lvh; }
+
+/* ---- Phones: calmer glass -------------------------------------------------
+ * Under the status bar, a strip in the backdrop's tint; the floating header
+ * clears it. Surfaces drop the sheen gradient and inner glow for a flat,
+ * legible frost, and a busy backdrop is softened unless the person chose a
+ * blur themselves. */
+@media (max-width: 640px) {
+  #crm-app[data-theme="glass"]::before { background: rgb(var(--glass-tint, 14 11 12)); }
+  /* ID-weighted to outrank the shared offset in mobile.css. */
+  #crm-app[data-theme="glass"] .crm-topbar { top: calc(var(--safe-top) + 8px); margin-top: calc(var(--safe-top) + 8px); }
+  #crm-app[data-theme="glass"] :is(
+      .crm-panel, .crm-dashboard-view .crm-panel, .crm-filterbar, .crm-table-panel, .crm-cal-card, .crm-week-calendar,
+      .crm-calendar-list > article, .crm-empty, .crm-empty-state, .crm-kanban-column, .crm-live-inbox, .crm-review-inbox,
+      .crm-lead-hero, .crm-lead-header, .crm-lead-page-toolbar, .crm-topbar, .crm-integrations-summary, .crm-integration-card,
+      .crm-connection-card, .crm-integrations-banner, .crm-dashboard-kpi-card, .crm-call-metrics > article, .crm-ads-metrics > article,
+      .crm-review-metrics > article, .crm-website-metrics > article, .crm-conversation-metrics > article, .crm-lead-summary-strip > article) {
+    background-image: none;
+    border-color: rgb(255 255 255 / 10%);
+    box-shadow: 0 8px 24px -16px rgb(0 0 0 / 70%);
+  }
+  #crm-app[data-theme="glass"] .crm-dashboard-marketing-card { background: rgb(255 255 255 / 4%); border-color: rgb(255 255 255 / 8%); }
+  #crm-app[data-theme="glass"] .crm-topbar-action-primary { --btn-shadow: 0 6px 16px -8px color-mix(in srgb, var(--crm-accent, #f25c3b) 70%, transparent); --btn-shadow-hover: var(--btn-shadow); }
+  #crm-app[data-theme="glass"]:not([data-backdrop-blur]) > .crm-glass-backdrop { filter: blur(3px) brightness(0.8); transform: scale(1.03); }
+}

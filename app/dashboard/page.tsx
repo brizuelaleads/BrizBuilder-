@@ -55,7 +55,9 @@ export async function generateMetadata(): Promise<Metadata> {
     appleWebApp: {
       capable: true,
       title: shortAppName(branding.appName),
-      statusBarStyle: "default",
+      // Draws the app under the status bar (white clock text) instead of a
+      // light band; mobile.css paints a theme-coloured strip behind it.
+      statusBarStyle: "black-translucent",
     },
     icons: {
       icon: [{ url: icon }],
