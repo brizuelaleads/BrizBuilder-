@@ -1,0 +1,88 @@
+/* Phone layout fixes shared by every theme. Loaded after controls.css and the
+ * Glass theme, so it settles layout only; colours stay with each theme.
+ * Found with work/ui-review/mobile-audit.mjs and mobile-sheet.mjs at 390px. */
+
+/* ---- Navigation drawer ----------------------------------------------------
+ * The scrim behind the open drawer covered a 32px sliver, so tapping beside
+ * the drawer hit the page instead of closing it. It now covers the screen,
+ * under the drawer and over everything else, including the top bar. */
+@media (max-width: 900px) {
+  /* Its "Close navigation" label also matches the icon-button sizing in
+   * controls.css, hence the doubled class. */
+  #crm-app button.crm-nav-scrim.crm-nav-scrim {
+    position: fixed; inset: 0; z-index: 55;
+    /* A fixed <button> does not stretch between its insets the way a div does;
+     * it shrinks to its content, so the size is set explicitly. */
+    width: 100vw; height: 100dvh; min-width: 0; min-height: 0; padding: 0; margin: 0;
+    border: 0; border-radius: 0; box-shadow: none;
+    background: rgb(0 0 0 / 45%);
+    -webkit-tap-highlight-color: transparent;
+  }
+  #crm-app .crm-sidebar { z-index: 60; }
+}
+
+@media (max-width: 640px) {
+  /* ---- Top bar: one row -------------------------------------------------
+   * Title takes the free space and truncates; actions never wrap. Text
+   * actions collapse to 44px icon buttons whose label stays readable to
+   * screen readers. */
+  #crm-app .crm-topbar { flex-wrap: nowrap; gap: 8px; }
+  #crm-app .crm-topbar-title { flex: 1 1 auto; min-width: 0; }
+  #crm-app .crm-topbar-title > div { min-width: 0; }
+  #crm-app .crm-topbar-title :is(h1, span) { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #crm-app .crm-topbar-actions { flex: 0 0 auto; flex-wrap: nowrap; gap: 6px; }
+
+  /* Search: the circle shows only its magnifier. Its label and the Ctrl K hint
+   * used to spill out of the 44px circle onto the neighbouring button. */
+  #crm-app .crm-topbar-actions > .crm-command-button { overflow: hidden; padding: 0; }
+  #crm-app .crm-topbar-actions > .crm-command-button > :not(svg) {
+    position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+
+  /* Primary action (Add lead, Add contact, New task...): a 44px "+" button. */
+  #crm-app .crm-topbar-actions > .crm-topbar-action-primary {
+    --btn-icon-px: 0px; --btn-justify: center; --btn-gap: 0px;
+    width: 44px; min-width: 44px; height: 44px; padding: 0; overflow: hidden;
+  }
+  #crm-app .crm-topbar-actions > .crm-topbar-action-primary :is(span:not(.inner):not(.blob1), .inner > span) {
+    position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+  #crm-app .crm-topbar-actions > .crm-topbar-action-primary .inner { display: grid; place-items: center; padding: 0; gap: 0; }
+  #crm-app .crm-topbar-actions > .crm-topbar-action-primary svg { width: 20px; height: 20px; margin: 0; }
+
+  /* Secondary text shortcuts (Import, Connections, Google Profiles) stay
+   * text but compact, and their icon can no longer overlap the label. */
+  #crm-app .crm-topbar-actions > :is(button, a).crm-topbar-action:not(.crm-topbar-action-primary) {
+    --btn-h: 40px; --btn-px: 12px; --btn-fs: 13px; --btn-gap: 6px; max-width: 132px; overflow: hidden;
+  }
+
+  /* ---- Page headings ----------------------------------------------------
+   * The heading stacks into a column on phones, and its buttons stretched to
+   * fill it (Print / Save PDF and Add website rendered 150px tall). */
+  #crm-app .crm-page-heading :is(button, a) { flex: 0 0 auto; align-self: stretch; height: 48px; min-height: 48px; }
+  #crm-app .crm-page-heading > div:has(> :is(button, a)) { display: flex; flex-wrap: wrap; gap: 8px; }
+  #crm-app .crm-page-heading > div:has(> :is(button, a)) > :is(button, a) { flex: 1 1 140px; }
+
+  /* ---- Rows that scroll sideways -----------------------------------------
+   * Tabs and wide tables already scroll; a fade on the trailing edge now says
+   * so instead of looking cut off. */
+  #crm-app :is(.crm-tabs, .crm-review-tabs, .crm-reviews-tabs, .crm-calls-filters, .crm-stripe-tabs) {
+    max-width: 100%; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent);
+    mask-image: linear-gradient(90deg, #000 85%, transparent);
+  }
+  #crm-app :is(.crm-tabs, .crm-review-tabs, .crm-reviews-tabs, .crm-calls-filters, .crm-stripe-tabs)::-webkit-scrollbar { display: none; }
+  #crm-app :is(.crm-tabs, .crm-review-tabs, .crm-reviews-tabs, .crm-calls-filters, .crm-stripe-tabs) > button { flex: 0 0 auto; }
+  #crm-app .crm-calls-table-wrap { -webkit-overflow-scrolling: touch; }
+  #crm-app .crm-calls-table th:first-child, #crm-app .crm-calls-table td:first-child { position: sticky; left: 0; z-index: 1; background: inherit; }
+
+  /* ---- Readability ------------------------------------------------------
+   * Preview modules (Forms, Funnels) shrank their copy to 7-10px. */
+  #crm-app .crm-future-view :is(p, span, small, label, strong, li, b) { font-size: max(12px, 1em); }
+  #crm-app :is(.crm-contact-grid, .crm-company-grid) :is(dd, a, span) { overflow-wrap: anywhere; }
+
+  /* ---- Touch targets ----------------------------------------------------- */
+  #crm-app .crm-task-check { width: 32px; height: 32px; min-width: 32px; }
+  #crm-app :is(.crm-call-lead-link, .crm-danger-link, .crm-row-action, .crm-client-grid footer button) { --btn-h: 40px; }
+  #crm-app .crm-contact-grid dd a { display: inline-flex; align-items: center; min-height: 40px; }
+}

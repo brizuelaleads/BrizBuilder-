@@ -13,6 +13,7 @@ import "./globals.css";
 import "./crm/design-system.css";
 import "./crm/controls.css";
 import "./crm/theme-glass.css";
+import "./crm/mobile.css";
 
 const geist = Geist({ variable: "--font-sans", subsets: ["latin"] });
 const crmInter = Inter({ variable: "--font-crm", subsets: ["latin"] });

@@ -492,3 +492,41 @@
   & .crm-dashboard-kpi-heading svg { width: 16px; height: 16px; }
   & .crm-integrations-summary article b { font-size: 15px; font-weight: 600; color: #f4f4f5; }
 }
+
+/* ---- Phones ---------------------------------------------------------------
+ * The same floating-glass language as desktop: the top bar and dock float with
+ * even gutters, the drawer is a glass sheet above everything, and the filter
+ * row sits on the backdrop instead of a solid band. Layout fixes shared with
+ * Classic live in mobile.css. */
+@media (max-width: 900px) {
+  .crm-shell.crm-design-system.crm-design-system[data-theme="glass"] .crm-sidebar {
+    top: 10px; bottom: 10px; left: 10px; height: auto; border-radius: 22px;
+    background-color: rgb(var(--glass-tint, 14 11 12) / 90%);
+  }
+  .crm-shell.crm-design-system.crm-design-system[data-theme="glass"] .crm-sidebar:not(.crm-sidebar-open) { transform: translateX(calc(-100% - 20px)); }
+}
+@media (max-width: 640px) {
+  .crm-shell.crm-design-system.crm-design-system[data-theme="glass"] {
+    & .crm-topbar {
+      position: sticky; top: 10px; z-index: 35;
+      margin: 10px 10px 0; min-height: 64px; padding: 10px 10px 10px 8px;
+      border: 1px solid var(--glass-edge); border-radius: 20px;
+    }
+    & .crm-topbar h1 { font-size: 19px; line-height: 24px; }
+    & .crm-topbar-title > div > span { font-size: 12px; }
+    & .crm-mobile-filterbar { padding: 12px 10px 0; background: transparent; border: 0; box-shadow: none; }
+    & .crm-mobile-filterbar select { height: 44px; border-radius: 14px; background-color: rgb(var(--glass-tint, 14 11 12) / 62%); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+    & .crm-view { padding: 14px 10px 112px; }
+    & :is(.crm-panel, .crm-dashboard-kpi-card, .crm-table-panel, .crm-filterbar, .crm-kanban-column, .crm-cal-card, .crm-week-calendar, .crm-live-inbox, .crm-integrations-summary) { border-radius: 18px; }
+    & .crm-dashboard-kpi-card { min-height: 150px; }
+    & .crm-mobile-dock {
+      left: 10px; right: 10px; bottom: max(10px, env(safe-area-inset-bottom));
+      border: 1px solid var(--glass-edge); border-radius: 24px;
+      background: rgb(var(--glass-tint, 14 11 12) / 72%);
+      box-shadow: inset 0 1px 0 rgb(255 255 255 / 12%), 0 18px 40px -12px rgb(0 0 0 / 80%);
+      backdrop-filter: blur(24px) saturate(1.2); -webkit-backdrop-filter: blur(24px) saturate(1.2);
+    }
+  }
+  #crm-app[data-theme="glass"] .crm-mobile-dock button { --btn-fg: #d4d4d8; --btn-bg: transparent; --btn-bg-hover: rgb(255 255 255 / 8%); }
+  #crm-app[data-theme="glass"] .crm-mobile-dock button.active { --btn-bg: rgb(255 255 255 / 14%); --btn-fg: #ffffff; --btn-fg-hover: #ffffff; --btn-bg-hover: rgb(255 255 255 / 18%); --btn-shadow: inset 0 1px 0 rgb(255 255 255 / 14%); }
+}
