@@ -494,39 +494,50 @@
 }
 
 /* ---- Phones ---------------------------------------------------------------
- * The same floating-glass language as desktop: the top bar and dock float with
- * even gutters, the drawer is a glass sheet above everything, and the filter
- * row sits on the backdrop instead of a solid band. Layout fixes shared with
- * Classic live in mobile.css. */
+ * App layout (tab bar, More sheet, full-screen forms) lives in mobile.css.
+ * Glass adds its look on top: a floating top bar, a tinted tab bar, and a
+ * solid sheet. Panels get more body on phones, where text sits closer to the
+ * busy backdrop and a menu or sheet must never show content through it. */
 @media (max-width: 900px) {
   .crm-shell.crm-design-system.crm-design-system[data-theme="glass"] .crm-sidebar {
-    top: 10px; bottom: 10px; left: 10px; height: auto; border-radius: 22px;
-    background-color: rgb(var(--glass-tint, 14 11 12) / 90%);
+    background-color: rgb(var(--glass-tint, 14 11 12) / 97%);
+    backdrop-filter: none; -webkit-backdrop-filter: none;
   }
-  .crm-shell.crm-design-system.crm-design-system[data-theme="glass"] .crm-sidebar:not(.crm-sidebar-open) { transform: translateX(calc(-100% - 20px)); }
 }
 @media (max-width: 640px) {
   .crm-shell.crm-design-system.crm-design-system[data-theme="glass"] {
     & .crm-topbar {
-      position: sticky; top: 10px; z-index: 35;
-      margin: 10px 10px 0; min-height: 64px; padding: 10px 10px 10px 8px;
+      position: sticky; top: 8px; z-index: 35;
+      margin: 8px 10px 0; min-height: 60px; padding: 8px 8px 8px 16px;
       border: 1px solid var(--glass-edge); border-radius: 20px;
     }
-    & .crm-topbar h1 { font-size: 19px; line-height: 24px; }
+    & .crm-topbar h1 { font-size: 20px; line-height: 24px; }
     & .crm-topbar-title > div > span { font-size: 12px; }
     & .crm-mobile-filterbar { padding: 12px 10px 0; background: transparent; border: 0; box-shadow: none; }
-    & .crm-mobile-filterbar select { height: 44px; border-radius: 14px; background-color: rgb(var(--glass-tint, 14 11 12) / 62%); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
-    & .crm-view { padding: 14px 10px 112px; }
+    & .crm-mobile-filterbar select { height: 44px; border-radius: 14px; background-color: rgb(var(--glass-tint, 14 11 12) / 82%); }
+    & .crm-view { padding-top: 14px; padding-inline: 10px; }
     & :is(.crm-panel, .crm-dashboard-kpi-card, .crm-table-panel, .crm-filterbar, .crm-kanban-column, .crm-cal-card, .crm-week-calendar, .crm-live-inbox, .crm-integrations-summary) { border-radius: 18px; }
     & .crm-dashboard-kpi-card { min-height: 150px; }
-    & .crm-mobile-dock {
-      left: 10px; right: 10px; bottom: max(10px, env(safe-area-inset-bottom));
-      border: 1px solid var(--glass-edge); border-radius: 24px;
-      background: rgb(var(--glass-tint, 14 11 12) / 72%);
-      box-shadow: inset 0 1px 0 rgb(255 255 255 / 12%), 0 18px 40px -12px rgb(0 0 0 / 80%);
-      backdrop-filter: blur(24px) saturate(1.2); -webkit-backdrop-filter: blur(24px) saturate(1.2);
-    }
+    & .crm-mobile-dock { background: rgb(var(--glass-tint, 14 11 12) / 94%); border-top-color: var(--glass-edge); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+    & .crm-mobile-dock .crm-mobile-call-badge { border-color: rgb(var(--glass-tint, 14 11 12)); }
+    & :is(.crm-modal, .crm-modal > header, .crm-modal footer) { background: rgb(var(--glass-tint, 14 11 12) / 99%); }
   }
-  #crm-app[data-theme="glass"] .crm-mobile-dock button { --btn-fg: #d4d4d8; --btn-bg: transparent; --btn-bg-hover: rgb(255 255 255 / 8%); }
-  #crm-app[data-theme="glass"] .crm-mobile-dock button.active { --btn-bg: rgb(255 255 255 / 14%); --btn-fg: #ffffff; --btn-fg-hover: #ffffff; --btn-bg-hover: rgb(255 255 255 / 18%); --btn-shadow: inset 0 1px 0 rgb(255 255 255 / 14%); }
+  /* Same selectors as the desktop fill rule, so phones get the stronger fill. */
+  #crm-app[data-theme="glass"] :is(
+      .crm-panel, .crm-dashboard-view .crm-panel, .crm-filterbar, .crm-table-panel, .crm-cal-card, .crm-week-calendar,
+      .crm-calendar-list > article, .crm-empty, .crm-empty-state, .crm-kanban-column, .crm-live-inbox, .crm-review-inbox,
+      .crm-lead-hero, .crm-lead-header, .crm-lead-page-toolbar, .crm-topbar, .crm-integrations-summary, .crm-integration-card,
+      .crm-connection-card, .crm-integrations-banner, .crm-dashboard-kpi-card, .crm-call-metrics > article, .crm-ads-metrics > article,
+      .crm-review-metrics > article, .crm-website-metrics > article, .crm-conversation-metrics > article, .crm-lead-summary-strip > article) {
+    background-color: rgb(var(--glass-tint, 14 11 12) / 80%);
+  }
+  #crm-app[data-theme="glass"] .crm-mobile-dock button { --btn-fg: #a8a8b3; --btn-fg-hover: #a8a8b3; }
+  #crm-app[data-theme="glass"] .crm-mobile-dock button.active { --btn-fg: var(--crm-accent, #f25c3b); --btn-fg-hover: var(--crm-accent, #f25c3b); }
+}
+@media (max-width: 640px) {
+  /* The form sheet's header and footer must be solid so fields never show
+   * through behind the title or the action buttons. */
+  #crm-app[data-theme="glass"] .crm-modal :is(header, footer, .crm-form footer) {
+    background: rgb(var(--glass-tint, 14 11 12)); backdrop-filter: none; -webkit-backdrop-filter: none;
+  }
 }

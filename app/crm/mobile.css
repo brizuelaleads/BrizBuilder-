@@ -74,7 +74,6 @@
   #crm-app :is(.crm-tabs, .crm-review-tabs, .crm-reviews-tabs, .crm-calls-filters, .crm-stripe-tabs)::-webkit-scrollbar { display: none; }
   #crm-app :is(.crm-tabs, .crm-review-tabs, .crm-reviews-tabs, .crm-calls-filters, .crm-stripe-tabs) > button { flex: 0 0 auto; }
   #crm-app .crm-calls-table-wrap { -webkit-overflow-scrolling: touch; }
-  #crm-app .crm-calls-table th:first-child, #crm-app .crm-calls-table td:first-child { position: sticky; left: 0; z-index: 1; background: inherit; }
 
   /* ---- Readability ------------------------------------------------------
    * Preview modules (Forms, Funnels) shrank their copy to 7-10px. */
@@ -85,4 +84,118 @@
   #crm-app .crm-task-check { width: 32px; height: 32px; min-width: 32px; }
   #crm-app :is(.crm-call-lead-link, .crm-danger-link, .crm-row-action, .crm-client-grid footer button) { --btn-h: 40px; }
   #crm-app .crm-contact-grid dd a { display: inline-flex; align-items: center; min-height: 40px; }
+}
+
+/* ===========================================================================
+ * Phones behave like an app: a tab bar along the bottom, "More" opens a sheet
+ * from the bottom, forms open as full-screen sheets, and touch never leaves
+ * hover states or zooms the page. Colours come from each theme's tokens.
+ * ======================================================================== */
+@media (max-width: 640px) {
+  #crm-app { -webkit-tap-highlight-color: transparent; }
+
+  /* The tab bar's "More" opens navigation, so the top bar loses its menu
+   * button and the title sits on the left edge, as in native apps. */
+  #crm-app .crm-topbar-title > button { --btn-display: none; }
+
+  /* ---- Tab bar ----------------------------------------------------------- */
+  #crm-app .crm-mobile-dock {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+    display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0;
+    width: auto; height: auto; margin: 0;
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+    border: 0; border-top: 1px solid var(--crm-line); border-radius: 0;
+    background: var(--crm-card); box-shadow: 0 -8px 24px rgb(0 0 0 / 6%);
+  }
+  #crm-app .crm-mobile-dock button {
+    --btn-h: 52px; --btn-px: 0px; --btn-gap: 3px; --btn-icon: 24px; --btn-fs: 11px; --btn-radius: 14px;
+    --btn-bg: transparent; --btn-bg-hover: transparent;
+    --btn-fg: var(--crm-muted); --btn-fg-hover: var(--crm-muted);
+    --btn-ring: 0 0 #0000; --btn-ring-hover: 0 0 #0000; --btn-shadow: 0 0 #0000; --btn-shadow-hover: 0 0 #0000;
+    position: relative; min-width: 0; font-weight: 500; letter-spacing: 0;
+  }
+  #crm-app .crm-mobile-dock button.active {
+    --btn-bg: transparent; --btn-bg-hover: transparent; --btn-shadow: 0 0 #0000;
+    --btn-fg: var(--crm-accent, #6757e8); --btn-fg-hover: var(--crm-accent, #6757e8);
+    font-weight: 600;
+  }
+  #crm-app .crm-mobile-dock button svg { stroke-width: 1.8; }
+  #crm-app .crm-mobile-dock button.active svg { stroke-width: 2.2; }
+  /* Badges pin to the icon's corner instead of pushing the icon up. */
+  #crm-app .crm-mobile-dock .crm-mobile-call-badge {
+    position: absolute; top: 2px; left: calc(50% + 6px);
+    min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
+    border: 2px solid var(--crm-card); box-sizing: content-box;
+    display: grid; place-items: center;
+    background: #e5383b; color: #fff; font-size: 10px; font-weight: 700; line-height: 1;
+  }
+  #crm-app .crm-view { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+
+  /* ---- "More": navigation as a bottom sheet ------------------------------ */
+  #crm-app .crm-sidebar {
+    top: auto; left: 0; right: 0; bottom: 0;
+    width: 100%; height: auto; max-height: 88dvh;
+    padding: 28px 12px calc(12px + env(safe-area-inset-bottom));
+    border: 0; border-radius: 24px 24px 0 0;
+    box-shadow: 0 -20px 60px rgb(0 0 0 / 35%);
+    transform: translateY(105%); visibility: hidden;
+    transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 280ms;
+  }
+  #crm-app .crm-sidebar.crm-sidebar-open { transform: none; visibility: visible; transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1); }
+  /* Grab handle. */
+  #crm-app .crm-sidebar::before {
+    content: ""; position: absolute; top: 10px; left: 50%; width: 40px; height: 5px; margin-left: -20px;
+    border-radius: 999px; background: rgb(255 255 255 / 28%);
+  }
+  #crm-app .crm-sidebar .crm-brand { padding: 0 8px 12px; }
+  #crm-app .crm-sidebar .crm-brand-logo { width: 110px !important; height: auto; }
+  #crm-app .crm-sidebar .crm-primary-nav.input .value { --btn-h: 48px; font-size: 16px; }
+
+  /* ---- Forms and dialogs: full-screen sheets ----------------------------- */
+  #crm-app .crm-modal-layer { padding: 0; place-items: end stretch; }
+  #crm-app .crm-modal {
+    width: 100%; max-width: none; height: 100dvh; max-height: 100dvh;
+    border: 0; border-radius: 0; display: flex; flex-direction: column; overflow: auto;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  #crm-app .crm-modal > header { position: sticky; top: 0; z-index: 2; padding-top: max(20px, env(safe-area-inset-top)); background: var(--crm-card); }
+  /* The action footer sticks to the bottom on a solid surface, so its buttons
+   * can never sit over the fields. */
+  #crm-app .crm-modal :is(.crm-form footer, footer) {
+    position: sticky; bottom: 0; z-index: 2;
+    margin: 0 -20px -20px; padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    background: var(--crm-card); border-top: 1px solid var(--crm-line);
+  }
+  #crm-app .crm-modal footer > :only-child { grid-column: 1 / -1; }
+  #crm-app .crm-modal footer :is(button, a) { width: 100%; }
+
+  /* ---- Native input behaviour --------------------------------------------
+   * 16px text stops iOS from zooming the page when a field is tapped. */
+  #crm-app :is(input:not([type="checkbox"], [type="radio"], [type="range"]), select, textarea) { font-size: 16px; }
+
+  /* ---- Calls: cards instead of a sideways table -------------------------- */
+  #crm-app .crm-calls-table-wrap { overflow: visible; }
+  #crm-app .crm-calls-table, #crm-app .crm-calls-table tbody { display: block; width: 100%; min-width: 0; }
+  #crm-app .crm-calls-table thead { display: none; }
+  #crm-app .crm-calls-table tr {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center;
+    padding: 14px 16px; border-bottom: 1px solid var(--crm-line);
+  }
+  #crm-app .crm-calls-table td { display: block; padding: 0; border: 0; min-width: 0; position: static; }
+  #crm-app .crm-calls-table td:nth-child(1) { grid-column: 1; grid-row: 1; }
+  #crm-app .crm-calls-table td:nth-child(3) { grid-column: 2; grid-row: 1; justify-self: end; }
+  #crm-app .crm-calls-table td:nth-child(2) { grid-column: 1; grid-row: 2; font-size: 13px; color: var(--crm-muted); }
+  #crm-app .crm-calls-table td:nth-child(5) { grid-column: 2; grid-row: 2; justify-self: end; font-size: 13px; color: var(--crm-muted); }
+  #crm-app .crm-calls-table td:nth-child(4) { grid-column: 1; grid-row: 3; font-size: 13px; }
+  #crm-app .crm-calls-table td:nth-child(6) { grid-column: 2; grid-row: 3; justify-self: end; font-size: 13px; color: var(--crm-muted); }
+  #crm-app .crm-calls-table td:nth-child(7) { grid-column: 1; grid-row: 4; }
+  #crm-app .crm-calls-table td:nth-child(8) { grid-column: 2; grid-row: 4; justify-self: end; }
+  #crm-app .crm-calls-table td:nth-child(4) :is(strong, small) { display: inline; margin-right: 6px; }
+  #crm-app .crm-calls-table td:nth-child(7):empty, #crm-app .crm-calls-table td:nth-child(7):not(:has(button)) { color: var(--crm-muted); font-size: 13px; }
+}
+
+/* Touch screens: no hover lift left behind after a tap. */
+@media (hover: none) {
+  :is(#crm-app, .client-portal) :is(button, a, summary):hover { transform: none; }
 }
