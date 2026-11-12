@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BrandLogo } from "../components/BrandLogo";
+import { ArrowLeft, ArrowRight } from "lucide-react";
+import { WorkspaceShell } from "../auth/WorkspaceShell";
+import styles from "../landing.module.css";
 
 export const metadata: Metadata = {
   title: "Terms of Service",
@@ -29,48 +31,35 @@ const sections = [
 
 export default function TermsPage() {
   return (
-    <main className="site-home terms-page">
-      <header className="site-nav terms-nav">
-        <Link className="site-logo" href="/" aria-label="BrizBuilder home">
-          <BrandLogo className="site-logo-image" tone="light" size={116} decorative priority />
-        </Link>
-        <div className="site-actions">
-          <Link className="site-link" href="/privacy">
-            Privacy
-          </Link>
-          <Link className="site-button" href="/dashboard">
-            Log in
-          </Link>
-        </div>
-      </header>
+    <WorkspaceShell actions={<Link className={styles.headerButton} href="/login">Sign in <ArrowRight aria-hidden="true" /></Link>}>
+      <main className={styles.legal} id="main">
+        <section className={styles.legalHero}>
+          <p className={styles.kicker}>Legal</p>
+          <h1>Terms of Service</h1>
+          <span className={styles.legalDate}>Effective and last updated {EFFECTIVE_DATE}</span>
+          <p className={styles.legalIntro}>
+            These Terms explain the rules for using BrizBuilder, including its
+            CRM, communications, automation, and connected-provider features.
+          </p>
+        </section>
 
-      <section className="terms-hero">
-        <p>LEGAL</p>
-        <h1>Terms of Service</h1>
-        <span>Effective and last updated {EFFECTIVE_DATE}</span>
-        <p>
-          These Terms explain the rules for using BrizBuilder, including its
-          CRM, communications, automation, and connected-provider features.
-        </p>
-      </section>
-
-      <div className="terms-layout">
-        <aside className="terms-summary" aria-label="Terms contents">
+        <aside className={styles.legalRail} aria-label="Terms contents">
           <strong>On this page</strong>
-          <nav>
+          <nav aria-label="On this page">
             {sections.map(([id, label]) => (
               <a key={id} href={`#${id}`}>
                 {label}
               </a>
             ))}
           </nav>
-          <p>
+          <p className={styles.legalRailNote}>
             Questions can be sent through the support channel shown in your
             BrizBuilder account or on the BrizBuilder website.
           </p>
+          <Link className={styles.legalRelated} href="/privacy">Privacy Policy <ArrowRight aria-hidden="true" /></Link>
         </aside>
 
-        <article className="terms-document">
+        <article className={styles.legalDocument}>
           <section id="agreement">
             <h2>1. Agreement to these Terms</h2>
             <p>
@@ -167,7 +156,7 @@ export default function TermsPage() {
               or abusive. Call recording may be used only when all required
               notices and consents have been provided.
             </p>
-            <div className="terms-callout">
+            <div className={styles.legalCallout}>
               <strong>Not an emergency service</strong>
               <p>
                 BrizBuilder is not a replacement for emergency calling or a
@@ -324,16 +313,16 @@ export default function TermsPage() {
             </p>
           </section>
 
-          <footer className="terms-footer">
+          <footer className={styles.legalClose}>
             <strong>Questions about these Terms?</strong>
             <p>
               Contact BrizBuilder through the support channel displayed in
               your account or on the public BrizBuilder website.
             </p>
-            <Link href="/">Return to BrizBuilder</Link>
+            <Link href="/"><ArrowLeft aria-hidden="true" /> Return to BrizBuilder</Link>
           </footer>
         </article>
-      </div>
-    </main>
+      </main>
+    </WorkspaceShell>
   );
 }

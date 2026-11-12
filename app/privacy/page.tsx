@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BrandLogo } from "../components/BrandLogo";
+import { ArrowLeft, ArrowRight } from "lucide-react";
+import { WorkspaceShell } from "../auth/WorkspaceShell";
+import styles from "../landing.module.css";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
@@ -27,48 +29,35 @@ const sections = [
 
 export default function PrivacyPage() {
   return (
-    <main className="site-home terms-page">
-      <header className="site-nav terms-nav">
-        <Link className="site-logo" href="/" aria-label="BrizBuilder home">
-          <BrandLogo className="site-logo-image" tone="light" size={116} decorative priority />
-        </Link>
-        <div className="site-actions">
-          <Link className="site-link" href="/terms">
-            Terms
-          </Link>
-          <Link className="site-button" href="/dashboard">
-            Log in
-          </Link>
-        </div>
-      </header>
+    <WorkspaceShell actions={<Link className={styles.headerButton} href="/login">Sign in <ArrowRight aria-hidden="true" /></Link>}>
+      <main className={styles.legal} id="main">
+        <section className={styles.legalHero}>
+          <p className={styles.kicker}>Legal</p>
+          <h1>Privacy Policy</h1>
+          <span className={styles.legalDate}>Effective and last updated {EFFECTIVE_DATE}</span>
+          <p className={styles.legalIntro}>
+            This Policy explains what BrizBuilder collects, why it is used, and
+            the choices available to businesses, agencies, clients, and users.
+          </p>
+        </section>
 
-      <section className="terms-hero">
-        <p>LEGAL</p>
-        <h1>Privacy Policy</h1>
-        <span>Effective and last updated {EFFECTIVE_DATE}</span>
-        <p>
-          This Policy explains what BrizBuilder collects, why it is used, and
-          the choices available to businesses, agencies, clients, and users.
-        </p>
-      </section>
-
-      <div className="terms-layout">
-        <aside className="terms-summary" aria-label="Privacy policy contents">
+        <aside className={styles.legalRail} aria-label="Privacy policy contents">
           <strong>On this page</strong>
-          <nav>
+          <nav aria-label="On this page">
             {sections.map(([id, label]) => (
               <a key={id} href={`#${id}`}>
                 {label}
               </a>
             ))}
           </nav>
-          <p>
+          <p className={styles.legalRailNote}>
             Privacy questions and deletion requests can be sent to
             brizuelaleads@gmail.com.
           </p>
+          <Link className={styles.legalRelated} href="/terms">Terms of Service <ArrowRight aria-hidden="true" /></Link>
         </aside>
 
-        <article className="terms-document">
+        <article className={styles.legalDocument}>
           <section id="scope">
             <h2>1. Scope</h2>
             <p>
@@ -152,7 +141,7 @@ export default function PrivacyPage() {
               not use Google user data for advertising, sell it, or transfer it
               to data brokers.
             </p>
-            <div className="terms-callout">
+            <div className={styles.legalCallout}>
               <strong>Google API Services User Data Policy</strong>
               <p>
                 BrizBuilder&apos;s use and transfer to any other app of information
@@ -271,13 +260,13 @@ export default function PrivacyPage() {
             </p>
           </section>
 
-          <footer className="terms-footer">
+          <footer className={styles.legalClose}>
             <strong>Questions about privacy?</strong>
             <p>Email brizuelaleads@gmail.com.</p>
-            <Link href="/">Return to BrizBuilder</Link>
+            <Link href="/"><ArrowLeft aria-hidden="true" /> Return to BrizBuilder</Link>
           </footer>
         </article>
-      </div>
-    </main>
+      </main>
+    </WorkspaceShell>
   );
 }

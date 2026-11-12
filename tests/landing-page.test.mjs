@@ -30,6 +30,20 @@ test('landing page sends clients and team to sign-in and shows sample CRM captur
  assert.doesNotMatch(source,/landing-dashboard-dark|productShowcases|platformFeatures/);
 });
 
+test('legal pages share the entry shell instead of the retired light site chrome',()=>{
+ for(const [page,sibling] of [['terms','privacy'],['privacy','terms']]){
+  const legal=read(`app/${page}/page.tsx`);
+  assert.match(legal,/<WorkspaceShell/,`${page} renders inside the entry shell`);
+  assert.match(legal,/id="main"/,`${page} gives the skip link a target`);
+  assert.match(legal,/href="\/login"/,`${page} offers sign-in`);
+  assert.doesNotMatch(legal,/href="\/dashboard"/,`${page} no longer routes sign-in through the dashboard gate`);
+  assert.ok(legal.includes(`href="/${sibling}"`),`${page} links to ${sibling}`);
+  assert.ok(legal.includes('href={`#${id}`}'),`${page} keeps its contents links`);
+  assert.doesNotMatch(legal,/site-(home|nav|logo|actions|link|button)|terms-(page|nav|hero|layout|summary|document|callout|footer)/,`${page} uses no legacy site classes`);
+ }
+ assert.doesNotMatch(read('app/globals.css'),/\.terms-/,'the legacy legal-page styles are gone');
+});
+
 test('workspace sign-in posts through existing authentication with password recovery',()=>{
  const form=read('app/WorkspaceLogin.tsx');
  assert.match(form,/action="\/api\/auth\/login" method="post"/);

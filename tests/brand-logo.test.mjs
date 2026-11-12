@@ -34,11 +34,15 @@ test("shared brand component replaces legacy BB placeholders", () => {
     "app/auth/AuthShell.tsx",
     "app/CrmApp.tsx",
     "app/ClientPortal.tsx",
-    "app/privacy/page.tsx",
-    "app/terms/page.tsx",
     "app/oauth/authorize/page.tsx",
   ]) {
     assert.match(read(rel), /BrandLogo/, `${rel} uses the official logo component`);
+  }
+
+  // The legal pages no longer draw their own header: the logo reaches them
+  // through the entry shell checked above.
+  for (const rel of ["app/privacy/page.tsx", "app/terms/page.tsx"]) {
+    assert.match(read(rel), /<WorkspaceShell/, `${rel} takes the logo from the entry shell`);
   }
 
   assert.doesNotMatch(read("app/page.tsx"), /site-logo-mark|>BB</);
