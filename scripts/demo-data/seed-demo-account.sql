@@ -15,8 +15,8 @@ declare
   zips text[] := array['78745','78664','78613','78660','78626','78641'];
   services text[] := array['Roof replacement','Storm damage repair','Roof leak repair','Gutter installation','Roof inspection','Shingle repair','Metal roof install','Skylight install'];
   sources text[] := array['Google Ads','Meta Ads','Website Form','Organic Search','Referral','Manual'];
-  -- 23 won jobs totalling exactly $100,000.
-  won_amounts int[] := array[8500,3200,12400,2750,6900,4100,15800,1950,5400,3600,7200,2300,4800,1850,3900,2150,1600,2600,3300,1200,2200,1350,950];
+  -- 23 won jobs totalling exactly $101,678.
+  won_amounts int[] := array[8500,3200,12400,2750,6900,4100,15800,1950,5400,3600,7200,2300,4800,1850,3900,2150,1600,2600,3300,1200,2200,1350,2628];
   meta_campaigns text[] := array['120210000000000101','120210000000000202'];
   meta_adsets text[] := array['120210000000001101','120210000000001202'];
   meta_ads text[] := array['120210000000011101','120210000000011202','120210000000011203'];
