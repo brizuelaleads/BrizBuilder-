@@ -692,3 +692,27 @@
 @media (hover: none) {
   #crm-app[data-theme="glass"] .lead-record .lead-record-nav > button:not(.active) { --btn-bg-hover: transparent; --btn-fg-hover: var(--lr-soft); }
 }
+/* Expanded provider details share the card palette, including balance tiles. */
+#crm-app[data-theme="glass"] .crm-integration-advanced {
+  background: transparent;
+  border-color: var(--glass-edge);
+  color: var(--crm-ink);
+}
+#crm-app[data-theme="glass"] .crm-integration-advanced .crm-connection-details-simple {
+  border-color: var(--glass-edge);
+}
+#crm-app[data-theme="glass"] .crm-integration-advanced .crm-connection-details-simple > div {
+  background: var(--crm-subtle);
+  border-color: var(--glass-edge);
+  min-width: 0;
+}
+#crm-app[data-theme="glass"] .crm-integration-advanced .crm-connection-details-simple span {
+  color: var(--crm-muted);
+  text-shadow: none;
+}
+#crm-app[data-theme="glass"] .crm-integration-advanced .crm-connection-details-simple strong {
+  color: var(--crm-ink);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+  text-shadow: none;
+}
