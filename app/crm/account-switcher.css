@@ -1,0 +1,70 @@
+/* Account switching: bounded vertical list, independent of generic button layout. */
+#crm-app .crm-sidebar .crm-org-card-button {
+  border-radius: 12px;
+  text-align: left;
+  gap: 10px;
+}
+#crm-app .crm-org-card-button > div { flex: 1; min-width: 0; }
+#crm-app .crm-org-card-button strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#crm-app .crm-sidebar .crm-account-picker {
+  --account-fill: #242427;
+  --account-edge: rgb(255 255 255 / 12%);
+  --account-muted: #b5b5bf;
+  top: calc(100% - 8px);
+  width: 100%;
+  box-sizing: border-box;
+  max-height: min(520px, 65dvh);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  overflow: hidden;
+  border: 1px solid var(--account-edge);
+  border-radius: 14px;
+  background: var(--account-fill);
+  color: #f4f4f5;
+  box-shadow: 0 20px 50px rgb(0 0 0 / 40%);
+}
+#crm-app[data-theme="glass"] .crm-sidebar .crm-account-picker {
+  --account-fill: rgb(var(--glass-tint, 22 22 26) / 96%);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+#crm-app .crm-account-picker-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px 4px; }
+#crm-app .crm-account-picker-heading strong { font-size: 12px; font-weight: 600; color: #f4f4f5; }
+#crm-app .crm-account-picker-heading > span { padding: 2px 6px; border-radius: 5px; background: rgb(255 255 255 / 7%); color: var(--account-muted); font-size: 11px; }
+#crm-app .crm-account-search { display: flex; align-items: center; gap: 8px; flex-shrink: 0; padding: 0 10px; border: 1px solid var(--account-edge); border-radius: 8px; background: rgb(0 0 0 / 15%); color: var(--account-muted); }
+#crm-app .crm-account-search:focus-within { border-color: var(--crm-accent, #f25c3b); }
+#crm-app .crm-sidebar .crm-account-search input { width: 100%; min-width: 0; min-height: 36px; padding: 0; border: 0; border-radius: 0; outline: 0; background: transparent; color: #fafafa; box-shadow: none; font-size: 12px; }
+#crm-app .crm-account-search input::placeholder { color: var(--account-muted); opacity: 1; }
+#crm-app .crm-account-results { min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #64646e transparent; }
+#crm-app .crm-sidebar .crm-account-picker .crm-account-option {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  min-height: 58px;
+  height: auto;
+  padding: 10px 8px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #f4f4f5;
+  box-shadow: none;
+  text-align: left;
+  white-space: normal;
+  flex-shrink: 0;
+}
+#crm-app .crm-sidebar .crm-account-picker .crm-account-option:hover,
+#crm-app .crm-sidebar .crm-account-picker .crm-account-option:focus-visible { background: rgb(255 255 255 / 7%); outline: 1px solid var(--account-edge); outline-offset: -1px; }
+#crm-app .crm-sidebar .crm-account-picker .crm-account-option[aria-pressed="true"] { background: color-mix(in srgb, var(--crm-accent, #f25c3b) 14%, transparent); border-color: color-mix(in srgb, var(--crm-accent, #f25c3b) 28%, transparent); }
+#crm-app .crm-account-avatar { display: flex; align-items: center; justify-content: center; flex: 0 0 32px; width: 32px; height: 32px; border: 1px solid var(--account-edge); border-radius: 9px; background: rgb(255 255 255 / 6%); font-size: 11px; font-weight: 600; }
+#crm-app .crm-account-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
+#crm-app .crm-account-picker .crm-account-copy strong { color: #f4f4f5; font-size: 12px; font-weight: 600; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; text-shadow: none; }
+#crm-app .crm-account-picker .crm-account-copy small { color: var(--account-muted); font-size: 11px; font-weight: 400; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; text-shadow: none; }
+#crm-app .crm-account-check { flex: 0 0 17px; color: var(--crm-accent-ink, #f8a591); }
+#crm-app .crm-sidebar .crm-account-picker .crm-account-all { margin-bottom: 2px; }
+#crm-app .crm-account-picker p { padding: 12px 4px; font-size: 12px; line-height: 1.5; color: var(--account-muted); white-space: normal; }
+
