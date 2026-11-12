@@ -210,7 +210,7 @@ const store = read("db/supabase-square.ts");
 const api = read("app/api/square/route.ts");
 const callback = read("app/api/integrations/square/callback/route.ts");
 const webhook = read("app/api/integrations/square/webhook/route.ts");
-const migration = read("supabase/migrations/20261111000000_square_invoicing.sql");
+const migration = read("supabase/migrations/20261112195619_square_invoicing.sql");
 
 function fnBody(source, name) {
   const start = source.indexOf(`export async function ${name}(`);
