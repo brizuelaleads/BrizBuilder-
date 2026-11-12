@@ -78,6 +78,17 @@ const restructured = {
       ],
     },
   },
+  'app/crm/PaymentsView.tsx': {
+    // Every Stripe handler, request and field is unchanged; what was added is a
+    // provider tab switch, the agency's own account in the business picker, and
+    // the Square workspace (app/crm/payments/SquareWorkspace.tsx), which sends
+    // to /api/square rather than through mutate.
+    reason: 'Payments gained Square invoicing beside Stripe: a provider tab switch and an option for the agency\'s own Square account.',
+    controls: /setProvider|AGENCY_SCOPE|organizationName|<h3>Add a client first<\/h3>|<h3>Stripe connects one business at a time<\/h3>|<select value=\{clientId\} onChange=\{\(event\) => setLocalClient\(event\.target\.value\)\} >/,
+    replacements: [
+      {lost: '<select value={clientId} onChange={(event) => setLocalClient(event.target.value)} >', now: /value=\{agencySelected \? AGENCY_SCOPE : clientId\}\s*onChange=\{\(event\) => setLocalClient\(event\.target\.value\)\}/, why: 'the business picker also offers the agency\'s own Square account'},
+    ],
+  },
   'app/crm/WebsitesView.tsx': {
     reason: 'Websites rebuilt around a searchable list and a sectioned detail panel; the page header took the standard title. Nothing it sends changed.',
     controls: /crm-website|website\.id|setSelectedId|setEditing|setSection|crm-search|Add a Website|Add website|<h2>Websites<\/h2>|<h2>Send website leads|handoffMessage|Find a website/,

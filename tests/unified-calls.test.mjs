@@ -60,7 +60,7 @@ function call(overrides = {}) {
   };
 }
 
-test("client CRM navigation keeps the requested seven tabs in order", () => {
+test("client CRM navigation keeps the requested tabs in order", () => {
   const start = app.indexOf("const clientNavigation:");
   const nav = app.slice(start, app.indexOf("\n];", start));
   const labels = [...nav.matchAll(/label: "([^"]+)"/g)].map((match) => match[1]);
@@ -72,6 +72,7 @@ test("client CRM navigation keeps the requested seven tabs in order", () => {
     "Calendar",
     "Ads",
     "Connections",
+    "Payments",
   ]);
 });
 

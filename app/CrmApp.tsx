@@ -167,6 +167,9 @@ const clientNavigation: NavItem[] = [
   { id: "calendar", label: "Calendar", icon: <CalendarDays />, section: "MAIN" },
   { id: "ads", label: "Ads", icon: <Megaphone />, section: "MAIN" },
   { id: "connections", label: "Connections", icon: <Plug />, section: "MAIN" },
+  // Invoicing through the business's own Square account. The server decides
+  // who may use it: owners and managers, never by what the browser sends.
+  { id: "payments", label: "Payments", icon: <CreditCard />, section: "MAIN" },
 ];
 
 const agencyNavigation: NavItem[] = [
@@ -533,6 +536,11 @@ export function CrmApp({
       } else if (query.get("connected") === "stripe") {
         setToast(
           "Stripe connected. The business keeps ownership, billing, and payouts.",
+        );
+        window.setTimeout(() => setToast(""), 5000);
+      } else if (query.get("connected") === "square") {
+        setToast(
+          "Square connected. Invoices are paid straight into that Square account.",
         );
         window.setTimeout(() => setToast(""), 5000);
       } else if (query.get("connected") === "google_calendar") {
@@ -1526,6 +1534,8 @@ export function CrmApp({
             connections={data.providerConnections}
             selectedClientId={effectiveSelectedClientId ?? ""}
             viewerRole={data.viewer.role}
+            isAgency={data.viewer.isAgency}
+            organizationName={data.organization.name}
             mutate={mutate}
           />
         )}

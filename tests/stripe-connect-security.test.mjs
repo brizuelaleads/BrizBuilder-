@@ -312,6 +312,7 @@ test("the public gateway exposes only the exact Stripe webhook path and POST met
     "isTwilioDeauthorize",
     "isStripeWebhook",
     "isCallRailWebhook",
+    "isSquareWebhook",
   ]) {
     assert.ok(
       postOnlyClause.includes(flag),
@@ -322,7 +323,7 @@ test("the public gateway exposes only the exact Stripe webhook path and POST met
   // a 404 before it can reach the application.
   assert.match(
     gatewaySource,
-    /if \(!isLeadCapture && !isTwilioWebhook && !isTwilioDeauthorize && !isStripeWebhook && !isCallRailWebhook\)/,
+    /if \(!isLeadCapture && !isTwilioWebhook && !isTwilioDeauthorize && !isStripeWebhook && !isCallRailWebhook && !isSquareWebhook\)/,
   );
   assert.match(gatewaySource, /status: 404/);
   assert.doesNotMatch(

@@ -41,6 +41,10 @@ const CLIENT_TABS = [
   ["calendar", "Calendar", "CalendarDays", "MAIN"],
   ["ads", "Ads", "Megaphone", "MAIN"],
   ["connections", "Connections", "Plug", "MAIN"],
+  // Square invoicing for the business's own customers. The tab carries no
+  // permission flag; db/supabase-square.ts decides on the server who may
+  // load or send invoices, and Stripe stays agency-only inside the view.
+  ["payments", "Payments", "CreditCard", "MAIN"],
 ];
 
 const AGENCY_TABS = [
@@ -229,7 +233,7 @@ test("client roles keep exactly the capabilities their own tabs need", () => {
   assert.ok(!rolePermissions(supabaseSource, "CLIENT_EMPLOYEE").includes("calendar.connect"));
 });
 
-test("client navigation is exactly the requested seven shared tabs", () => {
+test("client navigation is exactly the requested shared tabs", () => {
   const entries = navigationEntries("clientNavigation");
   assert.deepEqual(
     entries.map(({ id, label, icon, section }) => [id, label, icon, section]),
@@ -296,8 +300,11 @@ test("client deep links cannot bypass agency-only and permission route gates", (
   );
   assert.doesNotMatch(appSource, /nestedViews\.includes\(requested\)/);
   const clientIds = new Set(CLIENT_TABS.map(([id]) => id));
+  // Connections and Payments are deliberately shared: both are scoped to the
+  // client's own business on the server.
   for (const id of AGENCY_ONLY_TABS) {
-    if (id !== "connections") assert.ok(!clientIds.has(id), `${id} leaked into client navigation`);
+    if (id !== "connections" && id !== "payments")
+      assert.ok(!clientIds.has(id), `${id} leaked into client navigation`);
   }
 });
 

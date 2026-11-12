@@ -1,13 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   CrmClient,
   CrmProviderConnection,
   CrmRole,
 } from "../../db/crm";
+import { SquareWorkspace, type SquareScopeChoice } from "./payments/SquareWorkspace";
 import { StripeEmbeddedWorkspace } from "./payments/StripeEmbeddedWorkspace";
 import { Badge, dateTime } from "./ui";
+
+type Provider = "square" | "stripe";
+
+// Picker value for the agency's own Square account, which bills the agency's
+// clients rather than a client's customers.
+const AGENCY_SCOPE = "__agency__";
+const AGENCY_OWNER_ROLES: CrmRole[] = ["LB_OWNER", "SUPER_ADMIN", "AGENCY_OWNER"];
+const PROVIDERS: { id: Provider; label: string }[] = [
+  { id: "square", label: "Square invoices" },
+  { id: "stripe", label: "Stripe" },
+];
+
 
 type Mutate = (
   input: Record<string, unknown>,
@@ -54,17 +67,49 @@ export function PaymentsView({
   connections,
   selectedClientId,
   viewerRole,
+  isAgency,
+  organizationName,
   mutate,
 }: {
   clients: CrmClient[];
   connections: CrmProviderConnection[];
   selectedClientId: string;
   viewerRole: CrmRole;
+  isAgency: boolean;
+  organizationName: string;
   mutate: Mutate;
 }) {
+  // The agency's own account is offered only to its owners, and only while no
+  // single business is selected in the workspace switcher.
+  const canUseAgency =
+    isAgency && AGENCY_OWNER_ROLES.includes(viewerRole) && selectedClientId === "all";
   const [localClient, setLocalClient] = useState(clients[0]?.id ?? "");
-  const clientId = clientChoice(clients, selectedClientId, localClient);
+  // Returning from Square's sign-in for the agency account lands back on it.
+  // Read after mount: the server render cannot see the URL, so reading it
+  // during render would make the two disagree.
+  useEffect(() => {
+    if (!canUseAgency) return;
+    const timer = window.setTimeout(() => {
+      if (new URLSearchParams(window.location.search).get("payments_scope") === "agency")
+        setLocalClient(AGENCY_SCOPE);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [canUseAgency]);
+  const [provider, setProvider] = useState<Provider>("square");
+  const agencySelected = canUseAgency && localClient === AGENCY_SCOPE;
+  const clientId = clientChoice(
+    clients,
+    selectedClientId,
+    localClient === AGENCY_SCOPE ? "" : localClient,
+  );
   const client = clients.find((item) => item.id === clientId);
+  const squareScope: SquareScopeChoice | null = agencySelected
+    ? { kind: "agency", label: organizationName }
+    : client
+      ? { kind: "client", clientId: client.id, label: client.businessName }
+      : null;
+  // Stripe's connect flow is agency-run, so a client login sees Square only.
+  const activeProvider: Provider = isAgency ? provider : "square";
   const connection = connections.find(
     (item) => item.clientId === clientId && item.provider === "stripe",
   );
@@ -99,20 +144,23 @@ export function PaymentsView({
     <div className="crm-view crm-payments-view">
       <section className="crm-page-heading crm-payments-heading">
         <div>
-          <p>PAYMENTS BY STRIPE</p>
+          <p>INVOICES AND PAYMENTS</p>
           <h2>Payments</h2>
           <span>
-            Connect and manage each business&apos;s own Stripe account without
-            leaving BrizBuilder.
+            Send invoices and see what has been paid. Each business uses its
+            own payment account, so the money goes straight to them.
           </span>
         </div>
         {selectedClientId === "all" ? (
           <label className="crm-phone-client-picker">
             <span>Business</span>
             <select
-              value={clientId}
+              value={agencySelected ? AGENCY_SCOPE : clientId}
               onChange={(event) => setLocalClient(event.target.value)}
             >
+              {canUseAgency ? (
+                <option value={AGENCY_SCOPE}>{organizationName} (your agency)</option>
+              ) : null}
               {clients.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.businessName}
@@ -123,7 +171,44 @@ export function PaymentsView({
         ) : null}
       </section>
 
-      {!client ? (
+      {isAgency ? (
+        <div className="crm-tabs crm-payments-providers" role="tablist" aria-label="Payment provider">
+          {PROVIDERS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={activeProvider === item.id}
+              className={activeProvider === item.id ? "active" : undefined}
+              onClick={() => setProvider(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {activeProvider === "square" ? (
+        squareScope ? (
+          <SquareWorkspace
+            key={squareScope.kind === "agency" ? AGENCY_SCOPE : squareScope.clientId}
+            scope={squareScope}
+          />
+        ) : (
+          <section className="crm-empty-state">
+            <h3>Add a client first</h3>
+            <p>
+              Every payment account belongs to exactly one business and is
+              never shared with another client.
+            </p>
+          </section>
+        )
+      ) : agencySelected ? (
+        <section className="crm-empty-state">
+          <h3>Stripe connects one business at a time</h3>
+          <p>Choose a business above to connect or manage its Stripe account.</p>
+        </section>
+      ) : !client ? (
         <section className="crm-empty-state">
           <h3>Add a client first</h3>
           <p>
