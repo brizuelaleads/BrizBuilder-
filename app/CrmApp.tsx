@@ -395,6 +395,7 @@ export function CrmApp({
   const [search, setSearch] = useState("");
   // Workspace switcher: agency users pick which sub-account they are managing.
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [accountSearch, setAccountSearch] = useState("");
   const switcherRef = useRef<HTMLDivElement | null>(null);
   const firstVisibleClientId = data.clients[0]?.id ?? "";
   const effectiveSelectedClientId = data.viewer.isAgency
@@ -428,6 +429,12 @@ export function CrmApp({
     (client) => client.id === effectiveSelectedClientId,
   );
   const workspaceName = scopedClient?.businessName ?? data.organization.name;
+  const matchingAccounts = useMemo(() => {
+    const query = accountSearch.trim().toLocaleLowerCase();
+    return data.clients.filter((client) =>
+      (client.businessName + " " + (client.industry || "")).toLocaleLowerCase().includes(query),
+    );
+  }, [data.clients, accountSearch]);
   const requested = requestedView as View;
   const view: View =
     visibleNav.some((item) => item.id === requested) ||
@@ -949,55 +956,64 @@ export function CrmApp({
               <button
                 type="button"
                 className="crm-org-card crm-org-card-button"
-                aria-haspopup="listbox"
+                aria-haspopup="dialog"
+                aria-controls="crm-account-picker"
                 aria-expanded={switcherOpen}
-                onClick={() => setSwitcherOpen((open) => !open)}
+                onClick={() => { setAccountSearch(""); setSwitcherOpen((open) => !open); }}
               >
                 <span>{initials(workspaceName)}</span>
                 <div>
                   <strong>{workspaceName}</strong>
                   <small>
-                    {scopedClient ? "Managing sub-account" : "LB Marketing"}
+                    {scopedClient ? "Switch sub-account" : "Agency workspace"}
                   </small>
                 </div>
                 <b aria-hidden="true">⌄</b>
               </button>
               {switcherOpen ? (
-                <div className="crm-org-menu" role="listbox" aria-label="Choose workspace">
+                <div className="crm-org-menu crm-account-picker" id="crm-account-picker" role="dialog" aria-label="Switch sub-account"
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.stopPropagation();
+                      setSwitcherOpen(false);
+                      switcherRef.current?.querySelector<HTMLButtonElement>(".crm-org-card-button")?.focus();
+                    }
+                    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                      const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>(".crm-account-option"));
+                      if (!options.length) return;
+                      event.preventDefault();
+                      const index = options.indexOf(document.activeElement as HTMLButtonElement);
+                      options[(index + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length]?.focus();
+                    }
+                  }}
+                  onBlur={(event) => {
+                    if (event.relatedTarget && !switcherRef.current?.contains(event.relatedTarget as Node)) setSwitcherOpen(false);
+                  }}
+                >
+                  <div className="crm-account-picker-heading"><strong>Switch sub-account</strong><span>{data.clients.length}</span></div>
+                  <label className="crm-account-search">
+                    <Search size={16} aria-hidden="true" />
+                    <input autoFocus type="search" placeholder="Search accounts?" aria-label="Search sub-accounts" value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} />
+                  </label>
                   {data.viewer.canViewAllClients ? (
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={selectedClientId === "all"}
-                      className={selectedClientId === "all" ? "active" : ""}
-                      onClick={() => {
-                        setSelectedClientId("all");
-                        setSwitcherOpen(false);
-                      }}
-                    >
-                      <strong>All sub-accounts</strong>
-                      <small>Every sub-account</small>
+                    <button type="button" className="crm-account-option crm-account-all" aria-pressed={selectedClientId === "all"}
+                      onClick={() => { setSelectedClientId("all"); setSwitcherOpen(false); switcherRef.current?.querySelector<HTMLButtonElement>(".crm-org-card-button")?.focus(); }}>
+                      <span className="crm-account-avatar"><Building2 size={18} /></span>
+                      <span className="crm-account-copy"><strong>All sub-accounts</strong><small>Agency overview</small></span>
+                      {selectedClientId === "all" ? <Check className="crm-account-check" size={17} aria-hidden="true" /> : null}
                     </button>
                   ) : null}
-                  {data.clients.map((client) => (
-                    <button
-                      key={client.id}
-                      type="button"
-                      role="option"
-                      aria-selected={selectedClientId === client.id}
-                      className={selectedClientId === client.id ? "active" : ""}
-                      onClick={() => {
-                        setSelectedClientId(client.id);
-                        setSwitcherOpen(false);
-                      }}
-                    >
-                      <strong>{client.businessName}</strong>
-                      <small>{client.industry || "Sub-account"}</small>
-                    </button>
-                  ))}
-                  {!data.clients.length ? (
-                    <p>No sub-accounts yet. Add one from the Sub-accounts tab.</p>
-                  ) : null}
+                  <div className="crm-account-results">
+                    {matchingAccounts.map((client) => (
+                      <button key={client.id} type="button" className="crm-account-option" aria-pressed={selectedClientId === client.id}
+                        onClick={() => { setSelectedClientId(client.id); setSwitcherOpen(false); switcherRef.current?.querySelector<HTMLButtonElement>(".crm-org-card-button")?.focus(); }}>
+                        <span className="crm-account-avatar">{initials(client.businessName)}</span>
+                        <span className="crm-account-copy"><strong>{client.businessName}</strong><small>{client.industry || "Sub-account"}</small></span>
+                        {selectedClientId === client.id ? <Check className="crm-account-check" size={17} aria-hidden="true" /> : null}
+                      </button>
+                    ))}
+                    {!data.clients.length ? <p>Add your first account from Sub-accounts.</p> : !matchingAccounts.length ? <p role="status">No accounts match ?{accountSearch}?.</p> : null}
+                  </div>
                 </div>
               ) : null}
             </>
