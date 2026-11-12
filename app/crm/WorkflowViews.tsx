@@ -744,14 +744,7 @@ export function ConnectionsView({
                     Disconnect
                   </button>
                 </>
-              ) : (
-                <a
-                  className="crm-button-primary"
-                  href={`/api/integrations/twilio/connect?clientId=${encodeURIComponent(clientId)}`}
-                >
-                  Connect
-                </a>
-              )}
+              ) : null}
             </div>
             </div>
           </article>
