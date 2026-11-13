@@ -3,11 +3,10 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import {
   ArrowRight,
-  CalendarCheck,
-  ChevronRight,
+  CalendarDays,
   CircleCheck,
   CircleMinus,
-  Eye,
+  Layers,
   Megaphone,
   PlugZap,
   Route,
@@ -28,7 +27,7 @@ import {
   type AdsReportAd,
   type AdsReportCampaign,
 } from "../../lib/meta-ads-report";
-import { timestamp } from "./dashboard-charts";
+import { DAY_MS, timestamp } from "./dashboard-charts";
 import { Badge, EmptyState } from "./ui";
 
 // The URL parameters an ad must carry for a click to be traceable. Written out
@@ -200,24 +199,6 @@ function MoneyBars({ spentCents, earnedCents }: { spentCents: number; earnedCent
   );
 }
 
-function MetricCard({
-  label,
-  value,
-  support,
-}: {
-  label: string;
-  value: string;
-  support?: string;
-}) {
-  return (
-    <article className="crm-ads-metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
-      {support ? <small>{support}</small> : null}
-    </article>
-  );
-}
-
 /** One step from seeing an ad to becoming a customer. */
 function JourneyStep({
   label,
@@ -231,85 +212,176 @@ function JourneyStep({
   rate?: string | null;
 }) {
   return (
-    <li className="crm-ads-journey-step">
-      {rate !== undefined ? (
-        <span className="crm-ads-journey-rate">
-          <ArrowRight aria-hidden="true" />
-          {rate ?? "—"}
-        </span>
-      ) : null}
+    <li className="crm-ads-step">
       <strong>{count(value)}</strong>
       <span>{label}</span>
-      {each !== undefined ? (
-        <small>{each == null ? "No cost yet" : `${dollars(each)} each`}</small>
-      ) : null}
+      {rate !== undefined ? (
+        <em className="crm-ads-step-rate" title="Share of the step before">
+          <ArrowRight aria-hidden="true" />
+          {rate ?? "—"}
+        </em>
+      ) : (
+        <em className="crm-ads-step-rate is-blank" aria-hidden="true" />
+      )}
+      <small>
+        {each === undefined ? "" : each == null ? "No cost yet" : `${dollars(each)} each`}
+      </small>
     </li>
   );
 }
 
+type DayPoint = { label: string; spendCents: number; leads: number };
+
+function isoDay(ms: number) {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function shortDate(key: string) {
+  return new Date(`${key}T00:00:00Z`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 /**
- * A campaign as a card a business owner can read in a few seconds: did it
- * pay, what it cost against what it earned, and how many jobs came of it.
- * Delivery detail sits in one quiet line underneath.
+ * Spend and Meta-ad leads per day across the selected range. Ranges longer
+ * than about six weeks are grouped into weeks so each bar stays readable.
+ * Days with no spend are kept as empty bars: a gap is information.
  */
-function CampaignCard({
-  campaign,
-  best,
-  onOpen,
-}: {
-  campaign: AdsReportCampaign;
-  best: boolean;
-  onOpen: () => void;
-}) {
-  const adCount = campaign.adsets.reduce((n, adset) => n + adset.ads.length, 0);
-  const verdict = returnVerdict(campaign.roas);
+function dailySeries(
+  insights: CrmMetaAdInsight[],
+  adLeads: CrmLead[],
+  rangeStart: string | null,
+  earliestSpendDate: string | null,
+  openedAt: number,
+): { points: DayPoint[]; byWeek: boolean } {
+  const endKey = isoDay(openedAt);
+  const startKey = rangeStart ?? earliestSpendDate ?? isoDay(openedAt - 29 * DAY_MS);
+  const start = timestamp(startKey);
+  const end = timestamp(endKey);
+  if (!start || !end || start > end) return { points: [], byWeek: false };
+
+  const days = Math.floor((end - start) / DAY_MS) + 1;
+  const byWeek = days > 45;
+  const size = byWeek ? 7 : 1;
+  const buckets = Math.ceil(days / size);
+  const points: DayPoint[] = Array.from({ length: buckets }, (_, index) => {
+    const from = isoDay(start + index * size * DAY_MS);
+    const to = isoDay(Math.min(end, start + ((index + 1) * size - 1) * DAY_MS));
+    return {
+      label: from === to ? shortDate(from) : `${shortDate(from)} – ${shortDate(to)}`,
+      spendCents: 0,
+      leads: 0,
+    };
+  });
+  const bucketOf = (key: string) => {
+    const at = timestamp(key);
+    if (!at || at < start || at > end + DAY_MS - 1) return -1;
+    return Math.min(buckets - 1, Math.floor((at - start) / DAY_MS / size));
+  };
+  for (const insight of insights) {
+    const index = bucketOf(insight.date);
+    if (index >= 0) points[index].spendCents += insight.spendCents;
+  }
+  for (const lead of adLeads) {
+    const at = timestamp(lead.createdAt);
+    const index = at ? bucketOf(isoDay(at)) : -1;
+    if (index >= 0) points[index].leads += 1;
+  }
+  return { points, byWeek };
+}
+
+/**
+ * Two small bar charts sharing one day axis: what was spent, and the leads
+ * that came of it. Each has its own scale, so neither is read against the
+ * other's axis. Hovering a day shows both figures; the same numbers are in a
+ * table for screen readers.
+ */
+function DailyChart({ points, byWeek }: { points: DayPoint[]; byWeek: boolean }) {
+  const [active, setActive] = useState<number | null>(null);
+  const peakSpend = Math.max(0, ...points.map((point) => point.spendCents));
+  const peakLeads = Math.max(0, ...points.map((point) => point.leads));
+  const height = (value: number, peak: number) =>
+    `${value > 0 && peak > 0 ? Math.max((value / peak) * 100, 3) : 0}%`;
+  const unit = byWeek ? "week" : "day";
+  const point = active == null ? null : points[active];
+
   return (
-    <article className="crm-ads-campaign">
-      <header>
-        <div>
-          <h4>{campaign.campaignName}</h4>
-          <small>
-            {plural(adCount, "ad")}
-            {best ? <em className="crm-ads-best">Best return</em> : null}
-          </small>
-        </div>
-        <span className={`crm-ads-return is-${verdict.tone}`} title={verdict.label}>
-          {campaign.roas == null
-            ? "No return yet"
-            : `${backPerDollar(campaign.roas)} per $1`}
-        </span>
-      </header>
-
-      <MoneyBars spentCents={campaign.spendCents} earnedCents={campaign.revenueCents} />
-
-      <dl className="crm-ads-campaign-results">
-        <div>
-          <dt>Leads</dt>
-          <dd>{count(campaign.leads)}</dd>
-          <small>{campaign.costPerLeadCents == null ? "—" : `${cost(campaign.costPerLeadCents)} each`}</small>
-        </div>
-        <div>
-          <dt>Booked</dt>
-          <dd>{count(campaign.booked)}</dd>
-          <small>{campaign.costPerBookedCents == null ? "—" : `${cost(campaign.costPerBookedCents)} each`}</small>
-        </div>
-        <div>
-          <dt>Jobs won</dt>
-          <dd>{count(campaign.won)}</dd>
-          <small>{campaign.costPerWonCents == null ? "—" : `${cost(campaign.costPerWonCents)} each`}</small>
-        </div>
-      </dl>
-
-      <footer>
-        <small>
-          {count(campaign.impressions)} saw it · {count(campaign.clicks)} clicked
-          {campaign.ctr == null ? "" : ` (${percent(campaign.ctr)})`} · {ratio(campaign.roas)} return
-        </small>
-        <button type="button" className="crm-ads-campaign-open" onClick={onOpen}>
-          See ads and leads <ChevronRight aria-hidden="true" />
-        </button>
-      </footer>
-    </article>
+    <div className="crm-ads-daily">
+      <div className="crm-ads-daily-label">
+        <span>Spend</span>
+        <small>Top {unit} {dollars(peakSpend)}</small>
+      </div>
+      <div className="crm-ads-daily-bars is-spend" aria-hidden="true">
+        {points.map((day, index) => (
+          <span key={index} className={active === index ? "is-active" : undefined}>
+            <i style={{ height: height(day.spendCents, peakSpend) } as CSSProperties} />
+          </span>
+        ))}
+      </div>
+      <div className="crm-ads-daily-label">
+        <span>Leads</span>
+        <small>Top {unit} {count(peakLeads)}</small>
+      </div>
+      <div className="crm-ads-daily-bars is-leads" aria-hidden="true">
+        {points.map((day, index) => (
+          <span key={index} className={active === index ? "is-active" : undefined}>
+            <i style={{ height: height(day.leads, peakLeads) } as CSSProperties} />
+          </span>
+        ))}
+      </div>
+      <div
+        className="crm-ads-daily-hits"
+        aria-hidden="true"
+        onMouseLeave={() => setActive(null)}
+      >
+        {points.map((_, index) => (
+          <span
+            key={index}
+            onMouseEnter={() => setActive(index)}
+            onClick={() => setActive(index)}
+          />
+        ))}
+      </div>
+      <div className="crm-ads-daily-axis" aria-hidden="true">
+        <span>{points[0]?.label}</span>
+        <span>{points.at(-1)?.label}</span>
+      </div>
+      {point && active != null ? (
+        <output
+          className="crm-ads-daily-tip"
+          style={{ left: `clamp(80px, ${((active + 0.5) / points.length) * 100}%, calc(100% - 80px))` } as CSSProperties}
+        >
+          <time>{point.label}</time>
+          <span>
+            Spent <strong>{dollars(point.spendCents)}</strong>
+          </span>
+          <span>
+            Leads <strong>{count(point.leads)}</strong>
+          </span>
+        </output>
+      ) : null}
+      <table className="sr-only">
+        <caption>Ad spend and leads by {unit}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{byWeek ? "Week" : "Day"}</th>
+            <th scope="col">Spend</th>
+            <th scope="col">Leads</th>
+          </tr>
+        </thead>
+        <tbody>
+          {points.map((day, index) => (
+            <tr key={index}>
+              <td>{day.label}</td>
+              <td>{dollars(day.spendCents)}</td>
+              <td>{count(day.leads)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -515,8 +587,6 @@ export function AdsView({
   onOpenLead: (lead: CrmLead) => void;
   onOpenConnections: () => void;
 }) {
-  const [campaignLayout, setCampaignLayout] = useState<"table" | "cards">("table");
-  const [showMoreMetrics, setShowMoreMetrics] = useState(false);
   const [openCampaignId, setOpenCampaignId] = useState<string | null>(null);
 
   const connected = providerConnections.some(
@@ -579,6 +649,16 @@ export function AdsView({
       .campaignId;
   }, [report.campaigns]);
 
+  // Day by day, counting only leads the report credits to a campaign, so the
+  // chart's leads add up to the Leads tile.
+  const daily = useMemo(() => {
+    const campaignIds = new Set(report.campaigns.map((c) => c.campaignId));
+    const adLeads = leads.filter(
+      (lead) => lead.metaCampaignId && campaignIds.has(lead.metaCampaignId),
+    );
+    return dailySeries(metaAdInsights, adLeads, rangeStart, report.earliestSpendDate, openedAt);
+  }, [leads, metaAdInsights, rangeStart, report.campaigns, report.earliestSpendDate, openedAt]);
+
   const openCampaign = openCampaignId
     ? report.campaigns.find((c) => c.campaignId === openCampaignId)
     : undefined;
@@ -611,7 +691,8 @@ export function AdsView({
       ? `${budgetUsedPercent}% of ${dollars(budgetCents)} monthly budget`
       : `${dollars(budgetCents)} monthly budget`;
 
-  // This period at a glance: the Dashboard's appointments and lead sources.
+  // Appointments and lead sources for the same range: where the ads sit in
+  // the whole picture.
   const activeAppointments = appointments.filter(
     (appointment) => !["CANCELED", "CANCELLED"].includes(appointment.status),
   );
@@ -749,95 +830,40 @@ export function AdsView({
         </section>
       ) : null}
 
-      <section className="crm-ads-metrics" aria-label="Meta Ads summary">
-        <MetricCard label="Ad spend" value={dollars(totals.spendCents)} />
-        <MetricCard label="Leads from Meta ads" value={count(totals.leads)}
-          support={report.unattributedLeads ? `${count(report.unattributedLeads)} other leads have no campaign attached` : undefined} />
-        <MetricCard label="Cost per lead" value={cost(totals.costPerLeadCents)} />
-        <MetricCard label="Won revenue" value={dollars(totals.revenueCents)} />
-      </section>
-
-      <section className="crm-panel crm-ads-results" aria-label="Ad results">
-        <div className="crm-ads-results-heading">
-          <span>Results</span>
-          <small>From lead to customer</small>
-        </div>
-        <dl>
-          <div>
-            <dt title="Appointments booked, estimates sent, and won customers">Booked jobs</dt>
-            <dd>{count(totals.booked)}</dd>
-            <small>{cost(totals.costPerBookedCents)} per booking</small>
-          </div>
-          <div>
-            <dt>Won customers</dt>
-            <dd>{count(totals.won)}</dd>
-            <small>{cost(totals.costPerWonCents)} per customer</small>
-          </div>
-          <div>
-            <dt>Return on ad spend</dt>
-            <dd>{ratio(totals.roas)}</dd>
-            <small>Recorded revenue / ad spend</small>
-          </div>
-        </dl>
-      </section>
-
-      <details className="crm-panel crm-ads-delivery">
-        <summary>
-          <span>Ad delivery</span>
-          <small>{count(totals.clicks)} clicks</small>
-        </summary>
-        <dl>
-          <div><dt>Impressions</dt><dd>{count(totals.impressions)}</dd></div>
-          <div><dt>Clicks</dt><dd>{count(totals.clicks)}</dd></div>
-          <div><dt>Click-through rate</dt><dd>{percent(totals.ctr)}</dd></div>
-          <div><dt>Cost per click</dt><dd>{cost(totals.cpcCents)}</dd></div>
-        </dl>
-      </details>
-
-      {/* The scoreboard: the one question, then money out and money in. */}
-      <details className="crm-panel crm-ads-breakdown"><summary>Revenue and budget details</summary>
-      <section className="crm-ads-score" aria-label="Return on ad spend">
+      {/* 1. The report card: did the ads pay, in one number and one sentence. */}
+      <section className="crm-panel crm-ads-score" aria-label="Return on ad spend">
         <div className="crm-ads-score-answer">
           <span>Every $1 you spent on ads brought back</span>
           <strong>{backPerDollar(totals.roas)}</strong>
           <Verdict roas={totals.roas} />
+          <p className="crm-ads-score-story">
+            {dollars(totals.spendCents)} spent <ArrowRight aria-hidden="true" />{" "}
+            {plural(totals.leads, "lead")} <ArrowRight aria-hidden="true" />{" "}
+            {plural(totals.won, "job")} won <ArrowRight aria-hidden="true" />{" "}
+            {dollars(totals.revenueCents)} earned
+          </p>
         </div>
-        <dl className="crm-ads-score-figures">
-          <div>
-            <dt>Spent on ads</dt>
-            <dd>{dollars(totals.spendCents)}</dd>
-            <small>{budgetText}</small>
-            {budgetComparable ? (
-              <span className={`crm-ads-budget${budgetUsedPercent > 100 ? " is-over" : ""}`} aria-hidden="true">
-                <span style={{ width: `${Math.min(100, budgetUsedPercent)}%` } as CSSProperties} />
-              </span>
-            ) : null}
-          </div>
-          <div>
-            <dt>Earned from ads</dt>
-            <dd>{dollars(totals.revenueCents)}</dd>
-            <small>
-              {plural(totals.won, "job")} won
-              {adRevenueShare == null ? "" : ` · ${adRevenueShare}% of your revenue`}
-            </small>
-          </div>
-          <div>
-            <dt>Return on ad spend</dt>
-            <dd>{ratio(totals.roas)}</dd>
-            <small>Earned divided by spent</small>
-          </div>
-        </dl>
+        <div className="crm-ads-score-money">
+          <MoneyBars spentCents={totals.spendCents} earnedCents={totals.revenueCents} />
+          <p className="crm-ads-score-budget">
+            <span>{budgetText}</span>
+            <span>{ratio(totals.roas)} return on ad spend</span>
+          </p>
+          {budgetComparable ? (
+            <span className={`crm-ads-budget${budgetUsedPercent > 100 ? " is-over" : ""}`} aria-hidden="true">
+              <span style={{ width: `${Math.min(100, budgetUsedPercent)}%` } as CSSProperties} />
+            </span>
+          ) : null}
+        </div>
       </section>
 
-      </details>
-
-      {/* How people moved from seeing an ad to becoming a customer. */}
-      <details className="crm-panel crm-ads-breakdown"><summary>View the customer journey</summary>
-      <section className="crm-ads-journey">
+      {/* 2. The path from an ad to a customer: the key numbers, each with the
+          share that moved on and what it cost. */}
+      <section className="crm-panel crm-ads-journey">
         <header>
           <div className="crm-dashboard-widget-heading">
             <Route aria-hidden="true" />
-            <h3>How ad viewers became customers</h3>
+            <h3>From ad to customer</h3>
           </div>
         </header>
         <ol>
@@ -855,66 +881,41 @@ export function AdsView({
         ) : null}
       </section>
 
-      </details>
+      {/* 3. Over time, and where the ads sit among everything else. */}
+      <div className="crm-ads-pair">
+        <section className="crm-panel crm-ads-trend">
+          <header>
+            <div className="crm-dashboard-widget-heading">
+              <CalendarDays aria-hidden="true" />
+              <h3>{daily.byWeek ? "Week by week" : "Day by day"}</h3>
+            </div>
+            <small>Hover a bar for that {daily.byWeek ? "week" : "day"}</small>
+          </header>
+          {daily.points.length ? (
+            <DailyChart points={daily.points} byWeek={daily.byWeek} />
+          ) : (
+            <p className="crm-ads-quiet">No days to chart in this range.</p>
+          )}
+        </section>
 
-      {/* Campaigns, one card each. */}
-      <section className="crm-panel crm-ads-campaigns crm-ads-table-panel" aria-labelledby="crm-ads-campaigns-title">
-        <div className="crm-ads-section-title">
-          <h3 id="crm-ads-campaigns-title">Campaigns</h3>
-          <div className="crm-ads-table-actions">
-            {campaignLayout === "table" ? <button type="button" className="crm-button-secondary" aria-pressed={showMoreMetrics} onClick={() => setShowMoreMetrics((shown) => !shown)}>{showMoreMetrics ? "Fewer metrics" : "More metrics"}</button> : null}
-            <button type="button" className="crm-button-secondary" onClick={() => setCampaignLayout((layout) => layout === "table" ? "cards" : "table")}>{campaignLayout === "table" ? "Card view" : "Table view"}</button>
-          </div>
-          {clients.length > 1 && selectedClientId === "all" ? (
-            <small>Every sub-account together. Pick one in the header to see its campaigns alone.</small>
-          ) : null}
-        </div>
-        {report.campaigns.length === 0 ? (
-          <EmptyState
-            title="No campaigns in this range"
-            description="Widen the date range, or backfill history if the account was connected recently."
-          />
-        ) : campaignLayout === "table" ? (
-          <div className="crm-table-scroll">
-            <table className="crm-table crm-ads-table">
-              <thead><tr><th>Campaign</th><th>Spend</th><th>Leads</th><th>Cost per lead</th><th>Revenue</th>
-                {showMoreMetrics ? <><th>Impressions</th><th>Clicks</th><th>Booked jobs</th><th>Won customers</th><th>ROAS</th></> : null}
-              </tr></thead>
-              <tbody>{report.campaigns.map((campaign) => (
-                <tr key={campaign.campaignId} className="crm-ads-campaign-row">
-                  <td><button type="button" className="crm-ads-disclosure" onClick={() => setOpenCampaignId(campaign.campaignId)}>{campaign.campaignName}</button></td>
-                  <td>{dollars(campaign.spendCents)}</td><td>{count(campaign.leads)}</td><td>{cost(campaign.costPerLeadCents)}</td><td>{dollars(campaign.revenueCents)}</td>
-                  {showMoreMetrics ? <><td>{count(campaign.impressions)}</td><td>{count(campaign.clicks)}</td><td>{count(campaign.booked)}</td><td>{count(campaign.won)}</td><td>{ratio(campaign.roas)}</td></> : null}
-                </tr>
-              ))}</tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="crm-ads-campaign-grid">
-            {report.campaigns.map((campaign) => (
-              <CampaignCard
-                key={campaign.campaignId}
-                campaign={campaign}
-                best={campaign.campaignId === bestCampaignId}
-                onOpen={() => setOpenCampaignId(campaign.campaignId)}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* The rest of the marketing picture, for the same range. */}
-      <section className="crm-panel crm-ads-glance">
-        <header>
-          <div className="crm-dashboard-widget-heading">
-            <Eye aria-hidden="true" />
-            <h3>This period at a glance</h3>
-          </div>
-        </header>
-        <div className="crm-ads-glance-body">
-          <div className="crm-ads-glance-stat">
-            <CalendarCheck aria-hidden="true" />
-            <div>
+        <section className="crm-panel crm-ads-glance">
+          <header>
+            <div className="crm-dashboard-widget-heading">
+              <Layers aria-hidden="true" />
+              <h3>Ads and everything else</h3>
+            </div>
+          </header>
+          <div className="crm-ads-glance-body">
+            <div className="crm-ads-glance-stat">
+              <span>Ads&apos; share of revenue</span>
+              <strong>{adRevenueShare == null ? "—" : `${adRevenueShare}%`}</strong>
+              <small>
+                {adRevenueShare == null
+                  ? "No won revenue in this range"
+                  : `${dollars(totals.revenueCents)} of ${dollars(totalRevenueCents)}`}
+              </small>
+            </div>
+            <div className="crm-ads-glance-stat">
               <span>Appointments booked</span>
               <strong>{count(activeAppointments.length)}</strong>
               <small>
@@ -925,31 +926,117 @@ export function AdsView({
                   : "No appointments booked"}
               </small>
             </div>
+            <div className="crm-ads-sources">
+              <span>Where all {plural(totalSourceLeads, "lead")} came from</span>
+              {sources.length ? (
+                <>
+                  <span className="crm-ads-sources-bar" role="img" aria-label={sources.map((s) => `${s.label} ${s.percent}%`).join(", ")}>
+                    {sources.map((source) => (
+                      <span key={source.label} style={{ width: `${(source.count / totalSourceLeads) * 100}%`, background: source.color } as CSSProperties} />
+                    ))}
+                  </span>
+                  <ul>
+                    {sources.map((source) => (
+                      <li key={source.label}>
+                        <i style={{ background: source.color }} aria-hidden="true" />
+                        <span>{source.label}</span>
+                        <strong>{source.percent}%</strong>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <small>No lead source data yet</small>
+              )}
+            </div>
           </div>
-          <div className="crm-ads-sources">
-            <span>Where all {plural(totalSourceLeads, "lead")} came from</span>
-            {sources.length ? (
-              <>
-                <span className="crm-ads-sources-bar" role="img" aria-label={sources.map((s) => `${s.label} ${s.percent}%`).join(", ")}>
-                  {sources.map((source) => (
-                    <span key={source.label} style={{ width: `${(source.count / totalSourceLeads) * 100}%`, background: source.color } as CSSProperties} />
-                  ))}
-                </span>
-                <ul>
-                  {sources.map((source) => (
-                    <li key={source.label}>
-                      <i style={{ background: source.color }} aria-hidden="true" />
-                      <span>{source.label}</span>
-                      <strong>{source.percent}%</strong>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              <small>No lead source data yet</small>
-            )}
+        </section>
+      </div>
+
+      {/* 4. Every campaign, one row each. A row opens its ads and leads. */}
+      <section className="crm-panel crm-ads-campaigns" aria-labelledby="crm-ads-campaigns-title">
+        <header>
+          <div className="crm-dashboard-widget-heading">
+            <Megaphone aria-hidden="true" />
+            <h3 id="crm-ads-campaigns-title">Campaigns</h3>
           </div>
-        </div>
+          <small>
+            {clients.length > 1 && selectedClientId === "all"
+              ? "Every sub-account together. Pick one in the header to see its campaigns alone."
+              : "Select a campaign to see its ads and leads"}
+          </small>
+        </header>
+        {report.campaigns.length === 0 ? (
+          <EmptyState
+            title="No campaigns in this range"
+            description="Widen the date range, or backfill history if the account was connected recently."
+          />
+        ) : (
+          <table className="crm-ads-table">
+            <thead>
+              <tr>
+                <th>Campaign</th>
+                <th>Spend</th>
+                <th>Leads</th>
+                <th>Cost per lead</th>
+                <th>Booked jobs</th>
+                <th>Won customers</th>
+                <th>Revenue</th>
+                <th>Return</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.campaigns.map((campaign) => {
+                const verdict = returnVerdict(campaign.roas);
+                const spendShare =
+                  totals.spendCents > 0 ? campaign.spendCents / totals.spendCents : 0;
+                return (
+                  <tr key={campaign.campaignId}>
+                    <td className="crm-ads-table-name">
+                      <button
+                        type="button"
+                        className="crm-ads-disclosure"
+                        onClick={() => setOpenCampaignId(campaign.campaignId)}
+                      >
+                        {campaign.campaignName}
+                      </button>
+                      {campaign.campaignId === bestCampaignId ? (
+                        <em className="crm-ads-best">Best return</em>
+                      ) : null}
+                      <small>
+                        {count(campaign.impressions)} saw it · {count(campaign.clicks)} clicked
+                        {campaign.ctr == null ? "" : ` (${percent(campaign.ctr)})`}
+                      </small>
+                    </td>
+                    <td data-label="Spend">
+                      {dollars(campaign.spendCents)}
+                      <span className="crm-ads-share" aria-hidden="true">
+                        <span style={{ width: `${Math.max(spendShare * 100, spendShare > 0 ? 2 : 0)}%` } as CSSProperties} />
+                      </span>
+                    </td>
+                    <td data-label="Leads">{count(campaign.leads)}</td>
+                    <td data-label="Cost per lead">{cost(campaign.costPerLeadCents)}</td>
+                    <td data-label="Booked jobs">
+                      {count(campaign.booked)}
+                      <small>{cost(campaign.costPerBookedCents)} each</small>
+                    </td>
+                    <td data-label="Won customers">
+                      {count(campaign.won)}
+                      <small>{cost(campaign.costPerWonCents)} each</small>
+                    </td>
+                    <td data-label="Revenue">{dollars(campaign.revenueCents)}</td>
+                    <td data-label="Return">
+                      <span className={`crm-ads-return is-${verdict.tone}`} title={verdict.label}>
+                        {ratio(campaign.roas)}
+                        <span className="sr-only">, {verdict.label}</span>
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </section>
 
       {openCampaign ? (

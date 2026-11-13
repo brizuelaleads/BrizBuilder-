@@ -84,13 +84,13 @@ const restructured = {
   },
   'app/crm/AdsView.tsx': {
     // Every figure the tab showed is still shown (pinned in
-    // tests/ads-report.test.mjs); they are regrouped, not removed. The one new
-    // control is the Go to Connections button on the disconnected notice.
-    reason: 'Ads rebuilt as a scoreboard (what every $1 brought back), the steps from seeing an ad to becoming a customer, one card per campaign, the period at a glance, and a campaign drawer that lists each ad as a card',
+    // tests/ads-report.test.mjs); they are regrouped, not removed. The card/table
+    // and more-metrics toggles are gone: there is one table showing everything.
+    reason: 'Ads rebuilt as a one-page report: a report card (what every $1 brought back, spent against earned), the steps from seeing an ad to becoming a customer, day-by-day spend and leads beside the wider lead picture, one campaign table, and the campaign drawer',
     controls: /<th>(Campaign|Spend|Impressions|Clicks|Leads|CPL|Booked jobs|Won customers|Revenue|ROAS|Return|Ad|Cost per lead)<\/th>|<th scope="col">|<h3[ >]|<h4>|<h5>|crm-ads-disclosure|crm-ads-campaign-open|onOpenConnections|campaign\.campaignName|onClick=\{\(\) => onOpenLead\(lead\)\}/,
-    replacements: [
-      {lost: 'onClick={() => setOpenCampaignId(campaign.campaignId)}', now: /onOpen=\{\(\) => setOpenCampaignId\(campaign\.campaignId\)\}[^]*?className="crm-ads-campaign-open" onClick=\{onOpen\}|className="crm-ads-campaign-open" onClick=\{onOpen\}[^]*?onOpen=\{\(\) => setOpenCampaignId\(campaign\.campaignId\)\}/, why: 'a campaign row became a campaign card; its See ads and leads button opens the same drawer'},
-    ],
+    // New: spend and leads per day, two single-series bar charts on one day
+    // axis, with the same numbers in a screen-reader table.
+    charts: {gone: [], added: ['<DailyChart points={daily.points} byWeek={daily.byWeek} />']},
   },
   'app/crm/OperationsViews.tsx': {
     reason: 'Calendar rebuilt as a week planner: month picker, status filters, event popover. Settings gained an Appearance section (Glass backdrop picker).',

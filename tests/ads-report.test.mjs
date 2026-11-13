@@ -295,54 +295,68 @@ test("the tab covers every setup state and offers the snippet", () => {
   assert.match(adsView, /navigator\.clipboard\.writeText\(URL_PARAMETERS\)/);
 });
 
+const has = (source, text) => assert.ok(source.includes(text), `${text} is present`);
+
 test("the tab answers one question first, then keeps every figure", () => {
-  // The Dashboard's panel style, but a layout of its own: a scoreboard, the
-  // path to a customer, campaign cards and the period at a glance.
-  assert.match(adsView, /className="crm-view crm-dashboard-view crm-ads-view"/);
-  assert.match(adsView, /Every \$1 you spent on ads brought back/);
-  assert.match(adsView, /<strong>\{backPerDollar\(totals\.roas\)\}<\/strong>/);
-  for (const label of ["Spent on ads", "Earned from ads", "Return on ad spend"])
-    assert.ok(adsView.includes(`<dt>${label}</dt>`), `${label} is on the scoreboard`);
+  // The Dashboard's panel style, but a layout of its own: a report card, the
+  // path to a customer, day by day, the wider lead picture and one table.
+  has(adsView, 'className="crm-view crm-dashboard-view crm-ads-view"');
+  has(adsView, "Every $1 you spent on ads brought back");
+  has(adsView, "<strong>{backPerDollar(totals.roas)}</strong>");
+  has(adsView, "<MoneyBars spentCents={totals.spendCents} earnedCents={totals.revenueCents} />");
+  has(adsView, "{ratio(totals.roas)} return on ad spend");
   // Every step from seeing an ad to becoming a customer, with what each cost
   // and the share that moved on, so a drop-off is visible where it happens.
-  assert.match(adsView, /<h3>How ad viewers became customers<\/h3>/);
+  has(adsView, "<h3>From ad to customer</h3>");
   for (const step of ["saw your ads", "clicked", "became leads", "booked a job", "became customers"])
-    assert.ok(adsView.includes(`label="${step}"`), `${step} is a step`);
+    has(adsView, `label="${step}"`);
   for (const rate of [
     "percent(totals.ctr)",
     "share(totals.leads, totals.clicks)",
     "share(totals.booked, totals.leads)",
     "share(totals.won, totals.booked)",
   ])
-    assert.ok(adsView.includes(`rate={${rate}}`), `${rate} is shown`);
+    has(adsView, `rate={${rate}}`);
   for (const each of ["totals.cpcCents", "totals.costPerLeadCents", "totals.costPerBookedCents", "totals.costPerWonCents"])
-    assert.ok(adsView.includes(`each={${each}}`), `${each} is shown`);
+    has(adsView, `each={${each}}`);
   // The rest of the marketing picture for the same range.
-  assert.match(adsView, /<h3>This period at a glance<\/h3>/);
-  for (const copy of ["Appointments booked", "came from", "% of your revenue"])
-    assert.ok(adsView.includes(copy), `${copy} is shown`);
+  has(adsView, "<h3>Ads and everything else</h3>");
+  for (const copy of ["Appointments booked", "came from", "Ads&apos; share of revenue", "`${adRevenueShare}%`"])
+    has(adsView, copy);
   // A good or bad return is never colour alone: it carries an icon and words.
-  assert.match(adsView, /label: "Earning more than it costs"/);
-  assert.match(adsView, /label: "Costing more than it has earned"/);
+  has(adsView, 'label: "Earning more than it costs"');
+  has(adsView, 'label: "Costing more than it has earned"');
+});
+
+test("spend and leads are charted day by day without a second axis", () => {
+  // Two single-series charts on one shared day axis, each on its own scale,
+  // and the same numbers in a table for screen readers.
+  has(adsView, "function DailyChart(");
+  has(adsView, "crm-ads-daily-bars is-spend");
+  has(adsView, "crm-ads-daily-bars is-leads");
+  has(adsView, '<table className="sr-only">');
+  // Long ranges group into weeks so bars stay readable.
+  has(adsView, "const byWeek = days > 45;");
+  // Only leads the report credits to a campaign, so the chart adds up to the
+  // funnel's lead count.
+  has(adsView, "lead.metaCampaignId && campaignIds.has(lead.metaCampaignId)");
 });
 
 test("budget use is never understated", () => {
   // Overspend shows as more than 100%; only the bar is capped, and it turns
   // amber with the percentage written beside it.
-  assert.doesNotMatch(adsView, /Math\.min\(100, Math\.round\(\(totals\.spendCents/);
-  assert.match(adsView, /width: `\$\{Math\.min\(100, budgetUsedPercent\)\}%`/);
-  assert.match(adsView, /budgetUsedPercent > 100 \? " is-over" : ""/);
+  assert.ok(!adsView.includes("Math.min(100, Math.round((totals.spendCents"));
+  has(adsView, "width: `${Math.min(100, budgetUsedPercent)}%`");
+  has(adsView, 'budgetUsedPercent > 100 ? " is-over" : ""');
   // A month's budget is only compared with a month of spend.
-  assert.match(adsView, /const budgetComparable = budgetCents > 0 && range === "30";/);
+  has(adsView, 'const budgetComparable = budgetCents > 0 && range === "30";');
 });
 
-test("each campaign card carries delivery as well as money", () => {
-  assert.match(adsView, /function CampaignCard\(/);
-  assert.match(adsView, /<MoneyBars spentCents=\{campaign\.spendCents\} earnedCents=\{campaign\.revenueCents\} \/>/);
-  for (const label of ["Leads", "Booked", "Jobs won"])
-    assert.ok(adsView.includes(`<dt>${label}</dt>`), `${label} is on the card`);
+test("one campaign table carries delivery as well as money", () => {
+  for (const header of ["Campaign", "Spend", "Leads", "Cost per lead", "Booked jobs", "Won customers", "Revenue", "Return"])
+    has(adsView, `<th>${header}</th>`);
   // Impressions and clicks tell you whether a bad cost per lead is a delivery
-  // problem or a conversion problem, so every card still shows them.
+  // problem or a conversion problem, so every row still shows them.
   for (const figure of [
     "count(campaign.impressions)",
     "count(campaign.clicks)",
@@ -352,11 +366,13 @@ test("each campaign card carries delivery as well as money", () => {
     "cost(campaign.costPerWonCents)",
     "ratio(campaign.roas)",
   ])
-    assert.ok(adsView.includes(figure), `${figure} is shown per campaign`);
-  // The card opens its campaign.
-  assert.match(adsView, /onOpen=\{\(\) => setOpenCampaignId\(campaign\.campaignId\)\}/);
-  // Cards wrap to the width they have, so nothing scrolls sideways.
-  assert.match(read("app/crm/controls.css"), /\.crm-ads-campaign-grid \{ display: grid; grid-template-columns: repeat\(auto-fit, minmax\(min\(340px, 100%\), 1fr\)\)/);
+    has(adsView, figure);
+  // The return pill says its verdict in words, not only colour.
+  has(adsView, '<span className="sr-only">, {verdict.label}</span>');
+  // The campaign name opens its drawer.
+  has(adsView, "onClick={() => setOpenCampaignId(campaign.campaignId)}");
+  // On a phone each row becomes a labelled card, so nothing scrolls sideways.
+  has(read("app/crm/controls.css"), ".crm-ads-table td[data-label]::before { content: attr(data-label)");
 });
 
 test("a campaign opens in a drawer that reads top to bottom", () => {
