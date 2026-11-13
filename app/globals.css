@@ -22148,3 +22148,50 @@ canvas {
     border-radius: 0;
   }
 }
+
+/* Ads overview: essentials first, detail on demand. */
+.crm-ads-view .crm-ads-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.crm-ads-view .crm-ads-metric > span { text-transform: none; letter-spacing: 0; }
+.crm-ads-view .crm-ads-notice { display: block; padding: 14px 18px; }
+.crm-ads-notice summary { cursor: pointer; font-size: 13px; font-weight: 500; }
+.crm-ads-notice > svg { display: none; }
+.crm-ads-notice[open] > div { margin-top: 14px; }
+.crm-ads-table-panel { min-width: 0; }
+.crm-ads-table-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.crm-ads-table-panel > header p { margin: 6px 0 0; color: var(--crm-muted); font-size: 12px; text-transform: none; letter-spacing: 0; }
+.crm-ads-view .crm-ads-table { min-width: 620px; width: 100%; }
+.crm-ads-table th:not(:first-child), .crm-ads-table td:not(:first-child) { text-align: right; }
+.crm-ads-view .crm-ads-disclosure { text-align: left; font-weight: 500; }
+@media (max-width: 800px) { .crm-ads-view .crm-ads-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Secondary Ads metrics stay compact so campaigns remain close to the overview. */
+.crm-ads-view .crm-ads-results { display: grid; grid-template-columns: 180px minmax(0, 1fr); align-items: center; padding: 22px 24px; gap: 24px; }
+.crm-ads-results-heading { display: grid; gap: 6px; }
+.crm-ads-results-heading > span { font-size: 14px; font-weight: 600; }
+.crm-ads-results-heading small, .crm-ads-results dl small, .crm-ads-delivery small, .crm-ads-delivery > p { color: var(--crm-muted); font-size: 12px; line-height: 1.5; }
+.crm-ads-results dl, .crm-ads-delivery dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin: 0; }
+.crm-ads-results dl > div { border-left: 1px solid var(--crm-border); padding-left: 24px; }
+.crm-ads-results dt, .crm-ads-delivery dt { color: var(--crm-muted); font-size: 12px; }
+.crm-ads-results dd, .crm-ads-delivery dd { margin: 6px 0; font-size: 24px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.crm-ads-view .crm-ads-delivery { padding: 0; }
+.crm-ads-delivery summary { padding: 16px 24px; cursor: pointer; font-size: 13px; font-weight: 500; }
+.crm-ads-delivery summary > span { margin-left: 6px; }
+.crm-ads-delivery summary > small { float: right; font-weight: 400; }
+.crm-ads-delivery[open] summary { border-bottom: 1px solid var(--crm-border); }
+.crm-ads-delivery dl { padding: 20px 24px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.crm-ads-delivery > p { margin: 0; padding: 0 24px 20px; }
+@media (max-width: 1000px) {
+  .crm-ads-view .crm-ads-results { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .crm-ads-results dl > div:first-child { border-left: 0; padding-left: 0; }
+}
+@media (max-width: 600px) {
+  .crm-ads-view .crm-ads-results { padding: 18px; }
+  .crm-ads-results dl { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .crm-ads-results dl > div { border-left: 0; border-top: 1px solid var(--crm-border); padding: 16px 0 0; }
+  .crm-ads-results dl > div:first-child { padding-top: 0; border-top: 0; }
+  .crm-ads-delivery dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.crm-ads-view .crm-ads-breakdown { padding: 0; overflow: hidden; }
+.crm-ads-breakdown > summary { padding: 16px 24px; font-size: 13px; font-weight: 500; cursor: pointer; }
+.crm-ads-breakdown[open] > summary { border-bottom: 1px solid var(--crm-border); }

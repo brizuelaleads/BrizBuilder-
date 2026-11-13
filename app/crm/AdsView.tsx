@@ -200,6 +200,24 @@ function MoneyBars({ spentCents, earnedCents }: { spentCents: number; earnedCent
   );
 }
 
+function MetricCard({
+  label,
+  value,
+  support,
+}: {
+  label: string;
+  value: string;
+  support?: string;
+}) {
+  return (
+    <article className="crm-ads-metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      {support ? <small>{support}</small> : null}
+    </article>
+  );
+}
+
 /** One step from seeing an ad to becoming a customer. */
 function JourneyStep({
   label,
@@ -729,8 +747,54 @@ export function AdsView({
         </section>
       ) : null}
 
+      <section className="crm-ads-metrics" aria-label="Meta Ads summary">
+        <MetricCard label="Ad spend" value={dollars(totals.spendCents)} />
+        <MetricCard label="Leads from Meta ads" value={count(totals.leads)}
+          support={report.unattributedLeads ? `${count(report.unattributedLeads)} other leads have no campaign attached` : undefined} />
+        <MetricCard label="Cost per lead" value={cost(totals.costPerLeadCents)} />
+        <MetricCard label="Won revenue" value={dollars(totals.revenueCents)} />
+      </section>
+
+      <section className="crm-panel crm-ads-results" aria-label="Ad results">
+        <div className="crm-ads-results-heading">
+          <span>Results</span>
+          <small>From lead to customer</small>
+        </div>
+        <dl>
+          <div>
+            <dt title="Appointments booked, estimates sent, and won customers">Booked jobs</dt>
+            <dd>{count(totals.booked)}</dd>
+            <small>{cost(totals.costPerBookedCents)} per booking</small>
+          </div>
+          <div>
+            <dt>Won customers</dt>
+            <dd>{count(totals.won)}</dd>
+            <small>{cost(totals.costPerWonCents)} per customer</small>
+          </div>
+          <div>
+            <dt>Return on ad spend</dt>
+            <dd>{ratio(totals.roas)}</dd>
+            <small>Recorded revenue / ad spend</small>
+          </div>
+        </dl>
+      </section>
+
+      <details className="crm-panel crm-ads-delivery">
+        <summary>
+          <span>Ad delivery</span>
+          <small>{count(totals.clicks)} clicks</small>
+        </summary>
+        <dl>
+          <div><dt>Impressions</dt><dd>{count(totals.impressions)}</dd></div>
+          <div><dt>Clicks</dt><dd>{count(totals.clicks)}</dd></div>
+          <div><dt>Click-through rate</dt><dd>{percent(totals.ctr)}</dd></div>
+          <div><dt>Cost per click</dt><dd>{cost(totals.cpcCents)}</dd></div>
+        </dl>
+      </details>
+
       {/* The scoreboard: the one question, then money out and money in. */}
-      <section className="crm-panel crm-ads-score" aria-label="Return on ad spend">
+      <details className="crm-panel crm-ads-breakdown"><summary>Revenue and budget details</summary>
+      <section className="crm-ads-score" aria-label="Return on ad spend">
         <div className="crm-ads-score-answer">
           <span>Every $1 you spent on ads brought back</span>
           <strong>{backPerDollar(totals.roas)}</strong>
@@ -763,8 +827,11 @@ export function AdsView({
         </dl>
       </section>
 
+      </details>
+
       {/* How people moved from seeing an ad to becoming a customer. */}
-      <section className="crm-panel crm-ads-journey">
+      <details className="crm-panel crm-ads-breakdown"><summary>View the customer journey</summary>
+      <section className="crm-ads-journey">
         <header>
           <div className="crm-dashboard-widget-heading">
             <Route aria-hidden="true" />
@@ -785,6 +852,8 @@ export function AdsView({
           </p>
         ) : null}
       </section>
+
+      </details>
 
       {/* Campaigns, one card each. */}
       <section className="crm-ads-campaigns" aria-labelledby="crm-ads-campaigns-title">
