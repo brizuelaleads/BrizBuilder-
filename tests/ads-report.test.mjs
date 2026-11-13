@@ -399,3 +399,21 @@ test("the tab shows a dash for a cost it cannot compute, never a zero", () => {
   // Exact dollars: "$1K" would hide the difference between $1,213 and $1,000.
   assert.doesNotMatch(adsView, /money\([^)]*, true\)/);
 });
+
+test("stylesheets never hand-write -webkit-backdrop-filter", () => {
+  // The CSS minifier treats a hand-written -webkit-backdrop-filter beside an
+  // identical backdrop-filter as a duplicate and keeps only the prefixed one,
+  // so Chrome lost every Glass blur in production (the lead record showed the
+  // campaign drawer through it). Write only backdrop-filter; the build adds
+  // the -webkit- prefix itself.
+  for (const file of [
+    "app/globals.css",
+    "app/landing.module.css",
+    "app/crm/controls.css",
+    "app/crm/theme-glass.css",
+    "app/crm/design-system.css",
+    "app/crm/mobile.css",
+    "app/crm/account-switcher.css",
+  ])
+    assert.ok(!read(file).includes("-webkit-backdrop-filter"), `${file} hand-writes -webkit-backdrop-filter`);
+});

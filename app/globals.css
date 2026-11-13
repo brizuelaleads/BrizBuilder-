@@ -15758,7 +15758,6 @@ canvas {
   box-shadow:
     0 18px 45px rgb(15 23 42 / 8%),
     inset 0 1px 0 rgb(219 246 255 / 88%);
-  -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
 }
 
@@ -16282,7 +16281,6 @@ canvas {
     var(--crm-dashboard-surface-low)
   );
   box-shadow: var(--crm-dashboard-card-shadow);
-  -webkit-backdrop-filter: none;
   backdrop-filter: none;
   transition: box-shadow .2s ease-in-out;
 }
@@ -17953,7 +17951,6 @@ canvas {
   justify-content: flex-end;
   overflow: hidden;
   background: rgb(15 23 42 / 38%);
-  -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
   animation: crm-lead-layer-in .18s ease-out both;
 }
@@ -17980,7 +17977,7 @@ canvas {
 }
 
 @keyframes crm-lead-layer-in {
-  from { background: transparent; -webkit-backdrop-filter: blur(0); backdrop-filter: blur(0); }
+  from { background: transparent; backdrop-filter: blur(0); }
 }
 
 @keyframes crm-lead-drawer-in {
@@ -18809,7 +18806,6 @@ canvas {
   gap: 12px;
   border-bottom: 1px solid #e8ebf1;
   background: rgb(255 255 255 / 96%);
-  -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
 }
 
@@ -19743,7 +19739,6 @@ canvas {
     linear-gradient(125deg, rgb(255 255 255 / 5%), rgb(255 255 255 / 1%) 55%, rgb(255 255 255 / 4%)),
     rgb(3 0 13 / 38%);
   background-blend-mode: screen, soft-light, normal;
-  -webkit-backdrop-filter: blur(20px) saturate(.65);
   backdrop-filter: blur(20px) saturate(.65);
 }
 
@@ -20220,7 +20215,6 @@ canvas {
 .crm-shell:not(.crm-design-system).crm-shell:not(.crm-design-system):has(> .crm-main-dashboard) .crm-sidebar {
   border-right: 0;
   background: linear-gradient(155deg, rgb(255 255 255 / 3%), transparent 65%), rgb(13 17 23 / 78%);
-  -webkit-backdrop-filter: blur(22px);
   backdrop-filter: blur(22px);
   box-shadow: none;
 }
@@ -20263,7 +20257,6 @@ canvas {
 }
 .crm-shell:not(.crm-design-system).crm-shell:not(.crm-design-system):has(> .crm-main-dashboard) .crm-sidebar {
   background: #0d1117;
-  -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
 .crm-shell:not(.crm-design-system) .crm-main-dashboard {
@@ -20765,7 +20758,6 @@ canvas {
   border-color: var(--crm-line);
   background: #ffffff;
   background-blend-mode: normal;
-  -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
 
@@ -20899,7 +20891,6 @@ canvas {
   border-right: 1px solid var(--ui-border);
   background: var(--ui-sidebar);
   box-shadow: none;
-  -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
 
@@ -20917,7 +20908,6 @@ canvas {
   border-bottom: 1px solid var(--ui-border);
   background: rgb(255 255 255 / 94%);
   box-shadow: none;
-  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 }
 
@@ -21161,7 +21151,6 @@ canvas {
   border-radius: var(--ui-radius-lg);
   background: var(--ui-surface);
   box-shadow: var(--ui-shadow-sm);
-  -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
 
@@ -21426,7 +21415,6 @@ canvas {
   .crm-lead-page-layer, .crm-client-branding-backdrop
 ) {
   background: rgb(15 23 42 / 42%);
-  -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
 }
 
@@ -21531,7 +21519,6 @@ canvas {
   background-color: var(--crm-nav-surface);
   background-image: var(--crm-nav-texture);
   box-shadow: none;
-  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 }
 
@@ -21685,7 +21672,6 @@ canvas {
   border-bottom: 1px solid var(--crm-ui-border);
   background: rgb(255 255 255 / 96%);
   box-shadow: none;
-  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 }
 

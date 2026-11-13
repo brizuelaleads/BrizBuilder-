@@ -28,7 +28,6 @@
 #crm-app[data-theme="glass"] .crm-sidebar .crm-account-picker {
   --account-fill: rgb(var(--glass-tint, 22 22 26) / 96%);
   backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
 }
 #crm-app .crm-account-picker-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px 4px; }
 #crm-app .crm-account-picker-heading strong { font-size: 12px; font-weight: 600; color: #f4f4f5; }
