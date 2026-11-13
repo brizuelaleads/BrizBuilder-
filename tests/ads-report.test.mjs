@@ -281,21 +281,13 @@ test("the tab covers every setup state and offers the snippet", () => {
   assert.match(adsView, /navigator\.clipboard\.writeText\(URL_PARAMETERS\)/);
 });
 
-test("all seven summary cards are present", () => {
-  for (const label of [
-    "Ad spend",
-    "Leads from Meta ads",
-    "Cost per lead",
-    "Booked jobs",
-    "Cost per booked job",
-    "Won revenue",
-    "ROAS",
-  ]) {
-    assert.ok(
-      adsView.includes(`label="${label}"`),
-      `${label} is a summary card of its own`,
-    );
+test("the overview keeps four essential summary cards", () => {
+  for (const label of ["Ad spend", "Leads from Meta ads", "Cost per lead", "Won revenue"]) {
+    assert.ok(adsView.includes(`label="${label}"`));
   }
+  assert.equal((adsView.match(/<MetricCard /g) ?? []).length, 4);
+  assert.ok(adsView.includes('aria-pressed={showMoreMetrics}'));
+  assert.ok(adsView.includes('showMoreMetrics ? <th>Impressions</th> : null'));
 });
 
 test("the campaign table carries delivery as well as money", () => {
@@ -307,7 +299,7 @@ test("the campaign table carries delivery as well as money", () => {
     "Impressions",
     "Clicks",
     "Leads",
-    "CPL",
+    "Cost per lead",
     "Booked jobs",
     "Won customers",
     "Revenue",

@@ -25,10 +25,6 @@ function ratio(value: number | null) {
   return value == null ? "—" : `${value.toFixed(1)}x`;
 }
 
-function percent(value: number | null) {
-  return value == null ? "—" : `${(value * 100).toFixed(2)}%`;
-}
-
 /** A cost with no denominator reads as unknown, never as zero. */
 function cost(value: number | null) {
   return value == null ? "—" : money(value, true);
@@ -260,6 +256,7 @@ export function AdsView({
   onOpenLead: (lead: CrmLead) => void;
   onOpenConnections: () => void;
 }) {
+  const [showMoreMetrics, setShowMoreMetrics] = useState(false);
   const [openCampaignId, setOpenCampaignId] = useState<string | null>(null);
 
   const connected = providerConnections.some(
@@ -323,7 +320,7 @@ export function AdsView({
         <p>MARKETING</p>
         <h2>Ads</h2>
         <span>
-          What Meta advertising cost, and what it produced.
+          See what you spend and the leads it brings in.
           {currency && currency !== "USD" ? ` Amounts in ${currency}.` : ""}
         </span>
       </div>
@@ -374,8 +371,16 @@ export function AdsView({
     <div className="crm-view crm-ads-view">
       {heading}
 
+      <section className="crm-ads-metrics" aria-label="Meta Ads summary">
+        <MetricCard label="Ad spend" value={money(report.totals.spendCents, true)} />
+        <MetricCard label="Leads from Meta ads" value={count(report.totals.leads)} />
+        <MetricCard label="Cost per lead" value={cost(report.totals.costPerLeadCents)} />
+        <MetricCard label="Won revenue" value={money(report.totals.revenueCents, true)} />
+      </section>
+
       {report.setupState === "missing_url_parameters" ? (
-        <section className="crm-ads-notice is-warning">
+        <details className="crm-ads-notice is-warning">
+          <summary>Lead tracking needs attention</summary>
           <TriangleAlert aria-hidden="true" />
           <div>
             <strong>Spend is arriving, but no lead can be traced to it.</strong>
@@ -389,11 +394,12 @@ export function AdsView({
             </p>
             <SnippetBox />
           </div>
-        </section>
+        </details>
       ) : null}
 
       {report.backfillAvailable ? (
-        <section className="crm-ads-notice">
+        <details className="crm-ads-notice">
+          <summary>Some spend history is missing</summary>
           <Megaphone aria-hidden="true" />
           <div>
             <strong>Older spend is missing.</strong>
@@ -407,61 +413,19 @@ export function AdsView({
               Backfill history
             </button>
           </div>
-        </section>
+        </details>
       ) : null}
-
-      <section className="crm-ads-metrics" aria-label="Meta Ads summary">
-        <MetricCard
-          label="Ad spend"
-          value={money(report.totals.spendCents, true)}
-          support={`${count(report.totals.clicks)} clicks · ${percent(report.totals.ctr)} CTR`}
-        />
-        <MetricCard
-          label="Leads from Meta ads"
-          value={count(report.totals.leads)}
-          support={
-            report.unattributedLeads
-              ? `${count(report.unattributedLeads)} not traceable to an ad`
-              : "All leads traced to a campaign"
-          }
-        />
-        <MetricCard
-          label="Cost per lead"
-          value={cost(report.totals.costPerLeadCents)}
-          support={`${cost(report.totals.cpcCents)} per click`}
-        />
-        <MetricCard
-          label="Booked jobs"
-          value={count(report.totals.booked)}
-          support="Booked, estimate sent, or won"
-        />
-        <MetricCard
-          label="Cost per booked job"
-          value={cost(report.totals.costPerBookedCents)}
-          support={`${cost(report.totals.costPerWonCents)} per won customer`}
-        />
-        <MetricCard
-          label="Won revenue"
-          value={money(report.totals.revenueCents, true)}
-          support={`${count(report.totals.won)} won customer${report.totals.won === 1 ? "" : "s"}`}
-        />
-        <MetricCard
-          label="ROAS"
-          value={ratio(report.totals.roas)}
-          support={
-            report.totals.roas == null
-              ? "Needs both spend and recorded revenue"
-              : "Revenue per unit of spend"
-          }
-        />
-      </section>
 
       <section className="crm-panel crm-ads-table-panel">
         <header>
           <div>
-            <p>BY CAMPAIGN</p>
-            <h3>Campaign performance</h3>
+            <h3>Campaigns</h3>
+            <p>Select a campaign to see its ads and leads.</p>
           </div>
+          <button type="button" className="crm-button-secondary" aria-pressed={showMoreMetrics}
+            onClick={() => setShowMoreMetrics((shown) => !shown)}>
+            {showMoreMetrics ? "Fewer metrics" : "More metrics"}
+          </button>
         </header>
         {report.campaigns.length === 0 ? (
           <EmptyState
@@ -475,14 +439,14 @@ export function AdsView({
                 <tr>
                   <th>Campaign</th>
                   <th>Spend</th>
-                  <th>Impressions</th>
-                  <th>Clicks</th>
+                  {showMoreMetrics ? <th>Impressions</th> : null}
+                  {showMoreMetrics ? <th>Clicks</th> : null}
                   <th>Leads</th>
-                  <th>CPL</th>
-                  <th>Booked jobs</th>
-                  <th>Won customers</th>
+                  <th>Cost per lead</th>
+                  {showMoreMetrics ? <th>Booked jobs</th> : null}
+                  {showMoreMetrics ? <th>Won customers</th> : null}
                   <th>Revenue</th>
-                  <th>ROAS</th>
+                  {showMoreMetrics ? <th>ROAS</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -495,22 +459,21 @@ export function AdsView({
                     <td data-label="Campaign">
                       <button type="button" className="crm-ads-disclosure">
                         <span>{campaign.campaignName}</span>
-                        <small>{campaign.campaignId}</small>
                       </button>
                     </td>
                     <td data-label="Spend">
                       {money(campaign.spendCents, true)}
                     </td>
-                    <td data-label="Impressions">{count(campaign.impressions)}</td>
-                    <td data-label="Clicks">{count(campaign.clicks)}</td>
+                    {showMoreMetrics ? <td data-label="Impressions">{count(campaign.impressions)}</td> : null}
+                    {showMoreMetrics ? <td data-label="Clicks">{count(campaign.clicks)}</td> : null}
                     <td data-label="Leads">{count(campaign.leads)}</td>
-                    <td data-label="CPL">{cost(campaign.costPerLeadCents)}</td>
-                    <td data-label="Booked jobs">{count(campaign.booked)}</td>
-                    <td data-label="Won customers">{count(campaign.won)}</td>
+                    <td data-label="Cost per lead">{cost(campaign.costPerLeadCents)}</td>
+                    {showMoreMetrics ? <td data-label="Booked jobs">{count(campaign.booked)}</td> : null}
+                    {showMoreMetrics ? <td data-label="Won customers">{count(campaign.won)}</td> : null}
                     <td data-label="Revenue">
                       {money(campaign.revenueCents, true)}
                     </td>
-                    <td data-label="ROAS">{ratio(campaign.roas)}</td>
+                    {showMoreMetrics ? <td data-label="ROAS">{ratio(campaign.roas)}</td> : null}
                   </tr>
                 ))}
               </tbody>

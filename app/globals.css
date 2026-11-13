@@ -22303,3 +22303,18 @@ canvas {
     border-radius: 0;
   }
 }
+
+/* Ads overview: essentials first, detail on demand. */
+.crm-ads-view .crm-ads-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.crm-ads-view .crm-ads-metric > span { text-transform: none; letter-spacing: 0; }
+.crm-ads-view .crm-ads-notice { display: block; padding: 14px 18px; }
+.crm-ads-notice summary { cursor: pointer; font-size: 13px; font-weight: 500; }
+.crm-ads-notice > svg { display: none; }
+.crm-ads-notice[open] > div { margin-top: 14px; }
+.crm-ads-table-panel { min-width: 0; }
+.crm-ads-table-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.crm-ads-table-panel > header p { margin: 6px 0 0; color: var(--crm-muted); font-size: 12px; text-transform: none; letter-spacing: 0; }
+.crm-ads-view .crm-ads-table { min-width: 620px; width: 100%; }
+.crm-ads-table th:not(:first-child), .crm-ads-table td:not(:first-child) { text-align: right; }
+.crm-ads-view .crm-ads-disclosure { text-align: left; font-weight: 500; }
+@media (max-width: 800px) { .crm-ads-view .crm-ads-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
