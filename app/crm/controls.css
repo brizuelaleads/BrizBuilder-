@@ -1472,13 +1472,14 @@
   #crm-app .crm-ads-share { margin-left: 0; }
 }
 
-/* Reports (app/crm/ReportsView.tsx). On screen: a dashboard for one calendar
-   week or month, in the Dashboard's panel style (crm-dashboard-view), every
-   headline number compared with the period before. Printed: a formal report
-   (.crm-rpt-print) built from the same figures - letterhead, summary, a key
-   results table, then the detail - black on white in any theme. */
+/* Reports (app/crm/ReportsView.tsx). On screen: a simple dashboard for one
+   calendar week or month - one sentence, four numbers that each say how they
+   moved, where leads came from, the jobs won, ads in one line, and notes.
+   Printed: a formal report (.crm-rpt-print) with the full detail, black on
+   white in any theme. */
 #crm-app .crm-rpt-print { display: none; }
-#crm-app .crm-rpt-screen { display: grid; gap: 16px; }
+/* minmax(0, 1fr): the period picker must not widen the column past the screen. */
+#crm-app .crm-rpt-screen { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 #crm-app .crm-rpt-view > .crm-rpt-screen > .crm-page-heading > div:first-child > span { color: var(--crm-ink); font-size: 15px; }
 #crm-app .crm-rpt-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 #crm-app .crm-rpt-periods { display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--crm-line); border-radius: 999px; background: var(--crm-card); }
@@ -1489,85 +1490,57 @@
 #crm-app .crm-rpt-actions svg { width: 16px; height: 16px; }
 #crm-app .crm-rpt-hint { margin: 0; padding: 10px 14px; border: 1px solid var(--crm-line); border-left: 3px solid #d08a2c; border-radius: 8px; background: var(--crm-card); font-size: 13px; color: var(--crm-muted); }
 
-/* Summary: one sentence the client reads first. */
-#crm-app .crm-rpt-hero { display: grid; gap: 8px; padding: 22px 24px; }
-#crm-app .crm-rpt-hero > span { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--crm-muted); }
+/* 1. The answer, in one sentence. */
+#crm-app .crm-rpt-hero { padding: 24px 28px; }
 #crm-app .crm-rpt-hero > p { margin: 0; font-size: 22px; line-height: 32px; font-weight: 500; letter-spacing: -.01em; color: var(--crm-ink); }
 
-/* Headline numbers. */
-#crm-app .crm-rpt-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
-#crm-app .crm-rpt-kpi { display: grid; align-content: start; gap: 6px; padding: 18px 18px 16px; }
-#crm-app .crm-rpt-kpi > span:first-child { font-size: 13px; font-weight: 500; color: var(--crm-muted); }
-#crm-app .crm-rpt-kpi > strong { font-size: 28px; line-height: 34px; font-weight: 650; letter-spacing: -.02em; color: var(--crm-ink); font-variant-numeric: tabular-nums; }
-#crm-app .crm-rpt-change { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; color: var(--crm-muted); }
-#crm-app .crm-rpt-change > b { display: inline-flex; align-items: center; gap: 2px; padding: 2px 7px 2px 5px; border-radius: 999px; font-weight: 600; font-variant-numeric: tabular-nums; }
-#crm-app .crm-rpt-change > b svg { width: 13px; height: 13px; }
-#crm-app .crm-rpt-change > b.is-good { background: #e7f5ee; color: #11683f; }
-#crm-app .crm-rpt-change > b.is-bad { background: #fdecee; color: #a11d32; }
-#crm-app .crm-rpt-change > b.is-flat { background: var(--crm-subtle); color: var(--crm-muted); }
+/* 2. Four numbers. */
+#crm-app .crm-rpt-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+#crm-app .crm-rpt-kpi { display: grid; align-content: start; gap: 6px; padding: 20px 22px; }
+#crm-app .crm-rpt-kpi > span:first-child { font-size: 14px; font-weight: 500; color: var(--crm-muted); }
+#crm-app .crm-rpt-kpi > strong { font-size: 34px; line-height: 40px; font-weight: 650; letter-spacing: -.02em; color: var(--crm-ink); font-variant-numeric: tabular-nums; }
+#crm-app .crm-rpt-change { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 500; color: var(--crm-muted); }
+#crm-app .crm-rpt-change svg { width: 15px; height: 15px; flex-shrink: 0; }
+#crm-app .crm-rpt-change.is-good { color: #11683f; }
+#crm-app .crm-rpt-change.is-bad { color: #a11d32; }
 
-/* Panels. */
+/* 3. Two short lists. */
 #crm-app .crm-rpt-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
-#crm-app .crm-rpt-row.is-wide-left { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
 #crm-app .crm-rpt-panel { min-width: 0; }
 #crm-app .crm-rpt-panel > header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 16px; }
-#crm-app .crm-rpt-panel > header > small { font-size: 13px; font-weight: 500; color: var(--crm-muted); font-variant-numeric: tabular-nums; }
-#crm-app .crm-rpt-body { display: grid; align-content: start; gap: 16px; padding: 20px 24px 22px; }
+#crm-app .crm-rpt-panel > header > small { font-size: 14px; font-weight: 600; color: var(--crm-ink); font-variant-numeric: tabular-nums; }
+#crm-app .crm-rpt-body { display: grid; align-content: start; gap: 12px; padding: 16px 24px 20px; }
 #crm-app .crm-rpt-empty { margin: 0; font-size: 14px; color: var(--crm-muted); }
-#crm-app .crm-rpt-small { font-size: 12px; color: var(--crm-muted); }
+#crm-app :is(.crm-rpt-sources, .crm-rpt-jobs) { display: grid; margin: 0; padding: 0; list-style: none; }
+#crm-app :is(.crm-rpt-sources, .crm-rpt-jobs) li { display: flex; align-items: center; gap: 10px; min-height: 44px; border-bottom: 1px solid var(--crm-line); font-size: 15px; color: var(--crm-ink); }
+#crm-app :is(.crm-rpt-sources, .crm-rpt-jobs) li:last-child { border-bottom: 0; }
+#crm-app :is(.crm-rpt-sources, .crm-rpt-jobs) li > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#crm-app :is(.crm-rpt-sources, .crm-rpt-jobs) li > strong { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#crm-app .crm-rpt-sources li > i { flex-shrink: 0; width: 10px; height: 10px; border-radius: 999px; }
+#crm-app .crm-rpt-jobs li.crm-rpt-more { font-size: 13px; color: var(--crm-muted); }
 
-#crm-app .crm-rpt-days { display: grid; gap: 10px; }
-#crm-app .crm-rpt-days-bars { display: flex; align-items: flex-end; gap: 3px; height: 160px; border-bottom: 1px solid var(--crm-line); }
-#crm-app .crm-rpt-days-bars > span { flex: 1 1 0; display: flex; align-items: flex-end; height: 100%; min-width: 0; cursor: crosshair; }
-#crm-app .crm-rpt-days-bars i { display: block; width: 100%; max-width: 36px; margin: 0 auto; border-radius: 4px 4px 0 0; background: var(--crm-accent); transition: opacity .12s ease; }
-#crm-app .crm-rpt-days-bars:has(> span.is-active) > span:not(.is-active) i { opacity: .35; }
-#crm-app .crm-rpt-days-axis { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; font-size: 12px; color: var(--crm-muted); }
-#crm-app .crm-rpt-days-axis > span:nth-child(2) { text-align: center; color: var(--crm-ink); font-weight: 500; }
+/* 4. Ads in one line. */
+#crm-app .crm-rpt-ads { display: flex; align-items: center; gap: 14px; padding: 18px 24px; }
+#crm-app .crm-rpt-ads > svg { flex-shrink: 0; width: 20px; height: 20px; color: var(--crm-muted); }
+#crm-app .crm-rpt-ads > p { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin: 0; font-size: 16px; color: var(--crm-muted); }
+#crm-app .crm-rpt-ads > p strong { font-weight: 650; color: var(--crm-ink); font-variant-numeric: tabular-nums; }
+#crm-app .crm-rpt-ads > p svg { width: 15px; height: 15px; opacity: .6; }
 
-#crm-app .crm-rpt-sourcebar { display: flex; gap: 2px; height: 12px; border-radius: 4px; overflow: hidden; }
-#crm-app .crm-rpt-sourcebar > span { display: block; min-width: 4px; height: 100%; }
-#crm-app .crm-rpt-sources { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
-#crm-app .crm-rpt-sources li { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto 76px; align-items: center; gap: 10px; font-size: 14px; color: var(--crm-ink); }
-#crm-app .crm-rpt-sources li i { width: 8px; height: 8px; border-radius: 999px; }
-#crm-app .crm-rpt-sources li > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#crm-app .crm-rpt-sources li strong { font-weight: 600; font-variant-numeric: tabular-nums; }
-#crm-app .crm-rpt-sources li small { text-align: right; font-size: 13px; color: var(--crm-muted); font-variant-numeric: tabular-nums; }
-
-#crm-app .crm-rpt-stages { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
-#crm-app .crm-rpt-stages li { display: grid; grid-template-columns: 150px minmax(0, 1fr) 36px; align-items: center; gap: 12px; font-size: 14px; color: var(--crm-ink); }
-#crm-app .crm-rpt-stages i { display: block; height: 8px; border-radius: 999px; background: var(--crm-subtle); overflow: hidden; }
-#crm-app .crm-rpt-stages b { display: block; height: 100%; border-radius: 999px; background: var(--crm-accent); }
-#crm-app .crm-rpt-stages strong { text-align: right; font-variant-numeric: tabular-nums; }
-
-#crm-app .crm-rpt-figures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 24px; margin: 0; }
-#crm-app .crm-rpt-figures.is-four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-#crm-app .crm-rpt-figures > div { display: grid; align-content: start; gap: 4px; }
-#crm-app .crm-rpt-figures dt { font-size: 13px; color: var(--crm-muted); }
-#crm-app .crm-rpt-figures dd { margin: 0; font-size: 24px; line-height: 30px; font-weight: 650; color: var(--crm-ink); font-variant-numeric: tabular-nums; }
-
-#crm-app .crm-rpt-tablewrap { overflow-x: auto; }
-#crm-app .crm-rpt-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-#crm-app .crm-rpt-table th { padding: 0 12px 10px; border-bottom: 1px solid var(--crm-line); background: none; font-size: 12px; font-weight: 500; color: var(--crm-muted); text-align: right; white-space: nowrap; }
-#crm-app .crm-rpt-table td { padding: 12px; border-bottom: 1px solid var(--crm-line); color: var(--crm-ink); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-#crm-app .crm-rpt-table :is(th, td):first-child { padding-left: 0; text-align: left; white-space: normal; font-weight: 500; }
-#crm-app .crm-rpt-table :is(th, td):last-child { padding-right: 0; }
-#crm-app .crm-rpt-table tbody tr:last-child td { border-bottom: 0; }
-#crm-app .crm-rpt-table tbody tr:hover { background: none; }
-#crm-app .crm-rpt-notes { width: 100%; min-height: 168px; padding: 12px 14px; border: 1px solid var(--crm-line); border-radius: 10px; background: var(--crm-subtle); color: var(--crm-ink); font: inherit; font-size: 14px; line-height: 22px; resize: vertical; }
+/* 5. Notes. */
+#crm-app .crm-rpt-notes { width: 100%; min-height: 104px; padding: 12px 14px; border: 1px solid var(--crm-line); border-radius: 10px; background: var(--crm-subtle); color: var(--crm-ink); font: inherit; font-size: 14px; line-height: 22px; resize: vertical; }
+#crm-app .crm-rpt-panel > header > small:only-of-type { font-weight: 500; color: var(--crm-muted); }
 
 #crm-app[data-theme="glass"] :is(.crm-rpt-periods, .crm-rpt-hint) { background: rgb(255 255 255 / 5%); border-color: var(--glass-edge); }
 #crm-app[data-theme="glass"] .crm-rpt-periods > button.is-active { --btn-bg: var(--crm-accent, #f25c3b); --btn-fg: #fff; --btn-bg-hover: var(--crm-accent, #f25c3b); --btn-fg-hover: #fff; }
-#crm-app[data-theme="glass"] .crm-rpt-change > b.is-good { background: rgb(52 199 120 / 16%); color: #8be0b0; }
-#crm-app[data-theme="glass"] .crm-rpt-change > b.is-bad { background: rgb(255 92 112 / 16%); color: #ffa3b0; }
+#crm-app[data-theme="glass"] .crm-rpt-change.is-good { color: #8be0b0; }
+#crm-app[data-theme="glass"] .crm-rpt-change.is-bad { color: #ffa3b0; }
 #crm-app[data-theme="glass"] .crm-rpt-notes { background: rgb(255 255 255 / 5%); border-color: var(--crm-control-border); }
-#crm-app[data-theme="glass"] .crm-rpt-table th { background: none; }
 
-@media (max-width: 1280px) {
-  #crm-app .crm-rpt-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1100px) {
+  #crm-app .crm-rpt-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@media (max-width: 1000px) {
-  #crm-app .crm-rpt-row, #crm-app .crm-rpt-row.is-wide-left { grid-template-columns: 1fr; }
-  #crm-app .crm-rpt-figures.is-four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 800px) {
+  #crm-app .crm-rpt-row { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
   #crm-app .crm-rpt-periods { width: 100%; overflow-x: auto; }
@@ -1576,14 +1549,12 @@
   #crm-app .crm-rpt-actions > button { flex: 1; }
   #crm-app .crm-rpt-hero { padding: 18px 20px; }
   #crm-app .crm-rpt-hero > p { font-size: 18px; line-height: 27px; }
-  #crm-app .crm-rpt-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  #crm-app .crm-rpt-kpi { padding: 14px; }
-  #crm-app .crm-rpt-kpi > strong { font-size: 22px; line-height: 28px; }
-  #crm-app .crm-rpt-body { padding: 16px 20px 18px; }
-  #crm-app .crm-rpt-days-bars { height: 120px; gap: 2px; }
-  #crm-app .crm-rpt-stages li { grid-template-columns: 120px minmax(0, 1fr) 30px; }
-  /* Phones: who and how much; service and source stay in the printed report. */
-  #crm-app .crm-rpt-jobs-table :is(th, td):is(:nth-child(2), :nth-child(3)) { display: none; }
+  #crm-app .crm-rpt-kpis { gap: 10px; }
+  #crm-app .crm-rpt-kpi { padding: 14px 16px; }
+  #crm-app .crm-rpt-kpi > strong { font-size: 24px; line-height: 30px; }
+  #crm-app .crm-rpt-body { padding: 12px 20px 16px; }
+  #crm-app .crm-rpt-ads { align-items: flex-start; padding: 16px 20px; }
+  #crm-app .crm-rpt-ads > p { font-size: 15px; }
 }
 
 /* Printed or saved as PDF: the formal report only, black on white. */

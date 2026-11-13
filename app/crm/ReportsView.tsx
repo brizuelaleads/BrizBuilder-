@@ -3,18 +3,16 @@
 import { useMemo, useState, useSyncExternalStore } from "react";
 import {
   ArrowDownRight,
+  ArrowRight,
   ArrowUpRight,
   BadgeDollarSign,
-  CalendarDays,
   Check,
   Copy,
   Megaphone,
   Minus,
   NotebookPen,
-  PhoneCall,
   PieChart,
   Printer,
-  Route,
 } from "lucide-react";
 import type {
   CrmAppointment,
@@ -197,17 +195,23 @@ function change(now: number | null, before: number | null, lowerIsBetter = false
   return { text: `${up ? "+" : "−"}${Math.abs(pct)}%`, tone: (lowerIsBetter ? !up : up) ? "good" : "bad", up };
 }
 
+/** "Up 25% from September", in words, with an arrow and a colour. */
 function Change({ now, before, short, lowerIsBetter = false }: { now: number | null; before: number | null; short: string; lowerIsBetter?: boolean }) {
   const moved = change(now, before, lowerIsBetter);
-  if (moved.text === "—") return <span className="crm-rpt-change">No data for {short}</span>;
-  const Icon = moved.up == null ? Minus : moved.up ? ArrowUpRight : ArrowDownRight;
+  if (moved.text === "—") return <span className="crm-rpt-change">Nothing to compare yet</span>;
+  if (moved.up == null) {
+    return (
+      <span className="crm-rpt-change">
+        <Minus aria-hidden="true" />
+        {moved.text === "New" ? `None in ${short}` : `Same as ${short}`}
+      </span>
+    );
+  }
+  const Icon = moved.up ? ArrowUpRight : ArrowDownRight;
   return (
-    <span className="crm-rpt-change">
-      <b className={`is-${moved.tone}`}>
-        <Icon aria-hidden="true" />
-        {moved.text}
-      </b>
-      vs {short}
+    <span className={`crm-rpt-change is-${moved.tone}`}>
+      <Icon aria-hidden="true" />
+      {moved.up ? "Up" : "Down"} {moved.text.slice(1)} from {short}
     </span>
   );
 }
@@ -223,7 +227,7 @@ function Kpi({ label, value, note, children }: { label: string; value: string; n
   );
 }
 
-function Panel({ icon: Icon, title, aside, className = "", children }: { icon: typeof Route; title: string; aside?: string; className?: string; children: React.ReactNode }) {
+function Panel({ icon: Icon, title, aside, className = "", children }: { icon: typeof PieChart; title: string; aside?: string; className?: string; children: React.ReactNode }) {
   return (
     <section className={`crm-panel crm-rpt-panel ${className}`}>
       <header>
@@ -270,7 +274,6 @@ export function ReportsView({
 }) {
   const [kind, setKind] = useState<PeriodKind>("last-month");
   const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
-  const [activeDay, setActiveDay] = useState<number | null>(null);
   // Read the clock once: a report should not change under the reader.
   const [now] = useState(() => new Date());
   const { current, previous } = useMemo(() => periods(kind, now), [kind, now]);
@@ -328,26 +331,6 @@ export function ReportsView({
     status,
     count: t.leads.filter((lead) => lead.status === status).length,
   })).filter((stage) => stage.count > 0);
-  const maxStage = Math.max(1, ...stages.map((stage) => stage.count));
-
-  // Leads per day across the period (to today, for a period in progress).
-  const days = useMemo(() => {
-    const last = current.toDate ? Math.min(current.end.getTime(), now.getTime()) : current.end.getTime();
-    const list: Array<{ key: string; label: string; leads: number; won: number }> = [];
-    for (let at = current.start.getTime(); at < last; at += DAY_MS) {
-      const date = new Date(at);
-      list.push({ key: dayKey(date), label: date.toLocaleDateString("en-US", { weekday: kind.endsWith("week") ? "short" : undefined, month: "short", day: "numeric" }), leads: 0, won: 0 });
-    }
-    const index = new Map(list.map((day, i) => [day.key, i]));
-    for (const lead of t.leads) {
-      const i = index.get(dayKey(new Date(timestamp(lead.createdAt))));
-      if (i == null) continue;
-      list[i].leads += 1;
-      if (lead.status === "WON") list[i].won += 1;
-    }
-    return list;
-  }, [current, now, kind, t.leads]);
-  const peakDay = Math.max(1, ...days.map((day) => day.leads));
 
   const wonJobs = [...t.won].sort((a, b) => b.finalRevenueCents - a.finalRevenueCents);
   const generated = now.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
@@ -397,11 +380,9 @@ export function ReportsView({
     window.setTimeout(() => setCopied("idle"), 2500);
   }
 
-  const day = activeDay == null ? null : days[activeDay];
-
   return (
     <div className="crm-view crm-dashboard-view crm-report-view crm-rpt-view">
-      {/* ===================== Screen: a dashboard ===================== */}
+      {/* ===================== Screen: a simple dashboard ===================== */}
       <div className="crm-rpt-screen">
         <section className="crm-page-heading">
           <div>
@@ -443,17 +424,15 @@ export function ReportsView({
           </p>
         ) : null}
 
+        {/* 1. The answer, in one sentence. */}
         <section className="crm-panel crm-rpt-hero">
-          <span>Summary · compared with {previous.label}</span>
           <p>{headline}</p>
         </section>
 
+        {/* 2. Four numbers, each with how it moved. */}
         <section className="crm-rpt-kpis" aria-label="Headline numbers">
           <Kpi label="New leads" value={count(t.leadCount)}>
             <Change now={t.leadCount} before={p.leadCount} short={previous.short} />
-          </Kpi>
-          <Kpi label="Booked jobs" value={count(t.booked)}>
-            <Change now={t.booked} before={p.booked} short={previous.short} />
           </Kpi>
           <Kpi label="Jobs won" value={count(t.wonCount)}>
             <Change now={t.wonCount} before={p.wonCount} short={previous.short} />
@@ -461,95 +440,27 @@ export function ReportsView({
           <Kpi label="Revenue won" value={dollars(t.revenueCents)}>
             <Change now={t.revenueCents} before={p.revenueCents} short={previous.short} />
           </Kpi>
-          <Kpi label="Ad spend" value={hasAds ? dollars(adTotals.spendCents) : "—"} note="No ad data">
-            {hasAds ? <Change now={adTotals.spendCents} before={prevAdTotals.spendCents} short={previous.short} /> : undefined}
-          </Kpi>
           <Kpi
-            label="Cost per lead"
-            value={costOrDash(adTotals.costPerLeadCents)}
-            note={hasAds ? "No leads from ads yet" : "No ad data"}
+            label="Back per $1 on ads"
+            value={backPerDollar(adTotals.roas)}
+            note={hasAds ? "No ad sales yet" : "No ad data"}
           >
-            {adTotals.costPerLeadCents != null ? (
-              <Change now={adTotals.costPerLeadCents} before={prevAdTotals.costPerLeadCents} short={previous.short} lowerIsBetter />
+            {adTotals.roas != null ? (
+              <Change now={adTotals.roas} before={prevAdTotals.roas} short={previous.short} />
             ) : undefined}
           </Kpi>
         </section>
 
-        <div className="crm-rpt-row is-wide-left">
-          <Panel icon={CalendarDays} title="Leads by day" aside={`${plural(t.leadCount, "lead")} · ${plural(t.wonCount, "won", "won")}`}>
-            {t.leadCount ? (
-              <div className="crm-rpt-days" onMouseLeave={() => setActiveDay(null)}>
-                <div className="crm-rpt-days-bars" aria-hidden="true">
-                  {days.map((d, index) => (
-                    <span key={d.key} className={activeDay === index ? "is-active" : undefined} onMouseEnter={() => setActiveDay(index)} onClick={() => setActiveDay(index)}>
-                      <i style={{ height: `${d.leads ? Math.max(6, (d.leads / peakDay) * 100) : 0}%` }} />
-                    </span>
-                  ))}
-                </div>
-                <div className="crm-rpt-days-axis" aria-hidden="true">
-                  <span>{days[0]?.label}</span>
-                  <span>{day ? `${day.label}: ${plural(day.leads, "lead")}${day.won ? `, ${day.won} won` : ""}` : `Busiest day: ${count(peakDay)} ${peakDay === 1 ? "lead" : "leads"}`}</span>
-                  <span>{days.at(-1)?.label}</span>
-                </div>
-                <table className="sr-only">
-                  <caption>Leads per day</caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">Day</th>
-                      <th scope="col">Leads</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {days.map((d) => (
-                      <tr key={d.key}>
-                        <td>{d.label}</td>
-                        <td>{d.leads}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="crm-rpt-empty">No leads came in this {periodWord}.</p>
-            )}
-          </Panel>
-
+        {/* 3. Where the leads came from, and the jobs they became. */}
+        <div className="crm-rpt-row">
           <Panel icon={PieChart} title="Where leads came from">
             {sources.length ? (
-              <>
-                <span className="crm-rpt-sourcebar" role="img" aria-label={sources.map((s) => `${s.name} ${s.leads}`).join(", ")}>
-                  {sources.map((s) => (
-                    <span key={s.name} style={{ width: `${(s.leads / t.leadCount) * 100}%`, background: s.color }} />
-                  ))}
-                </span>
-                <ul className="crm-rpt-sources">
-                  {sources.map((s) => (
-                    <li key={s.name}>
-                      <i style={{ background: s.color }} aria-hidden="true" />
-                      <span>{s.name}</span>
-                      <strong>{count(s.leads)}</strong>
-                      <small>{s.revenue ? dollars(s.revenue) : "—"}</small>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              <p className="crm-rpt-empty">No leads came in this {periodWord}.</p>
-            )}
-          </Panel>
-        </div>
-
-        <div className="crm-rpt-row">
-          <Panel icon={Route} title="Where those leads are now">
-            {stages.length ? (
-              <ul className="crm-rpt-stages">
-                {stages.map((stage) => (
-                  <li key={stage.status}>
-                    <span>{STATUS_LABELS[stage.status] ?? stage.status}</span>
-                    <i aria-hidden="true">
-                      <b style={{ width: `${Math.max(4, (stage.count / maxStage) * 100)}%` }} />
-                    </i>
-                    <strong>{count(stage.count)}</strong>
+              <ul className="crm-rpt-sources">
+                {sources.map((s) => (
+                  <li key={s.name}>
+                    <i style={{ background: s.color }} aria-hidden="true" />
+                    <span>{s.name}</span>
+                    <strong>{plural(s.leads, "lead")}</strong>
                   </li>
                 ))}
               </ul>
@@ -558,125 +469,52 @@ export function ReportsView({
             )}
           </Panel>
 
-          <Panel icon={PhoneCall} title="Calls and appointments">
-            <dl className="crm-rpt-figures">
-              <div>
-                <dt>Appointments</dt>
-                <dd>{count(t.appointments)}</dd>
-                <Change now={t.appointments} before={p.appointments} short={previous.short} />
-              </div>
-              <div>
-                <dt>Calls received</dt>
-                <dd>{t.calls ? count(t.calls) : "—"}</dd>
-                {t.calls ? <Change now={t.calls} before={p.calls} short={previous.short} /> : <span className="crm-rpt-change">No calls recorded</span>}
-              </div>
-              <div>
-                <dt>Answered</dt>
-                <dd>{t.calls ? count(t.answeredCalls) : "—"}</dd>
-              </div>
-              <div>
-                <dt>Missed</dt>
-                <dd>{t.calls ? count(t.missedCalls) : "—"}</dd>
-              </div>
-            </dl>
-          </Panel>
-        </div>
-
-        {hasAds ? (
-          <Panel icon={Megaphone} title="Ads" aside={`Back per $1: ${backPerDollar(adTotals.roas)}`}>
-            <dl className="crm-rpt-figures is-four">
-              <div>
-                <dt>Spent</dt>
-                <dd>{dollars(adTotals.spendCents)}</dd>
-              </div>
-              <div>
-                <dt>Leads from ads</dt>
-                <dd>{count(adTotals.leads)}</dd>
-              </div>
-              <div>
-                <dt>Earned from ads</dt>
-                <dd>{dollars(adTotals.revenueCents)}</dd>
-              </div>
-              <div>
-                <dt>Back per $1</dt>
-                <dd>{backPerDollar(adTotals.roas)}</dd>
-              </div>
-            </dl>
-            {t.ads.campaigns.length ? (
-              <div className="crm-rpt-tablewrap">
-                <table className="crm-rpt-table">
-                  <thead>
-                    <tr>
-                      <th>Campaign</th>
-                      <th>Spend</th>
-                      <th>Leads</th>
-                      <th>Cost per lead</th>
-                      <th>Won</th>
-                      <th>Revenue</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {t.ads.campaigns.map((campaign) => (
-                      <tr key={campaign.campaignId}>
-                        <td>{campaign.campaignName}</td>
-                        <td>{dollars(campaign.spendCents)}</td>
-                        <td>{count(campaign.leads)}</td>
-                        <td>{costOrDash(campaign.costPerLeadCents)}</td>
-                        <td>{count(campaign.won)}</td>
-                        <td>{campaign.revenueCents ? dollars(campaign.revenueCents) : "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
-          </Panel>
-        ) : null}
-
-        <div className="crm-rpt-row is-wide-left">
           <Panel icon={BadgeDollarSign} title="Jobs won" aside={wonJobs.length ? dollars(t.revenueCents) : undefined}>
             {wonJobs.length ? (
-              <div className="crm-rpt-tablewrap">
-                <table className="crm-rpt-table crm-rpt-jobs-table">
-                  <thead>
-                    <tr>
-                      <th>Customer</th>
-                      <th>Service</th>
-                      <th>Source</th>
-                      <th>Value</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {wonJobs.map((lead) => (
-                      <tr key={lead.id}>
-                        <td>
-                          {lead.firstName} {lead.lastName}
-                        </td>
-                        <td>{lead.serviceRequested || "—"}</td>
-                        <td>{lead.source || "—"}</td>
-                        <td>{dollars(lead.finalRevenueCents)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ul className="crm-rpt-jobs">
+                {wonJobs.slice(0, 6).map((lead) => (
+                  <li key={lead.id}>
+                    <span>
+                      {lead.firstName} {lead.lastName}
+                    </span>
+                    <strong>{dollars(lead.finalRevenueCents)}</strong>
+                  </li>
+                ))}
+                {wonJobs.length > 6 ? (
+                  <li className="crm-rpt-more">
+                    and {plural(wonJobs.length - 6, "more job")} in the printed report
+                  </li>
+                ) : null}
+              </ul>
             ) : (
               <p className="crm-rpt-empty">No jobs won from this {periodWord}&apos;s leads yet.</p>
             )}
           </Panel>
-
-          <Panel icon={NotebookPen} title="Notes for the client">
-            <textarea
-              className="crm-rpt-notes"
-              value={notes}
-              onChange={(event) => saveNotes(event.target.value)}
-              placeholder="What went well, and what you are changing next. Prints with the report."
-              rows={7}
-              aria-label="Notes for this report"
-            />
-            <small className="crm-rpt-small">Saved in this browser only.</small>
-          </Panel>
         </div>
+
+        {/* 4. Ads, in one line. */}
+        {hasAds ? (
+          <section className="crm-panel crm-rpt-ads" aria-label="Ads">
+            <Megaphone aria-hidden="true" />
+            <p>
+              <strong>{dollars(adTotals.spendCents)}</strong> spent on ads <ArrowRight aria-hidden="true" />{" "}
+              <strong>{plural(adTotals.leads, "lead")}</strong> <ArrowRight aria-hidden="true" />{" "}
+              <strong>{dollars(adTotals.revenueCents)}</strong> earned
+            </p>
+          </section>
+        ) : null}
+
+        {/* 5. Notes that print with the report. */}
+        <Panel icon={NotebookPen} title="Notes for the client" aside="Prints with the report">
+          <textarea
+            className="crm-rpt-notes"
+            value={notes}
+            onChange={(event) => saveNotes(event.target.value)}
+            placeholder="What went well, and what you are changing next."
+            rows={4}
+            aria-label="Notes for this report"
+          />
+        </Panel>
       </div>
 
       {/* ===================== Print: a formal report ===================== */}

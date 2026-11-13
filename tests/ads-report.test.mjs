@@ -290,17 +290,22 @@ test("the client report picks calendar weeks and months, not the header range", 
   assert.match(crmApp, /<ReportsView\s+leads=\{workspaceLeads\}/);
   // Every headline number is compared with the period before.
   assert.ok(reports.includes("summarize(previous, leads, appointments, phoneCalls, metaAdInsights)"));
-  for (const label of ["New leads", "Booked jobs", "Jobs won", "Revenue won", "Ad spend", "Cost per lead"])
+  // On screen, kept to four numbers a business owner reads at a glance.
+  for (const label of ["New leads", "Jobs won", "Revenue won", "Back per $1 on ads"])
     assert.ok(reports.includes(`label="${label}"`), `${label} is a headline number`);
+  // The printed report carries the rest, each against the period before.
+  for (const label of ["Booked jobs", "Appointments", "Ad spend", "Leads from ads", "Cost per lead"])
+    assert.ok(reports.includes(`label: "${label}"`), `${label} is in the printed key results`);
   // A lower cost per lead is the good direction.
-  assert.ok(reports.includes("short={previous.short} lowerIsBetter"));
+  assert.ok(reports.includes("change(adTotals.costPerLeadCents, prevAdTotals.costPerLeadCents, true)"));
   // Ads figures come from the same maths as the Ads tab.
   assert.ok(reports.includes("buildAdsReport({"));
   // It can be sent: printed or saved as PDF, or copied as plain text.
   assert.ok(reports.includes("onClick={() => window.print()}"));
   assert.ok(reports.includes("navigator.clipboard.writeText(lines.join"));
   // What is not recorded reads as a dash, never as a zero.
-  assert.ok(reports.includes('hasAds ? dollars(adTotals.spendCents) : "—"'));
+  assert.ok(reports.includes('const backPerDollar = (roas: number | null) => (roas == null ? "—"'));
+  assert.ok(reports.includes('const costOrDash = (cents: number | null) => (cents == null ? "—"'));
   // On screen it is a dashboard; printed, the dashboard is hidden and a
   // formal report built from the same figures takes its place.
   assert.ok(reports.includes('<div className="crm-rpt-screen">'));
