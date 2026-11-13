@@ -301,8 +301,15 @@ test("the client report picks calendar weeks and months, not the header range", 
   assert.ok(reports.includes("navigator.clipboard.writeText(lines.join"));
   // What is not recorded reads as a dash, never as a zero.
   assert.ok(reports.includes('hasAds ? dollars(adTotals.spendCents) : "—"'));
-  // Printed, only the report sheet shows, black on white.
-  assert.match(read("app/crm/controls.css"), /@media print \{\n {2}#crm-app \.crm-glass-backdrop, #crm-app \.crm-rpt-view > :not\(\.crm-rpt-sheet\)/);
+  // On screen it is a dashboard; printed, the dashboard is hidden and a
+  // formal report built from the same figures takes its place.
+  assert.ok(reports.includes('<div className="crm-rpt-screen">'));
+  assert.ok(reports.includes('<article className="crm-rpt-print"'));
+  assert.ok(reports.includes("{keyRows.map((row) => ("), "the printed report compares every key number");
+  const css = read("app/crm/controls.css");
+  assert.ok(css.includes("#crm-app .crm-rpt-print { display: none; }"));
+  assert.ok(css.includes("#crm-app .crm-glass-backdrop, #crm-app .crm-rpt-screen { display: none !important; }"));
+  assert.ok(css.includes("#crm-app .crm-view.crm-rpt-view > .crm-rpt-print { display: block !important; }"));
 });
 
 test("the tab covers every setup state and offers the snippet", () => {

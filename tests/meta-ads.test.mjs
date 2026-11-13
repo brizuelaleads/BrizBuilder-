@@ -328,7 +328,8 @@ test("the agency report divides reported spend, not the budget", () => {
   assert.match(report, /const periodInsights = insights\.filter\(\(insight\) => insight\.date >= fromKey && insight\.date < toKey\)/);
   assert.match(report, /const ads = buildAdsReport\(\{\n\s+insights: periodInsights,/);
   // A ratio it cannot compute shows a dash, never a fabricated 0x.
-  assert.match(report, /adTotals\.roas == null \? "—"/);
+  assert.match(report, /const backPerDollar = \(roas: number \| null\) => \(roas == null \? "—"/);
+  assert.match(report, /backPerDollar\(adTotals\.roas\)/);
   assert.ok(!/: "0x"/.test(report), "the fake zero ROAS is gone");
 });
 

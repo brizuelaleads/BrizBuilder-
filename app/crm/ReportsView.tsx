@@ -1,7 +1,21 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
-import { ArrowDownRight, ArrowUpRight, Check, Copy, Minus, Printer } from "lucide-react";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  BadgeDollarSign,
+  CalendarDays,
+  Check,
+  Copy,
+  Megaphone,
+  Minus,
+  NotebookPen,
+  PhoneCall,
+  PieChart,
+  Printer,
+  Route,
+} from "lucide-react";
 import type {
   CrmAppointment,
   CrmClient,
@@ -10,13 +24,15 @@ import type {
   CrmPhoneCall,
 } from "../../db/crm";
 import { BOOKED_STATUSES as AD_BOOKED_STATUSES, buildAdsReport } from "../../lib/meta-ads-report";
-import { timestamp } from "./dashboard-charts";
+import { DAY_MS, timestamp } from "./dashboard-charts";
 
 /*
- * Client report: everything an agency needs to send a business its weekly or
- * monthly results, on one printable page. Calendar periods (not the rolling
- * header range), each compared with the period before. Every figure comes
- * from real CRM records; anything not recorded reads as "—", never zero.
+ * Client reports. On screen the tab is a dashboard for one calendar week or
+ * month, every headline number compared with the period before. Printed (or
+ * saved as PDF) it becomes a formal report built from the same figures:
+ * letterhead, summary, a this-period / last-period table, then the detail.
+ * Every figure comes from real CRM records; anything not recorded reads as
+ * "—", never zero.
  */
 
 type PeriodKind = "this-week" | "last-week" | "this-month" | "last-month";
@@ -42,6 +58,8 @@ const STATUS_LABELS: Record<string, string> = {
   SPAM: "Spam",
   UNRESPONSIVE: "No response",
 };
+// The Dashboard's lead-source colours, so a source reads the same everywhere.
+const SOURCE_COLORS = ["#18b65d", "#ff7a2f", "#6947ff", "#4d8fff", "#9ca3af"];
 
 type Period = {
   start: Date;
@@ -63,7 +81,7 @@ function startOfWeek(date: Date) {
 }
 
 function weekLabel(start: Date, endExclusive: Date) {
-  const last = new Date(endExclusive.getTime() - 86_400_000);
+  const last = new Date(endExclusive.getTime() - DAY_MS);
   const sameMonth = start.getMonth() === last.getMonth();
   const from = start.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const to = last.toLocaleDateString("en-US", sameMonth ? { day: "numeric" } : { month: "short", day: "numeric" });
@@ -73,8 +91,7 @@ function weekLabel(start: Date, endExclusive: Date) {
 /** The chosen period and the one before it, in the viewer's local calendar. */
 function periods(kind: PeriodKind, now: Date): { current: Period; previous: Period } {
   if (kind === "this-week" || kind === "last-week") {
-    const thisWeek = startOfWeek(now);
-    const start = new Date(thisWeek);
+    const start = startOfWeek(now);
     if (kind === "last-week") start.setDate(start.getDate() - 7);
     const end = new Date(start);
     end.setDate(end.getDate() + 7);
@@ -107,6 +124,8 @@ function dollars(cents: number) {
 
 const count = (value: number) => value.toLocaleString();
 const plural = (value: number, one: string, many = `${one}s`) => `${count(value)} ${value === 1 ? one : many}`;
+const backPerDollar = (roas: number | null) => (roas == null ? "—" : `$${roas.toFixed(2)}`);
+const costOrDash = (cents: number | null) => (cents == null ? "—" : dollars(cents));
 
 function isMissedCall(call: CrmPhoneCall) {
   const status = call.status.toLowerCase().replaceAll("_", "-");
@@ -166,59 +185,56 @@ function summarize(
   };
 }
 
-/** "▲ 12% vs October", in words as well as colour. */
-function Change({
-  now,
-  before,
-  short,
-  lowerIsBetter = false,
-}: {
-  now: number | null;
-  before: number | null;
-  short: string;
-  lowerIsBetter?: boolean;
-}) {
-  if (now == null || before == null) return <small className="crm-rpt-change">—</small>;
-  if (before === 0) {
-    return <small className="crm-rpt-change">{now === 0 ? `Same as ${short}` : `None in ${short}`}</small>;
-  }
-  const change = Math.round(((now - before) / before) * 100);
-  if (change === 0) {
-    return (
-      <small className="crm-rpt-change">
-        <Minus aria-hidden="true" /> Same as {short}
-      </small>
-    );
-  }
-  const up = change > 0;
-  const good = lowerIsBetter ? !up : up;
-  const Arrow = up ? ArrowUpRight : ArrowDownRight;
+type Tone = "good" | "bad" | "flat";
+
+/** How a number moved since the period before, in words as well as colour. */
+function change(now: number | null, before: number | null, lowerIsBetter = false): { text: string; tone: Tone; up: boolean | null } {
+  if (now == null || before == null) return { text: "—", tone: "flat", up: null };
+  if (before === 0) return { text: now === 0 ? "No change" : "New", tone: "flat", up: null };
+  const pct = Math.round(((now - before) / before) * 100);
+  if (pct === 0) return { text: "No change", tone: "flat", up: null };
+  const up = pct > 0;
+  return { text: `${up ? "+" : "−"}${Math.abs(pct)}%`, tone: (lowerIsBetter ? !up : up) ? "good" : "bad", up };
+}
+
+function Change({ now, before, short, lowerIsBetter = false }: { now: number | null; before: number | null; short: string; lowerIsBetter?: boolean }) {
+  const moved = change(now, before, lowerIsBetter);
+  if (moved.text === "—") return <span className="crm-rpt-change">No data for {short}</span>;
+  const Icon = moved.up == null ? Minus : moved.up ? ArrowUpRight : ArrowDownRight;
   return (
-    <small className={`crm-rpt-change ${good ? "is-good" : "is-bad"}`}>
-      <Arrow aria-hidden="true" />
-      {up ? "Up" : "Down"} {Math.abs(change)}% vs {short}
-    </small>
+    <span className="crm-rpt-change">
+      <b className={`is-${moved.tone}`}>
+        <Icon aria-hidden="true" />
+        {moved.text}
+      </b>
+      vs {short}
+    </span>
   );
 }
 
-function Stat({
-  label,
-  value,
-  note,
-  children,
-}: {
-  label: string;
-  value: string;
-  note?: string;
-  children?: ReactNode;
-}) {
+/** One headline number, as a dashboard card. */
+function Kpi({ label, value, note, children }: { label: string; value: string; note?: string; children?: React.ReactNode }) {
   return (
-    <article className="crm-rpt-stat">
+    <article className="crm-panel crm-rpt-kpi">
       <span>{label}</span>
       <strong>{value}</strong>
-      {note ? <em>{note}</em> : null}
-      {children}
+      {children ?? <span className="crm-rpt-change">{note}</span>}
     </article>
+  );
+}
+
+function Panel({ icon: Icon, title, aside, className = "", children }: { icon: typeof Route; title: string; aside?: string; className?: string; children: React.ReactNode }) {
+  return (
+    <section className={`crm-panel crm-rpt-panel ${className}`}>
+      <header>
+        <div className="crm-dashboard-widget-heading">
+          <Icon aria-hidden="true" />
+          <h3>{title}</h3>
+        </div>
+        {aside ? <small>{aside}</small> : null}
+      </header>
+      <div className="crm-rpt-body">{children}</div>
+    </section>
   );
 }
 
@@ -254,34 +270,32 @@ export function ReportsView({
 }) {
   const [kind, setKind] = useState<PeriodKind>("last-month");
   const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
+  const [activeDay, setActiveDay] = useState<number | null>(null);
   // Read the clock once: a report should not change under the reader.
   const [now] = useState(() => new Date());
   const { current, previous } = useMemo(() => periods(kind, now), [kind, now]);
 
-  const thisPeriod = useMemo(
+  const t = useMemo(
     () => summarize(current, leads, appointments, phoneCalls, metaAdInsights),
     [current, leads, appointments, phoneCalls, metaAdInsights],
   );
-  const lastPeriod = useMemo(
+  const p = useMemo(
     () => summarize(previous, leads, appointments, phoneCalls, metaAdInsights),
     [previous, leads, appointments, phoneCalls, metaAdInsights],
   );
 
   const client = clients.find((c) => c.id === selectedClientId);
-  const allBusinesses = !client;
+  const allBusinesses = !client && clients.length !== 1;
   const businessName = client?.businessName ?? (clients.length === 1 ? clients[0].businessName : "All businesses");
 
   // Notes for this business and period, kept in this browser so a half-written
   // report survives a reload. They print with the report.
   const notesKey = `brizbuilder:report-notes:${selectedClientId}:${kind}:${dayKey(current.start)}`;
-  // What this browser has stored, read without touching it during the server
-  // render; edits made here win over it, so typing works even where storage
-  // is unavailable (private windows).
   const stored = useSyncExternalStore(subscribeNotes, () => readNotes(notesKey), () => "");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const notes = drafts[notesKey] ?? stored;
   const saveNotes = (value: string) => {
-    setDrafts((current) => ({ ...current, [notesKey]: value }));
+    setDrafts((existing) => ({ ...existing, [notesKey]: value }));
     try {
       window.localStorage.setItem(notesKey, value);
     } catch {
@@ -289,11 +303,10 @@ export function ReportsView({
     }
   };
 
-  const t = thisPeriod;
-  const p = lastPeriod;
   const adTotals = t.ads.totals;
   const prevAdTotals = p.ads.totals;
   const hasAds = t.hasSpend || adTotals.leads > 0;
+  const periodWord = kind.endsWith("week") ? "week" : "month";
 
   const sources = Object.entries(
     t.leads.reduce<Record<string, { leads: number; won: number; revenue: number }>>((acc, lead) => {
@@ -307,7 +320,9 @@ export function ReportsView({
       acc[key] = row;
       return acc;
     }, {}),
-  ).sort((a, b) => b[1].leads - a[1].leads);
+  )
+    .sort((a, b) => b[1].leads - a[1].leads)
+    .map(([name, row], index) => ({ name, ...row, color: SOURCE_COLORS[Math.min(index, SOURCE_COLORS.length - 1)] }));
 
   const stages = STATUS_ORDER.map((status) => ({
     status,
@@ -315,33 +330,60 @@ export function ReportsView({
   })).filter((stage) => stage.count > 0);
   const maxStage = Math.max(1, ...stages.map((stage) => stage.count));
 
+  // Leads per day across the period (to today, for a period in progress).
+  const days = useMemo(() => {
+    const last = current.toDate ? Math.min(current.end.getTime(), now.getTime()) : current.end.getTime();
+    const list: Array<{ key: string; label: string; leads: number; won: number }> = [];
+    for (let at = current.start.getTime(); at < last; at += DAY_MS) {
+      const date = new Date(at);
+      list.push({ key: dayKey(date), label: date.toLocaleDateString("en-US", { weekday: kind.endsWith("week") ? "short" : undefined, month: "short", day: "numeric" }), leads: 0, won: 0 });
+    }
+    const index = new Map(list.map((day, i) => [day.key, i]));
+    for (const lead of t.leads) {
+      const i = index.get(dayKey(new Date(timestamp(lead.createdAt))));
+      if (i == null) continue;
+      list[i].leads += 1;
+      if (lead.status === "WON") list[i].won += 1;
+    }
+    return list;
+  }, [current, now, kind, t.leads]);
+  const peakDay = Math.max(1, ...days.map((day) => day.leads));
+
   const wonJobs = [...t.won].sort((a, b) => b.finalRevenueCents - a.finalRevenueCents);
   const generated = now.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-  const periodWord = kind.endsWith("week") ? "week" : "month";
+  const periodTitle = `${current.label}${current.toDate ? " (so far)" : ""}`;
 
   // Written to the client, so "you".
   const headline = t.leadCount === 0
-    ? `No new leads came in ${current.toDate ? "so far " : ""}${kind.endsWith("week") ? `${current.short}` : `in ${current.short}`}.`
+    ? `No new leads came in ${kind.endsWith("week") ? current.short : `in ${current.short}`}${current.toDate ? " so far" : ""}.`
     : `${current.toDate ? "So far, you" : "You"} got ${plural(t.leadCount, "new lead")}${t.wonCount ? ` and won ${plural(t.wonCount, "job")} worth ${dollars(t.revenueCents)}` : ""}${adTotals.roas != null ? `. Every $1 spent on ads brought back $${adTotals.roas.toFixed(2)}` : ""}.`;
+
+  // One table drives the printed key results.
+  const keyRows: Array<{ label: string; now: string; before: string; moved: ReturnType<typeof change> }> = [
+    { label: "New leads", now: count(t.leadCount), before: count(p.leadCount), moved: change(t.leadCount, p.leadCount) },
+    { label: "Booked jobs", now: count(t.booked), before: count(p.booked), moved: change(t.booked, p.booked) },
+    { label: "Jobs won", now: count(t.wonCount), before: count(p.wonCount), moved: change(t.wonCount, p.wonCount) },
+    { label: "Revenue won", now: dollars(t.revenueCents), before: dollars(p.revenueCents), moved: change(t.revenueCents, p.revenueCents) },
+    { label: "Appointments", now: count(t.appointments), before: count(p.appointments), moved: change(t.appointments, p.appointments) },
+    ...(t.calls || p.calls ? [{ label: "Calls received", now: count(t.calls), before: count(p.calls), moved: change(t.calls, p.calls) }] : []),
+    ...(hasAds
+      ? [
+          { label: "Ad spend", now: dollars(adTotals.spendCents), before: dollars(prevAdTotals.spendCents), moved: change(adTotals.spendCents, prevAdTotals.spendCents) },
+          { label: "Leads from ads", now: count(adTotals.leads), before: count(prevAdTotals.leads), moved: change(adTotals.leads, prevAdTotals.leads) },
+          { label: "Cost per lead", now: costOrDash(adTotals.costPerLeadCents), before: costOrDash(prevAdTotals.costPerLeadCents), moved: change(adTotals.costPerLeadCents, prevAdTotals.costPerLeadCents, true) },
+          { label: "Back per $1 on ads", now: backPerDollar(adTotals.roas), before: backPerDollar(prevAdTotals.roas), moved: change(adTotals.roas, prevAdTotals.roas) },
+        ]
+      : []),
+  ];
 
   async function copySummary() {
     const lines = [
-      `${businessName} — ${current.label} report${current.toDate ? " (so far)" : ""}`,
+      `${businessName} — ${periodTitle} report`,
       "",
       headline,
       "",
-      `Leads: ${count(t.leadCount)} (${p.leadCount} in ${previous.short})`,
-      `Booked jobs: ${count(t.booked)}`,
-      `Jobs won: ${count(t.wonCount)} · ${dollars(t.revenueCents)}`,
-      ...(t.calls ? [`Calls: ${count(t.calls)} (${count(t.answeredCalls)} answered, ${count(t.missedCalls)} missed)`] : []),
-      ...(hasAds
-        ? [
-            `Ad spend: ${dollars(adTotals.spendCents)}`,
-            `Cost per lead: ${adTotals.costPerLeadCents == null ? "—" : dollars(adTotals.costPerLeadCents)}`,
-            `Back per $1 on ads: ${adTotals.roas == null ? "—" : `$${adTotals.roas.toFixed(2)}`}`,
-          ]
-        : []),
-      ...(sources.length ? ["", "Where leads came from:", ...sources.slice(0, 5).map(([name, row]) => `- ${name}: ${row.leads}`)] : []),
+      ...keyRows.map((row) => `${row.label}: ${row.now} (${previous.short}: ${row.before})`),
+      ...(sources.length ? ["", "Where leads came from:", ...sources.slice(0, 5).map((row) => `- ${row.name}: ${row.leads}`)] : []),
       ...(notes.trim() ? ["", notes.trim()] : []),
       "",
       `Prepared by ${organizationName} · ${generated}`,
@@ -355,130 +397,150 @@ export function ReportsView({
     window.setTimeout(() => setCopied("idle"), 2500);
   }
 
+  const day = activeDay == null ? null : days[activeDay];
+
   return (
-    <div className="crm-view crm-report-view crm-rpt-view">
-      <section className="crm-page-heading">
-        <div>
-          <p>CLIENT REPORT</p>
-          <h2>Reports</h2>
-          <span>A {periodWord}ly report to send {allBusinesses ? "a business" : businessName}. Print it, save it as a PDF, or copy the summary into an email.</span>
-        </div>
-      </section>
-
-      <section className="crm-rpt-toolbar" aria-label="Report options">
-        <div className="crm-rpt-periods" role="group" aria-label="Report period">
-          {PERIODS.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              aria-pressed={kind === option.id}
-              className={kind === option.id ? "is-active" : undefined}
-              onClick={() => setKind(option.id)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-        <div className="crm-rpt-actions">
-          <button type="button" className="crm-button-secondary" onClick={() => void copySummary()}>
-            {copied === "done" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-            {copied === "done" ? "Copied" : copied === "failed" ? "Copy failed" : "Copy summary"}
-          </button>
-          <button className="crm-button-secondary" onClick={() => window.print()}>
-            <Printer aria-hidden="true" />
-            Print / Save PDF
-          </button>
-        </div>
-      </section>
-
-      {allBusinesses && clients.length > 1 ? (
-        <p className="crm-rpt-hint">
-          This covers every business together. Pick one business in the header to make the report you send them.
-        </p>
-      ) : null}
-
-      <article className="crm-rpt-sheet">
-        <header className="crm-rpt-head">
+    <div className="crm-view crm-dashboard-view crm-report-view crm-rpt-view">
+      {/* ===================== Screen: a dashboard ===================== */}
+      <div className="crm-rpt-screen">
+        <section className="crm-page-heading">
           <div>
-            <p>Marketing report</p>
-            <h3>{businessName}</h3>
-            <span>
-              {current.label}
-              {current.toDate ? " · so far" : ""}
-            </span>
+            <p>CLIENT REPORT</p>
+            <h2>Reports</h2>
+            <span>{allBusinesses ? "All businesses together" : businessName} · {periodTitle}</span>
           </div>
-          <dl>
-            <div>
-              <dt>Prepared by</dt>
-              <dd>{organizationName}</dd>
-            </div>
-            <div>
-              <dt>Created</dt>
-              <dd>{generated}</dd>
-            </div>
-          </dl>
-        </header>
+        </section>
 
-        <p className="crm-rpt-headline">{headline}</p>
+        <section className="crm-rpt-toolbar" aria-label="Report options">
+          <div className="crm-rpt-periods" role="group" aria-label="Report period">
+            {PERIODS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                aria-pressed={kind === option.id}
+                className={kind === option.id ? "is-active" : undefined}
+                onClick={() => setKind(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <div className="crm-rpt-actions">
+            <button type="button" className="crm-button-secondary" onClick={() => void copySummary()}>
+              {copied === "done" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+              {copied === "done" ? "Copied" : copied === "failed" ? "Copy failed" : "Copy summary"}
+            </button>
+            <button className="crm-button-secondary" onClick={() => window.print()}>
+              <Printer aria-hidden="true" />
+              Print / Save PDF
+            </button>
+          </div>
+        </section>
 
-        <section className="crm-rpt-stats" aria-label="Results">
-          <Stat label="New leads" value={count(t.leadCount)}>
+        {allBusinesses ? (
+          <p className="crm-rpt-hint">
+            This adds up every business. Pick one business in the header to build the report you send them.
+          </p>
+        ) : null}
+
+        <section className="crm-panel crm-rpt-hero">
+          <span>Summary · compared with {previous.label}</span>
+          <p>{headline}</p>
+        </section>
+
+        <section className="crm-rpt-kpis" aria-label="Headline numbers">
+          <Kpi label="New leads" value={count(t.leadCount)}>
             <Change now={t.leadCount} before={p.leadCount} short={previous.short} />
-          </Stat>
-          <Stat label="Booked jobs" value={count(t.booked)}>
+          </Kpi>
+          <Kpi label="Booked jobs" value={count(t.booked)}>
             <Change now={t.booked} before={p.booked} short={previous.short} />
-          </Stat>
-          <Stat label="Jobs won" value={count(t.wonCount)}>
+          </Kpi>
+          <Kpi label="Jobs won" value={count(t.wonCount)}>
             <Change now={t.wonCount} before={p.wonCount} short={previous.short} />
-          </Stat>
-          <Stat label="Revenue won" value={dollars(t.revenueCents)}>
+          </Kpi>
+          <Kpi label="Revenue won" value={dollars(t.revenueCents)}>
             <Change now={t.revenueCents} before={p.revenueCents} short={previous.short} />
-          </Stat>
-          <Stat label="Ad spend" value={hasAds ? dollars(adTotals.spendCents) : "—"} note={hasAds ? undefined : "No ad data"}>
-            {hasAds ? <Change now={adTotals.spendCents} before={prevAdTotals.spendCents} short={previous.short} /> : null}
-          </Stat>
-          <Stat
+          </Kpi>
+          <Kpi label="Ad spend" value={hasAds ? dollars(adTotals.spendCents) : "—"} note="No ad data">
+            {hasAds ? <Change now={adTotals.spendCents} before={prevAdTotals.spendCents} short={previous.short} /> : undefined}
+          </Kpi>
+          <Kpi
             label="Cost per lead"
-            value={adTotals.costPerLeadCents == null ? "—" : dollars(adTotals.costPerLeadCents)}
-            note={adTotals.costPerLeadCents == null ? (hasAds ? "No ad leads yet" : "No ad data") : "From ads"}
+            value={costOrDash(adTotals.costPerLeadCents)}
+            note={hasAds ? "No leads from ads yet" : "No ad data"}
           >
             {adTotals.costPerLeadCents != null ? (
               <Change now={adTotals.costPerLeadCents} before={prevAdTotals.costPerLeadCents} short={previous.short} lowerIsBetter />
-            ) : null}
-          </Stat>
+            ) : undefined}
+          </Kpi>
         </section>
 
-        <div className="crm-rpt-grid">
-          <section className="crm-rpt-block">
-            <h4>Where leads came from</h4>
-            {sources.length ? (
-              <table className="crm-rpt-table">
-                <thead>
-                  <tr>
-                    <th>Source</th>
-                    <th>Leads</th>
-                    <th>Won</th>
-                    <th>Revenue</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sources.map(([name, row]) => (
-                    <tr key={name}>
-                      <td>{name}</td>
-                      <td>{count(row.leads)}</td>
-                      <td>{count(row.won)}</td>
-                      <td>{row.revenue ? dollars(row.revenue) : "—"}</td>
-                    </tr>
+        <div className="crm-rpt-row is-wide-left">
+          <Panel icon={CalendarDays} title="Leads by day" aside={`${plural(t.leadCount, "lead")} · ${plural(t.wonCount, "won", "won")}`}>
+            {t.leadCount ? (
+              <div className="crm-rpt-days" onMouseLeave={() => setActiveDay(null)}>
+                <div className="crm-rpt-days-bars" aria-hidden="true">
+                  {days.map((d, index) => (
+                    <span key={d.key} className={activeDay === index ? "is-active" : undefined} onMouseEnter={() => setActiveDay(index)} onClick={() => setActiveDay(index)}>
+                      <i style={{ height: `${d.leads ? Math.max(6, (d.leads / peakDay) * 100) : 0}%` }} />
+                    </span>
                   ))}
-                </tbody>
-              </table>
+                </div>
+                <div className="crm-rpt-days-axis" aria-hidden="true">
+                  <span>{days[0]?.label}</span>
+                  <span>{day ? `${day.label}: ${plural(day.leads, "lead")}${day.won ? `, ${day.won} won` : ""}` : `Busiest day: ${count(peakDay)} ${peakDay === 1 ? "lead" : "leads"}`}</span>
+                  <span>{days.at(-1)?.label}</span>
+                </div>
+                <table className="sr-only">
+                  <caption>Leads per day</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Day</th>
+                      <th scope="col">Leads</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {days.map((d) => (
+                      <tr key={d.key}>
+                        <td>{d.label}</td>
+                        <td>{d.leads}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : (
-              <p className="crm-rpt-empty">No leads in this {periodWord}.</p>
+              <p className="crm-rpt-empty">No leads came in this {periodWord}.</p>
             )}
-          </section>
+          </Panel>
 
-          <section className="crm-rpt-block">
-            <h4>Where those leads are now</h4>
+          <Panel icon={PieChart} title="Where leads came from">
+            {sources.length ? (
+              <>
+                <span className="crm-rpt-sourcebar" role="img" aria-label={sources.map((s) => `${s.name} ${s.leads}`).join(", ")}>
+                  {sources.map((s) => (
+                    <span key={s.name} style={{ width: `${(s.leads / t.leadCount) * 100}%`, background: s.color }} />
+                  ))}
+                </span>
+                <ul className="crm-rpt-sources">
+                  {sources.map((s) => (
+                    <li key={s.name}>
+                      <i style={{ background: s.color }} aria-hidden="true" />
+                      <span>{s.name}</span>
+                      <strong>{count(s.leads)}</strong>
+                      <small>{s.revenue ? dollars(s.revenue) : "—"}</small>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p className="crm-rpt-empty">No leads came in this {periodWord}.</p>
+            )}
+          </Panel>
+        </div>
+
+        <div className="crm-rpt-row">
+          <Panel icon={Route} title="Where those leads are now">
             {stages.length ? (
               <ul className="crm-rpt-stages">
                 {stages.map((stage) => (
@@ -492,29 +554,37 @@ export function ReportsView({
                 ))}
               </ul>
             ) : (
-              <p className="crm-rpt-empty">No leads in this {periodWord}.</p>
+              <p className="crm-rpt-empty">No leads came in this {periodWord}.</p>
             )}
-            <dl className="crm-rpt-mini">
+          </Panel>
+
+          <Panel icon={PhoneCall} title="Calls and appointments">
+            <dl className="crm-rpt-figures">
               <div>
                 <dt>Appointments</dt>
                 <dd>{count(t.appointments)}</dd>
+                <Change now={t.appointments} before={p.appointments} short={previous.short} />
               </div>
               <div>
-                <dt>Calls</dt>
+                <dt>Calls received</dt>
                 <dd>{t.calls ? count(t.calls) : "—"}</dd>
+                {t.calls ? <Change now={t.calls} before={p.calls} short={previous.short} /> : <span className="crm-rpt-change">No calls recorded</span>}
               </div>
               <div>
-                <dt>Missed calls</dt>
+                <dt>Answered</dt>
+                <dd>{t.calls ? count(t.answeredCalls) : "—"}</dd>
+              </div>
+              <div>
+                <dt>Missed</dt>
                 <dd>{t.calls ? count(t.missedCalls) : "—"}</dd>
               </div>
             </dl>
-          </section>
+          </Panel>
         </div>
 
         {hasAds ? (
-          <section className="crm-rpt-block">
-            <h4>Ads</h4>
-            <dl className="crm-rpt-mini is-wide">
+          <Panel icon={Megaphone} title="Ads" aside={`Back per $1: ${backPerDollar(adTotals.roas)}`}>
+            <dl className="crm-rpt-figures is-four">
               <div>
                 <dt>Spent</dt>
                 <dd>{dollars(adTotals.spendCents)}</dd>
@@ -529,79 +599,271 @@ export function ReportsView({
               </div>
               <div>
                 <dt>Back per $1</dt>
-                <dd>{adTotals.roas == null ? "—" : `$${adTotals.roas.toFixed(2)}`}</dd>
+                <dd>{backPerDollar(adTotals.roas)}</dd>
               </div>
             </dl>
             {t.ads.campaigns.length ? (
-              <table className="crm-rpt-table">
+              <div className="crm-rpt-tablewrap">
+                <table className="crm-rpt-table">
+                  <thead>
+                    <tr>
+                      <th>Campaign</th>
+                      <th>Spend</th>
+                      <th>Leads</th>
+                      <th>Cost per lead</th>
+                      <th>Won</th>
+                      <th>Revenue</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {t.ads.campaigns.map((campaign) => (
+                      <tr key={campaign.campaignId}>
+                        <td>{campaign.campaignName}</td>
+                        <td>{dollars(campaign.spendCents)}</td>
+                        <td>{count(campaign.leads)}</td>
+                        <td>{costOrDash(campaign.costPerLeadCents)}</td>
+                        <td>{count(campaign.won)}</td>
+                        <td>{campaign.revenueCents ? dollars(campaign.revenueCents) : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </Panel>
+        ) : null}
+
+        <div className="crm-rpt-row is-wide-left">
+          <Panel icon={BadgeDollarSign} title="Jobs won" aside={wonJobs.length ? dollars(t.revenueCents) : undefined}>
+            {wonJobs.length ? (
+              <div className="crm-rpt-tablewrap">
+                <table className="crm-rpt-table crm-rpt-jobs-table">
+                  <thead>
+                    <tr>
+                      <th>Customer</th>
+                      <th>Service</th>
+                      <th>Source</th>
+                      <th>Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {wonJobs.map((lead) => (
+                      <tr key={lead.id}>
+                        <td>
+                          {lead.firstName} {lead.lastName}
+                        </td>
+                        <td>{lead.serviceRequested || "—"}</td>
+                        <td>{lead.source || "—"}</td>
+                        <td>{dollars(lead.finalRevenueCents)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="crm-rpt-empty">No jobs won from this {periodWord}&apos;s leads yet.</p>
+            )}
+          </Panel>
+
+          <Panel icon={NotebookPen} title="Notes for the client">
+            <textarea
+              className="crm-rpt-notes"
+              value={notes}
+              onChange={(event) => saveNotes(event.target.value)}
+              placeholder="What went well, and what you are changing next. Prints with the report."
+              rows={7}
+              aria-label="Notes for this report"
+            />
+            <small className="crm-rpt-small">Saved in this browser only.</small>
+          </Panel>
+        </div>
+      </div>
+
+      {/* ===================== Print: a formal report ===================== */}
+      <article className="crm-rpt-print" aria-hidden="true">
+        <header className="crm-rpt-letterhead">
+          <strong>{organizationName}</strong>
+          <span>Marketing report</span>
+        </header>
+        <section className="crm-rpt-title">
+          <h1>{businessName}</h1>
+          <p>
+            {periodTitle} · compared with {previous.label}
+          </p>
+          <small>Prepared {generated}</small>
+        </section>
+
+        <section className="crm-rpt-psection">
+          <h2>Summary</h2>
+          <p className="crm-rpt-pheadline">{headline}</p>
+        </section>
+
+        <section className="crm-rpt-psection">
+          <h2>Key results</h2>
+          <table className="crm-rpt-ptable">
+            <thead>
+              <tr>
+                <th>Measure</th>
+                <th>{current.label}</th>
+                <th>{previous.label}</th>
+                <th>Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              {keyRows.map((row) => (
+                <tr key={row.label}>
+                  <td>{row.label}</td>
+                  <td>{row.now}</td>
+                  <td>{row.before}</td>
+                  <td className={`is-${row.moved.tone}`}>{row.moved.text}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+
+        <div className="crm-rpt-pcols">
+          <section className="crm-rpt-psection">
+            <h2>Lead sources</h2>
+            {sources.length ? (
+              <table className="crm-rpt-ptable">
                 <thead>
                   <tr>
-                    <th>Campaign</th>
-                    <th>Spend</th>
+                    <th>Source</th>
                     <th>Leads</th>
-                    <th>Cost per lead</th>
                     <th>Won</th>
                     <th>Revenue</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {t.ads.campaigns.map((campaign) => (
-                    <tr key={campaign.campaignId}>
-                      <td>{campaign.campaignName}</td>
-                      <td>{dollars(campaign.spendCents)}</td>
-                      <td>{count(campaign.leads)}</td>
-                      <td>{campaign.costPerLeadCents == null ? "—" : dollars(campaign.costPerLeadCents)}</td>
-                      <td>{count(campaign.won)}</td>
-                      <td>{campaign.revenueCents ? dollars(campaign.revenueCents) : "—"}</td>
+                  {sources.map((s) => (
+                    <tr key={s.name}>
+                      <td>{s.name}</td>
+                      <td>{count(s.leads)}</td>
+                      <td>{count(s.won)}</td>
+                      <td>{s.revenue ? dollars(s.revenue) : "—"}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            ) : null}
+            ) : (
+              <p>No leads came in this {periodWord}.</p>
+            )}
+          </section>
+          <section className="crm-rpt-psection">
+            <h2>Lead status today</h2>
+            {stages.length ? (
+              <table className="crm-rpt-ptable">
+                <thead>
+                  <tr>
+                    <th>Status</th>
+                    <th>Leads</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stages.map((stage) => (
+                    <tr key={stage.status}>
+                      <td>{STATUS_LABELS[stage.status] ?? stage.status}</td>
+                      <td>{count(stage.count)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p>No leads came in this {periodWord}.</p>
+            )}
+          </section>
+        </div>
+
+        {hasAds && t.ads.campaigns.length ? (
+          <section className="crm-rpt-psection">
+            <h2>Ad campaigns</h2>
+            <table className="crm-rpt-ptable">
+              <thead>
+                <tr>
+                  <th>Campaign</th>
+                  <th>Spend</th>
+                  <th>Leads</th>
+                  <th>Cost per lead</th>
+                  <th>Won</th>
+                  <th>Revenue</th>
+                </tr>
+              </thead>
+              <tbody>
+                {t.ads.campaigns.map((campaign) => (
+                  <tr key={campaign.campaignId}>
+                    <td>{campaign.campaignName}</td>
+                    <td>{dollars(campaign.spendCents)}</td>
+                    <td>{count(campaign.leads)}</td>
+                    <td>{costOrDash(campaign.costPerLeadCents)}</td>
+                    <td>{count(campaign.won)}</td>
+                    <td>{campaign.revenueCents ? dollars(campaign.revenueCents) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td>Total</td>
+                  <td>{dollars(adTotals.spendCents)}</td>
+                  <td>{count(adTotals.leads)}</td>
+                  <td>{costOrDash(adTotals.costPerLeadCents)}</td>
+                  <td>{count(adTotals.won)}</td>
+                  <td>{dollars(adTotals.revenueCents)}</td>
+                </tr>
+              </tfoot>
+            </table>
           </section>
         ) : null}
 
-        <section className="crm-rpt-block">
-          <h4>Jobs won</h4>
-          {wonJobs.length ? (
-            <ul className="crm-rpt-jobs">
-              {wonJobs.map((lead) => (
-                <li key={lead.id}>
-                  <span>
-                    <strong>
+        {wonJobs.length ? (
+          <section className="crm-rpt-psection">
+            <h2>Jobs won</h2>
+            <table className="crm-rpt-ptable">
+              <thead>
+                <tr>
+                  <th>Customer</th>
+                  <th>Service</th>
+                  <th>Source</th>
+                  <th>Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {wonJobs.map((lead) => (
+                  <tr key={lead.id}>
+                    <td>
                       {lead.firstName} {lead.lastName}
-                    </strong>
-                    <small>{[lead.serviceRequested, lead.source].filter(Boolean).join(" · ")}</small>
-                  </span>
-                  <b>{dollars(lead.finalRevenueCents)}</b>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="crm-rpt-empty">No jobs won from this {periodWord}&apos;s leads yet.</p>
-          )}
-        </section>
+                    </td>
+                    <td>{lead.serviceRequested || "—"}</td>
+                    <td>{lead.source || "—"}</td>
+                    <td>{dollars(lead.finalRevenueCents)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={3}>Total</td>
+                  <td>{dollars(t.revenueCents)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </section>
+        ) : null}
 
-        <section className={`crm-rpt-block crm-rpt-notes${notes.trim() ? "" : " is-empty"}`}>
-          <h4>Notes and next steps</h4>
-          <textarea
-            value={notes}
-            onChange={(event) => saveNotes(event.target.value)}
-            placeholder="Add a note for the client: what went well, what you are changing next."
-            rows={4}
-            aria-label="Notes for this report"
-          />
-          {notes.trim() ? <p className="crm-rpt-notes-print">{notes}</p> : null}
-          <small className="crm-rpt-screen-only">Saved in this browser only. Prints with the report.</small>
-        </section>
+        {notes.trim() ? (
+          <section className="crm-rpt-psection">
+            <h2>Notes and next steps</h2>
+            <p className="crm-rpt-pnotes">{notes}</p>
+          </section>
+        ) : null}
 
-        <footer className="crm-rpt-foot">
-          Counts leads that came in during {current.label}
-          {current.toDate ? " so far" : ""}, with their status as of {generated}. Ad figures come
-          from the connected Meta ad account; revenue is what was recorded on won jobs.
+        <footer className="crm-rpt-pfoot">
+          <span>
+            Counts leads that came in during {periodTitle}, with their status as of {generated}. Ad
+            figures come from the connected Meta ad account; revenue is what was recorded on won jobs.
+          </span>
+          <span>Prepared by {organizationName}</span>
         </footer>
       </article>
     </div>
   );
 }
-
