@@ -1394,8 +1394,45 @@
 #crm-app[data-theme="glass"] :is(.crm-ads-verdict, .crm-ads-return).is-green { background: rgb(52 199 120 / 16%); color: #8be0b0; }
 #crm-app[data-theme="glass"] :is(.crm-ads-verdict, .crm-ads-return).is-red { background: rgb(255 92 112 / 16%); color: #ffa3b0; }
 #crm-app[data-theme="glass"] :is(.crm-ads-best, .crm-ads-step-rate) { background: rgb(255 255 255 / 10%); }
-#crm-app[data-theme="glass"] :is(.crm-ads-score-answer, .crm-ads-drawer-intro, .crm-ads-money-bar) { background: rgb(255 255 255 / 6%); }
-#crm-app[data-theme="glass"] .crm-ads-ad { background: rgb(255 255 255 / 4%); }
+#crm-app[data-theme="glass"] :is(.crm-ads-score-answer, .crm-ads-money-bar) { background: rgb(255 255 255 / 6%); }
+
+/* Glass campaign drawer: the same sheet as the lead record (--lr-* tokens in
+   theme-glass.css) - tinted frosted sheet, soft header glow, cards that are
+   lighter glass with a hairline edge and a top highlight. */
+#crm-app[data-theme="glass"] .crm-ads-drawer-layer { background: rgb(0 0 0 / 55%); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
+#crm-app[data-theme="glass"] .crm-ads-drawer {
+  background: var(--lr-sheet); color: var(--lr-ink);
+  border: 0; border-left: 1px solid var(--lr-edge); border-radius: 22px 0 0 22px;
+  box-shadow: -24px 0 80px rgb(0 0 0 / 60%), inset 1px 0 0 rgb(255 255 255 / 4%);
+  backdrop-filter: blur(28px) saturate(1.2); -webkit-backdrop-filter: blur(28px) saturate(1.2);
+  overflow: hidden;
+}
+#crm-app[data-theme="glass"] .crm-ads-drawer > header { background: linear-gradient(180deg, rgb(255 255 255 / 5%), transparent); border-bottom: 1px solid var(--lr-rule); }
+#crm-app[data-theme="glass"] .crm-ads-drawer > header p { color: var(--crm-accent-ink); letter-spacing: .12em; }
+#crm-app[data-theme="glass"] .crm-ads-drawer > header h3 { color: var(--lr-ink); }
+#crm-app[data-theme="glass"] .crm-ads-drawer > header button[aria-label] { --btn-bg: rgb(255 255 255 / 6%); --btn-fg: var(--lr-soft); --btn-bg-hover: rgb(255 255 255 / 12%); --btn-fg-hover: #fff; width: 34px; height: 34px; border: 1px solid rgb(255 255 255 / 14%); border-radius: 999px; background: rgb(255 255 255 / 6%); color: var(--lr-soft); }
+#crm-app[data-theme="glass"] .crm-ads-drawer > header button[aria-label]:hover { background: rgb(255 255 255 / 12%); color: #fff; }
+#crm-app[data-theme="glass"] .crm-ads-drawer-body { scrollbar-color: rgb(255 255 255 / 20%) transparent; }
+#crm-app[data-theme="glass"] .crm-ads-drawer-body h4 { color: var(--lr-ink); }
+#crm-app[data-theme="glass"] .crm-ads-drawer-body h4 .crm-badge { background: rgb(255 255 255 / 8%); border-color: transparent; color: var(--lr-soft); }
+#crm-app[data-theme="glass"] :is(.crm-ads-drawer-intro, .crm-ads-ad) {
+  background: var(--lr-card); border: 1px solid var(--lr-edge);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%);
+}
+#crm-app[data-theme="glass"] .crm-ads-drawer-intro { border-radius: 20px; background: linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 2%)); }
+#crm-app[data-theme="glass"] .crm-ads-drawer-intro > p { color: var(--lr-muted); }
+#crm-app[data-theme="glass"] .crm-ads-drawer-intro > p strong { color: var(--lr-ink); }
+#crm-app[data-theme="glass"] .crm-ads-drawer-intro .crm-ads-money-bar { background: rgb(255 255 255 / 7%); }
+#crm-app[data-theme="glass"] .crm-ads-ad { border-radius: 16px; }
+#crm-app[data-theme="glass"] .crm-ads-ad dt { color: var(--lr-muted); }
+#crm-app[data-theme="glass"] .crm-ads-ad dd { color: var(--lr-ink); }
+#crm-app[data-theme="glass"] .crm-ads-ad > .crm-ads-share { background: rgb(255 255 255 / 7%); }
+#crm-app[data-theme="glass"] .crm-ads-drawer .crm-ads-best { background: var(--crm-accent-soft); color: var(--crm-accent-ink); }
+#crm-app[data-theme="glass"] .crm-ads-drawer .crm-ads-quiet { color: var(--lr-muted); }
+#crm-app[data-theme="glass"] .crm-ads-campaign-leads li button { border-color: var(--lr-edge); border-radius: 14px; background: var(--lr-card); }
+#crm-app[data-theme="glass"] .crm-ads-campaign-leads li button:hover { background: rgb(255 255 255 / 8%); border-color: rgb(255 255 255 / 16%); }
+#crm-app[data-theme="glass"] .crm-ads-campaign-leads li button strong, #crm-app[data-theme="glass"] .crm-ads-lead-value { color: var(--lr-ink); }
+#crm-app[data-theme="glass"] .crm-ads-campaign-leads li button small { color: var(--lr-muted); }
 #crm-app[data-theme="glass"] .crm-ads-table tbody tr:hover td { background: rgb(255 255 255 / 5%); }
 #crm-app[data-theme="glass"] :is(.crm-ads-money .is-spent .crm-ads-money-bar > span, .crm-ads-daily-bars.is-spend i) { background: rgb(255 255 255 / 45%); }
 #crm-app[data-theme="glass"] .crm-ads-money .is-earned .crm-ads-money-bar > span { background: #34c778; }
