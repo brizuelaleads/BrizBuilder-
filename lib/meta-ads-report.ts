@@ -90,6 +90,11 @@ export type AdsReport = {
   totals: AdsMetrics;
   campaigns: AdsReportCampaign[];
   setupState: AdsSetupState;
+  /**
+   * Spend synced earlier is still on record but the account is no longer
+   * connected, so the figures stop at the last sync rather than disappearing.
+   */
+  disconnected: boolean;
   /** True when history is thinner than the range being viewed. */
   backfillAvailable: boolean;
   /** Leads in range with no Meta campaign id; excluded from every ratio. */
@@ -279,7 +284,9 @@ export function buildAdsReport(input: {
     .sort((a, b) => b.spendCents - a.spendCents);
 
   const hasSpend = totals.spendCents > 0;
-  const setupState: AdsSetupState = !input.connected
+  // Disconnecting stops new syncs; it does not unmake the spend already
+  // recorded. With history on file the report still shows it, flagged as stale.
+  const setupState: AdsSetupState = !input.connected && input.insights.length === 0
     ? "not_connected"
     : input.insights.length === 0
       ? "no_data"
@@ -293,6 +300,7 @@ export function buildAdsReport(input: {
     totals: derive(totals),
     campaigns: built,
     setupState,
+    disconnected: !input.connected,
     // History does not reach the start of what is being asked about, so there
     // is older spend a backfill could still fetch.
     backfillAvailable: Boolean(

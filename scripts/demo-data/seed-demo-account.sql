@@ -71,10 +71,12 @@ begin
       final_cents := 0; est_cents := (2500 + (i * 1231) % 14000) * 100; won_at := null;
     end if;
 
-    camp_idx := 1 + (i % 2);
+    -- Meta leads (i = 1, 7, 13, ...) alternate between the two campaigns.
+    camp_idx := 1 + ((i / 6) % 2);
     attribution := case when src = 'Meta Ads' then jsonb_build_object(
         'utm_source', 'facebook', 'utm_medium', 'paid_social',
-        'utm_campaign', meta_campaigns[camp_idx], 'utm_term', meta_adsets[camp_idx], 'utm_content', meta_ads[1 + (i % 3)])
+        'utm_campaign', meta_campaigns[camp_idx], 'utm_term', meta_adsets[camp_idx],
+        'utm_content', case when camp_idx = 1 then meta_ads[1 + 2 * (i % 2)] else meta_ads[2] end)
       when src = 'Google Ads' then jsonb_build_object('utm_source', 'google', 'utm_medium', 'cpc', 'utm_campaign', 'roof-replacement-search')
       else '{}'::jsonb end;
 
@@ -273,7 +275,7 @@ begin
   insert into public.meta_ad_insights (organization_id, client_id, date_start, campaign_id, campaign_name, adset_id, ad_id, ad_name, spend_cents, impressions, clicks, synced_at)
   select org, cid, (current_date - d), a.campaign_id, a.campaign_name, a.adset_id, a.ad_id, a.ad_name,
          a.base_spend + ((d * 731) % 2400), a.base_impr + (d * 97) % 900, a.base_clicks + (d * 13) % 30, now()
-  from generate_series(0, 29) as s(d)
+  from generate_series(0, 30) as s(d)
   cross join (values
     ('120210000000000101','Storm Season Leads','120210000000001101','120210000000011101','Hail damage video', 5200, 2600, 34),
     ('120210000000000101','Storm Season Leads','120210000000001101','120210000000011203','Before/after carousel', 3100, 1800, 22),

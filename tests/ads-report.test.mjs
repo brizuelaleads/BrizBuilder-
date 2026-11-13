@@ -212,6 +212,20 @@ test("setup states are distinguished, because each needs a different action", ()
   );
 });
 
+test("a disconnected account keeps showing the spend it already synced", () => {
+  // Disconnecting stops new syncs; it does not make the recorded spend untrue.
+  const stale = buildAdsReport({ connected: false, insights: [insight()], leads: [lead()] });
+  assert.equal(stale.setupState, "ready");
+  assert.equal(stale.disconnected, true);
+  assert.ok(stale.totals.spendCents > 0);
+  // Without history there is still nothing to show.
+  assert.equal(buildAdsReport({ connected: false, insights: [], leads: [lead()] }).setupState, "not_connected");
+  assert.equal(buildAdsReport({ connected: true, insights: [insight()], leads: [lead()] }).disconnected, false);
+  // Backfill needs a live connection, so it is not offered on a stale one.
+  assert.equal(stale.backfillAvailable, false);
+  assert.ok(adsView.includes("Meta Ads is not connected right now."));
+});
+
 test("backfill is offered when history is thinner than the range", () => {
   const short = buildAdsReport({
     connected: true,
@@ -281,40 +295,57 @@ test("the tab covers every setup state and offers the snippet", () => {
   assert.match(adsView, /navigator\.clipboard\.writeText\(URL_PARAMETERS\)/);
 });
 
-test("all seven summary cards are present", () => {
+test("every summary figure is present, with return on ad spend leading", () => {
   for (const label of [
     "Ad spend",
     "Leads from Meta ads",
     "Cost per lead",
     "Booked jobs",
     "Cost per booked job",
+    "Cost per won customer",
     "Won revenue",
-    "ROAS",
   ]) {
     assert.ok(
       adsView.includes(`label="${label}"`),
       `${label} is a summary card of its own`,
     );
   }
+  // ROAS is the headline answer, stated in plain words beside the number.
+  assert.match(adsView, /<ReturnHeadline totals=\{totals\} \/>/);
+  assert.match(adsView, /<span>Return on ad spend<\/span>\s*<strong>\{ratio\(totals\.roas\)\}<\/strong>/);
+  assert.match(adsView, /back for every \$1 spent/);
+  // The flow between steps, so a drop-off is visible where it happens.
+  for (const step of ["of clicks became leads", "of leads booked", "of booked jobs won"])
+    assert.ok(adsView.includes(step), `${step} is shown`);
+  // A good or bad return is never colour alone: it carries an icon and words.
+  assert.match(adsView, /label: "Earning more than it costs"/);
+  assert.match(adsView, /label: "Costing more than it has earned"/);
 });
 
 test("the campaign table carries delivery as well as money", () => {
-  // Impressions and clicks are what tell you whether a bad CPL is a delivery
-  // problem or a conversion problem.
   for (const column of [
     "Campaign",
     "Spend",
-    "Impressions",
-    "Clicks",
     "Leads",
-    "CPL",
     "Booked jobs",
     "Won customers",
     "Revenue",
-    "ROAS",
+    "Return",
   ]) {
     assert.ok(adsView.includes(`<th>${column}</th>`), `${column} column exists`);
   }
+  // Impressions and clicks are what tell you whether a bad cost per lead is a
+  // delivery problem or a conversion problem, so every row still shows them,
+  // under its spend, along with each step's cost.
+  for (const figure of [
+    "count(campaign.impressions)",
+    "count(campaign.clicks)",
+    "cost(campaign.costPerLeadCents)",
+    "cost(campaign.costPerBookedCents)",
+    "cost(campaign.costPerWonCents)",
+    "ratio(campaign.roas)",
+  ])
+    assert.ok(adsView.includes(figure), `${figure} is shown per campaign`);
 });
 
 test("a campaign opens in a drawer, with its ad sets, ads and leads", () => {
@@ -327,7 +358,9 @@ test("a campaign opens in a drawer, with its ad sets, ads and leads", () => {
 });
 
 test("the tab shows a dash for a cost it cannot compute, never a zero", () => {
-  assert.match(adsView, /return value == null \? "—" : money\(value, true\)/);
+  assert.match(adsView, /return value == null \? "—" : dollars\(value\)/);
+  // Exact dollars: "$1K" would hide the difference between $1,213 and $1,000.
+  assert.doesNotMatch(adsView, /money\([^)]*, true\)/);
 });
 
 test("a wide table scrolls inside itself rather than the page", () => {

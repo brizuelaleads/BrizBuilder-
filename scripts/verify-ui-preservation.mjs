@@ -58,6 +58,13 @@ const restructured = {
     replacements: ['type="hidden"', 'name="return_to"', 'name="email"', 'type="email"', 'required', 'name="password"', 'type="password"', 'type="submit"']
       .map(lost => ({lost, now: /<SignInPanel returnTo=\{safeLoginReturnTo\(return_to\)\}/, why: `${lost} now lives in app/WorkspaceLogin.tsx, rendered by SignInPanel`})),
   },
+  'app/crm/AdsView.tsx': {
+    // Every figure the tab showed is still shown (pinned in
+    // tests/ads-report.test.mjs); they are regrouped, not removed. The one new
+    // control is the Go to Connections button on the disconnected notice.
+    reason: 'Ads rebuilt for reading: return on ad spend leads as a sentence, spend-to-revenue as steps with the rate between them, what each result cost, and campaign rows that stack delivery under spend',
+    controls: /<th>(Campaign|Spend|Impressions|Clicks|Leads|CPL|Booked jobs|Won customers|Revenue|ROAS|Return|Ad|Cost per lead)<\/th>|<th scope="col">|<h3[ >]|<h4>|<h5>|crm-ads-disclosure|onOpenConnections|campaign\.campaignName/,
+  },
   'app/crm/OperationsViews.tsx': {
     reason: 'Calendar rebuilt as a week planner: month picker, status filters, event popover. Settings gained an Appearance section (Glass backdrop picker).',
     controls: /crm-appearance|appearance\.on|appearance\.blur|CRM_BACKDROPS|CRM_BACKDROP_BLURS|level\.|option\.id|<h3>Appearance<\/h3>|shiftWeek|setAnchorDate|pageMonth|monthLabel|weekStart\.toLocaleDateString|CALENDAR_WEEK_RANGE|toggleStatus|hiddenStatuses|crm-cal-|setOpenEvent|onClose|closeRef|update_appointment_status|deleteAppointment|onAddAppointment|<option key=\{status\}|crm-google-calendar|appointment\.contactName/,
