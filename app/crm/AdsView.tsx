@@ -515,6 +515,8 @@ export function AdsView({
   onOpenLead: (lead: CrmLead) => void;
   onOpenConnections: () => void;
 }) {
+  const [campaignLayout, setCampaignLayout] = useState<"table" | "cards">("table");
+  const [showMoreMetrics, setShowMoreMetrics] = useState(false);
   const [openCampaignId, setOpenCampaignId] = useState<string | null>(null);
 
   const connected = providerConnections.some(
@@ -856,9 +858,13 @@ export function AdsView({
       </details>
 
       {/* Campaigns, one card each. */}
-      <section className="crm-ads-campaigns" aria-labelledby="crm-ads-campaigns-title">
+      <section className="crm-panel crm-ads-campaigns crm-ads-table-panel" aria-labelledby="crm-ads-campaigns-title">
         <div className="crm-ads-section-title">
-          <h3 id="crm-ads-campaigns-title">Your campaigns</h3>
+          <h3 id="crm-ads-campaigns-title">Campaigns</h3>
+          <div className="crm-ads-table-actions">
+            {campaignLayout === "table" ? <button type="button" className="crm-button-secondary" aria-pressed={showMoreMetrics} onClick={() => setShowMoreMetrics((shown) => !shown)}>{showMoreMetrics ? "Fewer metrics" : "More metrics"}</button> : null}
+            <button type="button" className="crm-button-secondary" onClick={() => setCampaignLayout((layout) => layout === "table" ? "cards" : "table")}>{campaignLayout === "table" ? "Card view" : "Table view"}</button>
+          </div>
           {clients.length > 1 && selectedClientId === "all" ? (
             <small>Every sub-account together. Pick one in the header to see its campaigns alone.</small>
           ) : null}
@@ -868,6 +874,21 @@ export function AdsView({
             title="No campaigns in this range"
             description="Widen the date range, or backfill history if the account was connected recently."
           />
+        ) : campaignLayout === "table" ? (
+          <div className="crm-table-scroll">
+            <table className="crm-table crm-ads-table">
+              <thead><tr><th>Campaign</th><th>Spend</th><th>Leads</th><th>Cost per lead</th><th>Revenue</th>
+                {showMoreMetrics ? <><th>Impressions</th><th>Clicks</th><th>Booked jobs</th><th>Won customers</th><th>ROAS</th></> : null}
+              </tr></thead>
+              <tbody>{report.campaigns.map((campaign) => (
+                <tr key={campaign.campaignId} className="crm-ads-campaign-row">
+                  <td><button type="button" className="crm-ads-disclosure" onClick={() => setOpenCampaignId(campaign.campaignId)}>{campaign.campaignName}</button></td>
+                  <td>{dollars(campaign.spendCents)}</td><td>{count(campaign.leads)}</td><td>{cost(campaign.costPerLeadCents)}</td><td>{dollars(campaign.revenueCents)}</td>
+                  {showMoreMetrics ? <><td>{count(campaign.impressions)}</td><td>{count(campaign.clicks)}</td><td>{count(campaign.booked)}</td><td>{count(campaign.won)}</td><td>{ratio(campaign.roas)}</td></> : null}
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
         ) : (
           <div className="crm-ads-campaign-grid">
             {report.campaigns.map((campaign) => (

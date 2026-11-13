@@ -22195,3 +22195,10 @@ canvas {
 .crm-ads-view .crm-ads-breakdown { padding: 0; overflow: hidden; }
 .crm-ads-breakdown > summary { padding: 16px 24px; font-size: 13px; font-weight: 500; cursor: pointer; }
 .crm-ads-breakdown[open] > summary { border-bottom: 1px solid var(--crm-border); }
+
+.crm-ads-view .crm-ads-campaigns.crm-ads-table-panel { display: block; padding: 0; min-width: 0; overflow: hidden; }
+.crm-ads-table-panel > .crm-ads-section-title { padding: 20px 24px; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; border-bottom: 1px solid var(--crm-border); }
+.crm-ads-table-actions { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.crm-ads-table-panel > .crm-ads-campaign-grid { padding: 20px; }
+.crm-ads-table-panel .crm-ads-section-title > small { flex-basis: 100%; }
+.crm-ads-view .crm-ads-disclosure { cursor: pointer; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: var(--crm-border); }
