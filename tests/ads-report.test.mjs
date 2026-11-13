@@ -417,3 +417,17 @@ test("stylesheets never hand-write -webkit-backdrop-filter", () => {
   ])
     assert.ok(!read(file).includes("-webkit-backdrop-filter"), `${file} hand-writes -webkit-backdrop-filter`);
 });
+
+test("the campaign drawer lists each lead under the ad that produced it", () => {
+  // A lead goes under the ad its click carried ({{ad.id}} in utm_content);
+  // one that carried the campaign but no known ad is listed apart, never
+  // guessed onto an ad.
+  assert.ok(adsView.includes("if (lead.metaAdId && adIds.has(lead.metaAdId))"));
+  assert.ok(adsView.includes("Leads from this ad"));
+  assert.ok(adsView.includes("Leads with no ad recorded"));
+  // Each ad shows delivery and money, and its own return.
+  for (const figure of ["count(ad.clicks)", "percent(ad.ctr)", "dollars(ad.revenueCents)", "returnVerdict(ad.roas)"])
+    assert.ok(adsView.includes(figure), `${figure} is shown per ad`);
+  // The campaign's own path from seeing it to buying.
+  assert.ok(adsView.includes('aria-label="From ad to customer"'));
+});
