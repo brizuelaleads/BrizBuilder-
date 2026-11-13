@@ -1223,53 +1223,50 @@
 /* Wide screens say "Due" in the column header, so the cell drops the word. */
 @media(min-width: 601px) { #crm-app .crm-square-due-label { display: none; } }
 
-/* Ads (app/crm/AdsView.tsx): one headline answer, the spend-to-revenue flow,
-   what each result cost, then campaigns. Good/bad is never colour alone: every
-   tinted state carries an icon or arrow and words. */
-#crm-app .crm-ads-view { gap: 24px; }
+/* Ads (app/crm/AdsView.tsx). The page wears the Dashboard's own classes
+   (crm-dashboard-view, kpi cards, Marketing Snapshot), so these rules only add
+   what the Dashboard does not have: the click-to-customer steps, campaign rows
+   and the campaign drawer. Good/bad is never colour alone: every tinted state
+   carries an icon or arrow and words. */
 #crm-app .crm-ads-range { display: inline-flex; align-items: center; min-height: 32px; padding: 0 12px; border: 1px solid var(--crm-line); border-radius: 999px; font-size: 13px; font-weight: 500; color: var(--crm-muted); }
-#crm-app .crm-ads-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-#crm-app .crm-ads-metric { position: relative; }
+#crm-app .crm-ads-view > .crm-page-heading > div:first-child > span { color: var(--crm-ink); font-size: 15px; }
+#crm-app .crm-ads-view .crm-dashboard-marketing-panel > header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 
-#crm-app .crm-ads-headline { display: grid; grid-template-columns: minmax(200px, auto) 1fr; align-items: center; gap: 16px 40px; padding: 28px 32px; }
-#crm-app .crm-ads-hero { display: grid; gap: 4px; }
-#crm-app .crm-ads-hero > span { font-size: 13px; font-weight: 500; color: var(--crm-muted); }
-/* The one hero figure on the view: large, same sans, proportional digits. */
-#crm-app .crm-ads-hero > strong { font-size: 56px; line-height: 1; font-weight: 600; letter-spacing: -0.02em; color: var(--crm-ink); font-variant-numeric: proportional-nums; }
-#crm-app .crm-ads-hero > small { font-size: 13px; line-height: 20px; color: var(--crm-muted); }
-#crm-app .crm-ads-story { display: grid; gap: 12px; justify-items: start; padding-left: 40px; border-left: 1px solid var(--crm-line); }
-#crm-app .crm-ads-story p { margin: 0; max-width: 60ch; font-size: 17px; line-height: 28px; color: var(--crm-muted); }
-#crm-app .crm-ads-story p strong { font-weight: 600; color: var(--crm-ink); }
-#crm-app .crm-ads-verdict { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 12px; border-radius: 999px; font-size: 13px; font-weight: 500; }
+#crm-app .crm-ads-verdict { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 12px; border-radius: 999px; font-size: 13px; font-weight: 500; white-space: nowrap; }
 #crm-app .crm-ads-verdict svg { width: 15px; height: 15px; flex-shrink: 0; }
 #crm-app .crm-ads-verdict.is-green { background: #e7f5ee; color: #11683f; }
 #crm-app .crm-ads-verdict.is-red { background: #fdecee; color: #a11d32; }
 #crm-app .crm-ads-verdict.is-neutral { background: var(--crm-subtle); color: var(--crm-muted); }
 
-#crm-app .crm-ads-group { display: grid; gap: 12px; }
-#crm-app .crm-ads-group > h3 { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--crm-ink); }
-#crm-app .crm-ads-metrics.crm-ads-funnel { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; align-items: stretch; }
-#crm-app .crm-ads-metrics.crm-ads-costs { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-#crm-app .crm-ads-step { display: grid; justify-items: center; align-content: center; gap: 4px; width: 92px; text-align: center; color: var(--crm-muted); }
-#crm-app .crm-ads-step svg { width: 18px; height: 18px; }
-#crm-app .crm-ads-step span { font-size: 12px; line-height: 16px; }
-#crm-app .crm-ads-step strong { display: block; font-size: 15px; line-height: 20px; font-weight: 600; color: var(--crm-ink); }
+/* From click to customer: four steps, the rate that carried people from one
+   to the next written above each, and what each result cost below. */
+#crm-app .crm-ads-funnel-panel > header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+#crm-app .crm-ads-funnel-panel > header > small { font-size: 13px; color: var(--crm-muted); }
+#crm-app .crm-ads-funnel { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; padding: 8px 24px 24px; list-style: none; }
+#crm-app .crm-ads-step { position: relative; display: grid; align-content: start; gap: 2px; padding: 16px 20px; border-left: 1px solid var(--crm-line); }
+#crm-app .crm-ads-step:first-child { border-left: 0; padding-left: 0; }
+#crm-app .crm-ads-step-rate { display: inline-flex; align-items: center; gap: 4px; margin-bottom: 8px; width: fit-content; padding: 2px 10px 2px 8px; border-radius: 999px; background: var(--crm-subtle); font-size: 12px; color: var(--crm-muted); }
+#crm-app .crm-ads-step-rate svg { width: 13px; height: 13px; }
+#crm-app .crm-ads-step-rate strong { font-weight: 600; color: var(--crm-ink); }
+#crm-app .crm-ads-step:first-child::before { content: ""; display: block; height: 24px; margin-bottom: 8px; }
+#crm-app .crm-ads-step-label { font-size: 13px; font-weight: 500; color: var(--crm-muted); }
+#crm-app .crm-ads-step-value { font-size: 28px; line-height: 36px; font-weight: 600; color: var(--crm-ink); }
+#crm-app .crm-ads-step > small { font-size: 13px; color: var(--crm-muted); font-variant-numeric: tabular-nums; }
+#crm-app .crm-ads-footnote { margin: 0; padding: 0 24px 20px; font-size: 12px; color: var(--crm-muted); }
 
-#crm-app .crm-ads-table-panel > header { align-items: center; }
-#crm-app .crm-ads-table-hint { margin-left: auto; font-size: 13px; color: var(--crm-muted); }
+/* Campaign rows. */
+#crm-app .crm-ads-table-panel > header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+#crm-app .crm-ads-table-hint { font-size: 13px; color: var(--crm-muted); }
 #crm-app .crm-ads-table td { vertical-align: middle; }
 #crm-app .crm-ads-table td > strong { display: block; font-weight: 600; color: var(--crm-ink); font-variant-numeric: tabular-nums; }
 #crm-app .crm-ads-table td > small { display: block; margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--crm-muted); font-variant-numeric: tabular-nums; white-space: normal; overflow: visible; text-overflow: clip; }
 #crm-app .crm-ads-table td.crm-ads-cell-spend { min-width: 250px; }
-/* Glass: the same states in translucent tones that sit on a dark surface. */
-#crm-app[data-theme="glass"] :is(.crm-ads-verdict, .crm-ads-return).is-green { background: rgb(52 199 120 / 16%); color: #8be0b0; }
-#crm-app[data-theme="glass"] :is(.crm-ads-verdict, .crm-ads-return).is-red { background: rgb(255 92 112 / 16%); color: #ffa3b0; }
-#crm-app[data-theme="glass"] .crm-ads-best { background: rgb(255 255 255 / 12%); }
+#crm-app .crm-ads-campaign-row { cursor: pointer; }
 #crm-app .crm-ads-disclosure { display: grid; justify-items: start; gap: 2px; text-align: left; }
 #crm-app .crm-ads-disclosure > span { font-weight: 600; color: var(--crm-ink); }
 #crm-app .crm-ads-disclosure > small { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; color: var(--crm-muted); }
-#crm-app .crm-ads-best { padding: 1px 8px; border-radius: 999px; background: var(--crm-accent-soft); color: var(--crm-ink); font-size: 11px; font-style: normal; font-weight: 600; }
-/* Share of total spend: one hue, the unfilled track a lighter step of it. */
+#crm-app .crm-ads-best { padding: 1px 8px; border-radius: 999px; background: var(--crm-accent-soft); color: var(--crm-ink); font-size: 11px; font-style: normal; font-weight: 600; white-space: nowrap; }
+/* Share of spend: one hue, the unfilled track a lighter step of it. */
 #crm-app .crm-ads-share { display: block; width: 100%; max-width: 140px; height: 4px; margin: 6px 0 4px; border-radius: 999px; background: var(--crm-accent-soft); overflow: hidden; }
 #crm-app .crm-ads-share > span { display: block; height: 100%; border-radius: 999px; background: var(--crm-accent); }
 #crm-app .crm-ads-return { display: inline-flex; align-items: center; min-height: 26px; padding: 0 10px; border-radius: 999px; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -1279,40 +1276,62 @@
 #crm-app .crm-ads-return.is-red::before { content: "▼"; margin-right: 5px; font-size: 9px; }
 #crm-app .crm-ads-return.is-neutral { background: var(--crm-subtle); color: var(--crm-muted); }
 
-#crm-app .crm-ads-drawer-return { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 16px 20px; border: 1px solid var(--crm-line); border-radius: 12px; }
-#crm-app .crm-ads-drawer-return > div { display: grid; gap: 2px; }
-#crm-app .crm-ads-drawer-return > div > span { font-size: 13px; color: var(--crm-muted); }
-#crm-app .crm-ads-drawer-return > div > strong { font-size: 32px; line-height: 1.1; font-weight: 600; color: var(--crm-ink); }
-#crm-app .crm-ads-drawer-summary > div small { font-size: 12px; line-height: 16px; color: var(--crm-muted); }
-#crm-app .crm-ads-adset h5 { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; font-size: 14px; }
-#crm-app .crm-ads-adset h5 small { font-size: 12px; font-weight: 400; color: var(--crm-muted); }
-#crm-app .crm-ads-ad-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-#crm-app .crm-ads-ad-table th { padding: 6px 8px; border-bottom: 1px solid var(--crm-line); font-size: 12px; font-weight: 500; color: var(--crm-muted); text-align: right; }
-#crm-app .crm-ads-ad-table td { padding: 8px; border-bottom: 1px solid var(--crm-line); text-align: right; font-variant-numeric: tabular-nums; color: var(--crm-ink); }
-#crm-app .crm-ads-ad-table :is(th, td):first-child { text-align: left; }
+/* Campaign drawer: what it returned, which ads did the work, who it brought in. */
+#crm-app .crm-ads-drawer-body { gap: 28px; }
+#crm-app .crm-ads-drawer-body h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 15px; font-weight: 600; color: var(--crm-ink); }
+#crm-app .crm-ads-drawer-intro { display: grid; gap: 14px; justify-items: start; }
+#crm-app .crm-ads-drawer-intro > p { margin: 0; font-size: 16px; line-height: 26px; color: var(--crm-muted); }
+#crm-app .crm-ads-drawer-intro > p strong { font-weight: 600; color: var(--crm-ink); }
+#crm-app .crm-ads-drawer-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; width: 100%; margin: 4px 0 0; border: 1px solid var(--crm-line); border-radius: 16px; overflow: hidden; }
+#crm-app .crm-ads-drawer-stats > div { padding: 14px 16px; border-left: 1px solid var(--crm-line); }
+#crm-app .crm-ads-drawer-stats > div:first-child { border-left: 0; }
+#crm-app :is(.crm-ads-drawer-stats, .crm-ads-ad dl) dt { font-size: 12px; color: var(--crm-muted); }
+#crm-app .crm-ads-drawer-stats dd { margin: 4px 0 0; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--crm-ink); font-variant-numeric: tabular-nums; }
+#crm-app .crm-ads-ad-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+#crm-app .crm-ads-ad { display: grid; gap: 8px; padding: 16px; border: 1px solid var(--crm-line); border-radius: 16px; background: var(--crm-card); }
+#crm-app .crm-ads-ad-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+#crm-app .crm-ads-ad-head > strong { font-size: 15px; font-weight: 600; color: var(--crm-ink); }
+#crm-app .crm-ads-ad-head > small { margin-left: auto; font-size: 12px; color: var(--crm-muted); }
+#crm-app .crm-ads-ad .crm-ads-share { max-width: none; margin: 0; }
+#crm-app .crm-ads-ad dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0; }
+#crm-app .crm-ads-ad dd { margin: 2px 0 0; font-size: 15px; font-weight: 600; color: var(--crm-ink); font-variant-numeric: tabular-nums; }
+#crm-app .crm-ads-ad .crm-ads-quiet { margin: 0; font-size: 12px; color: var(--crm-muted); }
+#crm-app .crm-ads-campaign-leads { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+#crm-app .crm-ads-campaign-leads li button { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--crm-line); border-radius: 12px; background: transparent; text-align: left; cursor: pointer; }
+#crm-app .crm-ads-campaign-leads li button:hover { background: var(--crm-subtle); }
+#crm-app .crm-ads-campaign-leads li button > span:first-child { display: grid; gap: 2px; min-width: 0; }
+#crm-app .crm-ads-campaign-leads li button strong { font-size: 14px; font-weight: 600; color: var(--crm-ink); }
+#crm-app .crm-ads-campaign-leads li button small { font-size: 12px; color: var(--crm-muted); }
+#crm-app .crm-ads-lead-value { font-size: 14px; font-weight: 600; color: var(--crm-ink); font-variant-numeric: tabular-nums; }
+#crm-app .crm-ads-quiet { margin: 0; font-size: 13px; color: var(--crm-muted); }
 
-@media (max-width: 1100px) {
-  #crm-app .crm-ads-metrics.crm-ads-funnel { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
-  #crm-app .crm-ads-metrics.crm-ads-funnel > .crm-ads-step:nth-of-type(2) { grid-column: 1 / -1; grid-auto-flow: column; width: auto; justify-content: center; }
-  #crm-app .crm-ads-metrics.crm-ads-funnel > .crm-ads-step:nth-of-type(2) svg { transform: rotate(90deg); }
+/* Glass: the same states in translucent tones that sit on a dark surface. */
+#crm-app[data-theme="glass"] :is(.crm-ads-verdict, .crm-ads-return).is-green { background: rgb(52 199 120 / 16%); color: #8be0b0; }
+#crm-app[data-theme="glass"] :is(.crm-ads-verdict, .crm-ads-return).is-red { background: rgb(255 92 112 / 16%); color: #ffa3b0; }
+#crm-app[data-theme="glass"] :is(.crm-ads-best, .crm-ads-step-rate) { background: rgb(255 255 255 / 10%); }
+#crm-app[data-theme="glass"] .crm-ads-ad { background: rgb(255 255 255 / 4%); }
+
+@media (max-width: 900px) {
+  #crm-app .crm-ads-funnel { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 8px; }
+  #crm-app .crm-ads-step:nth-child(3) { border-left: 0; padding-left: 0; }
 }
 @media (max-width: 760px) {
-  #crm-app .crm-ads-headline { grid-template-columns: 1fr; padding: 22px; }
-  #crm-app .crm-ads-hero > strong { font-size: 48px; }
-  #crm-app .crm-ads-story { padding: 16px 0 0; border-left: 0; border-top: 1px solid var(--crm-line); }
-  #crm-app .crm-ads-story p { font-size: 15px; line-height: 24px; }
-  /* The flow reads top to bottom: each step sits between the two tiles it joins. */
-  #crm-app .crm-ads-metrics.crm-ads-funnel { grid-template-columns: 1fr; }
-  #crm-app .crm-ads-metrics.crm-ads-funnel > .crm-ads-step { grid-column: auto; grid-auto-flow: column; width: auto; justify-content: start; gap: 8px; padding-left: 20px; }
-  #crm-app .crm-ads-metrics.crm-ads-funnel > .crm-ads-step svg { transform: rotate(90deg); }
-  #crm-app .crm-ads-metrics.crm-ads-costs { grid-template-columns: 1fr; }
-  #crm-app .crm-ads-table-hint { margin-left: 0; }
+  #crm-app .crm-ads-funnel { grid-template-columns: 1fr; padding: 0 20px 16px; }
+  #crm-app .crm-ads-step { padding: 14px 0; border-left: 0; border-top: 1px solid var(--crm-line); }
+  #crm-app .crm-ads-step:first-child { border-top: 0; }
+  #crm-app .crm-ads-step:first-child::before { content: none; }
+  #crm-app .crm-ads-footnote { padding: 0 20px 16px; }
+  #crm-app .crm-ads-drawer-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #crm-app .crm-ads-drawer-stats > div:nth-child(3) { border-left: 0; }
+  #crm-app .crm-ads-drawer-stats > div:nth-child(n+3) { border-top: 1px solid var(--crm-line); }
+  #crm-app .crm-ads-ad dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   /* Campaigns become cards so spend and return stay on screen. */
   #crm-app .crm-ads-table thead { display: none; }
   #crm-app .crm-ads-table, #crm-app .crm-ads-table tbody { display: block; width: 100%; min-width: 0; }
   #crm-app .crm-ads-table tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; padding: 16px; border-top: 1px solid var(--crm-line); }
   #crm-app .crm-ads-table td { height: auto; padding: 0; border: 0; white-space: normal; }
   #crm-app .crm-ads-table td.crm-ads-cell-campaign { grid-column: 1 / -1; }
+  #crm-app .crm-ads-table td.crm-ads-cell-spend { min-width: 0; }
   #crm-app .crm-ads-table td::before { content: attr(data-label); display: block; margin-bottom: 2px; font-size: 12px; color: var(--crm-muted); }
   #crm-app .crm-ads-table td.crm-ads-cell-campaign::before { content: none; }
 }

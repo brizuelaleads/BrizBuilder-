@@ -1,16 +1,23 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import {
   ArrowRight,
   CircleCheck,
+  CircleDollarSign,
   CircleMinus,
+  Funnel,
   Megaphone,
   PlugZap,
+  TrendingUp,
   TriangleAlert,
+  UsersRound,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import type {
+  CrmAppointment,
+  CrmClient,
   CrmLead,
   CrmMetaAdInsight,
   CrmMetaAdsBackfill,
@@ -18,9 +25,20 @@ import type {
 } from "../../db/crm";
 import {
   buildAdsReport,
-  type AdsMetrics,
+  type AdsReportAd,
   type AdsReportCampaign,
 } from "../../lib/meta-ads-report";
+import {
+  DashboardAreaChart,
+  DashboardSparkline,
+  bucketSeries,
+  ratioTrend,
+  seriesTrend,
+  timestamp,
+  trendLabel,
+  type DatedSeries,
+  type TrendTone,
+} from "./dashboard-charts";
 import { Badge, EmptyState } from "./ui";
 
 // The URL parameters an ad must carry for a click to be traceable. Written out
@@ -37,6 +55,21 @@ const RANGE_LABELS: Record<string, string> = {
   all: "All time",
 };
 
+// The Dashboard's lead-source colours, so a source reads the same on both tabs.
+const SOURCE_COLORS = ["#18b65d", "#ff7a2f", "#6947ff", "#4d8fff", "#9ca3af"];
+
+const LEAD_STATUS_LABELS: Record<string, string> = {
+  NEW: "New",
+  CONTACTED: "Contacted",
+  QUALIFIED: "Qualified",
+  APPOINTMENT_BOOKED: "Booked",
+  ESTIMATE_SENT: "Estimate sent",
+  WON: "Won",
+  LOST: "Lost",
+  SPAM: "Spam",
+  UNRESPONSIVE: "No response",
+};
+
 function ratio(value: number | null) {
   return value == null ? "—" : `${value.toFixed(1)}x`;
 }
@@ -45,7 +78,7 @@ function percent(value: number | null) {
   return value == null ? "—" : `${(value * 100).toFixed(2)}%`;
 }
 
-/** A share of a step; "—" when there is nothing to take a share of. */
+/** A share of a step; null when there is nothing to take a share of. */
 function share(part: number, whole: number) {
   if (whole <= 0) return null;
   const value = (part / whole) * 100;
@@ -94,13 +127,24 @@ type ReturnTone = "green" | "red" | "neutral";
 function returnVerdict(roas: number | null): {
   tone: ReturnTone;
   label: string;
-  icon: typeof CircleCheck;
+  icon: LucideIcon;
 } {
   if (roas == null)
     return { tone: "neutral", label: "Not enough results yet", icon: CircleMinus };
   if (roas >= 1)
     return { tone: "green", label: "Earning more than it costs", icon: CircleCheck };
   return { tone: "red", label: "Costing more than it has earned", icon: TriangleAlert };
+}
+
+function Verdict({ roas }: { roas: number | null }) {
+  const verdict = returnVerdict(roas);
+  const Icon = verdict.icon;
+  return (
+    <span className={`crm-ads-verdict is-${verdict.tone}`}>
+      <Icon aria-hidden="true" />
+      {verdict.label}
+    </span>
+  );
 }
 
 function SnippetBox() {
@@ -129,78 +173,79 @@ function SnippetBox() {
   );
 }
 
-function MetricCard({
-  label,
-  value,
-  support,
-  hint,
-}: {
+type KpiCard = {
   label: string;
   value: string;
-  support?: string;
-  /** Plain-language meaning, offered on hover and to screen readers. */
-  hint?: string;
-}) {
+  support: string;
+  icon: LucideIcon;
+  tone: "green" | "orange" | "purple";
+  trend: TrendTone;
+  trendBasis?: string;
+  series: DatedSeries;
+  money?: boolean;
+};
+
+/** The Dashboard's stat card, unchanged, so the two tabs read as one product. */
+function AdsKpiCard({ card }: { card: KpiCard }) {
+  const Icon = card.icon;
   return (
-    <article className="crm-ads-metric" title={hint}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-      {support ? <small>{support}</small> : null}
-      {hint ? <span className="crm-ads-sr">{hint}</span> : null}
+    <article
+      className={`crm-dashboard-kpi-card is-${card.tone} is-trend-${card.trend}`}
+      aria-label={`${card.label}: ${card.value}. ${card.support}. ${card.trendBasis ?? card.label}: ${trendLabel(card.trend)}.`}
+    >
+      <div className="crm-dashboard-card-image">
+        <span className="crm-dashboard-icon-box" aria-hidden="true">
+          <Icon />
+        </span>
+        <DashboardAreaChart
+          values={card.series}
+          trend={card.trend}
+          id={card.label}
+          trendBasis={card.trendBasis}
+          money={card.money}
+        />
+      </div>
+      <div className="crm-dashboard-card-text">
+        <span className="crm-dashboard-kpi-heading">{card.label}</span>
+        <strong>{card.value}</strong>
+        <small>{card.support}</small>
+      </div>
     </article>
   );
 }
 
-/** The step-to-step rate between two funnel tiles. */
-function FunnelStep({ rate, label }: { rate: string | null; label: string }) {
+/** One step from click to customer: how many, what each cost, how many moved on. */
+function FunnelStep({
+  label,
+  value,
+  each,
+  rate,
+  rateLabel,
+}: {
+  label: string;
+  value: number;
+  each: number | null;
+  rate?: string | null;
+  rateLabel?: string;
+}) {
   return (
-    <div className="crm-ads-step" aria-hidden={rate == null}>
-      <ArrowRight aria-hidden="true" />
-      <span>
-        <strong>{rate ?? "—"}</strong> {label}
-      </span>
-    </div>
-  );
-}
-
-/**
- * The one sentence the tab exists to answer, then the number behind it.
- */
-function ReturnHeadline({ totals }: { totals: AdsMetrics }) {
-  const verdict = returnVerdict(totals.roas);
-  const Icon = verdict.icon;
-  const perDollar =
-    totals.roas == null ? null : `$${totals.roas.toFixed(2)} back for every $1 spent`;
-  return (
-    <section className="crm-panel crm-ads-headline" aria-label="Return on ad spend">
-      <div className="crm-ads-hero">
-        <span>Return on ad spend</span>
-        <strong>{ratio(totals.roas)}</strong>
-        <small>{perDollar ?? "Needs both spend and recorded revenue"}</small>
-      </div>
-      <div className="crm-ads-story">
-        <p>
-          <strong>{dollars(totals.spendCents)}</strong> in Meta ads brought in{" "}
-          <strong>{plural(totals.leads, "lead")}</strong>,{" "}
-          <strong>{plural(totals.booked, "booked job")}</strong> and{" "}
-          <strong>{plural(totals.won, "won customer")}</strong> worth{" "}
-          <strong>{dollars(totals.revenueCents)}</strong>.
-        </p>
-        <span className={`crm-ads-verdict is-${verdict.tone}`}>
-          <Icon aria-hidden="true" />
-          {verdict.label}
+    <li className="crm-ads-step">
+      {rateLabel ? (
+        <span className="crm-ads-step-rate">
+          <ArrowRight aria-hidden="true" />
+          <strong>{rate ?? "—"}</strong> {rateLabel}
         </span>
-      </div>
-    </section>
+      ) : null}
+      <span className="crm-ads-step-label">{label}</span>
+      <strong className="crm-ads-step-value">{count(value)}</strong>
+      <small>{each == null ? "No cost yet" : `${dollars(each)} each`}</small>
+    </li>
   );
 }
 
 /**
- * One campaign, opened over the table.
- *
- * A drawer rather than an inline row: a campaign's ad sets, its ads and its
- * leads together are more than a table row can hold without pushing everything
- * below it off the screen.
+ * One campaign, opened over the table, read top to bottom: what it returned,
+ * which ads did the work, and which people it brought in.
  */
 function CampaignDrawer({
   campaign,
@@ -213,8 +258,24 @@ function CampaignDrawer({
   onOpenLead: (lead: CrmLead) => void;
   onClose: () => void;
 }) {
-  const verdict = returnVerdict(campaign.roas);
-  const VerdictIcon = verdict.icon;
+  // Most campaigns run one ad set, so ads are listed directly; the ad set only
+  // appears as a tag when there is more than one to tell apart.
+  const multipleAdsets = campaign.adsets.length > 1;
+  const ads: Array<AdsReportAd & { adsetId: string }> = campaign.adsets
+    .flatMap((adset) => adset.ads.map((ad) => ({ ...ad, adsetId: adset.adsetId })))
+    .sort((a, b) => b.spendCents - a.spendCents);
+  const withLeads = ads.filter((ad) => ad.costPerLeadCents != null);
+  const bestAdId =
+    withLeads.length > 1
+      ? withLeads.reduce((best, ad) =>
+          (ad.costPerLeadCents ?? Infinity) < (best.costPerLeadCents ?? Infinity) ? ad : best,
+        ).adId
+      : null;
+  const orderedLeads = [...leads].sort((a, b) => {
+    const rank = (lead: CrmLead) => (lead.status === "WON" ? 0 : ["LOST", "SPAM", "UNRESPONSIVE"].includes(lead.status) ? 2 : 1);
+    return rank(a) - rank(b);
+  });
+
   return (
     <div
       className="crm-ads-drawer-layer"
@@ -232,7 +293,6 @@ function CampaignDrawer({
           <div>
             <p>CAMPAIGN</p>
             <h3>{campaign.campaignName}</h3>
-            <small>ID {campaign.campaignId}</small>
           </div>
           <button
             type="button"
@@ -245,80 +305,89 @@ function CampaignDrawer({
         </header>
 
         <div className="crm-ads-drawer-body">
-          <section className="crm-ads-drawer-return" aria-label="Campaign return">
-            <div>
-              <span>Return on ad spend</span>
-              <strong>{ratio(campaign.roas)}</strong>
-            </div>
-            <span className={`crm-ads-verdict is-${verdict.tone}`}>
-              <VerdictIcon aria-hidden="true" />
-              {verdict.label}
-            </span>
+          <section className="crm-ads-drawer-intro" aria-label="Campaign summary">
+            <p>
+              <strong>{dollars(campaign.spendCents)}</strong> spent brought in{" "}
+              <strong>{plural(campaign.leads, "lead")}</strong> and{" "}
+              <strong>{plural(campaign.won, "won customer")}</strong> worth{" "}
+              <strong>{dollars(campaign.revenueCents)}</strong>.
+            </p>
+            <Verdict roas={campaign.roas} />
+            <dl className="crm-ads-drawer-stats">
+              <div>
+                <dt>Spent</dt>
+                <dd>{dollars(campaign.spendCents)}</dd>
+              </div>
+              <div>
+                <dt>Leads</dt>
+                <dd>{count(campaign.leads)}</dd>
+              </div>
+              <div>
+                <dt>Cost per lead</dt>
+                <dd>{cost(campaign.costPerLeadCents)}</dd>
+              </div>
+              <div>
+                <dt>Return</dt>
+                <dd>{ratio(campaign.roas)}</dd>
+              </div>
+            </dl>
           </section>
 
-          <section className="crm-ads-drawer-summary" aria-label="Campaign summary">
-            <div>
-              <span>Spend</span>
-              <strong>{dollars(campaign.spendCents)}</strong>
-              <small>
-                {count(campaign.impressions)} impressions · {count(campaign.clicks)} clicks
-              </small>
-            </div>
-            <div>
-              <span>Leads</span>
-              <strong>{count(campaign.leads)}</strong>
-              {campaign.costPerLeadCents != null ? <small>{cost(campaign.costPerLeadCents)} each</small> : null}
-            </div>
-            <div>
-              <span>Booked jobs</span>
-              <strong>{count(campaign.booked)}</strong>
-              {campaign.costPerBookedCents != null ? <small>{cost(campaign.costPerBookedCents)} each</small> : null}
-            </div>
-            <div>
-              <span>Won customers</span>
-              <strong>{count(campaign.won)}</strong>
-              <small>{dollars(campaign.revenueCents)} revenue</small>
-            </div>
-          </section>
-
-          <section aria-label="Ad sets">
-            <h4>Ad sets and ads</h4>
-            {campaign.adsets.length === 0 ? (
-              <p className="crm-ads-quiet">
-                No ad sets in this range.
-              </p>
+          <section aria-label="Ads in this campaign">
+            <h4>
+              Ads in this campaign
+              <Badge tone="neutral">{ads.length}</Badge>
+            </h4>
+            {ads.length === 0 ? (
+              <p className="crm-ads-quiet">No ads ran in this range.</p>
             ) : (
-              campaign.adsets.map((adset) => (
-                <div key={adset.adsetId} className="crm-ads-adset">
-                  <h5>
-                    <span title={`Ad set ID ${adset.adsetId}`}>{adsetLabel(adset.adsetId)}</span>
-                    <small>
-                      {dollars(adset.spendCents)} · {plural(adset.leads, "lead")} ·{" "}
-                      {cost(adset.costPerLeadCents)} per lead
-                    </small>
-                  </h5>
-                  <table className="crm-ads-ad-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">Ad</th>
-                        <th scope="col">Spend</th>
-                        <th scope="col">Leads</th>
-                        <th scope="col">Cost per lead</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {adset.ads.map((ad) => (
-                        <tr key={ad.adId}>
-                          <td>{ad.adName}</td>
-                          <td>{dollars(ad.spendCents)}</td>
-                          <td>{count(ad.leads)}</td>
-                          <td>{cost(ad.costPerLeadCents)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ))
+              <ol className="crm-ads-ad-list">
+                {ads.map((ad) => {
+                  const spendShare =
+                    campaign.spendCents > 0 ? ad.spendCents / campaign.spendCents : 0;
+                  return (
+                    <li key={ad.adId} className="crm-ads-ad">
+                      <div className="crm-ads-ad-head">
+                        <strong>{ad.adName}</strong>
+                        {ad.adId === bestAdId ? (
+                          <em className="crm-ads-best">Cheapest leads</em>
+                        ) : null}
+                        {multipleAdsets ? (
+                          <small title={`Ad set ID ${ad.adsetId}`}>{adsetLabel(ad.adsetId)}</small>
+                        ) : null}
+                      </div>
+                      <span
+                        className="crm-ads-share"
+                        role="img"
+                        aria-label={`${Math.round(spendShare * 100)}% of this campaign's spend`}
+                      >
+                        <span style={{ width: `${Math.max(spendShare * 100, spendShare > 0 ? 2 : 0)}%` } as CSSProperties} />
+                      </span>
+                      <dl>
+                        <div>
+                          <dt>Spent</dt>
+                          <dd>{dollars(ad.spendCents)}</dd>
+                        </div>
+                        <div>
+                          <dt>Leads</dt>
+                          <dd>{count(ad.leads)}</dd>
+                        </div>
+                        <div>
+                          <dt>Cost per lead</dt>
+                          <dd>{cost(ad.costPerLeadCents)}</dd>
+                        </div>
+                        <div>
+                          <dt>Won</dt>
+                          <dd>{count(ad.won)}</dd>
+                        </div>
+                      </dl>
+                      {ad.leads === 0 ? (
+                        <p className="crm-ads-quiet">No leads from this ad yet.</p>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ol>
             )}
           </section>
 
@@ -333,25 +402,28 @@ function CampaignDrawer({
               </p>
             ) : (
               <ul className="crm-ads-campaign-leads">
-                {leads.map((lead) => (
+                {orderedLeads.map((lead) => (
                   <li key={lead.id}>
                     <button type="button" onClick={() => onOpenLead(lead)}>
                       <span>
-                        {lead.firstName} {lead.lastName}
+                        <strong>
+                          {lead.firstName} {lead.lastName}
+                        </strong>
+                        <small>{lead.serviceRequested}</small>
                       </span>
-                      <span>{lead.serviceRequested}</span>
+                      {lead.status === "WON" ? (
+                        <span className="crm-ads-lead-value">{dollars(lead.finalRevenueCents)}</span>
+                      ) : null}
                       <Badge
                         tone={
                           lead.status === "WON"
                             ? "green"
-                            : ["LOST", "SPAM", "UNRESPONSIVE"].includes(
-                                  lead.status,
-                                )
+                            : ["LOST", "SPAM", "UNRESPONSIVE"].includes(lead.status)
                               ? "red"
                               : "blue"
                         }
                       >
-                        {lead.status.replaceAll("_", " ")}
+                        {LEAD_STATUS_LABELS[lead.status] ?? lead.status.replaceAll("_", " ")}
                       </Badge>
                     </button>
                   </li>
@@ -367,22 +439,26 @@ function CampaignDrawer({
 
 export function AdsView({
   leads,
+  appointments,
   metaAdInsights,
   providerConnections,
   metaAdsBackfills,
   clients,
   selectedClientId,
   range,
+  generatedAt,
   onOpenLead,
   onOpenConnections,
 }: {
   leads: CrmLead[];
+  appointments: CrmAppointment[];
   metaAdInsights: CrmMetaAdInsight[];
   providerConnections: CrmProviderConnection[];
   metaAdsBackfills: CrmMetaAdsBackfill[];
-  clients: Array<{ id: string; businessName: string }>;
+  clients: CrmClient[];
   selectedClientId: string;
   range: string;
+  generatedAt: string;
   onOpenLead: (lead: CrmLead) => void;
   onOpenConnections: () => void;
 }) {
@@ -454,6 +530,130 @@ export function AdsView({
 
   const rangeLabel = RANGE_LABELS[range] ?? `Last ${range} days`;
   const totals = report.totals;
+  const generatedAtTimestamp = timestamp(generatedAt);
+
+  // ---- The Dashboard's numbers, computed the same way. ----
+  const adLeads = leads.filter((lead) => Boolean(lead.metaCampaignId));
+  const adWonLeads = adLeads.filter((lead) => lead.status === "WON");
+  const totalRevenueCents = leads
+    .filter((lead) => lead.status === "WON")
+    .reduce((sum, lead) => sum + lead.finalRevenueCents, 0);
+  const adRevenueShare =
+    totalRevenueCents > 0 && totals.revenueCents > 0
+      ? Math.round((totals.revenueCents / totalRevenueCents) * 100)
+      : null;
+  const budgetCents = clients.reduce((sum, client) => sum + client.monthlyAdBudgetCents, 0);
+  // Spend over the last 30 days against a monthly budget is a fair comparison;
+  // 7 or 90 days against a month is not, so the percentage is only stated for
+  // the 30-day view. The real figure is shown, overspend included; only the
+  // bar is capped at full.
+  const budgetComparable = budgetCents > 0 && range === "30";
+  const budgetUsedPercent =
+    budgetComparable && totals.spendCents
+      ? Math.round((totals.spendCents / budgetCents) * 100)
+      : 0;
+  const budgetText = !budgetCents
+    ? null
+    : budgetComparable
+      ? `${budgetUsedPercent}% of ${dollars(budgetCents)} monthly budget`
+      : `${dollars(budgetCents)} monthly budget`;
+
+  const spendSeries = bucketSeries(metaAdInsights, generatedAtTimestamp, range, (insight) => insight.date, (insight) => insight.spendCents / 100);
+  const adLeadSeries = bucketSeries(adLeads, generatedAtTimestamp, range, (lead) => lead.createdAt);
+  const adRevenueSeries = bucketSeries(adWonLeads, generatedAtTimestamp, range, (lead) => lead.updatedAt, (lead) => Math.max(0, lead.finalRevenueCents / 100));
+
+  const kpiCards: KpiCard[] = [
+    {
+      label: "Ad spend",
+      value: dollars(totals.spendCents),
+      support: budgetText ?? `${count(totals.clicks)} clicks · ${percent(totals.ctr)} clicked`,
+      icon: TrendingUp,
+      tone: "purple",
+      // As on the Dashboard: spending less is not bad and more is not good, so
+      // the card's colour follows the return on that spend instead.
+      trend: ratioTrend(adRevenueSeries, spendSeries),
+      trendBasis: "Return on ad spend",
+      series: spendSeries,
+      money: true,
+    },
+    {
+      label: "Leads from ads",
+      value: count(totals.leads),
+      support: totals.costPerLeadCents == null ? "No traced leads yet" : `${dollars(totals.costPerLeadCents)} per lead`,
+      icon: UsersRound,
+      tone: "green",
+      trend: seriesTrend(adLeadSeries),
+      series: adLeadSeries,
+    },
+    {
+      label: "Revenue from ads",
+      value: dollars(totals.revenueCents),
+      support: [
+        plural(totals.won, "won customer"),
+        adRevenueShare == null ? null : `${adRevenueShare}% of all revenue`,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      icon: CircleDollarSign,
+      tone: "green",
+      trend: seriesTrend(adRevenueSeries),
+      series: adRevenueSeries,
+      money: true,
+    },
+    {
+      label: "Return on ad spend",
+      value: ratio(totals.roas),
+      support:
+        totals.roas == null
+          ? "Needs both spend and recorded revenue"
+          : `$${totals.roas.toFixed(2)} back for every $1 spent`,
+      icon: Megaphone,
+      tone: totals.roas != null && totals.roas < 1 ? "orange" : "green",
+      // The arrow follows the return, not total sales: revenue over spend,
+      // first half of the range against the second.
+      trend: ratioTrend(adRevenueSeries, spendSeries),
+      trendBasis: "Return on ad spend",
+      series: adRevenueSeries,
+      money: true,
+    },
+  ];
+
+  // ---- Marketing Snapshot: the Dashboard panel, for the same range. ----
+  const activeAppointments = appointments.filter(
+    (appointment) => !["CANCELED", "CANCELLED"].includes(appointment.status),
+  );
+  const todayKey = new Date(generatedAtTimestamp).toDateString();
+  const appointmentsToday = activeAppointments.filter(
+    (appointment) => new Date(timestamp(appointment.startsAt)).toDateString() === todayKey,
+  ).length;
+  const appointmentSeries = bucketSeries(activeAppointments, generatedAtTimestamp, range, (appointment) => appointment.startsAt);
+  const sourceCounts = new Map<string, number>();
+  for (const lead of leads) {
+    const label = lead.source.trim() || "Unattributed";
+    sourceCounts.set(label, (sourceCounts.get(label) ?? 0) + 1);
+  }
+  const sortedSources = [...sourceCounts.entries()].sort((a, b) => b[1] - a[1]);
+  const otherSources = sortedSources.slice(4).reduce((sum, [, n]) => sum + n, 0);
+  const sourceEntries: Array<[string, number]> = otherSources
+    ? [...sortedSources.slice(0, 4), ["Other sources", otherSources]]
+    : sortedSources.slice(0, 4);
+  const totalSourceLeads = sourceEntries.reduce((sum, [, n]) => sum + n, 0);
+  const sources = sourceEntries.map(([label, n], index) => ({
+    label,
+    percent: totalSourceLeads ? Math.round((n / totalSourceLeads) * 100) : 0,
+    color: SOURCE_COLORS[index % SOURCE_COLORS.length],
+    degrees: totalSourceLeads ? (n / totalSourceLeads) * 360 : 0,
+  }));
+  let sourceCursor = 0;
+  const sourceGradient = sources.length
+    ? `conic-gradient(${sources
+        .map((source) => {
+          const start = sourceCursor;
+          sourceCursor += source.degrees;
+          return `${source.color} ${start.toFixed(1)}deg ${sourceCursor.toFixed(1)}deg`;
+        })
+        .join(", ")})`
+    : "conic-gradient(#edf1ee 0deg 360deg)";
 
   const heading = (
     <section className="crm-page-heading">
@@ -461,7 +661,9 @@ export function AdsView({
         <p>MARKETING</p>
         <h2>Ads</h2>
         <span>
-          What Meta advertising cost, and what it produced.
+          {report.setupState === "ready" || report.setupState === "missing_url_parameters"
+            ? `${dollars(totals.spendCents)} in Meta ads brought in ${plural(totals.leads, "lead")} and ${plural(totals.won, "won customer")} worth ${dollars(totals.revenueCents)}.`
+            : "What Meta advertising cost, and what it produced."}
           {currency && currency !== "USD" ? ` Amounts in ${currency}.` : ""}
         </span>
       </div>
@@ -512,7 +714,7 @@ export function AdsView({
   }
 
   return (
-    <div className="crm-view crm-ads-view">
+    <div className="crm-view crm-dashboard-view crm-ads-view">
       {heading}
 
       {report.disconnected ? (
@@ -567,76 +769,138 @@ export function AdsView({
         </section>
       ) : null}
 
-      <ReturnHeadline totals={totals} />
+      <section className="crm-dashboard-kpi-grid" aria-label="Ads at a glance">
+        {kpiCards.map((card) => (
+          <AdsKpiCard key={card.label} card={card} />
+        ))}
+      </section>
 
-      <section className="crm-ads-group" aria-labelledby="crm-ads-funnel-title">
-        <h3 id="crm-ads-funnel-title">From spend to revenue</h3>
-        <div className="crm-ads-metrics crm-ads-funnel">
-          <MetricCard
-            label="Ad spend"
-            value={dollars(totals.spendCents)}
-            support={`${count(totals.impressions)} impressions · ${count(totals.clicks)} clicks (${percent(totals.ctr)} clicked)`}
-            hint="What Meta charged for these ads in the selected range."
-          />
-          <FunnelStep rate={share(totals.leads, totals.clicks)} label="of clicks became leads" />
-          <MetricCard
-            label="Leads from Meta ads"
-            value={count(totals.leads)}
-            support={
-              report.unattributedLeads
-                ? `${count(report.unattributedLeads)} other leads not traceable to an ad`
-                : "All leads traced to a campaign"
-            }
-            hint="Leads whose form or call carried a Meta campaign."
-          />
-          <FunnelStep rate={share(totals.booked, totals.leads)} label="of leads booked" />
-          <MetricCard
-            label="Booked jobs"
-            value={count(totals.booked)}
-            support="Booked, estimate sent, or won"
-            hint="Leads that reached an appointment or further."
-          />
-          <FunnelStep rate={share(totals.won, totals.booked)} label="of booked jobs won" />
-          <MetricCard
-            label="Won revenue"
-            value={dollars(totals.revenueCents)}
-            support={plural(totals.won, "won customer")}
-            hint="Revenue recorded on won leads that came from these ads."
-          />
+      <section className="crm-panel crm-dashboard-marketing-panel">
+        <header>
+          <div className="crm-dashboard-widget-heading">
+            <Megaphone aria-hidden="true" />
+            <h3>Marketing Snapshot</h3>
+          </div>
+          <Verdict roas={totals.roas} />
+        </header>
+        <div className="crm-dashboard-marketing-grid">
+          <article className="crm-dashboard-marketing-card">
+            <span>Ad Spend</span>
+            <strong>{dollars(totals.spendCents)}</strong>
+            <small>{budgetText ?? "No monthly budget set"}</small>
+            <i
+              className="crm-dashboard-marketing-progress"
+              style={{ "--marketing-progress": `${Math.min(100, budgetUsedPercent)}%` } as CSSProperties}
+              aria-hidden="true"
+            />
+          </article>
+          <article className="crm-dashboard-marketing-card">
+            <span>Revenue from Ads</span>
+            <strong>{totals.revenueCents > 0 ? dollars(totals.revenueCents) : "-"}</strong>
+            <small>
+              {totals.won
+                ? [`${totals.won} won from ads`, adRevenueShare == null ? null : `${adRevenueShare}% of revenue`]
+                    .filter(Boolean)
+                    .join(" · ")
+                : totals.leads
+                  ? `${plural(totals.leads, "ad lead")}, none won yet`
+                  : "No leads carried a campaign ID"}
+            </small>
+          </article>
+          <article className="crm-dashboard-marketing-card">
+            <span>Appointments Booked</span>
+            <strong>{activeAppointments.length}</strong>
+            <small>
+              {activeAppointments.length
+                ? appointmentsToday
+                  ? `${appointmentsToday} today`
+                  : "No appointments today"
+                : "No appointments booked"}
+            </small>
+            <DashboardSparkline
+              values={appointmentSeries}
+              trend={seriesTrend(appointmentSeries)}
+              id="ads-appointments-booked"
+            />
+          </article>
+          <article className="crm-dashboard-marketing-card is-sources">
+            <span>Lead Sources</span>
+            {sources.length ? (
+              <div className="crm-dashboard-source-snapshot">
+                <div
+                  className="crm-dashboard-source-donut"
+                  style={{ "--source-gradient": sourceGradient } as CSSProperties}
+                  aria-label={`${totalSourceLeads} total leads by source`}
+                >
+                  <span>Total</span>
+                  <strong>{totalSourceLeads}</strong>
+                </div>
+                <ul>
+                  {sources.map((source) => (
+                    <li key={source.label}>
+                      <i style={{ background: source.color }} aria-hidden="true" />
+                      <span>{source.label}</span>
+                      <strong>{source.percent}%</strong>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <small>No lead source data yet</small>
+            )}
+          </article>
         </div>
       </section>
 
-      <section className="crm-ads-group" aria-labelledby="crm-ads-cost-title">
-        <h3 id="crm-ads-cost-title">What each result cost</h3>
-        <div className="crm-ads-metrics crm-ads-costs">
-          <MetricCard
-            label="Cost per lead"
-            value={cost(totals.costPerLeadCents)}
-            support={`${cost(totals.cpcCents)} per click`}
-            hint="Ad spend divided by leads from Meta ads."
+      <section className="crm-panel crm-ads-funnel-panel">
+        <header>
+          <div className="crm-dashboard-widget-heading">
+            <Funnel aria-hidden="true" />
+            <h3>From click to customer</h3>
+          </div>
+          <small>
+            {count(totals.impressions)} people saw the ads · {percent(totals.ctr)} clicked
+          </small>
+        </header>
+        <ol className="crm-ads-funnel">
+          <FunnelStep label="Clicks" value={totals.clicks} each={totals.cpcCents} />
+          <FunnelStep
+            label="Leads"
+            value={totals.leads}
+            each={totals.costPerLeadCents}
+            rate={share(totals.leads, totals.clicks)}
+            rateLabel="became leads"
           />
-          <MetricCard
-            label="Cost per booked job"
-            value={cost(totals.costPerBookedCents)}
-            support="Ad spend divided by booked jobs"
-            hint="Ad spend divided by booked jobs."
+          <FunnelStep
+            label="Booked jobs"
+            value={totals.booked}
+            each={totals.costPerBookedCents}
+            rate={share(totals.booked, totals.leads)}
+            rateLabel="booked"
           />
-          <MetricCard
-            label="Cost per won customer"
-            value={cost(totals.costPerWonCents)}
-            support="Ad spend divided by won customers"
-            hint="Ad spend divided by won customers."
+          <FunnelStep
+            label="Won customers"
+            value={totals.won}
+            each={totals.costPerWonCents}
+            rate={share(totals.won, totals.booked)}
+            rateLabel="won"
           />
-        </div>
+        </ol>
+        {report.unattributedLeads ? (
+          <p className="crm-ads-footnote">
+            {plural(report.unattributedLeads, "other lead")} came from somewhere other than a
+            Meta ad, so they are not counted here.
+          </p>
+        ) : null}
       </section>
 
       <section className="crm-panel crm-ads-table-panel">
         <header>
-          <div>
-            <p>BY CAMPAIGN</p>
-            <h3>Campaign performance</h3>
+          <div className="crm-dashboard-widget-heading">
+            <TrendingUp aria-hidden="true" />
+            <h3>Campaigns</h3>
           </div>
-          <span className="crm-ads-table-hint">Select a campaign for its ads and leads</span>
+          <span className="crm-ads-table-hint">Select a campaign to see its ads and leads</span>
         </header>
         {report.campaigns.length === 0 ? (
           <EmptyState

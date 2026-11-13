@@ -1471,6 +1471,8 @@ export function CrmApp({
         {view === "ads" && (
           <AdsView
             leads={filteredLeads}
+            appointments={filteredAppointments}
+            generatedAt={data.generatedAt}
             metaAdInsights={filteredMetaAdInsights}
             providerConnections={filteredProviderConnections}
             metaAdsBackfills={data.metaAdsBackfills}

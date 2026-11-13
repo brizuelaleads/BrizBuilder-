@@ -295,31 +295,39 @@ test("the tab covers every setup state and offers the snippet", () => {
   assert.match(adsView, /navigator\.clipboard\.writeText\(URL_PARAMETERS\)/);
 });
 
-test("every summary figure is present, with return on ad spend leading", () => {
-  for (const label of [
-    "Ad spend",
-    "Leads from Meta ads",
-    "Cost per lead",
-    "Booked jobs",
-    "Cost per booked job",
-    "Cost per won customer",
-    "Won revenue",
-  ]) {
-    assert.ok(
-      adsView.includes(`label="${label}"`),
-      `${label} is a summary card of its own`,
-    );
-  }
-  // ROAS is the headline answer, stated in plain words beside the number.
-  assert.match(adsView, /<ReturnHeadline totals=\{totals\} \/>/);
-  assert.match(adsView, /<span>Return on ad spend<\/span>\s*<strong>\{ratio\(totals\.roas\)\}<\/strong>/);
+test("the tab reads like the Dashboard and keeps every figure", () => {
+  // The Dashboard's own stat cards and Marketing Snapshot, not look-alikes.
+  assert.match(adsView, /className="crm-view crm-dashboard-view crm-ads-view"/);
+  assert.match(adsView, /from "\.\/dashboard-charts"/);
+  assert.match(adsView, /className=\{`crm-dashboard-kpi-card is-\$\{card\.tone\} is-trend-\$\{card\.trend\}`\}/);
+  assert.match(adsView, /<h3>Marketing Snapshot<\/h3>/);
+  for (const card of ["Ad Spend", "Revenue from Ads", "Appointments Booked", "Lead Sources"])
+    assert.ok(adsView.includes(`<span>${card}</span>`), `${card} is in the snapshot`);
+  // Headline cards, return on ad spend among them in plain words.
+  for (const label of ["Ad spend", "Leads from ads", "Revenue from ads", "Return on ad spend"])
+    assert.ok(adsView.includes(`label: "${label}"`), `${label} is a headline card`);
   assert.match(adsView, /back for every \$1 spent/);
-  // The flow between steps, so a drop-off is visible where it happens.
-  for (const step of ["of clicks became leads", "of leads booked", "of booked jobs won"])
-    assert.ok(adsView.includes(step), `${step} is shown`);
+  // Every step from click to customer, with what each cost and the rate that
+  // carried people to the next, so a drop-off is visible where it happens.
+  for (const step of ["Clicks", "Leads", "Booked jobs", "Won customers"])
+    assert.ok(adsView.includes(`label="${step}"`), `${step} is a step`);
+  for (const rate of ["became leads", "booked", "won"])
+    assert.ok(adsView.includes(`rateLabel="${rate}"`), `${rate} rate is shown`);
+  for (const each of ["totals.cpcCents", "totals.costPerLeadCents", "totals.costPerBookedCents", "totals.costPerWonCents"])
+    assert.ok(adsView.includes(`each={${each}}`), `${each} is shown`);
   // A good or bad return is never colour alone: it carries an icon and words.
   assert.match(adsView, /label: "Earning more than it costs"/);
   assert.match(adsView, /label: "Costing more than it has earned"/);
+});
+
+test("spending is not coloured as good or bad, and budget use is never understated", () => {
+  // As on the Dashboard, the spend card follows the return on spend.
+  assert.match(adsView, /label: "Ad spend",[\s\S]*?trend: ratioTrend\(adRevenueSeries, spendSeries\)/);
+  // Overspend shows as more than 100%; only the bar is capped.
+  assert.doesNotMatch(adsView, /Math\.min\(100, Math\.round\(\(totals\.spendCents/);
+  assert.match(adsView, /"--marketing-progress": `\$\{Math\.min\(100, budgetUsedPercent\)\}%`/);
+  // A month's budget is only compared with a month of spend.
+  assert.match(adsView, /const budgetComparable = budgetCents > 0 && range === "30";/);
 });
 
 test("the campaign table carries delivery as well as money", () => {
@@ -348,11 +356,21 @@ test("the campaign table carries delivery as well as money", () => {
     assert.ok(adsView.includes(figure), `${figure} is shown per campaign`);
 });
 
-test("a campaign opens in a drawer, with its ad sets, ads and leads", () => {
+test("a campaign opens in a drawer that reads top to bottom", () => {
   assert.match(adsView, /function CampaignDrawer\(/);
   assert.match(adsView, /role="dialog"/);
   assert.match(adsView, /aria-modal="true"/);
-  assert.match(adsView, /aria-label="Ad sets"/);
+  // What it returned, in a sentence, then the numbers behind it.
+  assert.match(adsView, /aria-label="Campaign summary"/);
+  assert.match(adsView, /<Verdict roas=\{campaign\.roas\} \/>/);
+  // Each ad is a card with what it spent, its leads, their cost and wins; ad
+  // sets only appear when there is more than one to tell apart.
+  assert.match(adsView, /aria-label="Ads in this campaign"/);
+  assert.match(adsView, /const multipleAdsets = campaign\.adsets\.length > 1;/);
+  for (const figure of ["dollars(ad.spendCents)", "count(ad.leads)", "cost(ad.costPerLeadCents)", "count(ad.won)"])
+    assert.ok(adsView.includes(figure), `${figure} is shown per ad`);
+  assert.match(adsView, /No leads from this ad yet\./);
+  // The people it brought in, won first, each opening their lead.
   assert.match(adsView, /aria-label="Leads from this campaign"/);
   assert.match(adsView, /onClick=\{\(\) => onOpenLead\(lead\)\}/);
 });

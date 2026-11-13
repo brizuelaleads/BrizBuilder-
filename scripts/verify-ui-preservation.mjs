@@ -28,12 +28,36 @@ const intentionalRemovals = {
     controls: ['<button className="crm-button-primary" onClick={onAddTask}>+ New Task</button>', '<button className="crm-button-primary" onClick={onAddAppointment}>+ Book Appointment</button>', '<button className="crm-button-primary" onClick={onAddClient}>+ Add Sub-Account</button>', '<button className="crm-button-primary" onClick={onInvite}>+ Give Access</button>'],
   },
 };
+// Code that moved to another file rather than going away. Each listed item must
+// be in the baseline of the file it left AND in the current file it moved to,
+// so "moved" can never excuse something that was dropped.
+const moves = {
+  'app/crm/DashboardView.tsx': {
+    // The trend charts moved unchanged to a shared module the Ads tab uses too.
+    to: 'app/crm/dashboard-charts.tsx',
+    handlers: ['onMouseLeave={() => setActive(null)}', 'onMouseEnter={() => setActive(index)}', 'onFocus={() => setActive(index)}', 'onBlur={() => setActive(null)}', 'onClick={() => setActive(index)}'],
+    fields: ['type="button"'],
+    charts: ['<svg className={`crm-dashboard-sparkline is-trend-${trend}`} viewBox="0 0 120 48" preserveAspectRatio="none" role="img" aria-label={label} >', '<svg viewBox="0 0 120 48" preserveAspectRatio="none" aria-hidden="true">'],
+  },
+};
 const withoutRemovals = (file, contract, values) => {
   const out = [...values];
   for (const removed of intentionalRemovals[file]?.[contract] ?? []) {
     const index = out.indexOf(removed);
     assert.ok(index >= 0, `Listed removal is not in the baseline for ${file}: ${removed}`);
     out.splice(index, 1);
+  }
+  const move = moves[file];
+  if (move?.[contract]) {
+    const destination = [...(current.files.find(f => f.file === move.to)?.[contract] ?? [])];
+    for (const moved of move[contract]) {
+      const index = out.indexOf(moved);
+      assert.ok(index >= 0, `Listed move is not in the baseline for ${file}: ${moved}`);
+      out.splice(index, 1);
+      const there = destination.indexOf(moved);
+      assert.ok(there >= 0, `Moved ${contract} is missing from ${move.to}: ${moved}`);
+      destination.splice(there, 1);
+    }
   }
   return out;
 };
@@ -62,8 +86,17 @@ const restructured = {
     // Every figure the tab showed is still shown (pinned in
     // tests/ads-report.test.mjs); they are regrouped, not removed. The one new
     // control is the Go to Connections button on the disconnected notice.
-    reason: 'Ads rebuilt for reading: return on ad spend leads as a sentence, spend-to-revenue as steps with the rate between them, what each result cost, and campaign rows that stack delivery under spend',
-    controls: /<th>(Campaign|Spend|Impressions|Clicks|Leads|CPL|Booked jobs|Won customers|Revenue|ROAS|Return|Ad|Cost per lead)<\/th>|<th scope="col">|<h3[ >]|<h4>|<h5>|crm-ads-disclosure|onOpenConnections|campaign\.campaignName/,
+    reason: 'Ads rebuilt on the Dashboard\'s own stat cards and Marketing Snapshot, then click-to-customer steps, campaign rows, and a campaign drawer that lists each ad as a card',
+    controls: /<th>(Campaign|Spend|Impressions|Clicks|Leads|CPL|Booked jobs|Won customers|Revenue|ROAS|Return|Ad|Cost per lead)<\/th>|<th scope="col">|<h3[ >]|<h4>|<h5>|crm-ads-disclosure|onOpenConnections|campaign\.campaignName|onClick=\{\(\) => onOpenLead\(lead\)\}/,
+    // The Dashboard's area chart on each headline card, and its sparkline on
+    // Appointments Booked -- the same components, imported, not new drawings.
+    charts: {
+      gone: [],
+      added: [
+        '<DashboardAreaChart values={card.series} trend={card.trend} id={card.label} trendBasis={card.trendBasis} money={card.money} />',
+        '<DashboardSparkline values={appointmentSeries} trend={seriesTrend(appointmentSeries)} id="ads-appointments-booked" />',
+      ],
+    },
   },
   'app/crm/OperationsViews.tsx': {
     reason: 'Calendar rebuilt as a week planner: month picker, status filters, event popover. Settings gained an Appearance section (Glass backdrop picker).',
@@ -173,13 +206,14 @@ for (const before of baseline.files) {
     if (rebuilt && (contract === 'handlers' || contract === 'fields')) {
       const {missing} = multisetDiff(expected, after[contract]);
       assert.deepEqual(missing.filter(value => !explained(value)), [], `${contract} lost in rebuilt ${before.file}`);
-    } else if (rebuilt?.requests && contract === 'requests') {
-      // Sorted: where a request sits in the file is not the contract, what the
-      // set of them is.
+    } else if (rebuilt?.[contract] && (contract === 'requests' || contract === 'charts')) {
+      // Sorted: where a request or chart sits in the file is not the contract,
+      // what the set of them is. Each one that left and each one that arrived
+      // must be listed exactly.
       const {missing, extra} = multisetDiff(expected, after[contract]);
       const sorted = values => [...values].sort();
-      assert.deepEqual(sorted(missing), sorted(rebuilt.requests.gone), `Unreviewed request left ${before.file}`);
-      assert.deepEqual(sorted(extra), sorted(rebuilt.requests.added), `Unreviewed request added in ${before.file}`);
+      assert.deepEqual(sorted(missing), sorted(rebuilt[contract].gone), `Unreviewed ${contract} left ${before.file}`);
+      assert.deepEqual(sorted(extra), sorted(rebuilt[contract].added), `Unreviewed ${contract} added in ${before.file}`);
     } else {
       assert.deepEqual(after[contract], expected, `${contract} changed in ${before.file}`);
     }
@@ -205,7 +239,13 @@ for (const before of baseline.files) {
   //     card showing the ad-attributed revenue, how many jobs it came from and
   //     its share of total revenue -- so the panel states what the ads earned
   //     instead of leaving it to be inferred from the Revenue tile.
-  const reviewedDashboardSha = '6d038f4ec7dbabf35122cb3490fc715afb7c769b48192d806adcf84e68f20d5e';
+  //  4. The trend charts and their date bucketing (timestamp, bucketSeries,
+  //     seriesTrend, ratioTrend, trendLabel, DashboardSparkline,
+  //     DashboardAreaChart) moved unchanged to app/crm/dashboard-charts.tsx so
+  //     the Ads tab draws the same cards. The 200 moved lines were verified
+  //     byte-identical and only imports were added; nothing the Dashboard
+  //     renders or calculates changed.
+  const reviewedDashboardSha = '715e1cf1a1c3b918572bacb237c2365efa9010f923f83c3a5965abcd31e4e024';
   if (before.file==='app/crm/DashboardView.tsx') assert.ok([before.sha256, reviewedDashboardSha].includes(after.sha256),'Dashboard rendering/calculations changed');
   files++;handlers+=before.handlers.length;requests+=before.requests.length;fields+=before.fields.length;charts+=before.charts.length;
 }
