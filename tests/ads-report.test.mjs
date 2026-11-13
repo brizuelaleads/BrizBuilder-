@@ -379,14 +379,14 @@ test("a campaign opens in a drawer that reads top to bottom", () => {
   assert.match(adsView, /function CampaignDrawer\(/);
   assert.match(adsView, /role="dialog"/);
   assert.match(adsView, /aria-modal="true"/);
-  // What it returned, in a sentence, then the numbers behind it.
+  // Kept simple on purpose: spent, earned, back per $1 and a verdict.
   assert.match(adsView, /aria-label="Campaign summary"/);
   assert.match(adsView, /<Verdict roas=\{campaign\.roas\} \/>/);
-  // Each ad is a card with what it spent, its leads, their cost and wins; ad
-  // sets only appear when there is more than one to tell apart.
+  for (const label of ["Spent", "Earned", "Back per $1"])
+    assert.ok(adsView.includes(`<dt>${label}</dt>`), `${label} is in the campaign summary`);
+  // Each ad is one card with one line of numbers: spent, leads, won.
   assert.match(adsView, /aria-label="Ads in this campaign"/);
-  assert.match(adsView, /const multipleAdsets = campaign\.adsets\.length > 1;/);
-  for (const figure of ["dollars(ad.spendCents)", "count(ad.leads)", "cost(ad.costPerLeadCents)", "count(ad.won)"])
+  for (const figure of ["dollars(ad.spendCents)", 'plural(ad.leads, "lead")', "count(ad.won)"])
     assert.ok(adsView.includes(figure), `${figure} is shown per ad`);
   assert.match(adsView, /No leads from this ad yet\./);
   // The people it brought in, won first, each opening their lead.
@@ -423,11 +423,7 @@ test("the campaign drawer lists each lead under the ad that produced it", () => 
   // one that carried the campaign but no known ad is listed apart, never
   // guessed onto an ad.
   assert.ok(adsView.includes("if (lead.metaAdId && adIds.has(lead.metaAdId))"));
-  assert.ok(adsView.includes("Leads from this ad"));
-  assert.ok(adsView.includes("Leads with no ad recorded"));
-  // Each ad shows delivery and money, and its own return.
-  for (const figure of ["count(ad.clicks)", "percent(ad.ctr)", "dollars(ad.revenueCents)", "returnVerdict(ad.roas)"])
-    assert.ok(adsView.includes(figure), `${figure} is shown per ad`);
-  // The campaign's own path from seeing it to buying.
-  assert.ok(adsView.includes('aria-label="From ad to customer"'));
+  assert.ok(adsView.includes("<LeadList leads={adLeads} onOpenLead={onOpenLead} />"));
+  assert.ok(adsView.includes("<h4>Ad not tracked</h4>"));
+  assert.ok(adsView.includes("<LeadList leads={leadsWithoutAd} onOpenLead={onOpenLead} />"));
 });

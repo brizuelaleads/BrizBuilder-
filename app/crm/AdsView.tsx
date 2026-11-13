@@ -101,11 +101,6 @@ function plural(value: number, one: string, many = `${one}s`) {
   return `${count(value)} ${value === 1 ? one : many}`;
 }
 
-/** Ad set names are not synced, so an ad set is told apart by its id's tail. */
-function adsetLabel(adsetId: string) {
-  return `Ad set ···${adsetId.slice(-4)}`;
-}
-
 /** "$6.49" for a 6.49x return: what came back for each dollar spent. */
 function backPerDollar(roas: number | null) {
   return roas == null ? "—" : `$${roas.toFixed(2)}`;
@@ -401,42 +396,32 @@ function orderLeads(leads: CrmLead[]) {
   );
 }
 
-function leadDate(value: string) {
-  const at = timestamp(value);
-  return at
-    ? new Date(at).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-    : "";
-}
-
-/** One lead, as a row that opens the lead. */
-function LeadRow({ lead, onOpenLead }: { lead: CrmLead; onOpenLead: (lead: CrmLead) => void }) {
+/** A list of leads, each a row that opens the lead: name, then status. */
+function LeadList({ leads, onOpenLead }: { leads: CrmLead[]; onOpenLead: (lead: CrmLead) => void }) {
   return (
-    <li>
-      <button type="button" onClick={() => onOpenLead(lead)}>
-        <span>
-          <strong>
-            {lead.firstName} {lead.lastName}
-          </strong>
-          <small>
-            {[lead.serviceRequested, leadDate(lead.createdAt)].filter(Boolean).join(" · ")}
-          </small>
-        </span>
-        {lead.status === "WON" ? (
-          <span className="crm-ads-lead-value">{dollars(lead.finalRevenueCents)}</span>
-        ) : null}
-        <Badge tone={leadTone(lead.status)}>
-          {LEAD_STATUS_LABELS[lead.status] ?? lead.status.replaceAll("_", " ")}
-        </Badge>
-      </button>
-    </li>
+    <ul className="crm-ads-campaign-leads">
+      {orderLeads(leads).map((lead) => (
+        <li key={lead.id}>
+          <button type="button" onClick={() => onOpenLead(lead)}>
+            <strong>
+              {lead.firstName} {lead.lastName}
+            </strong>
+            {lead.status === "WON" ? (
+              <span className="crm-ads-lead-value">{dollars(lead.finalRevenueCents)}</span>
+            ) : null}
+            <Badge tone={leadTone(lead.status)}>
+              {LEAD_STATUS_LABELS[lead.status] ?? lead.status.replaceAll("_", " ")}
+            </Badge>
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
 /**
- * One campaign, opened over the page as a small report in the Ads tab's
- * style: did it pay, how people moved from seeing it to buying, then each ad
- * with the exact leads it brought in underneath, so it is never a guess which
- * ad produced which lead.
+ * One campaign, kept to what a business owner needs at a glance: did it pay,
+ * then each ad with one line of numbers and the people it brought in.
  */
 function CampaignDrawer({
   campaign,
@@ -458,11 +443,8 @@ function CampaignDrawer({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // Most campaigns run one ad set, so ads are listed directly; the ad set only
-  // appears as a tag when there is more than one to tell apart.
-  const multipleAdsets = campaign.adsets.length > 1;
-  const ads: Array<AdsReportAd & { adsetId: string }> = campaign.adsets
-    .flatMap((adset) => adset.ads.map((ad) => ({ ...ad, adsetId: adset.adsetId })))
+  const ads: AdsReportAd[] = campaign.adsets
+    .flatMap((adset) => adset.ads)
     .sort((a, b) => b.spendCents - a.spendCents);
   const withLeads = ads.filter((ad) => ad.costPerLeadCents != null);
   const bestAdId =
@@ -505,9 +487,6 @@ function CampaignDrawer({
           <div>
             <p>CAMPAIGN</p>
             <h3>{campaign.campaignName}</h3>
-            <small>
-              {plural(ads.length, "ad")} · {plural(leads.length, "lead")}
-            </small>
           </div>
           <button
             type="button"
@@ -520,101 +499,48 @@ function CampaignDrawer({
         </header>
 
         <div className="crm-ads-drawer-body">
-          {/* Did it pay: the answer, then money out against money in. */}
+          {/* Did it pay: three numbers and a verdict. */}
           <section className="crm-ads-drawer-intro" aria-label="Campaign summary">
-            <div className="crm-ads-drawer-answer">
-              <span>Every $1 here brought back</span>
-              <strong>{backPerDollar(campaign.roas)}</strong>
-              <Verdict roas={campaign.roas} />
-            </div>
-            <div className="crm-ads-drawer-money">
-              <MoneyBars spentCents={campaign.spendCents} earnedCents={campaign.revenueCents} />
-              <p>
-                {ratio(campaign.roas)} return · {plural(campaign.won, "job")} won
-              </p>
-            </div>
+            <dl>
+              <div>
+                <dt>Spent</dt>
+                <dd>{dollars(campaign.spendCents)}</dd>
+              </div>
+              <div>
+                <dt>Earned</dt>
+                <dd>{dollars(campaign.revenueCents)}</dd>
+              </div>
+              <div>
+                <dt>Back per $1</dt>
+                <dd>{backPerDollar(campaign.roas)}</dd>
+              </div>
+            </dl>
+            <Verdict roas={campaign.roas} />
           </section>
 
-          {/* From seeing the campaign to becoming a customer. */}
-          <section className="crm-ads-drawer-funnel" aria-label="From ad to customer">
-            <ol>
-              <JourneyStep label="saw it" value={campaign.impressions} />
-              <JourneyStep label="clicked" value={campaign.clicks} rate={percent(campaign.ctr)} each={campaign.cpcCents} />
-              <JourneyStep label="became leads" value={campaign.leads} rate={share(campaign.leads, campaign.clicks)} each={campaign.costPerLeadCents} />
-              <JourneyStep label="booked" value={campaign.booked} rate={share(campaign.booked, campaign.leads)} each={campaign.costPerBookedCents} />
-              <JourneyStep label="customers" value={campaign.won} rate={share(campaign.won, campaign.booked)} each={campaign.costPerWonCents} />
-            </ol>
-          </section>
-
-          {/* Each ad, and the leads that came from it. */}
+          {/* Each ad: one line of numbers, then who it brought in. */}
           <section aria-label="Ads in this campaign">
-            <h4>
-              Ads and the leads they brought
-              <Badge tone="neutral">{ads.length}</Badge>
-            </h4>
+            <h4>Ads</h4>
             {ads.length === 0 ? (
               <p className="crm-ads-quiet">No ads ran in this range.</p>
             ) : (
               <ol className="crm-ads-ad-list">
                 {ads.map((ad) => {
-                  const spendShare =
-                    campaign.spendCents > 0 ? ad.spendCents / campaign.spendCents : 0;
-                  const adLeads = orderLeads(leadsByAd.get(ad.adId) ?? []);
+                  const adLeads = leadsByAd.get(ad.adId) ?? [];
                   return (
                     <li key={ad.adId} className="crm-ads-ad">
                       <div className="crm-ads-ad-head">
-                        <div>
-                          <strong>{ad.adName}</strong>
-                          {ad.adId === bestAdId ? (
-                            <em className="crm-ads-best">Cheapest leads</em>
-                          ) : null}
-                          {multipleAdsets ? (
-                            <small title={`Ad set ID ${ad.adsetId}`}>{adsetLabel(ad.adsetId)}</small>
-                          ) : null}
-                        </div>
-                        <span className={`crm-ads-return is-${returnVerdict(ad.roas).tone}`} title={returnVerdict(ad.roas).label}>
-                          {ad.roas == null ? "No sales yet" : ratio(ad.roas)}
-                          <span className="sr-only">, {returnVerdict(ad.roas).label}</span>
-                        </span>
+                        <strong>{ad.adName}</strong>
+                        {ad.adId === bestAdId ? (
+                          <em className="crm-ads-best">Cheapest leads</em>
+                        ) : null}
                       </div>
-                      <span
-                        className="crm-ads-share"
-                        role="img"
-                        aria-label={`${Math.round(spendShare * 100)}% of this campaign's spend`}
-                      >
-                        <span style={{ width: `${Math.max(spendShare * 100, spendShare > 0 ? 2 : 0)}%` } as CSSProperties} />
-                      </span>
-                      <dl>
-                        <div>
-                          <dt>Spent</dt>
-                          <dd>{dollars(ad.spendCents)}</dd>
-                          <small>{Math.round(spendShare * 100)}% of campaign</small>
-                        </div>
-                        <div>
-                          <dt>Clicks</dt>
-                          <dd>{count(ad.clicks)}</dd>
-                          <small>{percent(ad.ctr)} of {count(ad.impressions)}</small>
-                        </div>
-                        <div>
-                          <dt>Leads</dt>
-                          <dd>{count(ad.leads)}</dd>
-                          <small>{cost(ad.costPerLeadCents)} each</small>
-                        </div>
-                        <div>
-                          <dt>Won</dt>
-                          <dd>{count(ad.won)}</dd>
-                          <small>{dollars(ad.revenueCents)} earned</small>
-                        </div>
-                      </dl>
+                      <p className="crm-ads-ad-line">
+                        {dollars(ad.spendCents)} spent · {plural(ad.leads, "lead")} ·{" "}
+                        {count(ad.won)} won
+                      </p>
                       {adLeads.length ? (
-                        <div className="crm-ads-ad-leads" aria-label={`Leads from ${ad.adName}`}>
-                          <span>Leads from this ad</span>
-                          <ul className="crm-ads-campaign-leads">
-                            {adLeads.map((lead) => (
-                              <LeadRow key={lead.id} lead={lead} onOpenLead={onOpenLead} />
-                            ))}
-                          </ul>
-                        </div>
+                        <LeadList leads={adLeads} onOpenLead={onOpenLead} />
                       ) : (
                         <p className="crm-ads-quiet">No leads from this ad yet.</p>
                       )}
@@ -627,25 +553,14 @@ function CampaignDrawer({
 
           {leadsWithoutAd.length ? (
             <section aria-label="Leads from this campaign">
-              <h4>
-                Leads with no ad recorded
-                <Badge tone="neutral">{leadsWithoutAd.length}</Badge>
-              </h4>
+              <h4>Ad not tracked</h4>
               <p className="crm-ads-quiet crm-ads-drawer-note">
-                These carried this campaign but not which ad, usually because
-                they came in before the ad&apos;s URL parameters included{" "}
-                <code>utm_content={"{{ad.id}}"}</code>.
+                These came from this campaign, but we can&apos;t tell which ad.
               </p>
-              <ul className="crm-ads-campaign-leads">
-                {orderLeads(leadsWithoutAd).map((lead) => (
-                  <LeadRow key={lead.id} lead={lead} onOpenLead={onOpenLead} />
-                ))}
-              </ul>
+              <LeadList leads={leadsWithoutAd} onOpenLead={onOpenLead} />
             </section>
           ) : leads.length === 0 ? (
-            <p className="crm-ads-quiet">
-              Spend recorded, but no lead has carried this campaign yet.
-            </p>
+            <p className="crm-ads-quiet">No leads from this campaign yet.</p>
           ) : null}
         </div>
       </section>
