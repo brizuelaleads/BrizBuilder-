@@ -1242,6 +1242,25 @@
 #crm-app .crm-ads-view .crm-ads-notice strong { display: block; font-size: 14px; font-weight: 600; color: var(--crm-ink); }
 #crm-app .crm-ads-view .crm-ads-notice p { margin: 4px 0 10px; font-size: 13px; line-height: 20px; color: var(--crm-muted); }
 #crm-app .crm-ads-view .crm-ads-snippet code { font-size: 12px; }
+/* Status notes: one slim bar, like a notification, not a block in the report. */
+#crm-app .crm-ads-toast { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 8px 6px 14px; border: 1px solid var(--crm-line); border-radius: 999px; background: var(--crm-card); box-shadow: 0 1px 2px rgb(0 0 0 / 4%); }
+#crm-app .crm-ads-toast > svg { flex-shrink: 0; width: 16px; height: 16px; color: var(--crm-accent); }
+#crm-app .crm-ads-toast.is-warning > svg { color: #d08a2c; }
+#crm-app .crm-ads-toast > p { flex: 1; min-width: 0; margin: 0; font-size: 13px; line-height: 18px; color: var(--crm-muted); }
+#crm-app .crm-ads-toast > p strong { font-weight: 600; color: var(--crm-ink); }
+#crm-app .crm-ads-toast > .crm-button-secondary { flex-shrink: 0; min-height: 30px; padding: 0 12px; font-size: 12px; }
+#crm-app .crm-ads-toast-close { flex-shrink: 0; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 999px; background: none; color: var(--crm-muted); cursor: pointer; }
+#crm-app .crm-ads-toast-close:hover { background: var(--crm-subtle); color: var(--crm-ink); }
+#crm-app .crm-ads-toast-close svg { width: 15px; height: 15px; }
+#crm-app[data-theme="glass"] .crm-ads-toast { background: rgb(255 255 255 / 6%); border-color: rgb(255 255 255 / 12%); }
+@media (max-width: 760px) {
+  #crm-app .crm-ads-toast { flex-wrap: wrap; border-radius: 14px; padding: 10px 8px 10px 14px; }
+  #crm-app .crm-ads-toast { align-items: flex-start; }
+  #crm-app .crm-ads-toast > svg { margin-top: 2px; }
+  #crm-app .crm-ads-toast > p { flex: 1 1 calc(100% - 100px); }
+  #crm-app .crm-ads-toast-close { margin: -4px 0 0 auto; }
+  #crm-app .crm-ads-toast > .crm-button-secondary { order: 3; margin-left: 26px; }
+}
 
 #crm-app .crm-ads-verdict { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 12px; border-radius: 999px; font-size: 13px; font-weight: 500; white-space: nowrap; }
 #crm-app .crm-ads-verdict svg { width: 15px; height: 15px; flex-shrink: 0; }

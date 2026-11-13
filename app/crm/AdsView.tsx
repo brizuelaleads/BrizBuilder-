@@ -588,6 +588,7 @@ export function AdsView({
   onOpenConnections: () => void;
 }) {
   const [openCampaignId, setOpenCampaignId] = useState<string | null>(null);
+  const [backfillDismissed, setBackfillDismissed] = useState(false);
 
   const connected = providerConnections.some(
     (connection) =>
@@ -778,20 +779,18 @@ export function AdsView({
     <div className="crm-view crm-dashboard-view crm-ads-view">
       {heading}
 
+      {/* Status notes sit as slim bars above the report, not blocks in it. */}
       {report.disconnected ? (
-        <section className="crm-ads-notice is-warning">
+        <div className="crm-ads-toast is-warning" role="status">
           <PlugZap aria-hidden="true" />
-          <div>
-            <strong>Meta Ads is not connected right now.</strong>
-            <p>
-              These figures stop at the last sync. Reconnect the ad account to
-              keep spend up to date.
-            </p>
-            <button className="crm-button-secondary" onClick={onOpenConnections}>
-              Go to Connections
-            </button>
-          </div>
-        </section>
+          <p>
+            <strong>Meta Ads is not connected right now.</strong>{" "}
+            <span>Figures stop at the last sync.</span>
+          </p>
+          <button className="crm-button-secondary" onClick={onOpenConnections}>
+            Go to Connections
+          </button>
+        </div>
       ) : null}
 
       {report.setupState === "missing_url_parameters" ? (
@@ -812,22 +811,30 @@ export function AdsView({
         </section>
       ) : null}
 
-      {report.backfillAvailable ? (
-        <section className="crm-ads-notice">
-          <Megaphone aria-hidden="true" />
-          <div>
-            <strong>Older spend is missing.</strong>
-            <p>
+      {report.backfillAvailable && !backfillDismissed ? (
+        <div className="crm-ads-toast" role="status">
+          <CalendarDays aria-hidden="true" />
+          <p>
+            <strong>Older spend is missing.</strong>{" "}
+            <span>
               {report.earliestSpendDate
-                ? `History starts on ${report.earliestSpendDate}, later than the range you are viewing, so costs before then divide by spend that is not here yet.`
-                : "No spend has synced for this range yet."}{" "}
-              A backfill fetches it.
-            </p>
-            <button className="crm-button-secondary" onClick={onOpenConnections}>
-              Backfill history
-            </button>
-          </div>
-        </section>
+                ? `Spend history starts ${shortDate(report.earliestSpendDate)}, so earlier days aren't counted yet.`
+                : "No spend has synced for this range yet."}
+            </span>
+          </p>
+          <button className="crm-button-secondary" onClick={onOpenConnections}>
+            Backfill history
+          </button>
+          <button
+            type="button"
+            className="crm-ads-toast-close"
+            aria-label="Dismiss"
+            title="Dismiss"
+            onClick={() => setBackfillDismissed(true)}
+          >
+            <X aria-hidden="true" />
+          </button>
+        </div>
       ) : null}
 
       {/* 1. The report card: did the ads pay, in one number and one sentence. */}
