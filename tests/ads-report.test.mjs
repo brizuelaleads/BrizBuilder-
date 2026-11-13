@@ -276,8 +276,33 @@ test("the Ads tab is a main tab and respects the workspace date range", () => {
   // A daily "is the money working" question belongs beside Dashboard and
   // Leads, not filed under channel setup.
   assert.match(crmApp, /id: "ads", label: "Ads", icon: <Megaphone \/>, section: "MAIN"/);
-  assert.match(crmApp, /\["dashboard", "leads", "calls", "reports", "ads"\]/);
+  assert.match(crmApp, /\["dashboard", "leads", "calls", "ads"\]/);
   assert.match(crmApp, /view === "ads" && \(/);
+});
+
+test("the client report picks calendar weeks and months, not the header range", () => {
+  const reports = read("app/crm/ReportsView.tsx");
+  // Its own period picker, so the rolling header range is not shown on it,
+  // and it receives every lead for the business, not the range-filtered set.
+  for (const period of ["Last month", "This month", "Last week", "This week"])
+    assert.ok(reports.includes(`label: "${period}"`), `${period} is offered`);
+  assert.ok(!/\["dashboard", "leads", "calls", "reports"/.test(crmApp));
+  assert.match(crmApp, /<ReportsView\s+leads=\{workspaceLeads\}/);
+  // Every headline number is compared with the period before.
+  assert.ok(reports.includes("summarize(previous, leads, appointments, phoneCalls, metaAdInsights)"));
+  for (const label of ["New leads", "Booked jobs", "Jobs won", "Revenue won", "Ad spend", "Cost per lead"])
+    assert.ok(reports.includes(`label="${label}"`), `${label} is a headline number`);
+  // A lower cost per lead is the good direction.
+  assert.ok(reports.includes("short={previous.short} lowerIsBetter"));
+  // Ads figures come from the same maths as the Ads tab.
+  assert.ok(reports.includes("buildAdsReport({"));
+  // It can be sent: printed or saved as PDF, or copied as plain text.
+  assert.ok(reports.includes("onClick={() => window.print()}"));
+  assert.ok(reports.includes("navigator.clipboard.writeText(lines.join"));
+  // What is not recorded reads as a dash, never as a zero.
+  assert.ok(reports.includes('hasAds ? dollars(adTotals.spendCents) : "—"'));
+  // Printed, only the report sheet shows, black on white.
+  assert.match(read("app/crm/controls.css"), /@media print \{\n {2}#crm-app \.crm-glass-backdrop, #crm-app \.crm-rpt-view > :not\(\.crm-rpt-sheet\)/);
 });
 
 test("the tab covers every setup state and offers the snippet", () => {

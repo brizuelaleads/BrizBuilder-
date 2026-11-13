@@ -39,6 +39,12 @@ const moves = {
     fields: ['type="button"'],
     charts: ['<svg className={`crm-dashboard-sparkline is-trend-${trend}`} viewBox="0 0 120 48" preserveAspectRatio="none" role="img" aria-label={label} >', '<svg viewBox="0 0 120 48" preserveAspectRatio="none" aria-hidden="true">'],
   },
+  'app/crm/OperationsViews.tsx': {
+    // Reports moved to its own file and was rebuilt as a client report; its
+    // Print / Save PDF handler is unchanged.
+    to: 'app/crm/ReportsView.tsx',
+    handlers: ['onClick={() => window.print()}'],
+  },
 };
 const withoutRemovals = (file, contract, values) => {
   const out = [...values];
@@ -93,8 +99,8 @@ const restructured = {
     charts: {gone: [], added: ['<DailyChart points={daily.points} byWeek={daily.byWeek} />']},
   },
   'app/crm/OperationsViews.tsx': {
-    reason: 'Calendar rebuilt as a week planner: month picker, status filters, event popover. Settings gained an Appearance section (Glass backdrop picker).',
-    controls: /crm-appearance|appearance\.on|appearance\.blur|CRM_BACKDROPS|CRM_BACKDROP_BLURS|level\.|option\.id|<h3>Appearance<\/h3>|shiftWeek|setAnchorDate|pageMonth|monthLabel|weekStart\.toLocaleDateString|CALENDAR_WEEK_RANGE|toggleStatus|hiddenStatuses|crm-cal-|setOpenEvent|onClose|closeRef|update_appointment_status|deleteAppointment|onAddAppointment|<option key=\{status\}|crm-google-calendar|appointment\.contactName/,
+    reason: 'Calendar rebuilt as a week planner: month picker, status filters, event popover. Settings gained an Appearance section (Glass backdrop picker). Reports moved to app/crm/ReportsView.tsx as a weekly/monthly client report.',
+    controls: /<h2>Agency report<\/h2>|onClick=\{\(\) => window\.print\(\)\}>Print \/ Save PDF|<h3>(Lead progression|Volume and revenue|What to do next)<\/h3>|<th>(Source|Leads|Revenue)<\/th>|crm-appearance|appearance\.on|appearance\.blur|CRM_BACKDROPS|CRM_BACKDROP_BLURS|level\.|option\.id|<h3>Appearance<\/h3>|shiftWeek|setAnchorDate|pageMonth|monthLabel|weekStart\.toLocaleDateString|CALENDAR_WEEK_RANGE|toggleStatus|hiddenStatuses|crm-cal-|setOpenEvent|onClose|closeRef|update_appointment_status|deleteAppointment|onAddAppointment|<option key=\{status\}|crm-google-calendar|appointment\.contactName/,
   },
   'app/CrmApp.tsx': {
     reason: 'Toasts carry an icon, a title and detail, an action and a close; the sidebar foot gained the Classic/Glass theme switch',

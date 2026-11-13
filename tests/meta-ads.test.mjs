@@ -316,25 +316,19 @@ test("the agency report divides reported spend, not the budget", () => {
   // It used to divide every won job by the configured monthly budget: a return
   // on money that may never have been spent, credited with revenue the ads
   // never touched.
-  const report = read("app/crm/OperationsViews.tsx");
+  // The client report (app/crm/ReportsView.tsx) now takes spend, ad revenue
+  // and the return from buildAdsReport, the Ads tab's own maths: reported
+  // spend for the period, and only won leads that carried a campaign id.
+  const report = read("app/crm/ReportsView.tsx");
+  assert.ok(!report.includes("monthlyAdBudgetCents"), "the budget is never divided into anything");
   assert.ok(
     !/\(revenue \/ spend\)\.toFixed/.test(report),
     "total revenue is no longer divided by the budget",
   );
-  assert.match(
-    report,
-    /const spend = metaAdInsights\.reduce\(\(sum, insight\) => sum \+ insight\.spendCents, 0\)/,
-  );
-  assert.match(
-    report,
-    /const adRevenue = leads\.reduce\(\(sum, lead\) => sum \+ \(lead\.status === "WON" && lead\.metaCampaignId \? lead\.finalRevenueCents : 0\), 0\)/,
-  );
-  assert.match(
-    report,
-    /const roas = spend > 0 && adRevenue > 0 \? adRevenue \/ spend : null/,
-  );
+  assert.match(report, /const periodInsights = insights\.filter\(\(insight\) => insight\.date >= fromKey && insight\.date < toKey\)/);
+  assert.match(report, /const ads = buildAdsReport\(\{\n\s+insights: periodInsights,/);
   // A ratio it cannot compute shows a dash, never a fabricated 0x.
-  assert.match(report, /roas == null \? "—"/);
+  assert.match(report, /adTotals\.roas == null \? "—"/);
   assert.ok(!/: "0x"/.test(report), "the fake zero ROAS is gone");
 });
 

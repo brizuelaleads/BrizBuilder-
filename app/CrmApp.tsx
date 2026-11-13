@@ -56,11 +56,11 @@ import { LeadDetail, LeadsView, PipelineView } from "./crm/LeadsViews";
 import {
   CalendarView,
   ClientsView,
-  ReportsView,
   SettingsView,
   TasksView,
   TeamView,
 } from "./crm/OperationsViews";
+import { ReportsView } from "./crm/ReportsView";
 import {
   AddAppointmentModal,
   AddClientModal,
@@ -904,7 +904,7 @@ export function CrmApp({
                 : view === "team"
                   ? `${data.team.length} ${data.team.length === 1 ? "team member" : "team members"}`
                   : null;
-  const showRangeFilter = ["dashboard", "leads", "calls", "reports", "ads"].includes(
+  const showRangeFilter = ["dashboard", "leads", "calls", "ads"].includes(
     view,
   );
   // Glass brings its own accent unless the tenant chose a brand colour.
@@ -1466,7 +1466,15 @@ export function CrmApp({
           />
         )}
         {view === "reports" && (
-          <ReportsView leads={filteredLeads} clients={filteredClients} metaAdInsights={filteredMetaAdInsights} />
+          <ReportsView
+            leads={workspaceLeads}
+            clients={filteredClients}
+            metaAdInsights={data.metaAdInsights.filter((insight) => effectiveSelectedClientId === "all" || insight.clientId === effectiveSelectedClientId)}
+            appointments={filteredAppointments}
+            phoneCalls={data.phoneCalls.filter((call) => effectiveSelectedClientId === "all" || call.clientId === effectiveSelectedClientId)}
+            selectedClientId={effectiveSelectedClientId ?? "all"}
+            organizationName={data.organization.name}
+          />
         )}
         {view === "ads" && (
           <AdsView
