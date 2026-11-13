@@ -86,17 +86,11 @@ const restructured = {
     // Every figure the tab showed is still shown (pinned in
     // tests/ads-report.test.mjs); they are regrouped, not removed. The one new
     // control is the Go to Connections button on the disconnected notice.
-    reason: 'Ads rebuilt on the Dashboard\'s own stat cards and Marketing Snapshot, then click-to-customer steps, campaign rows, and a campaign drawer that lists each ad as a card',
-    controls: /<th>(Campaign|Spend|Impressions|Clicks|Leads|CPL|Booked jobs|Won customers|Revenue|ROAS|Return|Ad|Cost per lead)<\/th>|<th scope="col">|<h3[ >]|<h4>|<h5>|crm-ads-disclosure|onOpenConnections|campaign\.campaignName|onClick=\{\(\) => onOpenLead\(lead\)\}/,
-    // The Dashboard's area chart on each headline card, and its sparkline on
-    // Appointments Booked -- the same components, imported, not new drawings.
-    charts: {
-      gone: [],
-      added: [
-        '<DashboardAreaChart values={card.series} trend={card.trend} id={card.label} trendBasis={card.trendBasis} money={card.money} />',
-        '<DashboardSparkline values={appointmentSeries} trend={seriesTrend(appointmentSeries)} id="ads-appointments-booked" />',
-      ],
-    },
+    reason: 'Ads rebuilt as a scoreboard (what every $1 brought back), the steps from seeing an ad to becoming a customer, one card per campaign, the period at a glance, and a campaign drawer that lists each ad as a card',
+    controls: /<th>(Campaign|Spend|Impressions|Clicks|Leads|CPL|Booked jobs|Won customers|Revenue|ROAS|Return|Ad|Cost per lead)<\/th>|<th scope="col">|<h3[ >]|<h4>|<h5>|crm-ads-disclosure|crm-ads-campaign-open|onOpenConnections|campaign\.campaignName|onClick=\{\(\) => onOpenLead\(lead\)\}/,
+    replacements: [
+      {lost: 'onClick={() => setOpenCampaignId(campaign.campaignId)}', now: /onOpen=\{\(\) => setOpenCampaignId\(campaign\.campaignId\)\}[^]*?className="crm-ads-campaign-open" onClick=\{onOpen\}|className="crm-ads-campaign-open" onClick=\{onOpen\}[^]*?onOpen=\{\(\) => setOpenCampaignId\(campaign\.campaignId\)\}/, why: 'a campaign row became a campaign card; its See ads and leads button opens the same drawer'},
+    ],
   },
   'app/crm/OperationsViews.tsx': {
     reason: 'Calendar rebuilt as a week planner: month picker, status filters, event popover. Settings gained an Appearance section (Glass backdrop picker).',

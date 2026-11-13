@@ -295,65 +295,68 @@ test("the tab covers every setup state and offers the snippet", () => {
   assert.match(adsView, /navigator\.clipboard\.writeText\(URL_PARAMETERS\)/);
 });
 
-test("the tab reads like the Dashboard and keeps every figure", () => {
-  // The Dashboard's own stat cards and Marketing Snapshot, not look-alikes.
+test("the tab answers one question first, then keeps every figure", () => {
+  // The Dashboard's panel style, but a layout of its own: a scoreboard, the
+  // path to a customer, campaign cards and the period at a glance.
   assert.match(adsView, /className="crm-view crm-dashboard-view crm-ads-view"/);
-  assert.match(adsView, /from "\.\/dashboard-charts"/);
-  assert.match(adsView, /className=\{`crm-dashboard-kpi-card is-\$\{card\.tone\} is-trend-\$\{card\.trend\}`\}/);
-  assert.match(adsView, /<h3>Marketing Snapshot<\/h3>/);
-  for (const card of ["Ad Spend", "Revenue from Ads", "Appointments Booked", "Lead Sources"])
-    assert.ok(adsView.includes(`<span>${card}</span>`), `${card} is in the snapshot`);
-  // Headline cards, return on ad spend among them in plain words.
-  for (const label of ["Ad spend", "Leads from ads", "Revenue from ads", "Return on ad spend"])
-    assert.ok(adsView.includes(`label: "${label}"`), `${label} is a headline card`);
-  assert.match(adsView, /back for every \$1 spent/);
-  // Every step from click to customer, with what each cost and the rate that
-  // carried people to the next, so a drop-off is visible where it happens.
-  for (const step of ["Clicks", "Leads", "Booked jobs", "Won customers"])
+  assert.match(adsView, /Every \$1 you spent on ads brought back/);
+  assert.match(adsView, /<strong>\{backPerDollar\(totals\.roas\)\}<\/strong>/);
+  for (const label of ["Spent on ads", "Earned from ads", "Return on ad spend"])
+    assert.ok(adsView.includes(`<dt>${label}</dt>`), `${label} is on the scoreboard`);
+  // Every step from seeing an ad to becoming a customer, with what each cost
+  // and the share that moved on, so a drop-off is visible where it happens.
+  assert.match(adsView, /<h3>How ad viewers became customers<\/h3>/);
+  for (const step of ["saw your ads", "clicked", "became leads", "booked a job", "became customers"])
     assert.ok(adsView.includes(`label="${step}"`), `${step} is a step`);
-  for (const rate of ["became leads", "booked", "won"])
-    assert.ok(adsView.includes(`rateLabel="${rate}"`), `${rate} rate is shown`);
+  for (const rate of [
+    "percent(totals.ctr)",
+    "share(totals.leads, totals.clicks)",
+    "share(totals.booked, totals.leads)",
+    "share(totals.won, totals.booked)",
+  ])
+    assert.ok(adsView.includes(`rate={${rate}}`), `${rate} is shown`);
   for (const each of ["totals.cpcCents", "totals.costPerLeadCents", "totals.costPerBookedCents", "totals.costPerWonCents"])
     assert.ok(adsView.includes(`each={${each}}`), `${each} is shown`);
+  // The rest of the marketing picture for the same range.
+  assert.match(adsView, /<h3>This period at a glance<\/h3>/);
+  for (const copy of ["Appointments booked", "came from", "% of your revenue"])
+    assert.ok(adsView.includes(copy), `${copy} is shown`);
   // A good or bad return is never colour alone: it carries an icon and words.
   assert.match(adsView, /label: "Earning more than it costs"/);
   assert.match(adsView, /label: "Costing more than it has earned"/);
 });
 
-test("spending is not coloured as good or bad, and budget use is never understated", () => {
-  // As on the Dashboard, the spend card follows the return on spend.
-  assert.match(adsView, /label: "Ad spend",[\s\S]*?trend: ratioTrend\(adRevenueSeries, spendSeries\)/);
-  // Overspend shows as more than 100%; only the bar is capped.
+test("budget use is never understated", () => {
+  // Overspend shows as more than 100%; only the bar is capped, and it turns
+  // amber with the percentage written beside it.
   assert.doesNotMatch(adsView, /Math\.min\(100, Math\.round\(\(totals\.spendCents/);
-  assert.match(adsView, /"--marketing-progress": `\$\{Math\.min\(100, budgetUsedPercent\)\}%`/);
+  assert.match(adsView, /width: `\$\{Math\.min\(100, budgetUsedPercent\)\}%`/);
+  assert.match(adsView, /budgetUsedPercent > 100 \? " is-over" : ""/);
   // A month's budget is only compared with a month of spend.
   assert.match(adsView, /const budgetComparable = budgetCents > 0 && range === "30";/);
 });
 
-test("the campaign table carries delivery as well as money", () => {
-  for (const column of [
-    "Campaign",
-    "Spend",
-    "Leads",
-    "Booked jobs",
-    "Won customers",
-    "Revenue",
-    "Return",
-  ]) {
-    assert.ok(adsView.includes(`<th>${column}</th>`), `${column} column exists`);
-  }
-  // Impressions and clicks are what tell you whether a bad cost per lead is a
-  // delivery problem or a conversion problem, so every row still shows them,
-  // under its spend, along with each step's cost.
+test("each campaign card carries delivery as well as money", () => {
+  assert.match(adsView, /function CampaignCard\(/);
+  assert.match(adsView, /<MoneyBars spentCents=\{campaign\.spendCents\} earnedCents=\{campaign\.revenueCents\} \/>/);
+  for (const label of ["Leads", "Booked", "Jobs won"])
+    assert.ok(adsView.includes(`<dt>${label}</dt>`), `${label} is on the card`);
+  // Impressions and clicks tell you whether a bad cost per lead is a delivery
+  // problem or a conversion problem, so every card still shows them.
   for (const figure of [
     "count(campaign.impressions)",
     "count(campaign.clicks)",
+    "percent(campaign.ctr)",
     "cost(campaign.costPerLeadCents)",
     "cost(campaign.costPerBookedCents)",
     "cost(campaign.costPerWonCents)",
     "ratio(campaign.roas)",
   ])
     assert.ok(adsView.includes(figure), `${figure} is shown per campaign`);
+  // The card opens its campaign.
+  assert.match(adsView, /onOpen=\{\(\) => setOpenCampaignId\(campaign\.campaignId\)\}/);
+  // Cards wrap to the width they have, so nothing scrolls sideways.
+  assert.match(read("app/crm/controls.css"), /\.crm-ads-campaign-grid \{ display: grid; grid-template-columns: repeat\(auto-fit, minmax\(min\(340px, 100%\), 1fr\)\)/);
 });
 
 test("a campaign opens in a drawer that reads top to bottom", () => {
@@ -379,9 +382,4 @@ test("the tab shows a dash for a cost it cannot compute, never a zero", () => {
   assert.match(adsView, /return value == null \? "—" : dollars\(value\)/);
   // Exact dollars: "$1K" would hide the difference between $1,213 and $1,000.
   assert.doesNotMatch(adsView, /money\([^)]*, true\)/);
-});
-
-test("a wide table scrolls inside itself rather than the page", () => {
-  assert.match(adsView, /className="crm-table-scroll"/);
-  assert.match(read("app/globals.css"), /\.crm-table-scroll \{ overflow-x: auto; \}/);
 });
