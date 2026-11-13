@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Megaphone, TriangleAlert, X } from "lucide-react";
+import { Megaphone, MousePointer2, TrendingUp, TriangleAlert, X } from "lucide-react";
 import type {
   CrmLead,
   CrmMetaAdInsight,
@@ -26,6 +26,10 @@ function ratio(value: number | null) {
 }
 
 /** A cost with no denominator reads as unknown, never as zero. */
+function percent(value: number | null) {
+  return value == null ? "—" : `${(value * 100).toFixed(2)}%`;
+}
+
 function cost(value: number | null) {
   return value == null ? "—" : money(value, true);
 }
@@ -373,9 +377,38 @@ export function AdsView({
 
       <section className="crm-ads-metrics" aria-label="Meta Ads summary">
         <MetricCard label="Ad spend" value={money(report.totals.spendCents, true)} />
-        <MetricCard label="Leads from Meta ads" value={count(report.totals.leads)} />
+        <MetricCard label="Leads from Meta ads" value={count(report.totals.leads)}
+          support={report.unattributedLeads ? `${count(report.unattributedLeads)} other leads have no campaign attached` : "Leads traced to a campaign"} />
         <MetricCard label="Cost per lead" value={cost(report.totals.costPerLeadCents)} />
         <MetricCard label="Won revenue" value={money(report.totals.revenueCents, true)} />
+      </section>
+
+      <section className="crm-ads-performance" aria-label="Advertising performance">
+        <article className="crm-panel crm-ads-performance-panel">
+          <header>
+            <div className="crm-ads-panel-title"><MousePointer2 aria-hidden="true" /><h3>Ad delivery</h3></div>
+            <span>Reach and engagement</span>
+          </header>
+          <dl className="crm-ads-stat-grid">
+            <div><dt>Impressions</dt><dd>{count(report.totals.impressions)}</dd></div>
+            <div><dt>Clicks</dt><dd>{count(report.totals.clicks)}</dd></div>
+            <div><dt>Click-through rate</dt><dd>{percent(report.totals.ctr)}</dd></div>
+            <div><dt>Cost per click</dt><dd>{cost(report.totals.cpcCents)}</dd></div>
+          </dl>
+        </article>
+        <article className="crm-panel crm-ads-performance-panel is-outcomes">
+          <header>
+            <div className="crm-ads-panel-title"><TrendingUp aria-hidden="true" /><h3>Lead outcomes</h3></div>
+            <span>From booking to revenue</span>
+          </header>
+          <dl className="crm-ads-stat-grid">
+            <div><dt>Booked jobs</dt><dd>{count(report.totals.booked)}</dd><small>Booked, estimate sent, or won</small></div>
+            <div><dt>Won customers</dt><dd>{count(report.totals.won)}</dd></div>
+            <div><dt>Cost per booked job</dt><dd>{cost(report.totals.costPerBookedCents)}</dd></div>
+            <div><dt>Cost per won customer</dt><dd>{cost(report.totals.costPerWonCents)}</dd></div>
+          </dl>
+          <div className="crm-ads-return"><div><span>Return on ad spend</span><small>Recorded revenue per unit of spend</small></div><strong>{ratio(report.totals.roas)}</strong></div>
+        </article>
       </section>
 
       {report.setupState === "missing_url_parameters" ? (

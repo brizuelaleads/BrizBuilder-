@@ -22318,3 +22318,21 @@ canvas {
 .crm-ads-table th:not(:first-child), .crm-ads-table td:not(:first-child) { text-align: right; }
 .crm-ads-view .crm-ads-disclosure { text-align: left; font-weight: 500; }
 @media (max-width: 800px) { .crm-ads-view .crm-ads-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Ads uses dashboard surfaces with delivery and outcomes grouped side by side. */
+.crm-ads-view .crm-ads-performance { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 16px; }
+.crm-ads-view .crm-ads-performance-panel { min-width: 0; overflow: hidden; }
+.crm-ads-view .crm-ads-performance-panel > header { display: flex; align-items: flex-start; flex-direction: column; gap: 6px; padding: 20px 24px; border-bottom: 1px solid var(--crm-border); }
+.crm-ads-panel-title { display: flex; align-items: center; gap: 10px; }
+.crm-ads-panel-title svg { width: 18px; height: 18px; color: var(--crm-purple, #6947ff); }
+.crm-ads-panel-title h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.crm-ads-performance-panel > header > span { color: var(--crm-muted); font-size: 12px; }
+.crm-ads-view .crm-ads-stat-grid { margin: 0; padding: 24px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 24px; }
+.crm-ads-stat-grid > div { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.crm-ads-stat-grid dt, .crm-ads-return span { color: var(--crm-muted); font-size: 12px; }
+.crm-ads-stat-grid dd { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.crm-ads-stat-grid small, .crm-ads-return small { display: block; color: var(--crm-muted); font-size: 11px; line-height: 1.5; }
+.crm-ads-return { margin: 0 24px 24px; padding: 16px 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid var(--crm-border); border-radius: 8px; background: var(--crm-accent-soft, var(--crm-surface)); }
+.crm-ads-return strong { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+@media (max-width: 900px) { .crm-ads-view .crm-ads-performance { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 480px) { .crm-ads-view .crm-ads-stat-grid { padding: 18px; gap: 24px 16px; } .crm-ads-stat-grid dd { font-size: 22px; } }
