@@ -1490,28 +1490,6 @@
 #crm-app .crm-rpt-actions svg { width: 16px; height: 16px; }
 #crm-app .crm-rpt-hint { margin: 0; padding: 10px 14px; border: 1px solid var(--crm-line); border-left: 3px solid #d08a2c; border-radius: 8px; background: var(--crm-card); font-size: 13px; color: var(--crm-muted); }
 
-/* 1. The answer, in one sentence. */
-/* The same card as a lead's call summary (.lead-record-summary-* above):
-   icon tile and title, the sentence in an inset box, a button in the footer. */
-#crm-app .crm-rpt-summary { overflow: hidden; border: 1px solid #e1e8ef; border-radius: 22px; background: #fff; box-shadow: 0 3px 10px rgba(32, 54, 73, .035); }
-#crm-app .crm-rpt-summary-header { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 20px 22px 16px; background: linear-gradient(120deg, #edf5fd, #f6f9fc); }
-#crm-app .crm-rpt-summary-header h3 { margin: 0; font-size: 17px; font-weight: 650; color: var(--crm-ink); }
-#crm-app .crm-rpt-summary-icon { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 10px; color: #426568; background: #fff; }
-#crm-app .crm-rpt-summary-icon svg { width: 17px; height: 17px; }
-#crm-app .crm-rpt-summary-type { margin-left: auto; max-width: 100%; color: #64748b; font-size: 13px; overflow-wrap: anywhere; }
-#crm-app .crm-rpt-summary-content { padding: 0 16px 16px; background: linear-gradient(120deg, #edf5fd, #f6f9fc); }
-#crm-app .crm-rpt-summary-content p { margin: 0; padding: 20px 22px; border: 1px solid #e9eef4; border-radius: 16px; background: #fff; font-size: 17px; line-height: 1.6; color: #374151; overflow-wrap: anywhere; }
-#crm-app .crm-rpt-summary-footer { display: flex; padding: 16px 22px; }
-#crm-app button.crm-rpt-summary-button { --btn-h: 40px; --btn-px: 16px; --btn-gap: 9px; --btn-radius: 12px; --btn-fs: 13px; --btn-weight: 600; --btn-bg: #fff; --btn-fg: #29494c; --btn-bg-hover: #f0f6f6; --btn-fg-hover: #203c3f; --btn-ring: inset 0 0 0 1px #d7e2e3; --btn-ring-hover: inset 0 0 0 1px #a9c0c2; --btn-shadow: 0 1px 2px rgba(25, 49, 52, .04); --btn-shadow-hover: 0 2px 4px rgba(25, 49, 52, .06); --btn-icon: 16px; }
-#crm-app button.crm-rpt-summary-button svg { width: 16px; height: 16px; }
-/* Glass: the lead record's tokens (--lr-*), as on the call summary. */
-#crm-app[data-theme="glass"] .crm-rpt-summary { background: var(--lr-card); border-color: var(--lr-edge); box-shadow: none; backdrop-filter: var(--glass-blur); }
-#crm-app[data-theme="glass"] :is(.crm-rpt-summary-header, .crm-rpt-summary-content) { background: var(--lr-card-head); }
-#crm-app[data-theme="glass"] .crm-rpt-summary-header h3 { color: var(--lr-ink); }
-#crm-app[data-theme="glass"] .crm-rpt-summary-icon { background: rgb(255 255 255 / 8%); color: var(--lr-soft); }
-#crm-app[data-theme="glass"] .crm-rpt-summary-type { color: var(--lr-muted); }
-#crm-app[data-theme="glass"] .crm-rpt-summary-content p { background: rgb(0 0 0 / 22%); border-color: var(--lr-rule); color: var(--lr-soft); }
-#crm-app[data-theme="glass"] button.crm-rpt-summary-button { --btn-bg: rgb(255 255 255 / 6%); --btn-fg: var(--lr-ink); --btn-bg-hover: rgb(255 255 255 / 12%); --btn-fg-hover: #fff; --btn-ring: inset 0 0 0 1px rgb(255 255 255 / 14%); --btn-ring-hover: inset 0 0 0 1px rgb(255 255 255 / 22%); --btn-shadow: 0 0 #0000; --btn-shadow-hover: 0 0 #0000; }
 
 /* 2. Four numbers. */
 #crm-app .crm-rpt-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
@@ -1566,10 +1544,6 @@
   #crm-app .crm-rpt-periods > button { flex: 1 0 auto; }
   #crm-app .crm-rpt-actions { width: 100%; }
   #crm-app .crm-rpt-actions > button { flex: 1; }
-  #crm-app .crm-rpt-summary-header { padding: 16px; }
-  #crm-app .crm-rpt-summary-content { padding: 0 12px 12px; }
-  #crm-app .crm-rpt-summary-content p { padding: 16px; font-size: 16px; }
-  #crm-app .crm-rpt-summary-footer { padding: 14px 16px; }
   #crm-app .crm-rpt-kpis { gap: 10px; }
   #crm-app .crm-rpt-kpi { padding: 14px 16px; }
   #crm-app .crm-rpt-kpi > strong { font-size: 24px; line-height: 30px; }

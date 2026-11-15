@@ -8,7 +8,6 @@ import {
   BadgeDollarSign,
   Check,
   Copy,
-  FileText,
   Megaphone,
   Minus,
   NotebookPen,
@@ -408,6 +407,10 @@ export function ReportsView({
             ))}
           </div>
           <div className="crm-rpt-actions">
+            <button type="button" className="crm-button-secondary" onClick={() => void copySummary()}>
+              {copied === "done" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+              {copied === "done" ? "Copied" : copied === "failed" ? "Copy failed" : "Copy summary"}
+            </button>
             <button className="crm-button-secondary" onClick={() => window.print()}>
               <Printer aria-hidden="true" />
               Print / Save PDF
@@ -421,31 +424,7 @@ export function ReportsView({
           </p>
         ) : null}
 
-        {/* 1. The answer, in one sentence - the same card as a lead's call
-            summary, with the copy-for-email button in its footer. */}
-        <section className="crm-rpt-summary" aria-label="Summary">
-          <header className="crm-rpt-summary-header">
-            <span className="crm-rpt-summary-icon">
-              <FileText aria-hidden="true" />
-            </span>
-            <h3>Summary</h3>
-            <span className="crm-rpt-summary-type">
-              {periodTitle} · vs {previous.short}
-            </span>
-          </header>
-          <div className="crm-rpt-summary-content">
-            <p>{headline}</p>
-          </div>
-          <footer className="crm-rpt-summary-footer">
-            <button type="button" className="crm-rpt-summary-button" onClick={() => void copySummary()}>
-              {copied === "done" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-              {copied === "done" ? "Copied" : copied === "failed" ? "Copy failed" : "Copy summary"}
-              <ArrowRight aria-hidden="true" />
-            </button>
-          </footer>
-        </section>
-
-        {/* 2. Four numbers, each with how it moved. */}
+        {/* 1. Four numbers, each with how it moved. */}
         <section className="crm-rpt-kpis" aria-label="Headline numbers">
           <Kpi label="New leads" value={count(t.leadCount)}>
             <Change now={t.leadCount} before={p.leadCount} short={previous.short} />
@@ -467,7 +446,7 @@ export function ReportsView({
           </Kpi>
         </section>
 
-        {/* 3. Where the leads came from, and the jobs they became. */}
+        {/* 2. Where the leads came from, and the jobs they became. */}
         <div className="crm-rpt-row">
           <Panel icon={PieChart} title="Where leads came from">
             {sources.length ? (
@@ -508,7 +487,7 @@ export function ReportsView({
           </Panel>
         </div>
 
-        {/* 4. Ads, in one line. */}
+        {/* 3. Ads, in one line. */}
         {hasAds ? (
           <section className="crm-panel crm-rpt-ads" aria-label="Ads">
             <Megaphone aria-hidden="true" />
@@ -520,7 +499,7 @@ export function ReportsView({
           </section>
         ) : null}
 
-        {/* 5. Notes that print with the report. */}
+        {/* 4. Notes that print with the report. */}
         <Panel icon={NotebookPen} title="Notes for the client" aside="Prints with the report">
           <textarea
             className="crm-rpt-notes"
