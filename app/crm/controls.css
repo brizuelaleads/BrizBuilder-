@@ -1717,8 +1717,8 @@
    facts with icons, and a quiet footer. Own classes, so none of the older
    .crm-client-grid layers apply. */
 #crm-app .crm-biz-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 16px; }
-#crm-app .crm-biz-card { display: grid; align-content: start; gap: 18px; padding: 20px 22px 16px; border: 1px solid var(--crm-line); border-radius: 14px; background: var(--crm-card); box-shadow: none; overflow: hidden; }
-#crm-app .crm-biz-card > header { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 0; border: 0; background: none; }
+#crm-app .crm-biz-card { display: grid; align-content: start; gap: 20px; padding: 22px; border: 1px solid var(--crm-line); border-radius: 14px; background: var(--crm-card); box-shadow: none; overflow: hidden; }
+#crm-app .crm-biz-card > header { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 0; padding: 0; border: 0; background: none; }
 #crm-app .crm-biz-card > header > div { display: grid; gap: 2px; flex: 1; min-width: 0; }
 #crm-app .crm-biz-card > header strong { font-size: 16px; line-height: 21px; font-weight: 650; color: var(--crm-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #crm-app .crm-biz-card > header small { font-size: 13px; color: var(--crm-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1737,8 +1737,8 @@
 #crm-app .crm-biz-facts li svg { flex-shrink: 0; width: 16px; height: 16px; color: var(--crm-muted); }
 #crm-app .crm-biz-facts li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-#crm-app .crm-biz-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 2px; padding: 12px 0 0; border-top: 1px solid var(--crm-line); background: none; font-size: 12px; color: var(--crm-muted); }
-#crm-app .crm-biz-card > footer button.danger { --btn-h: 30px; --btn-px: 12px; --btn-fs: 12px; --btn-weight: 600; --btn-radius: 8px; --btn-bg: transparent; --btn-fg: var(--crm-muted); --btn-bg-hover: #fdecee; --btn-fg-hover: #a11d32; --btn-ring: 0 0 #0000; --btn-ring-hover: 0 0 #0000; --btn-shadow: 0 0 #0000; --btn-shadow-hover: 0 0 #0000; border: 0; }
+#crm-app .crm-biz-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 30px; margin: -6px 0 -7px; padding: 14px 0 0; border-top: 1px solid var(--crm-line); background: none; font-size: 12px; color: var(--crm-muted); }
+#crm-app .crm-biz-card > footer button.danger { --btn-h: 30px; --btn-px: 12px; --btn-fs: 12px; --btn-weight: 600; --btn-radius: 8px; --btn-bg: transparent; --btn-fg: var(--crm-muted); --btn-bg-hover: #fdecee; --btn-fg-hover: #a11d32; --btn-ring: 0 0 #0000; --btn-ring-hover: 0 0 #0000; --btn-shadow: 0 0 #0000; --btn-shadow-hover: 0 0 #0000; border: 0; margin-right: -12px; }
 
 #crm-app[data-theme="glass"] .crm-biz-card { border-color: var(--glass-edge); border-radius: 18px; box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); }
 #crm-app[data-theme="glass"] .crm-biz-status.is-on { color: #8be0b0; }
@@ -1746,6 +1746,6 @@
 #crm-app[data-theme="glass"] .crm-biz-grid > .crm-biz-card.crm-panel > footer > button.danger.danger:hover { background: var(--btn-bg-hover); color: var(--btn-fg-hover); }
 
 @media (max-width: 640px) {
-  #crm-app .crm-biz-card { padding: 16px 18px 14px; }
+  #crm-app .crm-biz-card { padding: 18px; gap: 18px; }
   #crm-app .crm-biz-stats dd { font-size: 17px; line-height: 22px; }
 }
