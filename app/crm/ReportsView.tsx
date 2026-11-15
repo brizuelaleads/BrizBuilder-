@@ -8,6 +8,7 @@ import {
   BadgeDollarSign,
   Check,
   Copy,
+  FileText,
   Megaphone,
   Minus,
   NotebookPen,
@@ -407,10 +408,6 @@ export function ReportsView({
             ))}
           </div>
           <div className="crm-rpt-actions">
-            <button type="button" className="crm-button-secondary" onClick={() => void copySummary()}>
-              {copied === "done" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-              {copied === "done" ? "Copied" : copied === "failed" ? "Copy failed" : "Copy summary"}
-            </button>
             <button className="crm-button-secondary" onClick={() => window.print()}>
               <Printer aria-hidden="true" />
               Print / Save PDF
@@ -424,9 +421,28 @@ export function ReportsView({
           </p>
         ) : null}
 
-        {/* 1. The answer, in one sentence. */}
-        <section className="crm-panel crm-rpt-hero">
-          <p>{headline}</p>
+        {/* 1. The answer, in one sentence - the same card as a lead's call
+            summary, with the copy-for-email button in its footer. */}
+        <section className="crm-rpt-summary" aria-label="Summary">
+          <header className="crm-rpt-summary-header">
+            <span className="crm-rpt-summary-icon">
+              <FileText aria-hidden="true" />
+            </span>
+            <h3>Summary</h3>
+            <span className="crm-rpt-summary-type">
+              {periodTitle} · vs {previous.short}
+            </span>
+          </header>
+          <div className="crm-rpt-summary-content">
+            <p>{headline}</p>
+          </div>
+          <footer className="crm-rpt-summary-footer">
+            <button type="button" className="crm-rpt-summary-button" onClick={() => void copySummary()}>
+              {copied === "done" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+              {copied === "done" ? "Copied" : copied === "failed" ? "Copy failed" : "Copy summary"}
+              <ArrowRight aria-hidden="true" />
+            </button>
+          </footer>
         </section>
 
         {/* 2. Four numbers, each with how it moved. */}
