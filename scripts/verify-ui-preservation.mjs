@@ -24,7 +24,9 @@ const intentionalRemovals = {
     fields: ['type="button"', 'type="button"'],
   },
   'app/crm/OperationsViews.tsx': {
-    handlers: ['onClick={onAddTask}', 'onClick={onAddAppointment}', 'onClick={onAddClient}', 'onClick={onInvite}'],
+    // The Workspace page's "Client App" shortcut card went with the Settings
+    // rebuild; Client app is now its own entry in the section menu.
+    handlers: ['onClick={onAddTask}', 'onClick={onAddAppointment}', 'onClick={onAddClient}', 'onClick={onInvite}', 'onClick={() => setSection("branding")}'],
     controls: ['<button className="crm-button-primary" onClick={onAddTask}>+ New Task</button>', '<button className="crm-button-primary" onClick={onAddAppointment}>+ Book Appointment</button>', '<button className="crm-button-primary" onClick={onAddClient}>+ Add Sub-Account</button>', '<button className="crm-button-primary" onClick={onInvite}>+ Give Access</button>'],
   },
 };
@@ -39,12 +41,20 @@ const moves = {
     fields: ['type="button"'],
     charts: ['<svg className={`crm-dashboard-sparkline is-trend-${trend}`} viewBox="0 0 120 48" preserveAspectRatio="none" role="img" aria-label={label} >', '<svg viewBox="0 0 120 48" preserveAspectRatio="none" aria-hidden="true">'],
   },
-  'app/crm/OperationsViews.tsx': {
-    // Reports moved to its own file and was rebuilt as a client report; its
-    // Print / Save PDF handler is unchanged.
-    to: 'app/crm/ReportsView.tsx',
-    handlers: ['onClick={() => window.print()}'],
-  },
+  'app/crm/OperationsViews.tsx': [
+    {
+      // Reports moved to its own file and was rebuilt as a client report; its
+      // Print / Save PDF handler is unchanged.
+      to: 'app/crm/ReportsView.tsx',
+      handlers: ['onClick={() => window.print()}'],
+    },
+    {
+      // Settings moved to its own file and was rebuilt; the section menu
+      // still switches sections the same way.
+      to: 'app/crm/SettingsView.tsx',
+      handlers: ['onClick={() => setSection(item.id)}'],
+    },
+  ],
 };
 const withoutRemovals = (file, contract, values) => {
   const out = [...values];
@@ -53,8 +63,9 @@ const withoutRemovals = (file, contract, values) => {
     assert.ok(index >= 0, `Listed removal is not in the baseline for ${file}: ${removed}`);
     out.splice(index, 1);
   }
-  const move = moves[file];
-  if (move?.[contract]) {
+  // A file may have sent code to more than one destination.
+  for (const move of [moves[file] ?? []].flat()) {
+    if (!move[contract]) continue;
     const destination = [...(current.files.find(f => f.file === move.to)?.[contract] ?? [])];
     for (const moved of move[contract]) {
       const index = out.indexOf(moved);
@@ -99,8 +110,8 @@ const restructured = {
     charts: {gone: [], added: ['<DailyChart points={daily.points} byWeek={daily.byWeek} />']},
   },
   'app/crm/OperationsViews.tsx': {
-    reason: 'Calendar rebuilt as a week planner: month picker, status filters, event popover. Settings gained an Appearance section (Glass backdrop picker). Reports moved to app/crm/ReportsView.tsx as a weekly/monthly client report.',
-    controls: /<h2>Agency report<\/h2>|onClick=\{\(\) => window\.print\(\)\}>Print \/ Save PDF|<h3>(Lead progression|Volume and revenue|What to do next)<\/h3>|<th>(Source|Leads|Revenue)<\/th>|crm-appearance|appearance\.on|appearance\.blur|CRM_BACKDROPS|CRM_BACKDROP_BLURS|level\.|option\.id|<h3>Appearance<\/h3>|shiftWeek|setAnchorDate|pageMonth|monthLabel|weekStart\.toLocaleDateString|CALENDAR_WEEK_RANGE|toggleStatus|hiddenStatuses|crm-cal-|setOpenEvent|onClose|closeRef|update_appointment_status|deleteAppointment|onAddAppointment|<option key=\{status\}|crm-google-calendar|appointment\.contactName/,
+    reason: 'Calendar rebuilt as a week planner: month picker, status filters, event popover. Settings gained an Appearance section (Glass backdrop picker). Reports moved to app/crm/ReportsView.tsx as a weekly/monthly client report. Settings moved to app/crm/SettingsView.tsx and was rebuilt with real account, business, integration and export settings.',
+    controls: /<h2>Settings<\/h2>|onClick=\{\(\) => setSection\(item\.id\)\}|crm-settings-client-app-entry|<h3>(Workspace profile|Client App|Access & security|Integrations|Privacy controls)<\/h3>|<h2>Agency report<\/h2>|onClick=\{\(\) => window\.print\(\)\}>Print \/ Save PDF|<h3>(Lead progression|Volume and revenue|What to do next)<\/h3>|<th>(Source|Leads|Revenue)<\/th>|crm-appearance|appearance\.on|appearance\.blur|CRM_BACKDROPS|CRM_BACKDROP_BLURS|level\.|option\.id|<h3>Appearance<\/h3>|shiftWeek|setAnchorDate|pageMonth|monthLabel|weekStart\.toLocaleDateString|CALENDAR_WEEK_RANGE|toggleStatus|hiddenStatuses|crm-cal-|setOpenEvent|onClose|closeRef|update_appointment_status|deleteAppointment|onAddAppointment|<option key=\{status\}|crm-google-calendar|appointment\.contactName/,
   },
   'app/CrmApp.tsx': {
     reason: 'Toasts carry an icon, a title and detail, an action and a close; the sidebar foot gained the Classic/Glass theme switch',

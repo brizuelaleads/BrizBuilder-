@@ -7411,6 +7411,41 @@ export async function executeSupabaseCrmAction(
     return { id: createdClient.id };
   }
 
+  if (action === "update_client") {
+    // Edit a business profile from Settings. Same permission and field rules
+    // as create_client; requireClient confirms the business belongs to this
+    // organization and to the caller's accessible businesses, so a browser-
+    // supplied clientId can never reach another tenant's record.
+    requirePermission(context, "clients.manage");
+    const clientId = requireText(input.clientId, "Business", 100);
+    await requireClient(context, clientId);
+    await assertOk(
+      supabase()
+        .from("clients")
+        .update({
+          business_name: requireText(input.businessName, "Business name", 160),
+          industry: requireText(input.industry, "Industry", 100),
+          website: optionalText(input.website, 200),
+          phone: optionalText(input.phone, 40),
+          email: optionalText(input.email, 160)?.toLowerCase() ?? null,
+          address: optionalText(input.address, 240),
+          city: optionalText(input.city, 80) ?? "",
+          state: optionalText(input.state, 30) ?? "",
+          zip: optionalText(input.zip, 20) ?? "",
+          time_zone: optionalText(input.timeZone, 80) ?? "America/Chicago",
+          monthly_ad_budget_cents: cents(input.monthlyAdBudgetCents),
+          assigned_account_manager: optionalText(input.assignedAccountManager, 120),
+          service_areas: serviceAreas(input.serviceAreas),
+          notes: optionalText(input.notes, 1500) ?? "",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", clientId)
+        .eq("organization_id", context.organizationId),
+    );
+    await audit(context, "client.updated", "client", clientId);
+    return { id: clientId };
+  }
+
   if (action === "save_website") {
     requirePermission(context, "websites.manage");
     const clientId = requireText(input.clientId, "Client", 100);

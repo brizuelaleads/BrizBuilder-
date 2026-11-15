@@ -56,11 +56,11 @@ import { LeadDetail, LeadsView, PipelineView } from "./crm/LeadsViews";
 import {
   CalendarView,
   ClientsView,
-  SettingsView,
   TasksView,
   TeamView,
 } from "./crm/OperationsViews";
 import { ReportsView } from "./crm/ReportsView";
+import { SettingsView } from "./crm/SettingsView";
 import {
   AddAppointmentModal,
   AddClientModal,
@@ -1641,19 +1641,27 @@ export function CrmApp({
         {view === "settings" && data.viewer.permissions.includes("clients.manage") && (
           <SettingsView
             organizationName={data.organization.name}
-            viewerRole={data.viewer.role}
+            viewer={data.viewer}
             clients={data.clients}
             branding={data.branding}
             mutate={mutate}
             tenantRootDomain={data.pwaRuntime.tenantRootDomain}
             appearance={{
+              theme,
+              onTheme: (next) => void chooseTheme(next),
               glass: theme === "glass",
               backdrop,
               onBackdrop: (next) => void chooseBackdrop(next),
               blur: backdropBlur,
               onBlur: (next) => void chooseBackdropBlur(next),
-              onUseGlass: () => void chooseTheme("glass"),
             }}
+            push={data.pushRuntime}
+            providerConnections={filteredProviderConnections}
+            team={data.team}
+            leads={workspaceLeads}
+            contacts={filteredContacts}
+            selectedClientId={effectiveSelectedClientId ?? "all"}
+            onNavigate={(next) => navigate(next)}
           />
         )}
       </main>

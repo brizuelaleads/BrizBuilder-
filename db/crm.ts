@@ -1717,6 +1717,17 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
     return { id: clientId };
   }
 
+  if (action === "update_client") {
+    requirePermission(context, "clients.manage");
+    const clientId = requireText(input.clientId, "Business", 100);
+    await requireClient(context, clientId);
+    await db.prepare("UPDATE crm_clients SET business_name = ?, industry = ?, website = ?, phone = ?, email = ?, address = ?, city = ?, state = ?, zip = ?, time_zone = ?, monthly_ad_budget_cents = ?, assigned_account_manager = ?, service_areas_json = ?, notes = ? WHERE id = ? AND organization_id = ?")
+      .bind(requireText(input.businessName, "Business name", 160), requireText(input.industry, "Industry", 100), optionalText(input.website, 200), optionalText(input.phone, 40), optionalText(input.email, 160), optionalText(input.address, 240), optionalText(input.city, 80) ?? "", optionalText(input.state, 30) ?? "", optionalText(input.zip, 20) ?? "", optionalText(input.timeZone, 80) ?? "America/Chicago", cents(input.monthlyAdBudgetCents), optionalText(input.assignedAccountManager, 120), JSON.stringify(typeof input.serviceAreas === "string" ? input.serviceAreas.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 30) : []), optionalText(input.notes, 1500) ?? "", clientId, context.organizationId)
+      .run();
+    await audit(context, "client.updated", "client", clientId);
+    return { id: clientId };
+  }
+
   if (action === "save_website") {
     requirePermission(context, "websites.manage");
     const clientId = requireText(input.clientId, "Client", 100);

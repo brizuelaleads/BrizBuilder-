@@ -18,7 +18,7 @@ const migration = read("supabase/migrations/20260726053015_user_preferences.sql"
 const themeCheckMigration = read("supabase/migrations/20261108000000_glass_theme.sql");
 const glassStyles = read("app/crm/theme-glass.css");
 const backdropMigration = read("supabase/migrations/20261108010000_glass_backdrop.sql");
-const settingsSource = read("app/crm/OperationsViews.tsx");
+const settingsSource = read("app/crm/SettingsView.tsx");
 const layoutSource = read("app/layout.tsx");
 
 function themesFromTs() {
@@ -150,7 +150,7 @@ test("the backdrop read cannot break the theme read before the migration runs", 
 });
 
 test("Settings offers the backdrop picker and Glass draws the chosen backdrop", () => {
-  assert.match(settingsSource, /id: "appearance" as const, label: "Appearance"/);
+  assert.match(settingsSource, /id: "appearance", label: "Appearance"/);
   assert.match(settingsSource, /role="radiogroup" aria-label="Glass background"/);
   assert.match(crmAppSource, /<GlassBackdrop variant=\{backdrop\} \/>/);
   assert.match(crmAppSource, /action: "set_backdrop", backdrop: next/);

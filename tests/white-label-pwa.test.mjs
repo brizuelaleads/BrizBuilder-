@@ -36,7 +36,7 @@ const manifestRoute = read("app/manifest.webmanifest/route.ts");
 const brandHead = read("app/components/BrandHead.tsx");
 const crmAppSource = read("app/CrmApp.tsx");
 const clientAppSettings = read("app/crm/BrandingSettings.tsx");
-const operationsViews = read("app/crm/OperationsViews.tsx");
+const settingsView = read("app/crm/SettingsView.tsx");
 const serviceWorker = read("public/sw.js");
 
 function extractBlock(source, needle) {
@@ -335,8 +335,10 @@ test("save_client_branding is permission checked and tenant scoped", () => {
 });
 
 test("Client App settings are discoverable and gated by the existing permission", () => {
-  assert.match(operationsViews, /label: "Client App"/);
-  assert.match(operationsViews, /setSection\("branding"\)/);
+  // Client app is its own entry in the Settings section menu, shown to the
+  // same permission that saves branding.
+  assert.ok(settingsView.includes('{ id: "client-app", label: "Client app", icon: Smartphone, group: "Businesses", show: can("clients.manage") }'));
+  assert.ok(settingsView.includes("<BrandingSettings clients={clients} branding={branding} mutate={mutate}"));
   assert.match(
     crmAppSource,
     /onClick=\{\(\) => navigate\("settings"\)\}/,
