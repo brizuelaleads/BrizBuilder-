@@ -10,7 +10,7 @@ import type {
   CrmTask,
   CrmTeamMember,
 } from "../../db/crm";
-import { ChevronLeft, ChevronRight, Clock3, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock3, Globe, MapPin, Trash2, UserRound, X } from "lucide-react";
 import { Badge, dateTime, EmptyState, Modal, money, shortDate } from "./ui";
 
 type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
@@ -778,10 +778,33 @@ export function ClientsView({ clients, leads, onDeleted, mutate, canDelete, admi
 
   return <div className="crm-view">
     <section className="crm-page-heading"><div><p>AGENCY · SUB-ACCOUNTS</p><h2>Agency</h2><span>Manage every sub-account under this agency: business profiles, budgets, service areas, and ownership.</span></div></section>
-    <section className="crm-client-grid">{clients.map((client) => {
+    <section className="crm-biz-grid">{clients.map((client) => {
       const clientLeads = leads.filter((lead) => lead.clientId === client.id);
       const revenue = clientLeads.reduce((sum, lead) => sum + lead.finalRevenueCents, 0);
-      return <article key={client.id}><header><span className="crm-client-logo">{client.businessName.split(/\s+/).map((part) => part[0]).slice(0, 2).join("")}</span><div><strong>{client.businessName}</strong><small>{client.industry} · {client.city}, {client.state}</small></div><Badge tone="green">{client.status}</Badge></header><section><div><span>Leads</span><strong>{clientLeads.length}</strong></div><div><span>Revenue</span><strong>{money(revenue)}</strong></div><div><span>Ad budget</span><strong>{money(client.monthlyAdBudgetCents)}</strong></div></section><dl><div><dt>Account manager</dt><dd>{client.assignedAccountManager?.trim() || "Unassigned"}</dd></div><div><dt>Service areas</dt><dd>{client.serviceAreas.join(", ") || "Not set"}</dd></div><div><dt>Website</dt><dd>{client.website?.trim() || "Not connected"}</dd></div></dl><footer><span>Created {shortDate(client.createdAt)}</span>{canDelete ? <button className="danger" onClick={() => setDeleteTarget(client)}>Delete</button> : null}</footer></article>;
+      // Initials from words only, so "DEMO — Summit Roofing" reads DS, not D—.
+      const initials = client.businessName.split(/\s+/).filter((word) => /^[a-z0-9]/i.test(word)).map((word) => word[0].toUpperCase()).slice(0, 2).join("") || "?";
+      const place = [client.city, client.state].map((part) => part?.trim()).filter(Boolean).join(", ");
+      const about = [client.industry, place].filter(Boolean).join(" · ");
+      const site = client.website?.trim().replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/+$/, "") ?? "";
+      const areas = client.serviceAreas.slice(0, 3).join(", ") + (client.serviceAreas.length > 3 ? ` +${client.serviceAreas.length - 3} more` : "");
+      return <article key={client.id} className="crm-panel crm-biz-card">
+        <header>
+          <span className="crm-biz-logo" aria-hidden="true">{initials}</span>
+          <div><strong>{client.businessName}</strong>{about ? <small>{about}</small> : null}</div>
+          <span className={`crm-biz-status is-${client.status === "active" ? "on" : "off"}`}><i aria-hidden="true" />{client.status === "active" ? "Active" : client.status}</span>
+        </header>
+        <dl className="crm-biz-stats">
+          <div><dt>Leads</dt><dd>{clientLeads.length.toLocaleString()}</dd></div>
+          <div><dt>Revenue</dt><dd>{money(revenue)}</dd></div>
+          <div><dt>Ad budget</dt><dd>{client.monthlyAdBudgetCents ? money(client.monthlyAdBudgetCents) : "—"}</dd></div>
+        </dl>
+        <ul className="crm-biz-facts">
+          <li><UserRound aria-hidden="true" /><span>{client.assignedAccountManager?.trim() || "No account manager"}</span></li>
+          <li><MapPin aria-hidden="true" /><span>{areas || "No service areas"}</span></li>
+          <li><Globe aria-hidden="true" /><span>{site || "No website"}</span></li>
+        </ul>
+        <footer><span>Created {shortDate(client.createdAt)}</span>{canDelete ? <button className="danger" onClick={() => setDeleteTarget(client)}>Delete</button> : null}</footer>
+      </article>;
     })}</section>
     {deleteTarget ? <Modal title={`Delete ${deleteTarget.businessName}?`} eyebrow="ADMIN CONFIRMATION" onClose={closeDeleteDialog}>
       <form className="crm-form crm-delete-client-form" onSubmit={(event) => void deleteClient(event)}>

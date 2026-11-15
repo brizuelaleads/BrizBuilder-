@@ -1712,3 +1712,40 @@
   #crm-app .crm-set-exports > li { flex-wrap: wrap; }
   #crm-app .crm-set-facts { grid-template-columns: 1fr; }
 }
+
+/* Agency business cards (ClientsView): name and status, three numbers, three
+   facts with icons, and a quiet footer. Own classes, so none of the older
+   .crm-client-grid layers apply. */
+#crm-app .crm-biz-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 16px; }
+#crm-app .crm-biz-card { display: grid; align-content: start; gap: 18px; padding: 20px 22px 16px; border: 1px solid var(--crm-line); border-radius: 14px; background: var(--crm-card); box-shadow: none; overflow: hidden; }
+#crm-app .crm-biz-card > header { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 0; border: 0; background: none; }
+#crm-app .crm-biz-card > header > div { display: grid; gap: 2px; flex: 1; min-width: 0; }
+#crm-app .crm-biz-card > header strong { font-size: 16px; line-height: 21px; font-weight: 650; color: var(--crm-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#crm-app .crm-biz-card > header small { font-size: 13px; color: var(--crm-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#crm-app .crm-biz-logo { display: grid; place-items: center; flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px; background: var(--crm-accent); color: var(--crm-on-accent, #fff); font-size: 14px; font-weight: 700; letter-spacing: .02em; }
+#crm-app .crm-biz-status { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; font-size: 12px; font-weight: 600; color: var(--crm-muted); text-transform: capitalize; }
+#crm-app .crm-biz-status i { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
+#crm-app .crm-biz-status.is-on { color: #11683f; }
+
+#crm-app .crm-biz-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 14px 0; border-block: 1px solid var(--crm-line); }
+#crm-app .crm-biz-stats > div { display: grid; gap: 2px; min-width: 0; }
+#crm-app .crm-biz-stats dt { font-size: 12px; color: var(--crm-muted); }
+#crm-app .crm-biz-stats dd { margin: 0; font-size: 20px; line-height: 26px; font-weight: 650; letter-spacing: -.01em; color: var(--crm-ink); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+#crm-app .crm-biz-facts { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+#crm-app .crm-biz-facts li { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 14px; color: var(--crm-ink); }
+#crm-app .crm-biz-facts li svg { flex-shrink: 0; width: 16px; height: 16px; color: var(--crm-muted); }
+#crm-app .crm-biz-facts li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+#crm-app .crm-biz-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 2px; padding: 12px 0 0; border-top: 1px solid var(--crm-line); background: none; font-size: 12px; color: var(--crm-muted); }
+#crm-app .crm-biz-card > footer button.danger { --btn-h: 30px; --btn-px: 12px; --btn-fs: 12px; --btn-weight: 600; --btn-radius: 8px; --btn-bg: transparent; --btn-fg: var(--crm-muted); --btn-bg-hover: #fdecee; --btn-fg-hover: #a11d32; --btn-ring: 0 0 #0000; --btn-ring-hover: 0 0 #0000; --btn-shadow: 0 0 #0000; --btn-shadow-hover: 0 0 #0000; border: 0; }
+
+#crm-app[data-theme="glass"] .crm-biz-card { border-color: var(--glass-edge); border-radius: 18px; box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); }
+#crm-app[data-theme="glass"] .crm-biz-status.is-on { color: #8be0b0; }
+#crm-app[data-theme="glass"] .crm-biz-grid > .crm-biz-card.crm-panel > footer > button.danger.danger { --btn-bg: transparent; --btn-fg: var(--crm-muted); --btn-bg-hover: rgb(255 92 112 / 14%); --btn-fg-hover: #ffa3b0; --btn-ring: 0 0 #0000; --btn-ring-hover: 0 0 #0000; background: var(--btn-bg); color: var(--btn-fg); border-color: transparent; box-shadow: none; }
+#crm-app[data-theme="glass"] .crm-biz-grid > .crm-biz-card.crm-panel > footer > button.danger.danger:hover { background: var(--btn-bg-hover); color: var(--btn-fg-hover); }
+
+@media (max-width: 640px) {
+  #crm-app .crm-biz-card { padding: 16px 18px 14px; }
+  #crm-app .crm-biz-stats dd { font-size: 17px; line-height: 22px; }
+}
