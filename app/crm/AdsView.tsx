@@ -870,103 +870,7 @@ export function AdsView({
         </div>
       </section>
 
-      {/* 2. The path from an ad to a customer: the key numbers, each with the
-          share that moved on and what it cost. */}
-      <section className="crm-panel crm-ads-journey">
-        <header>
-          <div className="crm-dashboard-widget-heading">
-            <Route aria-hidden="true" />
-            <h3>From ad to customer</h3>
-          </div>
-        </header>
-        <ol>
-          <JourneyStep label="saw your ads" value={totals.impressions} />
-          <JourneyStep label="clicked" value={totals.clicks} rate={percent(totals.ctr)} each={totals.cpcCents} />
-          <JourneyStep label="became leads" value={totals.leads} rate={share(totals.leads, totals.clicks)} each={totals.costPerLeadCents} />
-          <JourneyStep label="booked a job" value={totals.booked} rate={share(totals.booked, totals.leads)} each={totals.costPerBookedCents} />
-          <JourneyStep label="became customers" value={totals.won} rate={share(totals.won, totals.booked)} each={totals.costPerWonCents} />
-        </ol>
-        {report.unattributedLeads ? (
-          <p className="crm-ads-footnote">
-            {plural(report.unattributedLeads, "other lead")} came from somewhere other than a
-            Meta ad, so they are not counted here.
-          </p>
-        ) : null}
-      </section>
-
-      {/* 3. Over time, and where the ads sit among everything else. */}
-      <div className="crm-ads-pair">
-        <section className="crm-panel crm-ads-trend">
-          <header>
-            <div className="crm-dashboard-widget-heading">
-              <CalendarDays aria-hidden="true" />
-              <h3>{daily.byWeek ? "Week by week" : "Day by day"}</h3>
-            </div>
-            <small>Hover a bar for that {daily.byWeek ? "week" : "day"}</small>
-          </header>
-          {daily.points.length ? (
-            <DailyChart points={daily.points} byWeek={daily.byWeek} />
-          ) : (
-            <p className="crm-ads-quiet">No days to chart in this range.</p>
-          )}
-        </section>
-
-        <section className="crm-panel crm-ads-glance">
-          <header>
-            <div className="crm-dashboard-widget-heading">
-              <Layers aria-hidden="true" />
-              <h3>Ads and everything else</h3>
-            </div>
-          </header>
-          <div className="crm-ads-glance-body">
-            <div className="crm-ads-glance-stat">
-              <span>Ads&apos; share of revenue</span>
-              <strong>{adRevenueShare == null ? "—" : `${adRevenueShare}%`}</strong>
-              <small>
-                {adRevenueShare == null
-                  ? "No won revenue in this range"
-                  : `${dollars(totals.revenueCents)} of ${dollars(totalRevenueCents)}`}
-              </small>
-            </div>
-            <div className="crm-ads-glance-stat">
-              <span>Appointments booked</span>
-              <strong>{count(activeAppointments.length)}</strong>
-              <small>
-                {activeAppointments.length
-                  ? appointmentsToday
-                    ? `${appointmentsToday} today`
-                    : "None today"
-                  : "No appointments booked"}
-              </small>
-            </div>
-            <div className="crm-ads-sources">
-              <span>Where all {plural(totalSourceLeads, "lead")} came from</span>
-              {sources.length ? (
-                <>
-                  <span className="crm-ads-sources-bar" role="img" aria-label={sources.map((s) => `${s.label} ${s.percent}%`).join(", ")}>
-                    {sources.map((source) => (
-                      <span key={source.label} style={{ width: `${(source.count / totalSourceLeads) * 100}%`, background: source.color } as CSSProperties} />
-                    ))}
-                  </span>
-                  <ul>
-                    {sources.map((source) => (
-                      <li key={source.label}>
-                        <i style={{ background: source.color }} aria-hidden="true" />
-                        <span>{source.label}</span>
-                        <strong>{source.percent}%</strong>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              ) : (
-                <small>No lead source data yet</small>
-              )}
-            </div>
-          </div>
-        </section>
-      </div>
-
-      {/* 4. Every campaign, one row each. A row opens its ads and leads. */}
+      {/* 2. Every campaign, one row each. A row opens its ads and leads. */}
       <section className="crm-panel crm-ads-campaigns" aria-labelledby="crm-ads-campaigns-title">
         <header>
           <div className="crm-dashboard-widget-heading">
@@ -1050,6 +954,102 @@ export function AdsView({
             </tbody>
           </table>
         )}
+      </section>
+
+      {/* 3. Over time, and where the ads sit among everything else. */}
+      <div className="crm-ads-pair">
+        <section className="crm-panel crm-ads-trend">
+          <header>
+            <div className="crm-dashboard-widget-heading">
+              <CalendarDays aria-hidden="true" />
+              <h3>{daily.byWeek ? "Week by week" : "Day by day"}</h3>
+            </div>
+            <small>Hover a bar for that {daily.byWeek ? "week" : "day"}</small>
+          </header>
+          {daily.points.length ? (
+            <DailyChart points={daily.points} byWeek={daily.byWeek} />
+          ) : (
+            <p className="crm-ads-quiet">No days to chart in this range.</p>
+          )}
+        </section>
+
+        <section className="crm-panel crm-ads-glance">
+          <header>
+            <div className="crm-dashboard-widget-heading">
+              <Layers aria-hidden="true" />
+              <h3>Ads and everything else</h3>
+            </div>
+          </header>
+          <div className="crm-ads-glance-body">
+            <div className="crm-ads-glance-stat">
+              <span>Ads&apos; share of revenue</span>
+              <strong>{adRevenueShare == null ? "—" : `${adRevenueShare}%`}</strong>
+              <small>
+                {adRevenueShare == null
+                  ? "No won revenue in this range"
+                  : `${dollars(totals.revenueCents)} of ${dollars(totalRevenueCents)}`}
+              </small>
+            </div>
+            <div className="crm-ads-glance-stat">
+              <span>Appointments booked</span>
+              <strong>{count(activeAppointments.length)}</strong>
+              <small>
+                {activeAppointments.length
+                  ? appointmentsToday
+                    ? `${appointmentsToday} today`
+                    : "None today"
+                  : "No appointments booked"}
+              </small>
+            </div>
+            <div className="crm-ads-sources">
+              <span>Where all {plural(totalSourceLeads, "lead")} came from</span>
+              {sources.length ? (
+                <>
+                  <span className="crm-ads-sources-bar" role="img" aria-label={sources.map((s) => `${s.label} ${s.percent}%`).join(", ")}>
+                    {sources.map((source) => (
+                      <span key={source.label} style={{ width: `${(source.count / totalSourceLeads) * 100}%`, background: source.color } as CSSProperties} />
+                    ))}
+                  </span>
+                  <ul>
+                    {sources.map((source) => (
+                      <li key={source.label}>
+                        <i style={{ background: source.color }} aria-hidden="true" />
+                        <span>{source.label}</span>
+                        <strong>{source.percent}%</strong>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <small>No lead source data yet</small>
+              )}
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {/* 4. The path from an ad to a customer: the key numbers, each with the
+          share that moved on and what it cost. */}
+      <section className="crm-panel crm-ads-journey">
+        <header>
+          <div className="crm-dashboard-widget-heading">
+            <Route aria-hidden="true" />
+            <h3>From ad to customer</h3>
+          </div>
+        </header>
+        <ol>
+          <JourneyStep label="saw your ads" value={totals.impressions} />
+          <JourneyStep label="clicked" value={totals.clicks} rate={percent(totals.ctr)} each={totals.cpcCents} />
+          <JourneyStep label="became leads" value={totals.leads} rate={share(totals.leads, totals.clicks)} each={totals.costPerLeadCents} />
+          <JourneyStep label="booked a job" value={totals.booked} rate={share(totals.booked, totals.leads)} each={totals.costPerBookedCents} />
+          <JourneyStep label="became customers" value={totals.won} rate={share(totals.won, totals.booked)} each={totals.costPerWonCents} />
+        </ol>
+        {report.unattributedLeads ? (
+          <p className="crm-ads-footnote">
+            {plural(report.unattributedLeads, "other lead")} came from somewhere other than a
+            Meta ad, so they are not counted here.
+          </p>
+        ) : null}
       </section>
 
       {openCampaign ? (
