@@ -91,7 +91,7 @@ import { PaymentsView } from "./crm/PaymentsView";
 import { ReviewsView } from "./crm/ReviewsView";
 import { AiConnectorView } from "./crm/AiConnectorView";
 import { CallsView } from "./crm/CallsView";
-import { Badge, initials, Modal } from "./crm/ui";
+import { Badge, BusinessMark, initials, Modal } from "./crm/ui";
 import { callNeedsFollowUp } from "../lib/call-attention";
 
 // The Glass theme's own accent, used while a tenant keeps the default brand colour.
@@ -428,6 +428,8 @@ export function CrmApp({
       data.viewer.permissions,
     ),
   );
+  const logoFor = (clientId: string) =>
+    data.branding.find((entry) => entry.clientId === clientId)?.logoUrl ?? null;
   const scopedClient = data.clients.find(
     (client) => client.id === effectiveSelectedClientId,
   );
@@ -969,7 +971,7 @@ export function CrmApp({
                 aria-expanded={switcherOpen}
                 onClick={() => { setAccountSearch(""); setSwitcherOpen((open) => !open); }}
               >
-                <span>{initials(workspaceName)}</span>
+                <BusinessMark name={workspaceName} logoUrl={scopedClient ? logoFor(scopedClient.id) : null} />
                 <div>
                   <strong>{workspaceName}</strong>
                   <small>
@@ -1015,7 +1017,7 @@ export function CrmApp({
                     {matchingAccounts.map((client) => (
                       <button key={client.id} type="button" className="crm-account-option" aria-pressed={selectedClientId === client.id}
                         onClick={() => { setSelectedClientId(client.id); setSwitcherOpen(false); switcherRef.current?.querySelector<HTMLButtonElement>(".crm-org-card-button")?.focus(); }}>
-                        <span className="crm-account-avatar">{initials(client.businessName)}</span>
+                        <BusinessMark name={client.businessName} logoUrl={logoFor(client.id)} className="crm-account-avatar" />
                         <span className="crm-account-copy"><strong>{client.businessName}</strong><small>{client.industry || "Sub-account"}</small></span>
                         {selectedClientId === client.id ? <Check className="crm-account-check" size={17} aria-hidden="true" /> : null}
                       </button>
@@ -1027,7 +1029,7 @@ export function CrmApp({
             </>
           ) : (
             <div className="crm-org-card">
-              <span>{initials(workspaceName)}</span>
+              <BusinessMark name={workspaceName} logoUrl={scopedClient ? logoFor(scopedClient.id) : null} />
               <div>
                 <strong>{workspaceName}</strong>
                 <small>Client workspace</small>
@@ -1463,6 +1465,7 @@ export function CrmApp({
             mutate={mutate}
             canDelete={data.viewer.permissions.includes("clients.delete")}
             adminEmail={data.viewer.email}
+            branding={data.branding}
           />
         )}
         {view === "reports" && (

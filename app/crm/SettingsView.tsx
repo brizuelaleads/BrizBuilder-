@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Smartphone,
   UserRound,
+  Upload,
   UsersRound,
   type LucideIcon,
 } from "lucide-react";
@@ -36,7 +37,108 @@ import {
 import { PushOptIn } from "../components/PushOptIn";
 import { BrandingSettings } from "./BrandingSettings";
 import { GlassBackdrop } from "./GlassBackdrop";
-import { Badge } from "./ui";
+import { Badge, BusinessMark } from "./ui";
+
+/**
+ * Turn a picked image into a small square PNG in the browser: fitted (never
+ * cropped) into 256x256 on a transparent background. Keeps uploads tiny and
+ * gives the app icon the square shape it needs.
+ */
+async function squareLogo(file: File): Promise<string> {
+  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type))
+    throw new Error("Choose a PNG, JPEG or WebP image.");
+  if (file.size > 10_000_000) throw new Error("That image is over 10 MB. Choose a smaller one.");
+  const url = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error("That image could not be read."));
+      element.src = url;
+    });
+    const size = 256;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("This browser cannot prepare the image.");
+    const scale = Math.min(size / image.naturalWidth, size / image.naturalHeight);
+    const width = image.naturalWidth * scale;
+    const height = image.naturalHeight * scale;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(image, (size - width) / 2, (size - height) / 2, width, height);
+    const png = canvas.toDataURL("image/png");
+    // Base64 of a 300 KB file is ~400 KB; WebP is the fallback for busy photos.
+    return png.length < 400_000 ? png : canvas.toDataURL("image/webp", 0.9);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** Upload, replace or remove one business's logo. */
+function LogoUploader({ client, logoUrl, canEdit, mutate }: { client: CrmClient; logoUrl: string | null; canEdit: boolean; mutate: Mutate }) {
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState("");
+
+  async function pick(file: File | undefined) {
+    if (!file) return;
+    setProblem("");
+    setBusy(true);
+    try {
+      const image = await squareLogo(file);
+      await mutate({ action: "upload_client_logo", clientId: client.id, image }, "Logo uploaded.");
+    } catch (error) {
+      // mutate shows server errors in the banner; image problems are shown here.
+      if (error instanceof Error && /PNG|MB|image/.test(error.message)) setProblem(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    setBusy(true);
+    try {
+      await mutate({ action: "remove_client_logo", clientId: client.id }, "Logo removed.");
+    } catch {
+      // mutate shows the error banner.
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="crm-set-logo">
+      <BusinessMark name={client.businessName} logoUrl={logoUrl} className="crm-set-logo-mark" />
+      <div>
+        <strong>{logoUrl ? "Logo uploaded" : "No logo yet"}</strong>
+        <span>PNG, JPEG or WebP. It is fitted into a square, so a square logo looks best.</span>
+        {problem ? <span className="is-error" role="alert">{problem}</span> : null}
+        {canEdit ? (
+          <div className="crm-set-logo-actions">
+            <label className={`crm-button-secondary crm-set-upload${busy ? " is-busy" : ""}`}>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                disabled={busy}
+                onChange={(event) => {
+                  void pick(event.target.files?.[0]);
+                  event.target.value = "";
+                }}
+              />
+              <Upload aria-hidden="true" />
+              {busy ? "Working..." : logoUrl ? "Replace logo" : "Upload logo"}
+            </label>
+            {logoUrl ? (
+              <button type="button" className="crm-button-secondary" disabled={busy} onClick={() => void remove()}>
+                Remove
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 /*
  * Settings: one place for everything a person configures, grouped by whose
@@ -599,6 +701,15 @@ export function SettingsView({
                   </select>
                 </label>
               ) : null}
+              <Card title="Logo" text="Shown on the Agency cards, the account switcher and the business's client app.">
+                <LogoUploader
+                  key={business.id}
+                  client={business}
+                  logoUrl={branding.find((entry) => entry.clientId === business.id)?.logoUrl ?? null}
+                  canEdit={can("clients.manage")}
+                  mutate={mutate}
+                />
+              </Card>
               <Card>
                 <BusinessForm key={business.id} client={business} canEdit={can("clients.manage")} mutate={mutate} />
               </Card>

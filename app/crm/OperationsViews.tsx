@@ -11,7 +11,8 @@ import type {
   CrmTeamMember,
 } from "../../db/crm";
 import { ChevronLeft, ChevronRight, Clock3, Globe, MapPin, Trash2, UserRound, X } from "lucide-react";
-import { Badge, dateTime, EmptyState, Modal, money, shortDate } from "./ui";
+import type { TenantBranding } from "../../db/branding";
+import { Badge, BusinessMark, dateTime, EmptyState, Modal, money, shortDate } from "./ui";
 
 type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
 
@@ -742,7 +743,7 @@ function CalendarEventPopover({
   );
 }
 
-export function ClientsView({ clients, leads, onDeleted, mutate, canDelete, adminEmail }: { clients: CrmClient[]; leads: CrmLead[]; onDeleted: () => void; mutate: Mutate; canDelete: boolean; adminEmail: string }) {
+export function ClientsView({ clients, leads, onDeleted, mutate, canDelete, adminEmail, branding = [] }: { clients: CrmClient[]; leads: CrmLead[]; onDeleted: () => void; mutate: Mutate; canDelete: boolean; adminEmail: string; branding?: TenantBranding[] }) {
   const [deleteTarget, setDeleteTarget] = useState<CrmClient | null>(null);
   const [deleteEmail, setDeleteEmail] = useState("");
   const [deletePassword, setDeletePassword] = useState("");
@@ -781,15 +782,14 @@ export function ClientsView({ clients, leads, onDeleted, mutate, canDelete, admi
     <section className="crm-biz-grid">{clients.map((client) => {
       const clientLeads = leads.filter((lead) => lead.clientId === client.id);
       const revenue = clientLeads.reduce((sum, lead) => sum + lead.finalRevenueCents, 0);
-      // Initials from words only, so "DEMO — Summit Roofing" reads DS, not D—.
-      const initials = client.businessName.split(/\s+/).filter((word) => /^[a-z0-9]/i.test(word)).map((word) => word[0].toUpperCase()).slice(0, 2).join("") || "?";
+      const logoUrl = branding.find((entry) => entry.clientId === client.id)?.logoUrl ?? null;
       const place = [client.city, client.state].map((part) => part?.trim()).filter(Boolean).join(", ");
       const about = [client.industry, place].filter(Boolean).join(" · ");
       const site = client.website?.trim().replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/+$/, "") ?? "";
       const areas = client.serviceAreas.slice(0, 3).join(", ") + (client.serviceAreas.length > 3 ? ` +${client.serviceAreas.length - 3} more` : "");
       return <article key={client.id} className="crm-panel crm-biz-card">
         <header>
-          <span className="crm-biz-logo" aria-hidden="true">{initials}</span>
+          <BusinessMark name={client.businessName} logoUrl={logoUrl} className="crm-biz-logo" />
           <div><strong>{client.businessName}</strong>{about ? <small>{about}</small> : null}</div>
           <span className={`crm-biz-status is-${client.status === "active" ? "on" : "off"}`}><i aria-hidden="true" />{client.status === "active" ? "Active" : client.status}</span>
         </header>

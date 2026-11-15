@@ -1749,3 +1749,32 @@
   #crm-app .crm-biz-card { padding: 18px; gap: 18px; }
   #crm-app .crm-biz-stats dd { font-size: 17px; line-height: 22px; }
 }
+
+/* Business logos (BusinessMark in app/crm/ui.tsx): when a business has an
+   uploaded logo it replaces the coloured initials tile wherever one appears -
+   Agency cards, the account switcher, Settings. Fitted, never cropped, on a
+   plain tile so transparent logos read on any theme. */
+#crm-app .has-logo { overflow: hidden; padding: 0; background: #fff !important; box-shadow: inset 0 0 0 1px rgb(15 23 42 / 8%); }
+#crm-app .has-logo > img { display: block; width: 100%; height: 100%; padding: 3px; object-fit: contain; }
+#crm-app .crm-account-avatar.has-logo, #crm-app .crm-org-card > .has-logo { color: transparent; }
+
+/* Settings > Business profiles: the logo row. */
+#crm-app .crm-set-logo { display: flex; align-items: center; gap: 18px; }
+#crm-app .crm-set-logo > div { display: grid; gap: 4px; min-width: 0; }
+#crm-app .crm-set-logo strong { font-size: 15px; font-weight: 600; color: var(--crm-ink); }
+#crm-app .crm-set-logo span { font-size: 13px; color: var(--crm-muted); }
+#crm-app .crm-set-logo span.is-error { color: #a11d32; }
+#crm-app .crm-set-logo-mark { display: grid; place-items: center; flex-shrink: 0; width: 76px; height: 76px; border-radius: 18px; background: var(--crm-accent); color: var(--crm-on-accent, #fff); font-size: 24px; font-weight: 700; }
+#crm-app .crm-set-logo-mark.has-logo > img { padding: 6px; }
+#crm-app .crm-set-logo-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+#crm-app .crm-set-logo-actions .crm-button-secondary { --btn-h: 36px; --btn-px: 14px; --btn-fs: 13px; --btn-gap: 8px; cursor: pointer; }
+#crm-app .crm-set-logo-actions svg { width: 15px; height: 15px; }
+#crm-app .crm-set-upload { position: relative; display: inline-flex; align-items: center; }
+#crm-app .crm-set-upload > input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+#crm-app .crm-set-upload:has(input:focus-visible) { outline: 2px solid var(--crm-accent); outline-offset: 2px; }
+#crm-app .crm-set-upload.is-busy { opacity: .6; pointer-events: none; }
+#crm-app[data-theme="glass"] .crm-set-logo span.is-error { color: #ffa3b0; }
+@media (max-width: 640px) {
+  #crm-app .crm-set-logo { align-items: flex-start; }
+  #crm-app .crm-set-logo-mark { width: 60px; height: 60px; border-radius: 14px; font-size: 20px; }
+}

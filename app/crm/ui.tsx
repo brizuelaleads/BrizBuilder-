@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Inbox, X } from "lucide-react";
 
 export function money(cents: number, compact = false) {
@@ -27,7 +27,28 @@ export function dateTime(value: string | null) {
 }
 
 export function initials(name: string) {
-  return name.split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "BL";
+  // Words only, so "DEMO — Summit Roofing" reads DS rather than D—.
+  return name.split(/\s+/).filter((part) => /^[\p{L}\p{N}]/u.test(part)).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "BL";
+}
+
+/**
+ * A business's mark: its uploaded logo, or its initials when there is none or
+ * the image fails to load. The logo URL has already been validated as https
+ * (or root-relative) when it was saved.
+ */
+export function BusinessMark({ name, logoUrl, className }: { name: string; logoUrl?: string | null; className?: string }) {
+  const [broken, setBroken] = useState<string | null>(null);
+  const showLogo = Boolean(logoUrl) && broken !== logoUrl;
+  return (
+    <span className={`${className ?? ""}${showLogo ? " has-logo" : ""}`} aria-hidden="true">
+      {showLogo ? (
+        // eslint-disable-next-line @next/next/no-img-element -- tenant logos are dynamic storage URLs.
+        <img src={logoUrl ?? undefined} alt="" onError={() => setBroken(logoUrl ?? null)} />
+      ) : (
+        initials(name)
+      )}
+    </span>
+  );
 }
 
 export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "purple" | "green" | "orange" | "red" | "blue" }) {

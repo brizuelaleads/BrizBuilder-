@@ -1251,6 +1251,11 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
     return { saved: true, persisted: false, blur };
   }
 
+  if (action === "upload_client_logo" || action === "remove_client_logo") {
+    requirePermission(context, "clients.manage");
+    throw new Error("Logo uploads need the Supabase backend.");
+  }
+
   if (action === "save_client_branding") {
     // D1 has no client_branding table. Permission and tenant scope are still
     // enforced so the fallback backend can never be used to sidestep them,

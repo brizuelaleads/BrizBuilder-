@@ -4471,6 +4471,54 @@ export async function executeSupabaseCrmAction(
     return { id: callId, handled: true };
   }
 
+  if (action === "upload_client_logo") {
+    // A business logo, uploaded from Settings. Same gate as the rest of the
+    // branding: clients.manage, and requireClient pins the business to this
+    // caller. The browser sends a small square image as a data URL; the
+    // server decodes it, checks the bytes really are PNG, JPEG or WebP (never
+    // SVG, which can carry script), caps the size, and stores it in the public
+    // website-assets bucket under this organization and business.
+    requirePermission(context, "clients.manage");
+    const clientId = requireText(input.clientId, "Business", 100);
+    await requireClient(context, clientId);
+    const image = typeof input.image === "string" ? input.image : "";
+    const match = image.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/);
+    if (!match) throw new Error("Upload a PNG, JPEG or WebP image.");
+    const bytes = Uint8Array.from(atob(match[2]), (char) => char.charCodeAt(0));
+    if (bytes.length > 300_000) throw new Error("That image is too large. Use one under 300 KB.");
+    const isPng = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+    const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    const isWebp = String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
+    const kind = match[1];
+    if (!((kind === "png" && isPng) || (kind === "jpeg" && isJpeg) || (kind === "webp" && isWebp)))
+      throw new Error("That file is not a valid image.");
+    const extension = kind === "jpeg" ? "jpg" : kind;
+    const path = `logos/${context.organizationId}/${clientId}/${crypto.randomUUID()}.${extension}`;
+    const storage = supabase().storage.from("website-assets");
+    const { error: uploadError } = await storage.upload(path, bytes, {
+      contentType: `image/${kind}`,
+      cacheControl: "31536000",
+      upsert: false,
+    });
+    if (uploadError) throw new Error("The logo could not be uploaded. Try again.");
+    const logoUrl = storage.getPublicUrl(path).data.publicUrl;
+    const branding = await saveClientBranding(clientId, context.organizationId, {
+      logoUrl,
+      iconUrl: logoUrl,
+    });
+    await audit(context, "client_branding.logo_uploaded", "client", clientId, { path }, clientId);
+    return { saved: true, logoUrl: branding.logoUrl };
+  }
+
+  if (action === "remove_client_logo") {
+    requirePermission(context, "clients.manage");
+    const clientId = requireText(input.clientId, "Business", 100);
+    await requireClient(context, clientId);
+    await saveClientBranding(clientId, context.organizationId, { logoUrl: "", iconUrl: "" });
+    await audit(context, "client_branding.logo_removed", "client", clientId, {}, clientId);
+    return { saved: true };
+  }
+
   if (action === "save_client_branding") {
     // White-labelling is an agency decision, so it rides on clients.manage
     // rather than on a client-side permission. requireClient then pins the

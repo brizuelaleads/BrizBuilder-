@@ -46,11 +46,32 @@ test("the business write is pinned to the caller's organization and audited", ()
 test("Settings saves only through permission-checked server actions", () => {
   // Every write in the Settings tab goes through mutate to /api/crm.
   const actions = [...settingsSource.matchAll(/action: "([a-z_]+)"/g)].map((m) => m[1]).sort();
-  assert.deepEqual([...new Set(actions)], ["change_own_password", "update_client"]);
+  assert.deepEqual([...new Set(actions)], ["change_own_password", "remove_client_logo", "update_client", "upload_client_logo"]);
   assert.doesNotMatch(settingsSource, /fetch\(/, "no direct requests from Settings");
   // The password is checked in the browser too: 12 characters and confirmed.
   assert.match(settingsSource, /const ready = password\.length >= 12 && confirm === password;/);
   // Business details are read-only without the permission.
   assert.match(settingsSource, /<fieldset disabled=\{!canEdit \|\| busy\}>/);
   assert.match(settingsSource, /canEdit=\{can\("clients\.manage"\)\}/);
+});
+
+test("logo uploads are gated, checked as real images, and stored per business", () => {
+  const block = supabaseSource.match(/if \(action === "upload_client_logo"\) \{[\s\S]*?\n {2}\}\n/)?.[0];
+  assert.ok(block, "upload_client_logo handler exists");
+  const store = block.indexOf(".upload(path, bytes");
+  assert.ok(store > 0, "the upload exists");
+  // Permission and tenant checks come before anything is stored.
+  assert.ok(block.indexOf('requirePermission(context, "clients.manage")') < store);
+  assert.ok(block.indexOf("await requireClient(context, clientId)") < store);
+  // Only PNG, JPEG or WebP, confirmed by their file signatures; never SVG.
+  assert.ok(block.includes(String.raw`data:image\/(png|jpeg|webp);base64`));
+  assert.doesNotMatch(block.match(/image\.match\([^\n]*/)?.[0] ?? "", /svg/i, "SVG is not an accepted type");
+  for (const signature of ["isPng", "isJpeg", "isWebp"]) assert.ok(block.includes(signature), `${signature} is checked`);
+  assert.ok(block.includes("bytes.length > 300_000"), "size is capped below the API body limit");
+  // Stored under this organization and business, never overwriting a file.
+  assert.ok(block.includes("logos/${context.organizationId}/${clientId}/${crypto.randomUUID()}"));
+  assert.ok(block.includes("upsert: false"));
+  assert.ok(block.includes('audit(context, "client_branding.logo_uploaded"'));
+  const remove = supabaseSource.match(/if \(action === "remove_client_logo"\) \{[\s\S]*?\n {2}\}\n/)?.[0];
+  assert.ok(remove && remove.indexOf("requireClient") < remove.indexOf("saveClientBranding"));
 });

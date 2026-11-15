@@ -82,6 +82,14 @@ const withoutRemovals = (file, contract, values) => {
 // identical. Every baseline handler and field must still exist (new ones may be
 // added), and controls may differ only where they belong to the rebuilt view.
 const restructured = {
+  'app/crm/ui.tsx': {
+    // Adds BusinessMark: a business's uploaded logo, falling back to its
+    // initials when there is none or the image fails to load (the one new
+    // handler, onError). Its controls stay exempt, as they already were below
+    // (decorative glyphs became Lucide icons); every baseline handler must remain.
+    reason: 'Adds BusinessMark, a business logo with an initials fallback',
+    controls: /./,
+  },
   // Entry pages rebuilt as the glass sign-in (commit 330aade). What they submit
   // is pinned by tests/landing-page.test.mjs (action, method, return_to,
   // current-password, recovery link); here every field must still exist.
