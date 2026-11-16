@@ -1727,12 +1727,11 @@
 #crm-app .crm-biz-status i { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
 #crm-app .crm-biz-status.is-on { color: #11683f; }
 
-#crm-app .crm-biz-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 14px 0; border-block: 1px solid var(--crm-line); }
+#crm-app .crm-biz-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 14px max(0px, calc((100% - 380px) / 2)); border-block: 1px solid var(--crm-line); }
 #crm-app .crm-biz-stats > div { display: grid; gap: 2px; min-width: 0; }
-/* Mirrored about the card centre: first left, middle centred, last right. */
-#crm-app .crm-biz-stats > div:nth-child(1) { justify-items: start; text-align: left; }
-#crm-app .crm-biz-stats > div:nth-child(2) { justify-items: center; text-align: center; }
-#crm-app .crm-biz-stats > div:nth-child(3) { justify-items: end; text-align: right; }
+/* A compact, centred group: each number centred in its own column, the
+   three columns kept together in the middle of the card. */
+#crm-app .crm-biz-stats > div { justify-items: center; text-align: center; }
 #crm-app .crm-biz-stats dt { font-size: 12px; color: var(--crm-muted); }
 #crm-app .crm-biz-stats dd { margin: 0; font-size: 20px; line-height: 26px; font-weight: 650; letter-spacing: -.01em; color: var(--crm-ink); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
