@@ -1812,3 +1812,41 @@
   #crm-app .crm-set-crop-actions > span { display: none; }
   #crm-app .crm-set-crop-actions button { --btn-px: 12px; flex: 1 1 auto; }
 }
+
+/* Connections > Configure forms in Glass (Meta Conversions, Meta Ads,
+   CallRail, and any provider using .crm-connection-connect-form). Classic
+   gives the form a white box; under Glass that left pale, glowing text on
+   white. Here it becomes a translucent panel with Glass text and fields. */
+#crm-app[data-theme="glass"] .crm-connection-connect-form {
+  border-color: var(--glass-edge);
+  background: rgb(255 255 255 / 4%);
+  color: var(--crm-ink);
+}
+#crm-app[data-theme="glass"] .crm-connection-connect-form * { text-shadow: none; }
+#crm-app[data-theme="glass"] .crm-connection-connect-form > p { color: var(--crm-muted); font-size: 13px; line-height: 1.6; }
+#crm-app[data-theme="glass"] .crm-connection-connect-form :is(strong, em) { color: var(--crm-ink); }
+#crm-app[data-theme="glass"] .crm-connection-connect-form label { color: var(--crm-muted); }
+#crm-app[data-theme="glass"] .crm-connection-connect-form code {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 8%);
+  color: var(--crm-ink);
+}
+/* The URL-parameters snippet is a code block on its own line. */
+#crm-app[data-theme="glass"] .crm-connection-connect-form > code,
+#crm-app[data-theme="glass"] .crm-connection-connect-form pre {
+  display: block;
+  padding: 12px 14px;
+  border: 1px solid var(--glass-edge);
+  border-radius: 10px;
+  background: rgb(0 0 0 / 28%);
+  color: #e4e4e7;
+  overflow-wrap: anywhere;
+}
+#crm-app[data-theme="glass"] .crm-connection-connect-form :is(input, select, textarea) {
+  border-color: var(--crm-control-border);
+  background: rgb(255 255 255 / 5%);
+  color: var(--crm-ink);
+}
+#crm-app[data-theme="glass"] .crm-connection-connect-form :is(input, textarea)::placeholder { color: #8b8b96; }
+#crm-app[data-theme="glass"] .crm-connection-connect-form select option { background: #1b1b1f; color: var(--crm-ink); }
