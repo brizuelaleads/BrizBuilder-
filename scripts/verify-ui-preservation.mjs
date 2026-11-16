@@ -89,8 +89,8 @@ const restructured = {
     // and Square in Payments, Google Business Profile in Profiles, Google
     // Calendar in Calendar) show real status and open that tab; they send
     // nothing themselves.
-    reason: 'Connections: Twilio Connect link restyled; added status cards for Stripe, Square, Google Business Profile and Google Calendar that open the tab where each is set up',
-    controls: /\/api\/integrations\/twilio\/connect\?clientId=|onOpenView\(card\.view\)|<h3>\{card\.name\}<\/h3>/,
+    reason: 'Connections: Twilio Connect link restyled; added status cards for Stripe, Square, Google Business Profile and Google Calendar that start each provider\'s own sign-in, or open the tab where a connected one is managed',
+    controls: /\/api\/integrations\/twilio\/connect\?clientId=|onOpenView\(card\.view\)|<h3>\{card\.name\}<\/h3>|href=\{card\.connectHref\}/,
   },
   'app/crm/ui.tsx': {
     // Adds BusinessMark: a business's uploaded logo, falling back to its

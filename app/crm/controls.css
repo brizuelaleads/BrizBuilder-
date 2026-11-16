@@ -1873,3 +1873,6 @@
 #crm-app[data-theme="glass"] .crm-integration-linked .crm-connection-details-simple strong { color: var(--crm-ink); font-size: 14px; overflow-wrap: anywhere; text-shadow: none; }
 /* A letter tile needs no 150px wordmark slot: give the text the room. */
 #crm-app .crm-connections-view .crm-integration-linked > header { grid-template-columns: 48px minmax(0, 1fr) auto; }
+#crm-app .crm-integration-linked > .crm-integration-footer { align-items: center; gap: 14px; flex-wrap: wrap; }
+#crm-app .crm-integration-linked-note { font-size: 12px; color: var(--crm-muted); }
+#crm-app .crm-integration-linked a.crm-integration-primary { text-decoration: none; }
