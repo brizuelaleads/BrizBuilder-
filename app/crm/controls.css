@@ -1852,10 +1852,11 @@
 #crm-app[data-theme="glass"] .crm-connection-connect-form select option { background: #1b1b1f; color: var(--crm-ink); }
 
 /* Linked providers use the same open logo slot and facts row as other integrations. */
-#crm-app .crm-connections-view .crm-integration-linked > header { grid-template-columns: 150px minmax(0, 1fr) auto; }
-#crm-app .crm-connection-brand { display: flex; align-items: center; justify-content: flex-start; width: 150px; height: 52px; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
-#crm-app .crm-connection-brand img { display: block; width: auto; height: 44px; max-width: 130px; object-fit: contain; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
-#crm-app .crm-connection-brand.is-stripe img { width: 112px; height: auto; }
+#crm-app .crm-connections-view .crm-integration-linked > header { grid-template-columns: 132px minmax(0, 1fr) auto; }
+#crm-app .crm-connection-brand { display: flex; align-items: center; justify-content: center; width: 132px; height: 64px; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
+#crm-app .crm-connection-brand img { display: block; width: 48px; height: 48px; max-width: 100%; object-fit: contain; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
+#crm-app .crm-connection-brand.is-stripe img { width: 112px; height: 48px; }
+#crm-app .crm-connection-brand.is-google-profile img { width: 58px; height: 58px; }
 #crm-app[data-theme="dark"] .crm-connection-brand.is-square img,
 #crm-app[data-theme="glass"] .crm-connection-brand.is-square img { filter: invert(1); }
 #crm-app .crm-integration-linked > .crm-integration-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
