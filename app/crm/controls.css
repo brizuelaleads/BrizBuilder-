@@ -1802,6 +1802,14 @@
 #crm-app .crm-set-crop-zoom > input { width: 100%; accent-color: var(--crm-accent); }
 #crm-app .crm-set-crop-zoom > strong { text-align: right; font-size: 13px; color: var(--crm-muted); font-variant-numeric: tabular-nums; }
 #crm-app .crm-set-crop > p { margin: 0; font-size: 13px; color: var(--crm-muted); text-align: center; }
-#crm-app .crm-set-crop > footer { display: flex; align-items: center; gap: 8px; width: 100%; padding-top: 4px; }
-#crm-app .crm-set-crop > footer > span { flex: 1; }
-#crm-app .crm-set-crop > footer button { --btn-h: 40px; --btn-px: 16px; --btn-fs: 14px; }
+#crm-app .crm-set-crop-actions { display: flex; align-items: center; gap: 8px; width: 100%; padding-top: 4px; }
+#crm-app .crm-set-crop-actions > span { flex: 1; }
+#crm-app .crm-set-crop-actions button { --btn-h: 40px; --btn-px: 16px; --btn-fs: 14px; }
+/* The app's dialog-footer styles must not reflow the cropper's own buttons. */
+#crm-app .crm-set-crop-actions { flex-wrap: nowrap; margin: 0; border: 0; background: none; box-shadow: none; position: static; }
+@media (max-width: 640px) {
+  #crm-app .crm-set-crop { padding: 18px 16px 20px; }
+  #crm-app .crm-set-crop-actions { gap: 6px; padding: 4px 0 0; }
+  #crm-app .crm-set-crop-actions > span { display: none; }
+  #crm-app .crm-set-crop-actions button { --btn-px: 12px; flex: 1 1 auto; }
+}

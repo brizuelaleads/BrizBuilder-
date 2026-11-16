@@ -1,6 +1,7 @@
 "use client";
 
 import { type FormEvent, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Bell,
   Building2,
@@ -100,7 +101,11 @@ function LogoCropper({ picked, busy, onCancel, onUse }: { picked: Picked; busy: 
     image.src = picked.url;
   }
 
-  return (
+  // Rendered at the app root, not inside the Logo card: a Glass panel's
+  // backdrop-filter makes it the containing block for position:fixed, which
+  // would trap the dialog inside the card and clip it.
+  const host = document.getElementById("crm-app") ?? document.body;
+  return createPortal(
     <Modal title="Crop your logo" eyebrow="BUSINESS LOGO" onClose={onCancel}>
       <div className="crm-set-crop">
         <div
@@ -146,7 +151,7 @@ function LogoCropper({ picked, busy, onCancel, onUse }: { picked: Picked; busy: 
           <strong>{Math.round(zoom * 100)}%</strong>
         </label>
         <p>Drag the picture to position it. The square is exactly what will be shown.</p>
-        <footer>
+        <div className="crm-set-crop-actions">
           <button
             type="button"
             className="crm-button-secondary"
@@ -164,9 +169,10 @@ function LogoCropper({ picked, busy, onCancel, onUse }: { picked: Picked; busy: 
           <button type="button" className="crm-button-primary" disabled={busy} onClick={exportImage}>
             {busy ? "Uploading..." : "Use this logo"}
           </button>
-        </footer>
+        </div>
       </div>
-    </Modal>
+    </Modal>,
+    host,
   );
 }
 
