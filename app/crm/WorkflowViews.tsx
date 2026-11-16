@@ -553,7 +553,6 @@ export function ConnectionsView({
       status: stripeStatus,
       view: "payments" as const,
       connectHref: `/api/integrations/stripe/connect?clientId=${encodeURIComponent(clientId)}`,
-      connectLabel: "Connect with Stripe",
       facts: [
         ["Account", stripeConnection?.accountLabel ?? "Not connected"],
         ["Mode", stripeConnection?.isLinked ? (stripeConnection.mode === "live" ? "Live" : "Test mode") : "—"],
@@ -566,7 +565,6 @@ export function ConnectionsView({
       status: squareStatus,
       view: "payments" as const,
       connectHref: `/api/integrations/square/connect?clientId=${encodeURIComponent(clientId)}`,
-      connectLabel: "Connect with Square",
       facts: [
         ["Merchant", squareConnection?.merchantName ?? "Not connected"],
         ["Location", squareConnection ? (squareConnection.locationName ?? "—") + (squareConnection.environment === "sandbox" ? " (sandbox)" : "") : "—"],
@@ -579,7 +577,6 @@ export function ConnectionsView({
       status: googleProfileStatus,
       view: "profiles" as const,
       connectHref: `/api/integrations/google/connect?clientId=${encodeURIComponent(clientId)}`,
-      connectLabel: "Connect with Google",
       facts: [
         ["Location", googleProfile?.locationName ?? googleProfile?.businessName ?? "Not connected"],
         ["Last synced", googleProfile?.lastSyncedAt ? integrationSyncLabel(googleProfile.lastSyncedAt) : "—"],
@@ -592,7 +589,6 @@ export function ConnectionsView({
       status: calendarStatus,
       view: "calendar" as const,
       connectHref: `/api/integrations/google-calendar/connect?clientId=${encodeURIComponent(clientId)}`,
-      connectLabel: "Connect Google Calendar",
       facts: [
         ["Calendar", calendarConnection?.accountLabel ?? (calendarStatus === "connected" ? "Connected" : "Not connected")],
         ["Status", calendarStatus === "connected" ? "Syncing" : "—"],
@@ -1863,7 +1859,7 @@ export function ConnectionsView({
                   ) : null
                 ) : clientId ? (
                   <a className="crm-integration-primary" href={card.connectHref}>
-                    {card.status === "setup" ? card.connectLabel.replace(/^Connect/, "Reconnect") : card.connectLabel}
+                    Connect
                   </a>
                 ) : null}
                 {card.status !== "connected" ? <span className="crm-integration-linked-note">Secure sign-in on {card.name.startsWith("Google") ? "Google" : card.name}</span> : null}
