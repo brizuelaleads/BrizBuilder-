@@ -1840,10 +1840,10 @@ export function ConnectionsView({
           {linkedCards.map((card) => (
             <article key={card.id} className={`crm-connection-card crm-integration-card crm-integration-linked is-${card.id}`}>
               <header>
-                <span className="crm-integration-linked-mark" aria-hidden="true">
+                <span className={`crm-connection-brand is-${card.id}`} aria-hidden="true">
                   {/* Local brand assets keep provider marks available without third-party requests. */}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={card.logo} alt="" width={32} height={32} />
+                  <img src={card.logo} alt="" width={120} height={48} />
                 </span>
                 <div>
                   <h3>{card.name}</h3>
@@ -1853,9 +1853,9 @@ export function ConnectionsView({
                   {card.status === "connected" ? "Connected" : card.status === "setup" ? "Needs attention" : "Available"}
                 </Badge>
               </header>
-              <div className="crm-connection-details compact crm-connection-details-simple">
+              <div className="crm-integration-facts">
                 {card.facts.map(([label, value]) => (
-                  <div key={label}><span>{label}</span><strong>{value}</strong></div>
+                  <div key={label}><Database aria-hidden="true" /><span>{label}<strong>{value}</strong></span></div>
                 ))}
               </div>
               <div className="crm-integration-footer">
