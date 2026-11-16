@@ -82,6 +82,14 @@ const withoutRemovals = (file, contract, values) => {
 // identical. Every baseline handler and field must still exist (new ones may be
 // added), and controls may differ only where they belong to the rebuilt view.
 const restructured = {
+  'app/crm/GoogleProfilesView.tsx': {
+    // Redesigned layout around the same flows: every Connect, Choose
+    // location, Refresh, Disconnect, retry and save control is unchanged. The
+    // business picker moved into the page heading (same select, new label
+    // class), and a "Test the link" link opens the saved review URL.
+    reason: 'Google Profiles redesigned: profile header with facts and actions, three-step setup, review link panel, cleaner location chooser',
+    controls: /className="gp-picker"|gp-test-link|^<label> <span>Business<\/span> <select value=\{clientId\} onChange=\{\(event\) => setLocalClientId/,
+  },
   'app/crm/WorkflowViews.tsx': {
     // Two reviewed changes in Connections. The Twilio Connect link kept its
     // href and only changed class to crm-integration-primary (b71b903, Glass

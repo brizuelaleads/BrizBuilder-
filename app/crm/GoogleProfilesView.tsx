@@ -323,7 +323,7 @@ export function GoogleProfilesView({
 
   const profileLabel = profile?.businessName ?? client?.businessName ?? "Business profile";
   const locationSummary = useMemo(
-    () => [profile?.address, profile?.phone].filter(Boolean).join(" / "),
+    () => [profile?.address, profile?.phone].filter(Boolean).join(" · "),
     [profile?.address, profile?.phone],
   );
   const hasSelectedLocation = Boolean(profile?.locationId);
@@ -346,20 +346,18 @@ export function GoogleProfilesView({
   const canStartConnection = Boolean(
     canConnect && runtime.configured && !connectionBusy,
   );
+  const website = profile?.website?.replace(/^https?:\/\//i, "").replace(/\/+$/, "") ?? null;
 
   return (
-    <div className="crm-view crm-google-profiles-view">
+    <div className="crm-view crm-dashboard-view crm-google-profiles-view gp-view">
       <section className="crm-page-heading">
         <div>
           <p>LOCAL MARKETING</p>
           <h2>Google Business Profiles</h2>
           <span>Manage the Google profile and review link for this business.</span>
         </div>
-      </section>
-
-      {clients.length > 1 ? (
-        <section className="crm-profile-client-picker">
-          <label>
+        {clients.length > 1 ? (
+          <label className="gp-picker">
             <span>Business</span>
             <select
               value={clientId}
@@ -373,9 +371,8 @@ export function GoogleProfilesView({
               ))}
             </select>
           </label>
-
-        </section>
-      ) : null}
+        ) : null}
+      </section>
 
       {!client ? (
         <EmptyState
@@ -384,115 +381,95 @@ export function GoogleProfilesView({
         />
       ) : showExistingProfile ? (
         <>
-          <section className="crm-profile-layout">
-            <article className="crm-profile-card crm-panel">
-              <header>
-                <div>
-                  <p>{profileNeedsAttention ? "ACTION REQUIRED" : "CONNECTED LOCATION"}</p>
-                  <h3>{profileLabel}</h3>
-                  <span>{profile?.locationName ?? "Google Business Profile"}</span>
-                </div>
-                <Badge tone={profile ? statusTone(profile.status) : "neutral"}>
-                  {profileStatusLabel}
-                </Badge>
-              </header>
-              <div className="crm-profile-summary">
-                <div className="crm-profile-mark">G</div>
-                <div>
-                  <strong>{profile?.businessName ?? profileLabel}</strong>
-                  <span>
-                    {locationSummary ||
-                      "Location details will appear after the next sync."}
-                  </span>
-                </div>
+          {/* The connected profile: who customers find on Google, at a glance. */}
+          <section className="crm-panel gp-hero" aria-label="Connected Google Business Profile">
+            <div className="gp-identity">
+              <span className="gp-mark" aria-hidden="true"><i>G</i></span>
+              <div>
+                <p>{profileNeedsAttention ? "ACTION REQUIRED" : "CONNECTED LOCATION"}</p>
+                <h3>{profileLabel}</h3>
+                <span>{locationSummary || "Location details will appear after the next sync."}</span>
               </div>
-              {profile?.lastError ? (
-                <div className="crm-inline-error" role="alert">
-                  <strong>Google needs attention: </strong>
-                  {profile.lastError}
-                </div>
-              ) : null}
-              {!showCandidateChooser && activeActionError ? (
-                <div className="crm-inline-error" role="alert">
-                  {activeActionError}
-                </div>
-              ) : null}
-              <dl className="crm-profile-details">
-                <div>
-                  <dt>Category</dt>
-                  <dd>{profile?.primaryCategory ?? "Not reported"}</dd>
-                </div>
-                <div>
-                  <dt>Last sync</dt>
-                  <dd>{shortDate(profile?.lastSyncedAt ?? null)}</dd>
-                </div>
-              </dl>
-              <footer className="crm-profile-actions">
-                <a
+              <Badge tone={profile ? statusTone(profile.status) : "neutral"}>
+                {profileStatusLabel}
+              </Badge>
+            </div>
+            <dl className="gp-facts">
+              <div>
+                <dt>Category</dt>
+                <dd>{profile?.primaryCategory ?? "Not reported"}</dd>
+              </div>
+              <div>
+                <dt>Website</dt>
+                <dd>{website ?? "Not reported"}</dd>
+              </div>
+              <div>
+                <dt>Last sync</dt>
+                <dd>{shortDate(profile?.lastSyncedAt ?? null)}</dd>
+              </div>
+              <div>
+                <dt>Review link</dt>
+                <dd className={profile?.googleReviewUrl ? "is-good" : "is-warn"}>
+                  {profile?.googleReviewUrl ? "Ready" : "Missing"}
+                </dd>
+              </div>
+            </dl>
+            {profile?.lastError ? (
+              <div className="crm-inline-error" role="alert">
+                <strong>Google needs attention: </strong>
+                {profile.lastError}
+              </div>
+            ) : null}
+            {!showCandidateChooser && activeActionError ? (
+              <div className="crm-inline-error" role="alert">
+                {activeActionError}
+              </div>
+            ) : null}
+            <footer className="gp-actions">
+              <a
+                className="crm-button-secondary"
+                href="https://business.google.com/locations"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open in Google
+              </a>
+              {canManage ? (
+                <button
                   className="crm-button-secondary"
-                  href="https://business.google.com/locations"
-                  target="_blank"
-                  rel="noreferrer"
+                  type="button"
+                  onClick={() => void refresh()}
+                  disabled={!runtime.configured || connectionBusy}
                 >
-                  Open in Google
-                </a>
-                {canManage ? (
-                  <button
-                    className="crm-button-secondary"
-                    type="button"
-                    onClick={() => void refresh()}
-                    disabled={!runtime.configured || connectionBusy}
-                  >
-                    {refreshing ? "Refreshing..." : "Refresh profile"}
-                  </button>
-                ) : null}
-                {canConnect ? (
-                  <button
-                    className="crm-button-secondary"
-                    type="button"
-                    onClick={() => void loadLocations()}
-                    disabled={!runtime.configured || connectionBusy}
-                  >
-                    {activeCandidateState === "loading"
-                      ? "Loading locations..."
-                      : "Change location"}
-                  </button>
-                ) : null}
-                {canConnect ? (
-                  <button
-                    className="crm-button-danger"
-                    type="button"
-                    onClick={() => void disconnect()}
-                    disabled={connectionBusy}
-                  >
-                    {disconnecting ? "Disconnecting..." : "Disconnect"}
-                  </button>
-                ) : null}
-              </footer>
-            </article>
-
-            <article className="crm-profile-card crm-panel">
-              <header>
-                <div>
-                  <p>REVIEW SETUP</p>
-                  <h3>Give customers the right review link</h3>
-                  <span>
-                    Use the official link from this business&apos;s Google profile.
-                  </span>
-                </div>
-                <Badge tone={profile?.googleReviewUrl ? "green" : "orange"}>
-                  {profile?.googleReviewUrl ? "Ready" : "Needs link"}
-                </Badge>
-              </header>
-              <ReviewLinkForm
-                key={profile?.id ?? `profile-${client.id}`}
-                initialValue={profile?.googleReviewUrl ?? ""}
-                saveSettings={saveSettings}
-                busy={busy}
-                canManage={canManage}
-              />
-            </article>
+                  {refreshing ? "Refreshing..." : "Refresh profile"}
+                </button>
+              ) : null}
+              {canConnect ? (
+                <button
+                  className="crm-button-secondary"
+                  type="button"
+                  onClick={() => void loadLocations()}
+                  disabled={!runtime.configured || connectionBusy}
+                >
+                  {activeCandidateState === "loading"
+                    ? "Loading locations..."
+                    : "Change location"}
+                </button>
+              ) : null}
+              <span className="gp-actions-gap" />
+              {canConnect ? (
+                <button
+                  className="crm-button-danger"
+                  type="button"
+                  onClick={() => void disconnect()}
+                  disabled={connectionBusy}
+                >
+                  {disconnecting ? "Disconnecting..." : "Disconnect"}
+                </button>
+              ) : null}
+            </footer>
           </section>
+
           {showCandidateChooser ? (
             <LocationChooser
               state={activeCandidateState}
@@ -509,132 +486,179 @@ export function GoogleProfilesView({
               onSelect={selectLocation}
             />
           ) : null}
+
+          {/* The review link every review request sends customers to. */}
+          <section className="crm-panel gp-panel gp-review" aria-label="Google review link">
+            <header>
+              <div>
+                <p>REVIEW SETUP</p>
+                <h3>Give customers the right review link</h3>
+                <span>Use the official link from this business&apos;s Google profile.</span>
+              </div>
+              <Badge tone={profile?.googleReviewUrl ? "green" : "orange"}>
+                {profile?.googleReviewUrl ? "Ready" : "Needs link"}
+              </Badge>
+            </header>
+            <ReviewLinkForm
+              key={profile?.id ?? `profile-${client.id}`}
+              initialValue={profile?.googleReviewUrl ?? ""}
+              saveSettings={saveSettings}
+              busy={busy}
+              canManage={canManage}
+            />
+            {profile?.googleReviewUrl ? (
+              <a className="crm-button-secondary gp-test-link" href={profile.googleReviewUrl} target="_blank" rel="noreferrer">
+                Test the link
+              </a>
+            ) : null}
+          </section>
         </>
       ) : (
         <>
-          <section className="crm-profile-setup crm-panel">
-            <div className="crm-profile-setup-icon">G</div>
-            <div>
-              <p>{profileNeedsAttention ? "ACTION REQUIRED" : "GOOGLE CONNECTION"}</p>
-              <h3>
-                {profileNeedsAttention
-                  ? "Choose a Google Business Profile location"
-                  : `Connect ${client.businessName}'s Google Business Profile`}
-              </h3>
-              <span>Sign in with the Google account that manages this business.</span>
-              {profile?.lastError ? (
-                <div className="crm-inline-error" role="alert">
-                  <strong>Google needs attention: </strong>
-                  {profile.lastError}
-                </div>
-              ) : null}
-              {!showCandidateChooser && activeActionError ? (
-                <div className="crm-inline-error" role="alert">
-                  {activeActionError}
-                </div>
-              ) : null}
-              <div className="crm-profile-setup-actions">
-                {profile?.status === "disconnected" &&
-                profile.revocationRetryAvailable &&
-                canConnect &&
-                runtime.configured ? (
-                  <button
-                    className="crm-button-secondary"
-                    type="button"
-                    onClick={() => void disconnect()}
-                    disabled={connectionBusy}
-                  >
-                    {disconnecting
-                      ? "Retrying Google disconnect..."
-                      : "Retry Google disconnect"}
-                  </button>
-                ) : null}
-                {profileNeedsAttention && canConnect && runtime.configured ? (
-                  <button
-                    className="crm-button-primary"
-                    type="button"
-                    onClick={() => void loadLocations()}
-                    disabled={connectionBusy}
-                  >
-                    {activeCandidateState === "loading"
-                      ? "Loading locations..."
-                      : "Choose location"}
-                  </button>
-                ) : null}
-                <a
-                  className={`crm-button-primary ${!canStartConnection ? "disabled" : ""}`}
-                  href={
-                    canStartConnection
-                      ? `/api/integrations/google/connect?clientId=${encodeURIComponent(client.id)}`
-                      : undefined
-                  }
-                  aria-disabled={!canStartConnection}
-                  tabIndex={canStartConnection ? undefined : -1}
-                  onClick={(event) => {
-                    if (!canStartConnection) event.preventDefault();
-                  }}
-                >
-                  {!runtime.configured
-                    ? "Google connection not configured"
-                    : profileNeedsAttention
-                      ? "Reconnect Google"
-                      : "Connect Google"}
-                </a>
-                <a
-                  className="crm-button-secondary"
-                  href="https://business.google.com/locations"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Open Google Business Profile
-                </a>
+          {/* Not connected yet: what happens, in three steps, and the button. */}
+          <section className="crm-panel gp-setup" aria-label="Connect Google Business Profile">
+            <div className="gp-identity">
+              <span className="gp-mark" aria-hidden="true"><i>G</i></span>
+              <div>
+                <p>{profileNeedsAttention ? "ACTION REQUIRED" : "GOOGLE CONNECTION"}</p>
+                <h3>
+                  {profileNeedsAttention
+                    ? "Choose a Google Business Profile location"
+                    : `Connect ${client.businessName}'s Google Business Profile`}
+                </h3>
+                <span>Sign in with the Google account that manages this business.</span>
               </div>
-              {!canConnect ? (
-                <small className="crm-profile-warning">
-                  Only an account owner or agency administrator can connect or
-                  disconnect Google.
-                </small>
-              ) : null}
-              {!runtime.configured ? (
-                <small className="crm-profile-warning">
-                  The platform&apos;s Google connection and security settings are
-                  incomplete. The platform owner must finish the Google setup in
-                  Cloudflare before the Connect button can be used.
-                </small>
-              ) : null}
             </div>
-            <div className="crm-profile-review-fallback">
+            <ol className="gp-steps">
+              <li className={profileNeedsAttention ? "is-done" : undefined}>
+                <b>1</b>
+                <span><strong>Sign in with Google</strong><small>Use the Google account that manages this business&apos;s profile.</small></span>
+              </li>
+              <li>
+                <b>2</b>
+                <span><strong>Choose the location</strong><small>Pick the exact business customers find on Google.</small></span>
+              </li>
+              <li className={profile?.googleReviewUrl ? "is-done" : undefined}>
+                <b>3</b>
+                <span><strong>Add the review link</strong><small>So review requests send customers to the right place.</small></span>
+              </li>
+            </ol>
+            {profile?.lastError ? (
+              <div className="crm-inline-error" role="alert">
+                <strong>Google needs attention: </strong>
+                {profile.lastError}
+              </div>
+            ) : null}
+            {!showCandidateChooser && activeActionError ? (
+              <div className="crm-inline-error" role="alert">
+                {activeActionError}
+              </div>
+            ) : null}
+            <div className="gp-actions">
+              {profile?.status === "disconnected" &&
+              profile.revocationRetryAvailable &&
+              canConnect &&
+              runtime.configured ? (
+                <button
+                  className="crm-button-secondary"
+                  type="button"
+                  onClick={() => void disconnect()}
+                  disabled={connectionBusy}
+                >
+                  {disconnecting
+                    ? "Retrying Google disconnect..."
+                    : "Retry Google disconnect"}
+                </button>
+              ) : null}
+              {profileNeedsAttention && canConnect && runtime.configured ? (
+                <button
+                  className="crm-button-primary"
+                  type="button"
+                  onClick={() => void loadLocations()}
+                  disabled={connectionBusy}
+                >
+                  {activeCandidateState === "loading"
+                    ? "Loading locations..."
+                    : "Choose location"}
+                </button>
+              ) : null}
+              <a
+                className={`crm-button-primary ${!canStartConnection ? "disabled" : ""}`}
+                href={
+                  canStartConnection
+                    ? `/api/integrations/google/connect?clientId=${encodeURIComponent(client.id)}`
+                    : undefined
+                }
+                aria-disabled={!canStartConnection}
+                tabIndex={canStartConnection ? undefined : -1}
+                onClick={(event) => {
+                  if (!canStartConnection) event.preventDefault();
+                }}
+              >
+                {!runtime.configured
+                  ? "Google connection not configured"
+                  : profileNeedsAttention
+                    ? "Reconnect Google"
+                    : "Connect Google"}
+              </a>
+              <a
+                className="crm-button-secondary"
+                href="https://business.google.com/locations"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open Google Business Profile
+              </a>
+            </div>
+            {!canConnect ? (
+              <small className="gp-warning">
+                Only an account owner or agency administrator can connect or
+                disconnect Google.
+              </small>
+            ) : null}
+            {!runtime.configured ? (
+              <small className="gp-warning">
+                The platform&apos;s Google connection and security settings are
+                incomplete. The platform owner must finish the Google setup in
+                Cloudflare before the Connect button can be used.
+              </small>
+            ) : null}
+          </section>
+
+          {showCandidateChooser ? (
+            <LocationChooser
+              state={activeCandidateState}
+              accounts={accountChoices}
+              selectedAccountResourceName={activeAccountResourceName}
+              onAccountChange={setSelectedAccountResourceName}
+              candidates={visibleCandidates}
+              currentLocationId={profile?.locationId ?? null}
+              candidateError={candidateError}
+              actionError={activeActionError}
+              selectingLocation={selectingLocation}
+              disabled={!canConnect || connectionBusy}
+              onReload={loadLocations}
+              onSelect={selectLocation}
+            />
+          ) : null}
+
+          <section className="crm-panel gp-panel gp-review" aria-label="Google review link">
+            <header>
               <div>
                 <p>OPTIONAL</p>
                 <h4>Add the official review link</h4>
                 <span>Use this link when requesting a Google review.</span>
               </div>
-              <ReviewLinkForm
-                key={`setup-${client.id}`}
-                initialValue={profile?.googleReviewUrl ?? ""}
-                saveSettings={saveSettings}
-                busy={busy}
-                canManage={canManage}
-                compact
-              />
-            </div>
-          </section>
-          {showCandidateChooser ? (
-            <LocationChooser
-              state={activeCandidateState}
-              accounts={accountChoices}
-              selectedAccountResourceName={activeAccountResourceName}
-              onAccountChange={setSelectedAccountResourceName}
-              candidates={visibleCandidates}
-              currentLocationId={profile?.locationId ?? null}
-              candidateError={candidateError}
-              actionError={activeActionError}
-              selectingLocation={selectingLocation}
-              disabled={!canConnect || connectionBusy}
-              onReload={loadLocations}
-              onSelect={selectLocation}
+            </header>
+            <ReviewLinkForm
+              key={`setup-${client.id}`}
+              initialValue={profile?.googleReviewUrl ?? ""}
+              saveSettings={saveSettings}
+              busy={busy}
+              canManage={canManage}
+              compact
             />
-          ) : null}
+          </section>
         </>
       )}
     </div>
@@ -674,7 +698,7 @@ function LocationChooser({
 
   return (
     <section
-      className="crm-profile-card crm-panel"
+      className="crm-panel gp-panel gp-chooser"
       aria-live="polite"
       aria-busy={isLoading || Boolean(selectingLocation)}
     >
@@ -697,8 +721,8 @@ function LocationChooser({
       </header>
 
       {isLoading ? (
-        <div className="crm-profile-summary">
-          <div className="crm-profile-mark">G</div>
+        <div className="gp-loading">
+          <div className="gp-mark" aria-hidden="true"><i>G</i></div>
           <div>
             <strong>Loading locations securely from Google...</strong>
             <span>This normally takes only a few seconds.</span>
@@ -735,7 +759,7 @@ function LocationChooser({
       ) : null}
 
       {hasLocations ? (
-        <div className="crm-profile-steps">
+        <div className="gp-locations">
           {candidates.map((candidate, index) => {
             const key = candidateKey(candidate);
             const isCurrent = candidate.locationResourceName === currentLocationId;
@@ -756,7 +780,7 @@ function LocationChooser({
                       "Google did not report additional location details."}
                   </small>
                   {candidate.website ? <small>{candidate.website}</small> : null}
-                  <div className="crm-profile-actions">
+                  <div className="gp-location-action">
                     <button
                       className={isCurrent ? "crm-button-secondary" : "crm-button-primary"}
                       type="button"
@@ -778,7 +802,7 @@ function LocationChooser({
       ) : null}
 
       {canRetry ? (
-        <footer className="crm-profile-actions">
+        <footer className="gp-actions">
           <button
             className="crm-button-secondary"
             type="button"

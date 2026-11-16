@@ -1875,3 +1875,107 @@
 
 /* Keep the four newer providers after every existing integration. */
 #crm-app .crm-integration-card-grid > .crm-integration-linked { order: 100; }
+
+/* Google Business Profiles (app/crm/GoogleProfilesView.tsx): one profile
+   header with four facts and the actions, the review link panel, and the
+   location chooser - or, before connecting, three steps and the button. */
+#crm-app .gp-view { display: grid; gap: 16px; }
+#crm-app .gp-view > .crm-page-heading { align-items: flex-end; }
+#crm-app .gp-picker { display: grid; gap: 6px; }
+#crm-app .gp-picker > span { font-size: 12px; font-weight: 500; color: var(--crm-muted); }
+#crm-app .gp-picker select { min-width: 260px; min-height: 40px; padding: 8px 12px; border: 1px solid var(--crm-control-border, var(--crm-line)); border-radius: 8px; background: var(--crm-card); color: var(--crm-ink); font: inherit; font-size: 14px; font-weight: 600; }
+
+#crm-app :is(.gp-hero, .gp-setup) { display: grid; gap: 20px; padding: 24px; }
+#crm-app .gp-identity { display: flex; align-items: center; gap: 16px; min-width: 0; }
+#crm-app .gp-identity > div { display: grid; gap: 3px; flex: 1; min-width: 0; }
+#crm-app .gp-identity p, #crm-app .gp-panel > header p { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--crm-muted); }
+#crm-app .gp-identity h3 { margin: 0; font-size: 22px; line-height: 28px; font-weight: 650; letter-spacing: -.01em; color: var(--crm-ink); }
+#crm-app .gp-identity span { font-size: 14px; color: var(--crm-muted); overflow-wrap: anywhere; }
+#crm-app .gp-identity .crm-badge { align-self: flex-start; flex-shrink: 0; }
+/* The Google G in Google colours, on a white tile. */
+#crm-app .gp-mark { display: grid; place-items: center; flex-shrink: 0; width: 56px; height: 56px; border-radius: 16px; background: #fff; box-shadow: inset 0 0 0 1px rgb(15 23 42 / 10%); font-family: Arial, sans-serif; font-size: 30px; font-weight: 800; }
+#crm-app .gp-mark > i { font-style: normal; line-height: 1; color: transparent; background-image: conic-gradient(from -45deg, #ea4335 0 25%, #4285f4 0 50%, #34a853 0 75%, #fbbc05 0); -webkit-background-clip: text; background-clip: text; }
+
+#crm-app .gp-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; border: 1px solid var(--crm-line); border-radius: 12px; overflow: hidden; }
+#crm-app .gp-facts > div { display: grid; gap: 3px; padding: 14px 16px; border-left: 1px solid var(--crm-line); min-width: 0; }
+#crm-app .gp-facts > div:first-child { border-left: 0; }
+#crm-app .gp-facts dt { font-size: 12px; color: var(--crm-muted); }
+#crm-app .gp-facts dd { margin: 0; font-size: 15px; font-weight: 600; color: var(--crm-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#crm-app .gp-facts dd.is-good { color: #11683f; }
+#crm-app .gp-facts dd.is-warn { color: #b45309; }
+
+#crm-app .gp-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+#crm-app .gp-actions > :is(a, button) { --btn-h: 38px; --btn-px: 16px; --btn-fs: 13px; }
+#crm-app .gp-actions-gap { flex: 1; }
+#crm-app .gp-warning { display: block; font-size: 12px; line-height: 18px; color: #b45309; }
+
+#crm-app .gp-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+#crm-app .gp-steps li { display: flex; gap: 12px; padding: 14px 16px; border: 1px solid var(--crm-line); border-radius: 12px; }
+#crm-app .gp-steps b { display: grid; place-items: center; flex-shrink: 0; width: 26px; height: 26px; border-radius: 999px; background: var(--crm-subtle); font-size: 13px; color: var(--crm-ink); }
+#crm-app .gp-steps li.is-done b { background: #18b65d; color: #fff; }
+#crm-app .gp-steps span { display: grid; gap: 2px; }
+#crm-app .gp-steps strong { font-size: 14px; color: var(--crm-ink); }
+#crm-app .gp-steps small { font-size: 12px; line-height: 17px; color: var(--crm-muted); }
+
+#crm-app .gp-panel { display: grid; gap: 16px; padding: 22px 24px; }
+#crm-app .gp-panel > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 0; border: 0; min-height: 0; background: none; }
+#crm-app .gp-panel > header > div { display: grid; gap: 3px; }
+#crm-app .gp-panel > header :is(h3, h4) { margin: 0; font-size: 17px; font-weight: 650; color: var(--crm-ink); }
+#crm-app .gp-panel > header span { font-size: 13px; color: var(--crm-muted); }
+#crm-app .gp-review .crm-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px 12px; margin: 0; padding: 0; border: 0; background: none; }
+#crm-app .gp-review .crm-form > label { grid-column: 1; }
+#crm-app .gp-review .crm-form > .crm-form-note { grid-column: 1 / -1; margin: 0; padding: 0; border: 0; background: none; font-family: inherit; font-size: 12px; letter-spacing: 0; text-transform: none; color: var(--crm-muted); }
+#crm-app .gp-review .crm-form > .crm-form-note strong { color: var(--crm-ink); font-weight: 600; }
+#crm-app .gp-review .crm-form > button { grid-column: 2; grid-row: 1; align-self: end; --btn-h: 42px; --btn-px: 18px; --btn-fs: 14px; }
+#crm-app .gp-review .crm-form input { width: 100%; min-height: 42px; }
+#crm-app .gp-test-link { justify-self: start; --btn-h: 34px; --btn-px: 14px; --btn-fs: 13px; }
+
+#crm-app .gp-loading { display: flex; align-items: center; gap: 14px; font-size: 14px; color: var(--crm-muted); }
+#crm-app .gp-loading .gp-mark { width: 40px; height: 40px; font-size: 20px; border-radius: 12px; }
+#crm-app .gp-locations { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 12px; }
+#crm-app .gp-locations > article { display: flex; gap: 12px; padding: 16px; border: 1px solid var(--crm-line); border-radius: 12px; background: var(--crm-subtle); }
+#crm-app .gp-locations > article > b { display: grid; place-items: center; flex-shrink: 0; width: 26px; height: 26px; border-radius: 999px; background: var(--crm-card); font-size: 12px; color: var(--crm-muted); }
+#crm-app .gp-locations > article > span { display: grid; gap: 4px; min-width: 0; }
+#crm-app .gp-locations strong { font-size: 15px; color: var(--crm-ink); }
+#crm-app .gp-locations small { font-size: 12px; line-height: 17px; color: var(--crm-muted); overflow-wrap: anywhere; }
+#crm-app .gp-location-action { margin-top: 8px; }
+#crm-app .gp-location-action button { --btn-h: 34px; --btn-px: 14px; --btn-fs: 13px; }
+
+#crm-app[data-theme="glass"] .gp-picker select { background: rgb(255 255 255 / 5%); }
+#crm-app[data-theme="glass"] .gp-picker select option { background: #1b1b1f; }
+#crm-app[data-theme="glass"] .gp-facts { background: rgb(255 255 255 / 3%); }
+#crm-app[data-theme="glass"] .gp-facts dd.is-good { color: #8be0b0; }
+#crm-app[data-theme="glass"] :is(.gp-facts dd.is-warn, .gp-warning) { color: #fcd34d; }
+#crm-app[data-theme="glass"] .gp-steps li { background: rgb(255 255 255 / 3%); }
+#crm-app[data-theme="glass"] .gp-locations > article { border-color: var(--glass-edge); background: rgb(255 255 255 / 4%); }
+#crm-app[data-theme="glass"] .gp-locations > article > b { background: rgb(255 255 255 / 8%); }
+#crm-app[data-theme="glass"] .gp-view * { text-shadow: none; }
+
+@media (max-width: 900px) {
+  #crm-app .gp-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #crm-app .gp-facts > div:nth-child(3) { border-left: 0; }
+  #crm-app .gp-facts > div:nth-child(n + 3) { border-top: 1px solid var(--crm-line); }
+  #crm-app .gp-steps { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  #crm-app :is(.gp-hero, .gp-setup) { padding: 18px; }
+  #crm-app .gp-panel { padding: 18px; }
+  #crm-app .gp-identity { align-items: flex-start; flex-wrap: wrap; }
+  #crm-app .gp-identity h3 { font-size: 19px; line-height: 25px; }
+  #crm-app .gp-mark { width: 46px; height: 46px; font-size: 24px; border-radius: 13px; }
+  #crm-app .gp-picker select { min-width: 0; width: 100%; }
+  #crm-app .gp-review .crm-form { grid-template-columns: 1fr; }
+  #crm-app .gp-review .crm-form > button { grid-column: 1; grid-row: auto; justify-self: start; }
+  #crm-app .gp-actions-gap { display: none; }
+}
+/* The G keeps its own size whatever shared styles do to <i>. */
+#crm-app .gp-view .gp-mark > i { font-size: 30px; }
+#crm-app .gp-view .gp-loading .gp-mark > i { font-size: 20px; }
+/* Panel headers here are part of the panel body, not a banded header. */
+#crm-app .gp-view .gp-panel > header, #crm-app[data-theme="glass"] .gp-view .gp-panel > header { padding: 0; border: 0; min-height: 0; background: none; }
+@media (max-width: 640px) {
+  #crm-app .gp-view .gp-mark > i { font-size: 24px; }
+  #crm-app .gp-view > .crm-page-heading { flex-direction: column; align-items: stretch; gap: 12px; }
+  #crm-app .gp-picker { width: 100%; }
+  #crm-app .gp-view .gp-panel > header, #crm-app[data-theme="glass"] .gp-view .gp-panel > header { padding: 0; }
+}
