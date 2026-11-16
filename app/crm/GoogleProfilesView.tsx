@@ -74,6 +74,61 @@ function clientChoice(
     : localClientId || clients[0]?.id || "";
 }
 
+/**
+ * Google's errors, said plainly. The commonest one is not a fault at all:
+ * Google keeps the Business Profile API at 0 requests a minute until it has
+ * approved the app's access request, and reports that as "quota exceeded".
+ */
+function explainGoogleError(message: string): { title: string; body: string; pendingApproval: boolean } {
+  if (/quota exceeded/i.test(message) && /mybusiness/i.test(message)) {
+    return {
+      title: "Google hasn't switched on Business Profile access yet",
+      body: "Google only lets approved apps read Business Profiles, and BrizBuilder's access request is still waiting for Google's approval, so Google is answering every request with \"limit 0\". Nothing is wrong with this business's Google account or sign-in. Once Google approves the request, Choose location will work straight away; there is no need to reconnect.",
+      pendingApproval: true,
+    };
+  }
+  if (/has not been used|is disabled|SERVICE_DISABLED/i.test(message)) {
+    return {
+      title: "A Google API is switched off",
+      body: "One of the Business Profile APIs is not enabled for BrizBuilder's Google Cloud project. The platform owner needs to enable it in Google Cloud.",
+      pendingApproval: false,
+    };
+  }
+  if (/invalid_grant|expired|revoked|unauthori[sz]ed|401/i.test(message)) {
+    return {
+      title: "Google needs you to sign in again",
+      body: "Google no longer accepts the saved sign-in for this business. Use Reconnect Google to sign in again.",
+      pendingApproval: false,
+    };
+  }
+  return { title: "Google needs attention", body: message, pendingApproval: false };
+}
+
+function GoogleIssue({ message, showRequestLink }: { message: string; showRequestLink: boolean }) {
+  const issue = explainGoogleError(message);
+  return (
+    <div className={`gp-issue${issue.pendingApproval ? " is-pending" : ""}`} role="alert">
+      <strong>{issue.title}</strong>
+      {issue.body !== message ? <p>{issue.body}</p> : <p>{message}</p>}
+      {issue.pendingApproval && showRequestLink ? (
+        <p>
+          Waiting on Google? Check the request or send it again on{" "}
+          <a href="https://support.google.com/business/contact/api_default" target="_blank" rel="noreferrer">
+            Google&apos;s Business Profile API access form
+          </a>
+          .
+        </p>
+      ) : null}
+      {issue.body !== message ? (
+        <details>
+          <summary>Technical details</summary>
+          <code>{message}</code>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
 function statusTone(status: CrmGoogleProfile["status"]) {
   if (status === "connected") return "green" as const;
   if (status === "attention") return "orange" as const;
@@ -414,11 +469,8 @@ export function GoogleProfilesView({
                 </dd>
               </div>
             </dl>
-            {profile?.lastError ? (
-              <div className="crm-inline-error" role="alert">
-                <strong>Google needs attention: </strong>
-                {profile.lastError}
-              </div>
+            {profile?.lastError && !(showCandidateChooser && candidateError) ? (
+              <GoogleIssue message={profile.lastError} showRequestLink={canConnect} />
             ) : null}
             {!showCandidateChooser && activeActionError ? (
               <div className="crm-inline-error" role="alert">
@@ -543,11 +595,8 @@ export function GoogleProfilesView({
                 <span><strong>Add the review link</strong><small>So review requests send customers to the right place.</small></span>
               </li>
             </ol>
-            {profile?.lastError ? (
-              <div className="crm-inline-error" role="alert">
-                <strong>Google needs attention: </strong>
-                {profile.lastError}
-              </div>
+            {profile?.lastError && !(showCandidateChooser && candidateError) ? (
+              <GoogleIssue message={profile.lastError} showRequestLink={canConnect} />
             ) : null}
             {!showCandidateChooser && activeActionError ? (
               <div className="crm-inline-error" role="alert">
@@ -747,11 +796,7 @@ function LocationChooser({
         </label>
       ) : null}
 
-      {candidateError ? (
-        <div className="crm-inline-error" role="alert">
-          {candidateError}
-        </div>
-      ) : null}
+      {candidateError ? <GoogleIssue message={candidateError} showRequestLink={!disabled} /> : null}
       {actionError ? (
         <div className="crm-inline-error" role="alert">
           {actionError}

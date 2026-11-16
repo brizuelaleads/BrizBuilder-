@@ -88,7 +88,10 @@ const restructured = {
     // business picker moved into the page heading (same select, new label
     // class), and a "Test the link" link opens the saved review URL.
     reason: 'Google Profiles redesigned: profile header with facts and actions, three-step setup, review link panel, cleaner location chooser',
-    controls: /className="gp-picker"|gp-test-link|^<label> <span>Business<\/span> <select value=\{clientId\} onChange=\{\(event\) => setLocalClientId/,
+    // Google's errors are explained in plain language (GoogleIssue), with a
+    // link to Google's Business Profile API access form while approval is
+    // pending.
+    controls: /className="gp-picker"|gp-test-link|support\.google\.com\/business\/contact\/api_default|^<label> <span>Business<\/span> <select value=\{clientId\} onChange=\{\(event\) => setLocalClientId/,
   },
   'app/crm/WorkflowViews.tsx': {
     // Two reviewed changes in Connections. The Twilio Connect link kept its
