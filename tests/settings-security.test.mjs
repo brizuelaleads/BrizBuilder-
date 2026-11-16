@@ -75,3 +75,13 @@ test("logo uploads are gated, checked as real images, and stored per business", 
   const remove = supabaseSource.match(/if \(action === "remove_client_logo"\) \{[\s\S]*?\n {2}\}\n/)?.[0];
   assert.ok(remove && remove.indexOf("requireClient") < remove.indexOf("saveClientBranding"));
 });
+
+test("the Agency card's Settings button is only given to roles that can edit businesses", () => {
+  const app = read("app/CrmApp.tsx");
+  const operations = read("app/crm/OperationsViews.tsx");
+  // CrmApp passes onEdit only with clients.manage; the card renders the
+  // button only when onEdit is present. The save itself is checked again on
+  // the server by update_client.
+  assert.match(app, /onEdit=\{\s*\/\/[^\n]*\n[^\n]*\n\s*data\.viewer\.permissions\.includes\("clients\.manage"\)\s*\?/);
+  assert.ok(operations.includes("{onEdit ? <button type=\"button\" className=\"crm-biz-edit\" onClick={() => onEdit(client.id)}>"));
+});

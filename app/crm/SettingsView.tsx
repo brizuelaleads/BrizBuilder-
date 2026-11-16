@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useMemo, useRef, useState } from "react";
 import {
   Bell,
   Building2,
@@ -37,59 +37,167 @@ import {
 import { PushOptIn } from "../components/PushOptIn";
 import { BrandingSettings } from "./BrandingSettings";
 import { GlassBackdrop } from "./GlassBackdrop";
-import { Badge, BusinessMark } from "./ui";
+import { Badge, BusinessMark, Modal } from "./ui";
 
-/**
- * Turn a picked image into a small square PNG in the browser: fitted (never
- * cropped) into 256x256 on a transparent background. Keeps uploads tiny and
- * gives the app icon the square shape it needs.
- */
-async function squareLogo(file: File): Promise<string> {
+const LOGO_SIZE = 256; // pixels uploaded
+const FRAME = 240; // pixels on screen
+
+type Picked = { url: string; width: number; height: number };
+
+function readImage(file: File): Promise<Picked> {
   if (!["image/png", "image/jpeg", "image/webp"].includes(file.type))
-    throw new Error("Choose a PNG, JPEG or WebP image.");
-  if (file.size > 10_000_000) throw new Error("That image is over 10 MB. Choose a smaller one.");
+    return Promise.reject(new Error("Choose a PNG, JPEG or WebP image."));
+  if (file.size > 10_000_000) return Promise.reject(new Error("That image is over 10 MB. Choose a smaller one."));
   const url = URL.createObjectURL(file);
-  try {
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const element = new Image();
-      element.onload = () => resolve(element);
-      element.onerror = () => reject(new Error("That image could not be read."));
-      element.src = url;
-    });
-    const size = 256;
-    const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("This browser cannot prepare the image.");
-    const scale = Math.min(size / image.naturalWidth, size / image.naturalHeight);
-    const width = image.naturalWidth * scale;
-    const height = image.naturalHeight * scale;
-    context.imageSmoothingQuality = "high";
-    context.drawImage(image, (size - width) / 2, (size - height) / 2, width, height);
-    const png = canvas.toDataURL("image/png");
-    // Base64 of a 300 KB file is ~400 KB; WebP is the fallback for busy photos.
-    return png.length < 400_000 ? png : canvas.toDataURL("image/webp", 0.9);
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  return new Promise((resolve, reject) => {
+    const element = new Image();
+    element.onload = () => resolve({ url, width: element.naturalWidth, height: element.naturalHeight });
+    element.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("That image could not be read."));
+    };
+    element.src = url;
+  });
 }
 
-/** Upload, replace or remove one business's logo. */
+/**
+ * Crop and zoom a logo inside a square frame. At 1x the whole picture fits
+ * (contain); zooming in up to 5x and dragging chooses the part to keep. What
+ * the frame shows is exactly what is uploaded, at 256x256, transparent where
+ * the picture does not reach.
+ */
+function LogoCropper({ picked, busy, onCancel, onUse }: { picked: Picked; busy: boolean; onCancel: () => void; onUse: (dataUrl: string) => void }) {
+  const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+  const fit = Math.min(FRAME / picked.width, FRAME / picked.height);
+  const shownWidth = picked.width * fit * zoom;
+  const shownHeight = picked.height * fit * zoom;
+  // Keep the picture's centre inside the frame so it can never be lost.
+  const clamp = (x: number, y: number) => ({
+    x: Math.max(-shownWidth / 2, Math.min(shownWidth / 2, x)),
+    y: Math.max(-shownHeight / 2, Math.min(shownHeight / 2, y)),
+  });
+  const position = clamp(offset.x, offset.y);
+  const left = (FRAME - shownWidth) / 2 + position.x;
+  const top = (FRAME - shownHeight) / 2 + position.y;
+
+  function exportImage() {
+    const canvas = document.createElement("canvas");
+    canvas.width = LOGO_SIZE;
+    canvas.height = LOGO_SIZE;
+    const context = canvas.getContext("2d");
+    const image = new Image();
+    image.onload = () => {
+      if (!context) return;
+      const scale = LOGO_SIZE / FRAME;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(image, left * scale, top * scale, shownWidth * scale, shownHeight * scale);
+      const png = canvas.toDataURL("image/png");
+      // Base64 of a 300 KB file is ~400 KB; WebP is the fallback for busy photos.
+      onUse(png.length < 400_000 ? png : canvas.toDataURL("image/webp", 0.9));
+    };
+    image.src = picked.url;
+  }
+
+  return (
+    <Modal title="Crop your logo" eyebrow="BUSINESS LOGO" onClose={onCancel}>
+      <div className="crm-set-crop">
+        <div
+          className="crm-set-crop-frame"
+          style={{ width: FRAME, height: FRAME }}
+          tabIndex={0}
+          role="group"
+          aria-label="Logo position. Drag, or use the arrow keys, to move it."
+          onPointerDown={(event) => {
+            event.currentTarget.setPointerCapture(event.pointerId);
+            drag.current = { x: event.clientX, y: event.clientY, ox: position.x, oy: position.y };
+          }}
+          onPointerMove={(event) => {
+            if (!drag.current) return;
+            setOffset(clamp(drag.current.ox + event.clientX - drag.current.x, drag.current.oy + event.clientY - drag.current.y));
+          }}
+          onPointerUp={() => {
+            drag.current = null;
+          }}
+          onKeyDown={(event) => {
+            const step = event.shiftKey ? 20 : 4;
+            const moves: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+            const move = moves[event.key];
+            if (!move) return;
+            event.preventDefault();
+            setOffset(clamp(position.x + move[0], position.y + move[1]));
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element -- a local object URL being cropped. */}
+          <img src={picked.url} alt="" draggable={false} style={{ left, top, width: shownWidth, height: shownHeight }} />
+        </div>
+        <label className="crm-set-crop-zoom">
+          <span>Zoom</span>
+          <input
+            type="range"
+            min={1}
+            max={5}
+            step={0.01}
+            value={zoom}
+            onChange={(event) => setZoom(Number(event.target.value))}
+            aria-valuetext={`${Math.round(zoom * 100)}%`}
+          />
+          <strong>{Math.round(zoom * 100)}%</strong>
+        </label>
+        <p>Drag the picture to position it. The square is exactly what will be shown.</p>
+        <footer>
+          <button
+            type="button"
+            className="crm-button-secondary"
+            onClick={() => {
+              setZoom(1);
+              setOffset({ x: 0, y: 0 });
+            }}
+          >
+            Reset
+          </button>
+          <span />
+          <button type="button" className="crm-button-secondary" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" className="crm-button-primary" disabled={busy} onClick={exportImage}>
+            {busy ? "Uploading..." : "Use this logo"}
+          </button>
+        </footer>
+      </div>
+    </Modal>
+  );
+}
+
+/** Upload (with crop and zoom), replace or remove one business's logo. */
 function LogoUploader({ client, logoUrl, canEdit, mutate }: { client: CrmClient; logoUrl: string | null; canEdit: boolean; mutate: Mutate }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
+  const [picked, setPicked] = useState<Picked | null>(null);
+
+  function closeCropper() {
+    if (picked) URL.revokeObjectURL(picked.url);
+    setPicked(null);
+  }
 
   async function pick(file: File | undefined) {
     if (!file) return;
     setProblem("");
+    try {
+      setPicked(await readImage(file));
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : "That image could not be read.");
+    }
+  }
+
+  async function upload(image: string) {
     setBusy(true);
     try {
-      const image = await squareLogo(file);
       await mutate({ action: "upload_client_logo", clientId: client.id, image }, "Logo uploaded.");
-    } catch (error) {
-      // mutate shows server errors in the banner; image problems are shown here.
-      if (error instanceof Error && /PNG|MB|image/.test(error.message)) setProblem(error.message);
+      closeCropper();
+    } catch {
+      // mutate shows the server's reason in the error banner.
     } finally {
       setBusy(false);
     }
@@ -111,7 +219,7 @@ function LogoUploader({ client, logoUrl, canEdit, mutate }: { client: CrmClient;
       <BusinessMark name={client.businessName} logoUrl={logoUrl} className="crm-set-logo-mark" />
       <div>
         <strong>{logoUrl ? "Logo uploaded" : "No logo yet"}</strong>
-        <span>PNG, JPEG or WebP. It is fitted into a square, so a square logo looks best.</span>
+        <span>PNG, JPEG or WebP. You can crop and zoom it before it is saved.</span>
         {problem ? <span className="is-error" role="alert">{problem}</span> : null}
         {canEdit ? (
           <div className="crm-set-logo-actions">
@@ -126,7 +234,7 @@ function LogoUploader({ client, logoUrl, canEdit, mutate }: { client: CrmClient;
                 }}
               />
               <Upload aria-hidden="true" />
-              {busy ? "Working..." : logoUrl ? "Replace logo" : "Upload logo"}
+              {logoUrl ? "Replace logo" : "Upload logo"}
             </label>
             {logoUrl ? (
               <button type="button" className="crm-button-secondary" disabled={busy} onClick={() => void remove()}>
@@ -136,16 +244,10 @@ function LogoUploader({ client, logoUrl, canEdit, mutate }: { client: CrmClient;
           </div>
         ) : null}
       </div>
+      {picked ? <LogoCropper picked={picked} busy={busy} onCancel={closeCropper} onUse={(image) => void upload(image)} /> : null}
     </div>
   );
 }
-
-/*
- * Settings: one place for everything a person configures, grouped by whose
- * setting it is - your own account, the businesses you manage, and the data
- * you hold. Every control here saves through an existing, permission-checked
- * server action; anything not configurable yet says so instead of pretending.
- */
 
 type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
 
@@ -456,6 +558,7 @@ export function SettingsView({
   contacts,
   selectedClientId,
   onNavigate,
+  initialBusinessId = null,
 }: {
   organizationName: string;
   viewer: { name: string; email: string; role: CrmRole; permissions: CrmPermission[] };
@@ -479,6 +582,8 @@ export function SettingsView({
   contacts: CrmContact[];
   selectedClientId: string;
   onNavigate: (view: "team" | "connections") => void;
+  /** Open straight on this business's profile (from its Agency card). */
+  initialBusinessId?: string | null;
 }) {
   const can = (permission: CrmPermission) => viewer.permissions.includes(permission);
   const sections: Array<{ id: SectionId; label: string; icon: LucideIcon; group: string; show: boolean }> = [
@@ -493,11 +598,12 @@ export function SettingsView({
     { id: "security", label: "Privacy & security", icon: ShieldCheck, group: "Data", show: true },
   ];
   const visible = sections.filter((section) => section.show);
-  const [section, setSection] = useState<SectionId>("profile");
+  const openOn = initialBusinessId && clients.some((c) => c.id === initialBusinessId) ? initialBusinessId : null;
+  const [section, setSection] = useState<SectionId>(openOn ? "businesses" : "profile");
   const active = visible.some((item) => item.id === section) ? section : "profile";
 
   const [businessId, setBusinessId] = useState<string>(
-    clients.some((c) => c.id === selectedClientId) ? selectedClientId : (clients[0]?.id ?? ""),
+    openOn ?? (clients.some((c) => c.id === selectedClientId) ? selectedClientId : (clients[0]?.id ?? "")),
   );
   const business = clients.find((c) => c.id === businessId) ?? clients[0];
 

@@ -10,7 +10,7 @@ import type {
   CrmTask,
   CrmTeamMember,
 } from "../../db/crm";
-import { ChevronLeft, ChevronRight, Clock3, Globe, MapPin, Trash2, UserRound, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock3, Globe, MapPin, Settings2, Trash2, UserRound, X } from "lucide-react";
 import type { TenantBranding } from "../../db/branding";
 import { Badge, BusinessMark, dateTime, EmptyState, Modal, money, shortDate } from "./ui";
 
@@ -743,7 +743,7 @@ function CalendarEventPopover({
   );
 }
 
-export function ClientsView({ clients, leads, onDeleted, mutate, canDelete, adminEmail, branding = [] }: { clients: CrmClient[]; leads: CrmLead[]; onDeleted: () => void; mutate: Mutate; canDelete: boolean; adminEmail: string; branding?: TenantBranding[] }) {
+export function ClientsView({ clients, leads, onDeleted, mutate, canDelete, adminEmail, branding = [], onEdit }: { clients: CrmClient[]; leads: CrmLead[]; onDeleted: () => void; mutate: Mutate; canDelete: boolean; adminEmail: string; branding?: TenantBranding[]; /** Opens the business in Settings; passed only to roles that can edit businesses. */ onEdit?: (clientId: string) => void }) {
   const [deleteTarget, setDeleteTarget] = useState<CrmClient | null>(null);
   const [deleteEmail, setDeleteEmail] = useState("");
   const [deletePassword, setDeletePassword] = useState("");
@@ -803,7 +803,7 @@ export function ClientsView({ clients, leads, onDeleted, mutate, canDelete, admi
           <li><MapPin aria-hidden="true" /><span>{areas || "No service areas"}</span></li>
           <li><Globe aria-hidden="true" /><span>{site || "No website"}</span></li>
         </ul>
-        <footer><span>Created {shortDate(client.createdAt)}</span>{canDelete ? <button className="danger" onClick={() => setDeleteTarget(client)}>Delete</button> : null}</footer>
+        <footer><span>Created {shortDate(client.createdAt)}</span><div className="crm-biz-actions">{onEdit ? <button type="button" className="crm-biz-edit" onClick={() => onEdit(client.id)}><Settings2 aria-hidden="true" />Settings</button> : null}{canDelete ? <button className="danger" onClick={() => setDeleteTarget(client)}>Delete</button> : null}</div></footer>
       </article>;
     })}</section>
     {deleteTarget ? <Modal title={`Delete ${deleteTarget.businessName}?`} eyebrow="ADMIN CONFIRMATION" onClose={closeDeleteDialog}>

@@ -370,6 +370,8 @@ export function CrmApp({
   );
   const [range, setRange] = useState("30");
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+  // A business opened from its Agency card lands on its profile in Settings.
+  const [settingsBusinessId, setSettingsBusinessId] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalName>(null);
   const [mobileNav, setMobileNav] = useState(false);
   // While the phone menu sheet is open it is the only thing that scrolls: the
@@ -1466,6 +1468,16 @@ export function CrmApp({
             canDelete={data.viewer.permissions.includes("clients.delete")}
             adminEmail={data.viewer.email}
             branding={data.branding}
+            onEdit={
+              // Only roles that can edit businesses get the card's Settings
+              // button; the server enforces the same permission on save.
+              data.viewer.permissions.includes("clients.manage")
+                ? (clientId) => {
+                    setSettingsBusinessId(clientId);
+                    navigate("settings");
+                  }
+                : undefined
+            }
           />
         )}
         {view === "reports" && (
@@ -1665,6 +1677,8 @@ export function CrmApp({
             contacts={filteredContacts}
             selectedClientId={effectiveSelectedClientId ?? "all"}
             onNavigate={(next) => navigate(next)}
+            key={settingsBusinessId ?? "settings"}
+            initialBusinessId={settingsBusinessId}
           />
         )}
       </main>
