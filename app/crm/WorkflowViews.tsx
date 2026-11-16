@@ -548,6 +548,7 @@ export function ConnectionsView({
   const linkedCards = [
     {
       id: "stripe",
+      logo: "/integrations/stripe.svg",
       name: "Stripe",
       description: "Card payments and payouts through the business's own Stripe account",
       status: stripeStatus,
@@ -560,6 +561,7 @@ export function ConnectionsView({
     },
     {
       id: "square",
+      logo: "/integrations/square.svg",
       name: "Square",
       description: "Invoices and payments through the business's own Square account",
       status: squareStatus,
@@ -572,6 +574,7 @@ export function ConnectionsView({
     },
     {
       id: "google-profile",
+      logo: "/integrations/google-profile.png",
       name: "Google Business Profile",
       description: "Reviews, replies and the business listing on Google",
       status: googleProfileStatus,
@@ -584,6 +587,7 @@ export function ConnectionsView({
     },
     {
       id: "google-calendar",
+      logo: "/integrations/google-calendar.svg",
       name: "Google Calendar",
       description: "Booked appointments on the business's Google Calendar",
       status: calendarStatus,
@@ -1836,7 +1840,11 @@ export function ConnectionsView({
           {linkedCards.map((card) => (
             <article key={card.id} className={`crm-connection-card crm-integration-card crm-integration-linked is-${card.id}`}>
               <header>
-                <span className="crm-integration-linked-mark" aria-hidden="true">{card.name.slice(0, 1)}</span>
+                <span className="crm-integration-linked-mark" aria-hidden="true">
+                  {/* Local brand assets keep provider marks available without third-party requests. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={card.logo} alt="" width={32} height={32} />
+                </span>
                 <div>
                   <h3>{card.name}</h3>
                   <p>{card.description}</p>
