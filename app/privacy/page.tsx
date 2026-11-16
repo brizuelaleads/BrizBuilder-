@@ -7,10 +7,10 @@ import styles from "../landing.module.css";
 export const metadata: Metadata = {
   title: "Privacy Policy",
   description:
-    "How BrizBuilder collects, uses, protects, and deletes account, CRM, communications, and connected Google Business Profile data.",
+    "How BrizBuilder collects, uses, protects, and deletes account, CRM, communications, and connected Google Business Profile and Google Calendar data.",
 };
 
-const EFFECTIVE_DATE = "July 21, 2026";
+const EFFECTIVE_DATE = "November 16, 2026";
 
 const sections = [
   ["scope", "Scope"],
@@ -137,9 +137,36 @@ export default function PrivacyPage() {
               authorized business profile inside the correct BrizBuilder
               client workspace, synchronize requested profile information,
               display reviews, and perform a profile change or review reply
-              that an authorized user explicitly approves. BrizBuilder does
-              not use Google user data for advertising, sell it, or transfer it
-              to data brokers.
+              that an authorized user explicitly approves.
+            </p>
+            <p>
+              When you choose Link Google Calendar, BrizBuilder requests the
+              Google Calendar events permission
+              (https://www.googleapis.com/auth/calendar.events), which allows
+              viewing and editing events on calendars you can access. The
+              current integration uses your connected account&apos;s primary
+              calendar to find, create, update, and delete events associated
+              with BrizBuilder appointments and to check that the connection
+              works.
+            </p>
+            <p>
+              BrizBuilder sends the appointment&apos;s customer name, service
+              type, notes, start and end times, and an appointment identifier
+              to Google to create and maintain the corresponding event.
+              Canceling a synced appointment in BrizBuilder deletes its linked
+              Google Calendar event. When you first connect, BrizBuilder also
+              attempts to sync up to ten upcoming, non-canceled appointments.
+              Syncing runs from BrizBuilder to Google Calendar; the current
+              integration does not import Google Calendar appointments or
+              changes into the CRM.
+            </p>
+            <p>
+              BrizBuilder stores the linked Google event identifier and
+              connection information, including granted permissions and sync
+              status, with the relevant client workspace. Google data is used
+              to provide and troubleshoot the connected features you request.
+              BrizBuilder does not use Google user data for advertising, sell
+              it, or transfer it to data brokers.
             </p>
             <div className={styles.legalCallout}>
               <strong>Google API Services User Data Policy</strong>
@@ -153,7 +180,12 @@ export default function PrivacyPage() {
             <p>
               Google authorization tokens are encrypted before storage. A user
               can disconnect Google in BrizBuilder or remove BrizBuilder from
-              Google Account permissions at any time.
+              Google Account permissions at any time. Removing access stops
+              future Calendar syncing; it does not automatically delete
+              existing events from Google Calendar or appointment records
+              from BrizBuilder. You can manage those events in Google Calendar
+              and request deletion of BrizBuilder data using the contact
+              details below.
             </p>
           </section>
 
@@ -175,7 +207,8 @@ export default function PrivacyPage() {
               Information may be processed by service providers that help
               operate BrizBuilder, such as Cloudflare for hosting and security,
               Supabase for database services, Google for connected Business
-              Profile features, and Twilio for connected communications. Each
+              Profile and Calendar features, and Twilio for connected
+              communications. Each
               provider processes information under its own terms and privacy
               practices. We may also disclose information when required by
               law, to protect rights or safety, to investigate abuse, or as
