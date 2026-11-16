@@ -281,6 +281,15 @@ export type CrmNote = {
   createdAt: string;
 };
 
+export type CrmSquareStatus = {
+  clientId: string | null;
+  status: string;
+  environment: string;
+  merchantName: string | null;
+  locationName: string | null;
+  connectedAt: string | null;
+};
+
 export type CrmTeamMember = {
   id: string;
   email: string;
@@ -706,6 +715,12 @@ export type CrmBootstrap = {
   customFieldValues: CrmCustomFieldValue[];
   customValues: CrmCustomValue[];
   featureFlags: CrmFeatureFlag[];
+  /**
+   * Square connection state for the Connections tab. Status and labels only;
+   * tokens stay in square_connections and never reach the browser. clientId
+   * null is the agency's own Square account.
+   */
+  squareConnections: CrmSquareStatus[];
   auditLogs: CrmAuditLog[];
   stages: CrmStage[];
   tasks: CrmTask[];
@@ -1074,6 +1089,7 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
     customFields: customFieldRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), entityType: String(row.entity_type) as CrmCustomFieldDefinition["entityType"], fieldKey: String(row.field_key), label: String(row.label), fieldType: String(row.field_type), options: parseStringArray(row.options_json), isRequired: Boolean(row.is_required), position: Number(row.position ?? 0) })),
     customFieldValues: customFieldValueRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), definitionId: String(row.definition_id), entityType: String(row.entity_type) as CrmCustomFieldValue["entityType"], entityId: String(row.entity_id), value: parseJsonValue(row.value_json), updatedAt: String(row.updated_at) })),
     customValues: customValueRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), valueKey: String(row.value_key), label: String(row.label), value: String(row.value), updatedAt: String(row.updated_at) })),
+    squareConnections: [],
     featureFlags: featureFlagRows.results.map((row) => ({ id: String(row.id), clientId: nullable(row.client_id), moduleKey: String(row.module_key), enabled: Boolean(row.enabled), rolloutStatus: String(row.rollout_status) as CrmFeatureFlag["rolloutStatus"], source: String(row.source) })),
     stages: stageRows.results.map((row) => ({ id: String(row.id), name: String(row.name), slug: String(row.slug), color: String(row.color), position: Number(row.position), isWon: Boolean(row.is_won), isLost: Boolean(row.is_lost) })),
     tasks: taskRows.results.map((row) => ({ id: String(row.id), clientId: String(row.client_id), leadId: nullable(row.lead_id), contactId: nullable(row.contact_id), title: String(row.title), description: String(row.description ?? ""), assignee: nullable(row.assignee), dueAt: nullable(row.due_at), priority: String(row.priority), status: String(row.status), createdAt: String(row.created_at) })),

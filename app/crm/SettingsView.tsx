@@ -22,8 +22,10 @@ import type {
   CrmContact,
   CrmLead,
   CrmPermission,
+  CrmGoogleProfile,
   CrmProviderConnection,
   CrmRole,
+  CrmSquareStatus,
   CrmTeamMember,
 } from "../../db/crm";
 import type { TenantBranding } from "../../db/branding";
@@ -300,6 +302,7 @@ const PROVIDERS: Array<{ id: string; name: string; does: string }> = [
   { id: "google_calendar", name: "Google Calendar", does: "Appointments on the business calendar" },
   { id: "stripe", name: "Stripe", does: "Card payments" },
   { id: "square", name: "Square", does: "Invoices and payments" },
+  { id: "google_profile", name: "Google Business Profile", does: "Reviews and the business listing on Google" },
 ];
 
 function initials(name: string) {
@@ -559,6 +562,8 @@ export function SettingsView({
   appearance,
   push,
   providerConnections,
+  squareConnections = [],
+  googleProfiles = [],
   team,
   leads,
   contacts,
@@ -583,6 +588,9 @@ export function SettingsView({
   };
   push: { configured: boolean; vapidPublicKey: string | null; subscribedDevices: number };
   providerConnections: CrmProviderConnection[];
+  /** Square and Google keep their own records; both are status-only here. */
+  squareConnections?: CrmSquareStatus[];
+  googleProfiles?: CrmGoogleProfile[];
   team: CrmTeamMember[];
   leads: CrmLead[];
   contacts: CrmContact[];
@@ -620,11 +628,23 @@ export function SettingsView({
   const providerStatus = useMemo(
     () =>
       PROVIDERS.map((provider) => {
+        // Square and Google Business Profile are not in provider_connections,
+        // so they are counted from their own records for the businesses in view.
+        const inScope = (clientId: string | null) =>
+          clientId != null && (selectedClientId === "all" || clientId === selectedClientId);
+        if (provider.id === "square") {
+          const rows = squareConnections.filter((row) => inScope(row.clientId));
+          return { ...provider, connected: rows.filter((row) => row.status === "connected").length, total: rows.length };
+        }
+        if (provider.id === "google_profile") {
+          const rows = googleProfiles.filter((row) => inScope(row.clientId));
+          return { ...provider, connected: rows.filter((row) => row.status === "connected").length, total: rows.length };
+        }
         const rows = providerConnections.filter((connection) => connection.provider === provider.id);
         const connected = rows.filter((connection) => connection.isActive || connection.isLinked);
         return { ...provider, connected: connected.length, total: rows.length };
       }),
-    [providerConnections],
+    [providerConnections, squareConnections, googleProfiles, selectedClientId],
   );
 
   const roleCounts = useMemo(() => {

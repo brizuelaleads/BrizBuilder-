@@ -1577,6 +1577,9 @@ export function CrmApp({
             )}
             onOpenAiConnector={openAiConnector}
             onViewCalls={() => navigate("calls")}
+            squareConnections={data.squareConnections}
+            googleProfiles={data.googleProfiles}
+            onOpenView={(next) => navigate(next)}
           />
         )}
         {view === "phone-system" && (
@@ -1672,6 +1675,8 @@ export function CrmApp({
             }}
             push={data.pushRuntime}
             providerConnections={filteredProviderConnections}
+            squareConnections={data.squareConnections}
+            googleProfiles={data.googleProfiles}
             team={data.team}
             leads={workspaceLeads}
             contacts={filteredContacts}

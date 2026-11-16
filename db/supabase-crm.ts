@@ -165,6 +165,7 @@ import type {
   CrmGoogleProfile,
   CrmReviewRequest,
   CrmReviewSettings,
+  CrmSquareStatus,
   CrmTeamMember,
   CrmTheme,
 } from "./crm";
@@ -3994,6 +3995,35 @@ export async function getSupabaseCrmBootstrap(
     console.error("Tenant branding could not be loaded.", error);
   }
 
+  // Square status for the Connections tab: labels and status only, scoped to
+  // the businesses in clientRows (already tenant-scoped) plus the agency's own
+  // account for agency viewers. Fault-isolated: a Square hiccup must not take
+  // the CRM down.
+  let squareConnections: CrmSquareStatus[] = [];
+  try {
+    const squareClientIds = clientRows.map((row) => String(row.id));
+    const rows = (await assertOk(
+      supabase()
+        .from("square_connections")
+        .select("client_id,status,environment,merchant_name,location_name,connected_at")
+        .eq("organization_id", context.organizationId),
+    )) as AnyRecord[] | null;
+    squareConnections = (rows ?? [])
+      .filter((row) =>
+        row.client_id == null ? !context.clientId : squareClientIds.includes(String(row.client_id)),
+      )
+      .map((row) => ({
+        clientId: row.client_id == null ? null : String(row.client_id),
+        status: String(row.status ?? "connected"),
+        environment: String(row.environment ?? ""),
+        merchantName: row.merchant_name ? String(row.merchant_name) : null,
+        locationName: row.location_name ? String(row.location_name) : null,
+        connectedAt: row.connected_at ? String(row.connected_at) : null,
+      }));
+  } catch (error) {
+    console.error("Square status could not be loaded.", error);
+  }
+
   // Fault-isolated for the same reason as the reads above. Only a client user
   // has a tenant to register devices against; an agency viewer sees no count.
   let subscribedDevices = 0;
@@ -4181,6 +4211,7 @@ export async function getSupabaseCrmBootstrap(
     customFields: [],
     customFieldValues: [],
     customValues: [],
+    squareConnections,
     featureFlags: defaultFeatureFlags(clientRows),
     auditLogs: auditRows.map((row: AnyRecord): CrmAuditLog => ({
       id: String(row.id),

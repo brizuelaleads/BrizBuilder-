@@ -82,6 +82,16 @@ const withoutRemovals = (file, contract, values) => {
 // identical. Every baseline handler and field must still exist (new ones may be
 // added), and controls may differ only where they belong to the rebuilt view.
 const restructured = {
+  'app/crm/WorkflowViews.tsx': {
+    // Two reviewed changes in Connections. The Twilio Connect link kept its
+    // href and only changed class to crm-integration-primary (b71b903, Glass
+    // card styling). New cards for providers set up on their own tabs (Stripe
+    // and Square in Payments, Google Business Profile in Profiles, Google
+    // Calendar in Calendar) show real status and open that tab; they send
+    // nothing themselves.
+    reason: 'Connections: Twilio Connect link restyled; added status cards for Stripe, Square, Google Business Profile and Google Calendar that open the tab where each is set up',
+    controls: /\/api\/integrations\/twilio\/connect\?clientId=|onOpenView\(card\.view\)|<h3>\{card\.name\}<\/h3>/,
+  },
   'app/crm/ui.tsx': {
     // Adds BusinessMark: a business's uploaded logo, falling back to its
     // initials when there is none or the image fails to load (the one new
@@ -123,7 +133,15 @@ const restructured = {
   },
   'app/CrmApp.tsx': {
     reason: 'Toasts carry an icon, a title and detail, an action and a close; the sidebar foot gained the Classic/Glass theme switch',
-    controls: /crm-toast|crm-theme-switch|chooseTheme|chooseBackdrop|chooseBackdropBlur|CRM_PICKER_THEMES|option\.label/,
+    controls: /crm-toast|crm-theme-switch|chooseTheme|chooseBackdrop|chooseBackdropBlur|CRM_PICKER_THEMES|option\.label|crm-account-|crm-org-card-button|BusinessMark|setSwitcherOpen\(false\)|setAccountSearch/,
+    // The account switcher still opens, picks "all" and picks a business the
+    // same way; it now also clears its search when opened and returns focus
+    // to the switcher button after a pick (keyboard use).
+    replacements: [
+      {lost: 'onClick={() => setSwitcherOpen((open) => !open)}', now: /onClick=\{\(\) => \{ setAccountSearch\(""\); setSwitcherOpen\(\(open\) => !open\); \}\}/, why: 'opening the switcher also clears its search'},
+      {lost: 'onClick={() => { setSelectedClientId("all"); setSwitcherOpen(false); }}', now: /onClick=\{\(\) => \{ setSelectedClientId\("all"\); setSwitcherOpen\(false\); switcherRef\.current\?\.querySelector/, why: 'focus returns to the switcher button after a pick'},
+      {lost: 'onClick={() => { setSelectedClientId(client.id); setSwitcherOpen(false); }}', now: /onClick=\{\(\) => \{ setSelectedClientId\(client\.id\); setSwitcherOpen\(false\); switcherRef\.current\?\.querySelector/, why: 'focus returns to the switcher button after a pick'},
+    ],
     requests: {
       gone: [],
       added: [

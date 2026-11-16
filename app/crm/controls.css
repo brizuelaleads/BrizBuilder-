@@ -1850,3 +1850,26 @@
 }
 #crm-app[data-theme="glass"] .crm-connection-connect-form :is(input, textarea)::placeholder { color: #8b8b96; }
 #crm-app[data-theme="glass"] .crm-connection-connect-form select option { background: #1b1b1f; color: var(--crm-ink); }
+
+/* Connections: providers set up on their own tabs (Stripe and Square in
+   Payments, Google Business Profile in Profiles, Google Calendar in Calendar).
+   Same card as the others; the mark is a brand-coloured letter tile in the
+   header's 150px logo slot. */
+#crm-app .crm-integration-linked-mark { display: grid; place-items: center; justify-self: start; width: 48px; height: 48px; border-radius: 12px; color: #fff; font-size: 22px; font-weight: 800; }
+#crm-app .crm-integration-linked.is-stripe .crm-integration-linked-mark { background: #635bff; }
+#crm-app .crm-integration-linked.is-square .crm-integration-linked-mark { background: #111; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 18%); }
+#crm-app .crm-integration-linked.is-google-profile .crm-integration-linked-mark { background: #4285f4; }
+#crm-app .crm-integration-linked.is-google-calendar .crm-integration-linked-mark { background: #1a73e8; }
+#crm-app .crm-integration-linked > .crm-connection-details-simple { margin: 0 27px; }
+#crm-app .crm-integration-linked > .crm-integration-footer { padding-top: 18px; }
+@media (max-width: 760px) {
+  #crm-app .crm-integration-linked > .crm-connection-details-simple { margin: 0 16px; }
+}
+/* Glass: the linked cards' detail tiles use the same palette as the opened
+   provider panels (theme-glass.css only covered .crm-integration-advanced). */
+#crm-app[data-theme="glass"] .crm-integration-linked .crm-connection-details-simple { border-color: var(--glass-edge); background: transparent; }
+#crm-app[data-theme="glass"] .crm-integration-linked .crm-connection-details-simple > div { background: var(--crm-subtle); border-color: var(--glass-edge); min-width: 0; }
+#crm-app[data-theme="glass"] .crm-integration-linked .crm-connection-details-simple span { color: var(--crm-muted); text-shadow: none; }
+#crm-app[data-theme="glass"] .crm-integration-linked .crm-connection-details-simple strong { color: var(--crm-ink); font-size: 14px; overflow-wrap: anywhere; text-shadow: none; }
+/* A letter tile needs no 150px wordmark slot: give the text the room. */
+#crm-app .crm-connections-view .crm-integration-linked > header { grid-template-columns: 48px minmax(0, 1fr) auto; }

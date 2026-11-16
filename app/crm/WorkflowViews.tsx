@@ -17,6 +17,8 @@ import {
 import type {
   CrmAiAuthorization,
   CrmClient,
+  CrmGoogleProfile,
+  CrmSquareStatus,
   CrmProviderConnection,
   CrmMetaAdsBackfill,
   CrmStage,
@@ -106,6 +108,9 @@ export function ConnectionsView({
   canReadSharedBilling,
   onOpenAiConnector,
   onViewCalls,
+  squareConnections = [],
+  googleProfiles = [],
+  onOpenView,
 }: {
   clients: CrmClient[];
   connections: CrmProviderConnection[];
@@ -116,6 +121,11 @@ export function ConnectionsView({
   canReadSharedBilling: boolean;
   onOpenAiConnector: (clientId: string) => void;
   onViewCalls: () => void;
+  /** Square status (labels only, no tokens), from square_connections. */
+  squareConnections?: CrmSquareStatus[];
+  googleProfiles?: CrmGoogleProfile[];
+  /** Opens the tab where a provider is actually set up. */
+  onOpenView?: (view: "payments" | "profiles" | "calendar") => void;
 }) {
   const [localClient, setLocalClient] = useState(clients[0]?.id ?? "");
   const [integrationQuery, setIntegrationQuery] = useState("");
@@ -473,12 +483,29 @@ export function ConnectionsView({
   const metaAdsStatus: IntegrationStatus = metaAdsLinked
     ? "connected"
     : "available";
+  const stripeConnection = connections.find((item) => item.clientId === clientId && item.provider === "stripe");
+  const stripeStatus: IntegrationStatus = stripeConnection?.isLinked
+    ? stripeConnection.status === "attention" ? "setup" : "connected"
+    : "available";
+  const squareConnection = squareConnections.find((item) => item.clientId === clientId);
+  const squareStatus: IntegrationStatus =
+    squareConnection?.status === "connected" ? "connected" : squareConnection?.status === "attention" ? "setup" : "available";
+  const googleProfile = googleProfiles.find((item) => item.clientId === clientId);
+  const googleProfileStatus: IntegrationStatus =
+    googleProfile?.status === "connected" ? "connected" : googleProfile?.status === "attention" ? "setup" : "available";
+  const calendarConnection = connections.find((item) => item.clientId === clientId && item.provider === "google_calendar");
+  const calendarStatus: IntegrationStatus =
+    calendarConnection?.isLinked || calendarConnection?.isActive ? "connected" : "available";
   const integrationStatuses = [
     twilioStatus,
     aiStatus,
     callRailStatus,
     metaStatus,
     metaAdsStatus,
+    stripeStatus,
+    squareStatus,
+    googleProfileStatus,
+    calendarStatus,
   ];
   const statusCount = (status: IntegrationStatus) =>
     integrationStatuses.filter((item) => item === status).length;
@@ -518,13 +545,59 @@ export function ConnectionsView({
     "Pull campaign spend clicks and cost per lead into reporting",
     metaAdsStatus,
   );
+  const linkedCards = [
+    {
+      id: "stripe",
+      name: "Stripe",
+      description: "Card payments and payouts through the business's own Stripe account",
+      status: stripeStatus,
+      view: "payments" as const,
+      facts: [
+        ["Account", stripeConnection?.accountLabel ?? "Not connected"],
+        ["Mode", stripeConnection?.isLinked ? (stripeConnection.mode === "live" ? "Live" : "Test mode") : "—"],
+      ],
+    },
+    {
+      id: "square",
+      name: "Square",
+      description: "Invoices and payments through the business's own Square account",
+      status: squareStatus,
+      view: "payments" as const,
+      facts: [
+        ["Merchant", squareConnection?.merchantName ?? "Not connected"],
+        ["Location", squareConnection ? (squareConnection.locationName ?? "—") + (squareConnection.environment === "sandbox" ? " (sandbox)" : "") : "—"],
+      ],
+    },
+    {
+      id: "google-profile",
+      name: "Google Business Profile",
+      description: "Reviews, replies and the business listing on Google",
+      status: googleProfileStatus,
+      view: "profiles" as const,
+      facts: [
+        ["Location", googleProfile?.locationName ?? googleProfile?.businessName ?? "Not connected"],
+        ["Last synced", googleProfile?.lastSyncedAt ? integrationSyncLabel(googleProfile.lastSyncedAt) : "—"],
+      ],
+    },
+    {
+      id: "google-calendar",
+      name: "Google Calendar",
+      description: "Booked appointments on the business's Google Calendar",
+      status: calendarStatus,
+      view: "calendar" as const,
+      facts: [
+        ["Calendar", calendarConnection?.accountLabel ?? (calendarStatus === "connected" ? "Connected" : "Not connected")],
+        ["Status", calendarStatus === "connected" ? "Syncing" : "—"],
+      ],
+    },
+  ].filter((card) => integrationMatches(card.name, card.description, card.status));
   const visibleIntegrationCount = [
     twilioVisible,
     aiVisible,
     callRailVisible,
     metaVisible,
     metaAdsVisible,
-  ].filter(Boolean).length;
+  ].filter(Boolean).length + linkedCards.length;
   const showAllIntegrations = () => {
     setIntegrationQuery("");
     setIntegrationFilter("all");
@@ -1756,6 +1829,32 @@ export function ConnectionsView({
             </div>
           </article>
           ) : null}
+          {linkedCards.map((card) => (
+            <article key={card.id} className={`crm-connection-card crm-integration-card crm-integration-linked is-${card.id}`}>
+              <header>
+                <span className="crm-integration-linked-mark" aria-hidden="true">{card.name.slice(0, 1)}</span>
+                <div>
+                  <h3>{card.name}</h3>
+                  <p>{card.description}</p>
+                </div>
+                <Badge tone={card.status === "connected" ? "green" : card.status === "setup" ? "orange" : "neutral"}>
+                  {card.status === "connected" ? "Connected" : card.status === "setup" ? "Needs attention" : "Available"}
+                </Badge>
+              </header>
+              <div className="crm-connection-details compact crm-connection-details-simple">
+                {card.facts.map(([label, value]) => (
+                  <div key={label}><span>{label}</span><strong>{value}</strong></div>
+                ))}
+              </div>
+              <div className="crm-integration-footer">
+                {onOpenView ? (
+                  <button className="crm-integration-primary" type="button" onClick={() => onOpenView(card.view)}>
+                    {card.status === "available" ? "Set up" : "Manage"} in {{"payments":"Payments","profiles":"Profiles","calendar":"Calendar"}[card.view]}
+                  </button>
+                ) : null}
+              </div>
+            </article>
+          ))}
           {visibleIntegrationCount === 0 ? (
             <section className="crm-integrations-no-results">
               <Search aria-hidden="true" />
