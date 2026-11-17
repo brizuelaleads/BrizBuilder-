@@ -3675,7 +3675,10 @@ export async function getSupabaseCrmBootstrap(
     assertOk(
       query<AnyRecord>(
         "review_requests",
-        "*,contacts(first_name,last_name)",
+        // Two foreign keys reach contacts (contact_id, and the tenant-scoped
+        // organization_id+client_id+contact_id one), so PostgREST needs the
+        // embed named or it refuses the whole query.
+        "*,contacts!review_requests_contact_id_fkey(first_name,last_name)",
       )
         .order("created_at", { ascending: false })
         .limit(250),
