@@ -82,6 +82,14 @@ const withoutRemovals = (file, contract, values) => {
 // identical. Every baseline handler and field must still exist (new ones may be
 // added), and controls may differ only where they belong to the rebuilt view.
 const restructured = {
+  'app/crm/FoundationViews.tsx': {
+    // Contact cards: a contact's calls open in a dialog instead of stretching
+    // the card across the grid. The same "Show/Hide N calls" toggle opens it;
+    // the dialog's onClose (Escape, backdrop, close button) is the only new
+    // handler. No control was added, moved or removed.
+    reason: 'Contacts: calls open in a dialog from the unchanged calls toggle',
+    controls: /(?!)/,
+  },
   'app/crm/GoogleProfilesView.tsx': {
     // Redesigned layout around the same flows: every Connect, Choose
     // location, Refresh, Disconnect, retry and save control is unchanged. The
