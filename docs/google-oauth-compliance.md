@@ -37,10 +37,11 @@ Reviewer navigation: `https://brizbuilder.com/login` → sign in → Calendar �
 
 ## Rollout sequence — do not merge/deploy out of order
 
-1. Follow `PRODUCTION.md`: use `D:/brizl/Websites/BrizBuilder-`, branch `main`, and the existing `brizbuilder` Worker. The canonical checkout is currently unavailable in this environment. Do not deploy the Sites preview build or attach a replacement domain.
+1. Follow `PRODUCTION.md`: use `D:/brizl/Websites/BrizBuilder-`, branch `main`, and the existing `brizbuilder` Worker. The canonical checkout was inspected on November 17; unrelated dashboard/font changes must be preserved. Review changes are isolated in `D:/brizl/Websites/BrizBuilder-google-compliance-review`. Do not deploy the Sites preview build or attach a replacement domain.
 2. Inspect production schema/migration history and back up through the established process. The migration makes no encryption-key or OAuth-client changes. Stop if production schema differs from the expected credential tables.
-3. Apply `supabase/migrations/20261117000000_separate_google_calendar_credentials.sql` before deploying this code. It copies existing encrypted Calendar credentials without decrypting them, retains mixed Business Profile credentials, and removes Calendar-only rows from the old store. Do not print token columns during verification. Check counts/statuses only.
+3. Apply `supabase/migrations/20261117000000_separate_google_calendar_credentials.sql` before deploying this code, only after the recovery gate in `docs/google-oauth-recovery-plan.md` passes. It copies existing encrypted Calendar credentials without decrypting them and retains all old rows so the old Worker continues working. A temporary trigger bridges old-Worker credential writes during deployment and does not overwrite newer Calendar credentials. Do not print token columns during verification. Check counts/statuses only.
 4. Deploy to the existing Worker, preserving its current bindings, routes, cron settings, variables, and secrets. Do not regenerate encryption keys or OAuth clients.
+   After verifying the new Worker and existing connections, and draining old-Worker requests, run `scripts/google-calendar-credential-cutover.sql` separately to remove the temporary trigger and Calendar-only legacy rows. Do not leave the bridge active through review-account consent tests. Once new credentials have been issued through the new code, an old-code rollback requires credential reconciliation; do not assume the old store is current. After cutover, use a forward fix or a separately reviewed reverse migration.
 5. With explicit approval for this new configuration, set only `GOOGLE_CALENDAR_OWNED_REVIEW_CLIENT_IDS` to the isolated demo client ID. Leave global enablement false. Re-test an existing Calendar connection, then a fresh owned-scope connection in that isolated reviewer workspace. Test disconnect and reconnection, including removal of any older Google grants. Do not exercise revoke/delete against a live customer's account.
 6. Update the **existing** Google verification submission to the scope the deployed build requests. Add `calendar.events.owned` for the isolated review flow and explain that `calendar.events` remains in the existing production flow during the transition. Do not claim a one-scope match while both flows are running. After Google approves owned access, enable it for new production connections and remove the broader scope from new consent requests and the console when appropriate. Do not request `business.manage` as part of Calendar verification while GBP access remains pending. If that scope is already included in the review, discuss deferring it with the reviewer rather than claiming it is production-ready.
 7. Record an updated video from the deployed review environment: expand every permission; show appointment creation, rescheduling, cancellation, and Google-side results. Old accounts may display previous grants; use a fresh test grant to show the new scope cleanly.
@@ -70,6 +71,25 @@ BrizBuilder is an invite-only CRM for local service businesses. We request calen
 - Executed the migration in local PGlite/PostgreSQL with fake fixtures: credential preservation, Calendar-only separation, repeated execution without overwriting newer credentials, denied anon/authenticated access, service-role access, and rejection of cross-tenant credential rows all passed. No production migration was run.
 
 This does not replace live account, Google OAuth, or production-schema validation.
+
+## November 17 continuation inspection
+
+- PR #5 was open/draft at `273b81b`; remote main was `77231c1`. Canonical local main was `bc5e64a` with unrelated uncommitted work.
+- Production Supabase project `yrklqvexbiwacejixhll` has 42 migrations matching the canonical local ledger, no Calendar credential table, and one mixed Calendar/Business Profile credential. Schema columns and the tenant composite foreign key were inspected without reading token contents.
+- Existing Worker version at inspection: `bdf27cb5-e393-4dcf-a236-28be7bbf3107`. Both apex/www custom domains point to `brizbuilder`; compatibility date `2026-05-15`, flag `nodejs_compat`, cron `*/15 * * * *`. Neither owned-scope setting exists. Re-inspect before deployment because other work is active.
+- Supabase returned no listed physical backups and PITR disabled. Recovery is **not confirmed**. No production application-data/schema/configuration mutations, migration, deployment, or reviewer creation were performed in this continuation.
+- Security suites, typecheck, and the 12 Calendar tests passed for the PR. The revised migration additionally passed a local PGlite test covering legacy readers, legacy writes during rollout, newer-credential preservation, browser-role denial, service-role writes, foreign-key rejection, and post-deploy cleanup. This is a fake-data migration test, not a production backup restore test.
+
+To rerun the SQL regression test, set `PGLITE_MODULE_URL` to the file URL of a
+locally installed `@electric-sql/pglite/dist/index.js`, then run
+`node --test tests/google-credential-migration.test.mjs`. The test explicitly skips
+without that module; a skipped run does not count as migration validation.
+
+The proposed protected configuration remains `GOOGLE_CALENDAR_OWNED_SCOPE_ENABLED=false`
+and `GOOGLE_CALENDAR_OWNED_REVIEW_CLIENT_IDS=<verified isolated demo client UUID>`.
+The first keeps global rollout disabled; the second permits only that workspace's
+new consent flow. The demo client does not yet exist, so no exact allowlist UUID
+can be proposed or applied. Present its verified ID before changing either setting.
 
 ## Sources
 
