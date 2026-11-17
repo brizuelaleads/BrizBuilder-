@@ -2036,3 +2036,50 @@
   #crm-app:not([data-theme="glass"]) .crm-integrations-summary > article b { font-size: 12px; }
 }
 #crm-app[data-theme="glass"] .crm-integrations-summary > article b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Contact cards (FoundationContactsView): name and consent, phone and email
+   with icons, two numbers, tags, and the calls toggle in a quiet footer.
+   Own classes, so the older .crm-contact-grid layers don't apply. */
+#crm-app .crm-ct-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap: 16px; align-items: stretch; }
+#crm-app .crm-ct-card { display: flex; flex-direction: column; gap: 16px; min-width: 0; padding: 20px 22px 14px; border: 1px solid var(--crm-line); border-radius: 14px; background: var(--crm-card); box-shadow: none; }
+#crm-app .crm-ct-card.is-open { grid-column: 1 / -1; }
+#crm-app .crm-ct-card > header { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 0; border: 0; background: none; }
+#crm-app .crm-ct-card > header > div { display: grid; gap: 2px; flex: 1; min-width: 0; }
+#crm-app .crm-ct-card > header strong { font-size: 16px; line-height: 21px; font-weight: 650; color: var(--crm-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#crm-app .crm-ct-card > header small { font-size: 13px; line-height: 18px; color: var(--crm-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#crm-app .crm-ct-avatar { display: grid; place-items: center; flex-shrink: 0; width: 42px; height: 42px; border-radius: 999px; background: #efeaff; color: #5b3fd6; font-size: 14px; font-weight: 700; letter-spacing: .02em; }
+#crm-app .crm-ct-consent { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; align-self: flex-start; margin-top: 2px; font-size: 12px; font-weight: 600; color: var(--crm-muted); white-space: nowrap; }
+#crm-app .crm-ct-consent i { width: 7px; height: 7px; border-radius: 999px; background: currentColor; opacity: .7; }
+#crm-app .crm-ct-consent.is-on { color: #11683f; }
+#crm-app .crm-ct-consent.is-off { color: #b42318; }
+
+#crm-app .crm-ct-lines { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+#crm-app .crm-ct-lines li { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 14px; color: var(--crm-ink); }
+#crm-app .crm-ct-lines svg { flex-shrink: 0; width: 16px; height: 16px; color: var(--crm-muted); }
+#crm-app .crm-ct-lines span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#crm-app .crm-ct-lines span.is-missing { color: var(--crm-muted); }
+
+#crm-app .crm-ct-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 14px 0; border-block: 1px solid var(--crm-line); }
+#crm-app .crm-ct-stats > div { display: grid; gap: 2px; min-width: 0; }
+#crm-app .crm-ct-stats dt { font-size: 12px; line-height: 16px; color: var(--crm-muted); }
+#crm-app .crm-ct-stats dd { margin: 0; font-size: 18px; line-height: 24px; font-weight: 650; letter-spacing: -.01em; color: var(--crm-ink); font-variant-numeric: tabular-nums; }
+#crm-app .crm-ct-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -2px; }
+#crm-app .crm-ct-tags .crm-badge { padding: 3px 10px; border-radius: 999px; font-size: 12px; }
+
+#crm-app .crm-ct-card > footer { display: flex; align-items: center; margin: auto 0 0; padding: 0; border: 0; background: none; }
+#crm-app .crm-ct-card > footer > button.crm-contact-calls-toggle { --btn-h: 30px; --btn-px: 10px; --btn-fs: 13px; --btn-weight: 600; --btn-radius: 8px; --btn-fg: #5b3fd6; --btn-bg-hover: #f3efff; margin: 0 0 0 -10px; }
+#crm-app .crm-ct-card > footer.is-empty > button.crm-contact-calls-toggle { --btn-fg: var(--crm-muted); --btn-weight: 500; --btn-bg-hover: transparent; cursor: default; }
+
+#crm-app[data-theme="glass"] .crm-ct-card { border-color: var(--glass-edge); border-radius: 18px; box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); }
+#crm-app[data-theme="glass"] .crm-ct-avatar { background: rgb(255 255 255 / 10%); color: #e9e3ff; }
+#crm-app[data-theme="glass"] .crm-ct-consent.is-on { color: #8be0b0; }
+#crm-app[data-theme="glass"] .crm-ct-consent.is-off { color: #ffa3b0; }
+#crm-app[data-theme="glass"] .crm-ct-card > footer > button.crm-contact-calls-toggle { --btn-fg: #c4b5fd; --btn-bg-hover: rgb(255 255 255 / 8%); }
+#crm-app[data-theme="glass"] .crm-ct-card > footer.is-empty > button.crm-contact-calls-toggle { --btn-fg: var(--crm-muted); --btn-bg-hover: transparent; }
+
+@media (max-width: 640px) {
+  #crm-app .crm-ct-card { padding: 16px 18px 12px; }
+  #crm-app .crm-ct-stats dd { font-size: 16px; line-height: 22px; }
+  #crm-app .crm-ct-card > header { flex-wrap: wrap; row-gap: 6px; }
+  #crm-app .crm-ct-consent { order: 3; flex-basis: calc(100% - 54px); margin: 0 0 0 54px; }
+}

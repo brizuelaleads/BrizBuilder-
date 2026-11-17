@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type FormEvent } from "react";
 import type { CrmAuditLog, CrmCall, CrmClient, CrmCompany, CrmContact, CrmCustomFieldDefinition, CrmCustomFieldValue, CrmCustomValue, CrmFeatureFlag, CrmLead } from "../../db/crm";
+import { Mail, Phone } from "lucide-react";
 import { CallsSection } from "./CallsSection";
 import { Badge, dateTime, EmptyState, money, shortDate } from "./ui";
 
@@ -27,25 +28,30 @@ export function FoundationContactsView({ contacts, clients, calls, onAddContact 
     anchor.click();
     URL.revokeObjectURL(url);
   }
-  return <div className="crm-view"><section className="crm-page-heading"><div><p>CONTACT DATABASE</p><h2>Contacts</h2><span>One customer record can connect to multiple opportunities, tasks, companies, and appointments.</span></div><div className="crm-heading-actions"><button className="crm-button-secondary" onClick={exportContacts} disabled={!filtered.length}>Export CSV</button></div></section><section className="crm-filterbar"><label className="crm-search"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search contacts" aria-label="Search contacts" /></label><span>{filtered.length} contacts</span></section>{filtered.length ? <section className="crm-contact-grid">{filtered.map((contact) => {
+  return <div className="crm-view"><section className="crm-page-heading"><div><p>CONTACT DATABASE</p><h2>Contacts</h2><span>One customer record can connect to multiple opportunities, tasks, companies, and appointments.</span></div><div className="crm-heading-actions"><button className="crm-button-secondary" onClick={exportContacts} disabled={!filtered.length}>Export CSV</button></div></section><section className="crm-filterbar"><label className="crm-search"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search contacts" aria-label="Search contacts" /></label><span>{filtered.length} contacts</span></section>{filtered.length ? <section className="crm-ct-grid">{filtered.map((contact) => {
       const contactCalls = callsFor(contact.id);
       const open = openContactId === contact.id;
-      return <article key={contact.id} className={open ? "crm-contact-open" : ""}>
+      const consent = contact.marketingConsent === "granted" ? { label: "Marketing OK", tone: "is-on" } : contact.marketingConsent === "revoked" ? { label: "Opted out", tone: "is-off" } : { label: "Consent unknown", tone: "" };
+      return <article key={contact.id} className={`crm-ct-card${open ? " is-open" : ""}`}>
         <header>
-          <span className="crm-avatar">{contact.firstName[0]}{contact.lastName[0]}</span>
+          <span className="crm-ct-avatar" aria-hidden="true">{contact.firstName[0]}{contact.lastName[0]}</span>
           <div><strong>{contact.firstName} {contact.lastName}</strong><small>{clientName(contact.clientId)}</small></div>
-          <Badge tone={contact.marketingConsent === "granted" ? "green" : contact.marketingConsent === "revoked" ? "red" : "neutral"}>{contact.marketingConsent}</Badge>
+          <span className={`crm-ct-consent ${consent.tone}`} title="Marketing consent"><i aria-hidden="true" />{consent.label}</span>
         </header>
-        <dl>
-          <div><dt>Phone</dt><dd>{contact.phone ?? "Not provided"}</dd></div>
-          <div><dt>Email</dt><dd>{contact.email ?? "Not provided"}</dd></div>
+        <ul className="crm-ct-lines">
+          <li><Phone aria-hidden="true" /><span className={contact.phone ? "" : "is-missing"}>{contact.phone ?? "No phone"}</span></li>
+          <li><Mail aria-hidden="true" /><span className={contact.email ? "" : "is-missing"}>{contact.email ?? "No email"}</span></li>
+        </ul>
+        <dl className="crm-ct-stats">
           <div><dt>Last interaction</dt><dd>{shortDate(contact.lastInteractionAt)}</dd></div>
           <div><dt>Lifetime value</dt><dd>{money(contact.lifetimeValueCents)}</dd></div>
         </dl>
-        <footer>{contact.tags.map((tag) => <Badge key={tag} tone="purple">{tag}</Badge>)}</footer>
+        {contact.tags.length ? <div className="crm-ct-tags">{contact.tags.map((tag) => <Badge key={tag} tone="purple">{tag}</Badge>)}</div> : null}
+        <footer className={contactCalls.length ? "" : "is-empty"}>
         <button type="button" className="crm-contact-calls-toggle" aria-expanded={open} onClick={() => setOpenContactId(open ? null : contact.id)}>
           {contactCalls.length ? `${open ? "Hide" : "Show"} ${contactCalls.length} call${contactCalls.length === 1 ? "" : "s"}` : "No tracked calls"}
         </button>
+        </footer>
         {open ? <CallsSection calls={contactCalls} clientId={contact.clientId} emptyMessage="No tracked calls from this contact yet." /> : null}
       </article>;
     })}</section> : <EmptyState title="No contacts yet" description="Add a contact or import a CSV to build the customer database." action={<button className="crm-button-primary" onClick={onAddContact}>Add Contact</button>} />}</div>;
