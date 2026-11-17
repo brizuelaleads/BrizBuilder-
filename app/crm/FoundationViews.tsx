@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import type { CrmAuditLog, CrmCall, CrmClient, CrmCompany, CrmContact, CrmCustomFieldDefinition, CrmCustomFieldValue, CrmCustomValue, CrmFeatureFlag, CrmLead } from "../../db/crm";
 import { Mail, Phone } from "lucide-react";
 import { CallsSection } from "./CallsSection";
-import { Badge, dateTime, EmptyState, money, shortDate } from "./ui";
+import { Badge, dateTime, EmptyState, Modal, money, shortDate } from "./ui";
 
 type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
 
@@ -32,7 +33,7 @@ export function FoundationContactsView({ contacts, clients, calls, onAddContact 
       const contactCalls = callsFor(contact.id);
       const open = openContactId === contact.id;
       const consent = contact.marketingConsent === "granted" ? { label: "Marketing OK", tone: "is-on" } : contact.marketingConsent === "revoked" ? { label: "Opted out", tone: "is-off" } : { label: "Consent unknown", tone: "" };
-      return <article key={contact.id} className={`crm-ct-card${open ? " is-open" : ""}`}>
+      return <article key={contact.id} className="crm-ct-card">
         <header>
           <span className="crm-ct-avatar" aria-hidden="true">{contact.firstName[0]}{contact.lastName[0]}</span>
           <div><strong>{contact.firstName} {contact.lastName}</strong><small>{clientName(contact.clientId)}</small></div>
@@ -52,7 +53,14 @@ export function FoundationContactsView({ contacts, clients, calls, onAddContact 
           {contactCalls.length ? `${open ? "Hide" : "Show"} ${contactCalls.length} call${contactCalls.length === 1 ? "" : "s"}` : "No tracked calls"}
         </button>
         </footer>
-        {open ? <CallsSection calls={contactCalls} clientId={contact.clientId} emptyMessage="No tracked calls from this contact yet." /> : null}
+        {open ? createPortal(
+          <Modal eyebrow="Calls" title={`${contact.firstName} ${contact.lastName}`} onClose={() => setOpenContactId(null)}>
+            <div className="crm-ct-calls">
+              <CallsSection calls={contactCalls} clientId={contact.clientId} emptyMessage="No tracked calls from this contact yet." />
+            </div>
+          </Modal>,
+          document.getElementById("crm-app") ?? document.body,
+        ) : null}
       </article>;
     })}</section> : <EmptyState title="No contacts yet" description="Add a contact or import a CSV to build the customer database." action={<button className="crm-button-primary" onClick={onAddContact}>Add Contact</button>} />}</div>;
 }
