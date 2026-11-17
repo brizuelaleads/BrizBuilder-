@@ -1578,6 +1578,7 @@ export function CrmApp({
             onOpenAiConnector={openAiConnector}
             onViewCalls={() => navigate("calls")}
             squareConnections={data.squareConnections}
+            squareSandbox={data.squareMode === "sandbox"}
             googleProfiles={data.googleProfiles}
             onOpenView={(next) => navigate(next)}
           />

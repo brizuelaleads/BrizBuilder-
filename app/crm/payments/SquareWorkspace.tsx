@@ -197,6 +197,20 @@ export function SquareWorkspace({ scope }: { scope: SquareScopeChoice }) {
                 : "Sign-in and permission are handled by Square."}
             </span>
           </div>
+          {data.environment !== "production" && data.canConnect ? (
+            <div className="crm-stripe-mode-note crm-square-sandbox-note" role="note">
+              <strong>Square test mode.</strong>
+              <span>
+                Square&apos;s test sign-in page loads blank unless a Square test
+                account is open in this browser. First open one from the{" "}
+                <a href="https://developer.squareup.com/apps" target="_blank" rel="noreferrer">
+                  Square Developer Console
+                </a>{" "}
+                (your app, then Sandbox test accounts, then Open in Square
+                Dashboard), then click Connect with Square.
+              </span>
+            </div>
+          ) : null}
         </section>
       ) : (
         <>

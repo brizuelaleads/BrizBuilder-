@@ -721,6 +721,12 @@ export type CrmBootstrap = {
    * null is the agency's own Square account.
    */
   squareConnections: CrmSquareStatus[];
+  /**
+   * Which Square the server talks to. In "sandbox", Square's sign-in page
+   * only works after a Square test account is opened from Square's
+   * Developer Console, so the UI says so beside Connect.
+   */
+  squareMode?: "sandbox" | "production";
   auditLogs: CrmAuditLog[];
   stages: CrmStage[];
   tasks: CrmTask[];

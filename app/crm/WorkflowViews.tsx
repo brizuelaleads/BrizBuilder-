@@ -111,6 +111,7 @@ export function ConnectionsView({
   squareConnections = [],
   googleProfiles = [],
   onOpenView,
+  squareSandbox = false,
 }: {
   clients: CrmClient[];
   connections: CrmProviderConnection[];
@@ -126,6 +127,8 @@ export function ConnectionsView({
   googleProfiles?: CrmGoogleProfile[];
   /** Opens the tab where a provider is actually set up. */
   onOpenView?: (view: "payments" | "profiles" | "calendar") => void;
+  /** Square is in test mode: its sign-in needs a Square test account open first. */
+  squareSandbox?: boolean;
 }) {
   const [localClient, setLocalClient] = useState(clients[0]?.id ?? "");
   const [integrationQuery, setIntegrationQuery] = useState("");
@@ -1870,7 +1873,13 @@ export function ConnectionsView({
                     Connect
                   </a>
                 ) : null}
-                {card.status !== "connected" ? <span className="crm-integration-linked-note">Secure sign-in on {card.name.startsWith("Google") ? "Google" : card.name}</span> : null}
+                {card.status !== "connected" && card.id === "square" && squareSandbox ? (
+                  <span className="crm-integration-linked-note is-warning">
+                    Square is in test mode. First open a test account from the{" "}
+                    <a href="https://developer.squareup.com/apps" target="_blank" rel="noreferrer">Square Developer Console</a>
+                    {" "}in this browser, or Square&apos;s page loads blank.
+                  </span>
+                ) : card.status !== "connected" ? <span className="crm-integration-linked-note">Secure sign-in on {card.name.startsWith("Google") ? "Google" : card.name}</span> : null}
               </div>
             </article>
           ))}

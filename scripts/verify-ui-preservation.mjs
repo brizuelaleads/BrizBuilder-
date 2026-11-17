@@ -109,7 +109,10 @@ const restructured = {
     // Calendar in Calendar) show real status and open that tab; they send
     // nothing themselves.
     reason: 'Connections: Twilio Connect link restyled; added status cards for Stripe, Square, Google Business Profile and Google Calendar that start each provider\'s own sign-in, or open the tab where a connected one is managed',
-    controls: /\/api\/integrations\/twilio\/connect\?clientId=|onOpenView\(card\.view\)|<h3>\{card\.name\}<\/h3>|href=\{card\.connectHref\}/,
+    // While Square is in test mode the Square card also links to Square's
+    // Developer Console: Square's sandbox sign-in page is blank unless a
+    // Square test account is open in the same browser.
+    controls: /\/api\/integrations\/twilio\/connect\?clientId=|onOpenView\(card\.view\)|<h3>\{card\.name\}<\/h3>|href=\{card\.connectHref\}|developer\.squareup\.com\/apps/,
   },
   'app/crm/ui.tsx': {
     // Adds BusinessMark: a business's uploaded logo, falling back to its

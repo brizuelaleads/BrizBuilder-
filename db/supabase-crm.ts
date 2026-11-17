@@ -2,6 +2,7 @@ import { linkAppointmentRows, appointmentTimePatch, projectLeadAppointment, lead
 import type { ChatGPTUser } from "../app/chatgpt-auth";
 import { MAIN_ADMIN_EMAIL } from "../app/auth-config";
 import { getSupabaseAdminClient } from "../lib/supabase/server";
+import { squareEnvironment } from "../lib/square";
 import {
   createInviteTokenAndSendEmail,
   ensureSupabaseInviteProfile,
@@ -4215,6 +4216,7 @@ export async function getSupabaseCrmBootstrap(
     customFieldValues: [],
     customValues: [],
     squareConnections,
+    squareMode: squareEnvironment(),
     featureFlags: defaultFeatureFlags(clientRows),
     auditLogs: auditRows.map((row: AnyRecord): CrmAuditLog => ({
       id: String(row.id),
