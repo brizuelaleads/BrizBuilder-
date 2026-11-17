@@ -1,6 +1,5 @@
 import {
   decryptGoogleSecret,
-  GOOGLE_CALENDAR_SCOPE,
   refreshGoogleAccessToken,
 } from "./google-business";
 import {
@@ -8,6 +7,7 @@ import {
   type GoogleCalendarSyncResult,
 } from "./google-calendar";
 import { getSupabaseAdminClient } from "./supabase/server";
+import { hasGoogleCalendarScope } from "./google-calendar-scopes";
 
 type AppointmentForCalendar = {
   id: string;
@@ -43,7 +43,7 @@ async function accessToken(organizationId: string, clientId: string) {
     ),
     checked(
       database
-        .from("google_business_credentials")
+        .from("google_calendar_credentials")
         .select("refresh_token_ciphertext,refresh_token_iv,scopes")
         .eq("organization_id", organizationId)
         .eq("client_id", clientId)
@@ -55,7 +55,7 @@ async function accessToken(organizationId: string, clientId: string) {
   }
   const row = credential as Record<string, unknown>;
   const scopes = Array.isArray(row.scopes) ? row.scopes.map(String) : [];
-  if (!scopes.includes(GOOGLE_CALENDAR_SCOPE)) return null;
+  if (!hasGoogleCalendarScope(scopes)) return null;
   const refreshToken = await decryptGoogleSecret(
     {
       ciphertext: String(row.refresh_token_ciphertext),
@@ -104,7 +104,8 @@ export async function syncStoredAppointmentToGoogleCalendar(
           })
           .eq("organization_id", organizationId)
           .eq("client_id", clientId)
-          .eq("provider", "google_calendar"),
+          .eq("provider", "google_calendar")
+          .in("status", ["connected", "attention"]),
       ),
     ]);
     return result;
@@ -124,7 +125,8 @@ export async function syncStoredAppointmentToGoogleCalendar(
         })
         .eq("organization_id", organizationId)
         .eq("client_id", clientId)
-        .eq("provider", "google_calendar"),
+        .eq("provider", "google_calendar")
+        .in("status", ["connected", "attention"]),
     );
     return { action: "failed", eventId: null };
   }

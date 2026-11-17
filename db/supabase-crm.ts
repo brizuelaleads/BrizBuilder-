@@ -16,14 +16,11 @@ import {
   decryptGoogleSecret,
   encryptGoogleSecret,
   exchangeGoogleAuthorizationCode,
-  GOOGLE_BUSINESS_SCOPE,
-  GOOGLE_CALENDAR_SCOPE,
   getGoogleBusinessRuntimeStatus,
   listGoogleBusinessReviews,
   listGoogleBusinessLocations,
   deleteGoogleBusinessReviewReply,
   refreshGoogleAccessToken,
-  revokeGoogleRefreshToken,
   updateGoogleBusinessReviewReply,
   type GoogleBusinessLocation,
 } from "../lib/google-business";
@@ -31,6 +28,9 @@ import {
   syncGoogleCalendarAppointment,
   verifyGoogleCalendarAccess,
 } from "../lib/google-calendar";
+import { googleCalendarAuthorizationScopes, hasGoogleCalendarScope, shouldUseOwnedGoogleCalendarScope } from "../lib/google-calendar-scopes";
+import { readRuntimeValue } from "../lib/supabase/env";
+import { disconnectStoredGoogleAccess } from "../lib/google-disconnect-store";
 import { syncStoredAppointmentToGoogleCalendar } from "../lib/google-calendar-store";
 import {
   assertCallRailAccountId,
@@ -2265,19 +2265,13 @@ export async function beginSupabaseGoogleCalendarConnect(
         expires_at: new Date(now.getTime() + 15 * 60_000).toISOString(),
       }),
   );
-  const existingCredential = await googleCredential(
-    context.organizationId,
+  // Keep Calendar consent separate from Business Profile and existing grants.
+  const useOwnedScope = shouldUseOwnedGoogleCalendarScope(
     clientId,
+    readRuntimeValue("GOOGLE_CALENDAR_OWNED_SCOPE_ENABLED"),
+    readRuntimeValue("GOOGLE_CALENDAR_OWNED_REVIEW_CLIENT_IDS"),
   );
-  const existingScopes = Array.isArray(existingCredential?.scopes)
-    ? existingCredential.scopes.map(String)
-    : [];
-  return buildGoogleAuthorizationUrl(state, [
-    ...(existingScopes.includes(GOOGLE_BUSINESS_SCOPE)
-      ? [GOOGLE_BUSINESS_SCOPE]
-      : []),
-    GOOGLE_CALENDAR_SCOPE,
-  ]);
+  return buildGoogleAuthorizationUrl(state, googleCalendarAuthorizationScopes(useOwnedScope), false);
 }
 
 export async function finishSupabaseGoogleConnect(
@@ -2456,7 +2450,7 @@ export async function finishSupabaseGoogleCalendarConnect(
         "Google did not grant fresh offline access. Remove BrizBuilder from your Google Account permissions, then connect again.",
       );
     }
-    if (!tokens.scopes.includes(GOOGLE_CALENDAR_SCOPE)) {
+    if (!hasGoogleCalendarScope(tokens.scopes)) {
       throw new Error("Google Calendar permission was not granted.");
     }
     await verifyGoogleCalendarAccess(tokens.accessToken);
@@ -2470,7 +2464,7 @@ export async function finishSupabaseGoogleCalendarConnect(
     );
     await assertOk(
       supabase()
-        .from("google_business_credentials")
+        .from("google_calendar_credentials")
         .upsert(
           {
             organization_id: authorization.organization_id,
@@ -2683,98 +2677,15 @@ export async function refreshSupabaseGoogleProfile(
 export async function disconnectSupabaseGoogleProfile(
   user: ChatGPTUser,
   clientId: string,
+  source: "profile" | "calendar" = "profile",
 ) {
   const context = await getTenantContext(user);
-  requirePermission(context, "profiles.connect");
+  requirePermission(context, source === "calendar" ? "calendar.connect" : "profiles.connect");
   await requireClient(context, clientId);
-  const credential = await googleCredential(context.organizationId, clientId);
-  let refreshToken: string | null = null;
-  let revocationWarning: string | null = null;
-  if (credential) {
-    try {
-      refreshToken = await decryptGoogleSecret({
-        ciphertext: String(credential.refresh_token_ciphertext),
-        iv: String(credential.refresh_token_iv),
-      }, context.organizationId, clientId);
-    } catch {
-      revocationWarning =
-        "BrizBuilder disconnected locally, but could not read the saved authorization to revoke it at Google. Remove BrizBuilder from your Google Account permissions.";
-    }
-  }
-  const now = new Date().toISOString();
-  await assertOk(
-    supabase()
-      .from("google_business_profiles")
-      .upsert(
-        {
-          organization_id: context.organizationId,
-          client_id: clientId,
-          status: "disconnected",
-          account_id: null,
-          account_name: null,
-          location_name: null,
-          location_id: null,
-          business_name: null,
-          address: null,
-          phone: null,
-          website: null,
-          primary_category: null,
-          last_synced_at: null,
-          connected_at: null,
-          last_error: null,
-          updated_at: now,
-        },
-        { onConflict: "organization_id,client_id" },
-      ),
-  );
-
-  let googleRevocationConfirmed = !credential;
-  if (refreshToken) {
-    try {
-      await revokeGoogleRefreshToken(refreshToken);
-      googleRevocationConfirmed = true;
-    } catch (error) {
-      revocationWarning = safeIntegrationError(error);
-    }
-  }
-  const revocationRetryAvailable = Boolean(
-    credential && refreshToken && !googleRevocationConfirmed,
-  );
-  if (!credential || googleRevocationConfirmed || !refreshToken) {
-    await assertOk(
-      supabase()
-        .from("google_business_credentials")
-        .delete()
-        .eq("organization_id", context.organizationId)
-        .eq("client_id", clientId),
-    );
-  }
-  if (revocationWarning) {
-    await assertOk(
-      supabase()
-        .from("google_business_profiles")
-        .update({
-          last_error: revocationWarning.slice(0, 500),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("organization_id", context.organizationId)
-        .eq("client_id", clientId),
-    );
-  }
-  await audit(
-    context,
-    "google_profile.disconnected",
-    "google_business_profile",
-    clientId,
-    { googleRevocationConfirmed, revocationRetryAvailable },
-    clientId,
-  );
-  return {
-    disconnected: true,
-    revocationWarning,
-    googleRevocationConfirmed,
-    revocationRetryAvailable,
-  };
+  const result = await disconnectStoredGoogleAccess(context.organizationId, clientId);
+  await audit(context, "google.disconnected", "provider_connection", clientId,
+    { googleRevocationConfirmed: result.googleRevocationConfirmed }, clientId);
+  return result;
 }
 
 /**
@@ -5156,6 +5067,11 @@ export async function executeSupabaseCrmAction(
       clientId,
     );
     return { deleted: true };
+  }
+
+  if (action === "disconnect_google_calendar") {
+    const clientId = requireText(input.clientId, "Client", 100);
+    return disconnectSupabaseGoogleProfile(user, clientId, "calendar");
   }
 
   if (action === "disconnect_google_profile") {

@@ -113,6 +113,7 @@ async function findGoogleCalendarEvent(
   );
   url.searchParams.set("singleEvents", "true");
   url.searchParams.set("maxResults", "1");
+  url.searchParams.set("fields", "items(id)");
   const response = await googleCalendarRequest(accessToken, url);
   const payload = (await response.json()) as {
     items?: GoogleCalendarEvent[];
@@ -126,6 +127,9 @@ export async function verifyGoogleCalendarAccess(accessToken: string) {
   );
   url.searchParams.set("maxResults", "1");
   url.searchParams.set("singleEvents", "true");
+  // Verify access without reading unrelated event contents.
+  url.searchParams.set("privateExtendedProperty", "brizbuilderConnectionCheck=true");
+  url.searchParams.set("fields", "items(id)");
   await googleCalendarRequest(accessToken, url);
 }
 
@@ -171,6 +175,7 @@ export async function syncGoogleCalendarAppointment(
       )
     : new URL(`${GOOGLE_CALENDAR_API}/calendars/primary/events`);
   url.searchParams.set("sendUpdates", "none");
+  url.searchParams.set("fields", "id");
   let response: Response;
   try {
     response = await googleCalendarRequest(accessToken, url, {
@@ -191,6 +196,7 @@ export async function syncGoogleCalendarAppointment(
       `${GOOGLE_CALENDAR_API}/calendars/primary/events/${encodeURIComponent(deterministicEventId)}`,
     );
     conflictUrl.searchParams.set("sendUpdates", "none");
+    conflictUrl.searchParams.set("fields", "id");
     await googleCalendarRequest(accessToken, conflictUrl, {
       method: "PUT",
       body,

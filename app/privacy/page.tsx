@@ -10,7 +10,7 @@ export const metadata: Metadata = {
     "How BrizBuilder collects, uses, protects, and deletes account, CRM, communications, and connected Google Business Profile and Google Calendar data.",
 };
 
-const EFFECTIVE_DATE = "November 16, 2026";
+const EFFECTIVE_DATE = "November 17, 2026";
 
 const sections = [
   ["scope", "Scope"],
@@ -141,13 +141,19 @@ export default function PrivacyPage() {
             </p>
             <p>
               When you choose Link Google Calendar, BrizBuilder requests the
-              Google Calendar events permission
-              (https://www.googleapis.com/auth/calendar.events), which allows
-              viewing and editing events on calendars you can access. The
+              Google Calendar events permission. The owned-calendar flow
+              (https://www.googleapis.com/auth/calendar.events.owned) allows
+              viewing and editing events on calendars you own. During its
+              review, that flow is limited to designated demo workspaces;
+              other connections use calendar.events, which allows viewing and
+              editing events on calendars you can access. The
               current integration uses your connected account&apos;s primary
               calendar to find, create, update, and delete events associated
               with BrizBuilder appointments and to check that the connection
               works.
+              Previously authorized connections may retain the broader
+              calendar.events permission until you remove BrizBuilder&apos;s
+              access in your Google Account and reconnect.
             </p>
             <p>
               BrizBuilder sends the appointment&apos;s customer name, service
@@ -163,10 +169,22 @@ export default function PrivacyPage() {
             <p>
               BrizBuilder stores the linked Google event identifier and
               connection information, including granted permissions and sync
-              status, with the relevant client workspace. Google data is used
+              status and errors, with the relevant client workspace. Calendar
+              lookups request event identifiers rather than event descriptions,
+              attendees, or other unrelated event contents. Google data is used
               to provide and troubleshoot the connected features you request.
               BrizBuilder does not use Google user data for advertising, sell
               it, or transfer it to data brokers.
+            </p>
+            <p>
+              These restrictions apply to raw Google user data and to
+              aggregated, anonymized, or otherwise derived Google user data.
+              Google user data is not used for lending or credit decisions or
+              to develop, improve, or train general-purpose AI or machine
+              learning models. The Google integrations do not send Google API
+              data to third-party AI services or the optional CRM AI connector.
+              That connector accesses separately entered CRM records only
+              within the workspaces and permissions a user authorizes.
             </p>
             <div className={styles.legalCallout}>
               <strong>Google API Services User Data Policy</strong>
@@ -178,9 +196,15 @@ export default function PrivacyPage() {
               </p>
             </div>
             <p>
-              Google authorization tokens are encrypted before storage. A user
-              can disconnect Google in BrizBuilder or remove BrizBuilder from
-              Google Account permissions at any time. Removing access stops
+              Google refresh tokens are encrypted before database storage;
+              short-lived access tokens are used server-side for API requests.
+              Authorized users can choose Disconnect Google in the Calendar
+              panel or remove BrizBuilder from Google Account permissions.
+              Google revocation can affect both Calendar and Business Profile,
+              so BrizBuilder&apos;s disconnect action stops and clears both
+              connections for the selected client workspace. Other BrizBuilder
+              connections using that Google account may also need to reconnect.
+              Removing access stops
               future Calendar syncing; it does not automatically delete
               existing events from Google Calendar or appointment records
               from BrizBuilder. You can manage those events in Google Calendar
@@ -231,14 +255,19 @@ export default function PrivacyPage() {
               obligations. Retention periods vary by record type and contract.
             </p>
             <p>
-              Google API content is refreshed when needed and is not cached
-              longer than permitted by Google&apos;s policies. Google refresh
-              tokens are retained only while the connection remains active.
-              Disconnecting removes the local token and selected Google profile
-              association; any remaining provider disassociation is completed
-              within seven business days. Backups and legally required records
-              may take longer to expire but are not used for ordinary product
-              activity.
+              Google refresh tokens are kept to maintain authorized connections.
+              A successful local disconnect deletes the selected workspace&apos;s
+              saved Google credentials, linked event identifiers, and selected
+              profile details. BrizBuilder attempts to revoke Google access;
+              if revocation cannot be confirmed, the app asks the user to remove
+              access in Google Account permissions. If local deletion fails,
+              the app reports an error so the user can retry or contact support.
+              Google Calendar events and independently entered CRM appointments
+              remain until separately deleted by the user or an authorized
+              deletion request. Security and audit records and backups may be
+              retained longer for security, recovery, and legal obligations;
+              they are not used to continue a disconnected integration. Contact
+              brizuelaleads@gmail.com to request deletion of remaining records.
             </p>
           </section>
 

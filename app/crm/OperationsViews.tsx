@@ -200,6 +200,8 @@ export function CalendarView({
   const [agendaFilter, setAgendaFilter] = useState<"upcoming" | "all">("upcoming");
   const [anchorDate, setAnchorDate] = useState(() => new Date());
   const [connectionClientId, setConnectionClientId] = useState("");
+  const [disconnectingGoogle, setDisconnectingGoogle] = useState(false);
+  const [googleDisconnectMessage, setGoogleDisconnectMessage] = useState<string | null>(null);
   // Canceled starts hidden, which is what the week view always showed.
   const [hiddenStatuses, setHiddenStatuses] = useState<ReadonlySet<string>>(() => new Set(["CANCELED"]));
   // Month paging is relative to the week on screen, so the mini calendar follows
@@ -222,6 +224,26 @@ export function CalendarView({
   );
   const googleCalendarNeedsAttention =
     googleCalendarLinked && !googleCalendarConnection?.isActive;
+  async function disconnectGoogle() {
+    if (!googleCalendarClientId || !canConnectGoogleCalendar || disconnectingGoogle) return;
+    if (!window.confirm("Disconnect Google for this client? This stops Calendar syncing and disconnects Business Profile too, because Google may revoke both permissions together. Existing appointments and Google Calendar events will remain.")) return;
+    setDisconnectingGoogle(true);
+    setGoogleDisconnectMessage(null);
+    try {
+      const result = await mutate(
+        { action: "disconnect_google_calendar", clientId: googleCalendarClientId },
+        "Google disconnected",
+      );
+      if (result && typeof result === "object" && "revocationWarning" in result &&
+        typeof result.revocationWarning === "string") {
+        setGoogleDisconnectMessage(result.revocationWarning);
+      }
+    } catch (error) {
+      setGoogleDisconnectMessage(error instanceof Error ? error.message : "Google could not be disconnected. Try again.");
+    } finally {
+      setDisconnectingGoogle(false);
+    }
+  }
   const weekStart = new Date(anchorDate);
   weekStart.setHours(0, 0, 0, 0);
   weekStart.setDate(weekStart.getDate() - weekStart.getDay());
@@ -484,6 +506,13 @@ export function CalendarView({
                 Link Google Calendar
               </button>
             )}
+            {googleCalendarLinked && canConnectGoogleCalendar ? (
+              <button type="button" className="crm-button-secondary"
+                disabled={disconnectingGoogle} onClick={() => void disconnectGoogle()}>
+                {disconnectingGoogle ? "Disconnecting…" : "Disconnect Google"}
+              </button>
+            ) : null}
+            {googleDisconnectMessage ? <p role="status">{googleDisconnectMessage}</p> : null}
           </section>
         </aside>
 

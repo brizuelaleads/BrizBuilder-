@@ -2,8 +2,7 @@ import { readRuntimeValue } from "./supabase/env";
 
 export const GOOGLE_BUSINESS_SCOPE =
   "https://www.googleapis.com/auth/business.manage";
-export const GOOGLE_CALENDAR_SCOPE =
-  "https://www.googleapis.com/auth/calendar.events";
+export { GOOGLE_CALENDAR_SCOPE } from "./google-calendar-scopes";
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke";
@@ -263,6 +262,7 @@ async function pkceVerifier(state: string): Promise<string> {
 export async function buildGoogleAuthorizationUrl(
   state: string,
   scopes = [GOOGLE_BUSINESS_SCOPE],
+  includeGrantedScopes = true,
 ) {
   const config = googleConfig();
   const verifier = await pkceVerifier(state);
@@ -277,7 +277,7 @@ export async function buildGoogleAuthorizationUrl(
   url.searchParams.set("scope", scopes.join(" "));
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("prompt", "consent");
-  url.searchParams.set("include_granted_scopes", "true");
+  url.searchParams.set("include_granted_scopes", String(includeGrantedScopes));
   url.searchParams.set("state", state);
   url.searchParams.set("code_challenge", bytesToBase64Url(new Uint8Array(challenge)));
   url.searchParams.set("code_challenge_method", "S256");
