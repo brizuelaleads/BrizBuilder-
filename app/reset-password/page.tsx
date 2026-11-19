@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
-import { AuthShell } from "../auth/AuthShell";
+import { ArrowRight, LockKeyhole } from "lucide-react";
+import { WorkspaceShell } from "../auth/WorkspaceShell";
+import styles from "../landing.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -25,50 +26,54 @@ export default async function ResetPasswordPage({
   const token = typeof rawToken === "string" ? rawToken : "";
 
   return (
-    <AuthShell
-      eyebrow="Password reset"
-      title="Choose a new password."
-      description="Reset links expire automatically and can only be used once."
-      trustItems={["Single use", "Expires soon", "Hashed token storage"]}
-    >
-      <p>ACCOUNT SECURITY</p>
-      <h2>New password</h2>
-      {success ? (
-        <>
-          <div className="local-login-success" role="status">
-            Your password was changed successfully.
+    <WorkspaceShell>
+      <main className={styles.main} id="main">
+        <section className={styles.glassPanel} aria-labelledby="reset-title">
+          <div className={styles.loginSide}>
+            <h1 id="reset-title">{success ? "Password changed" : "Choose a new password"}</h1>
+            {success ? (
+              <>
+                <p className={styles.loginCopy} role="status">You can now sign in with your new password.</p>
+                <Link className={styles.signIn} href="/login">
+                  Go to sign in <ArrowRight aria-hidden="true" />
+                </Link>
+              </>
+            ) : (
+              <>
+                <p className={styles.loginCopy} id="password-requirements">Use at least 12 characters.</p>
+                <form className={styles.loginForm} action="/api/auth/reset-password" method="post">
+                  <input type="hidden" name="token" value={token} />
+                  <label className={styles.field}>
+                    <span>New password</span>
+                    <span className={styles.inputRow}>
+                      <LockKeyhole aria-hidden="true" />
+                      <input name="password" type="password" autoComplete="new-password" minLength={12} aria-describedby="password-requirements" required />
+                    </span>
+                  </label>
+                  <label className={styles.field}>
+                    <span>Confirm password</span>
+                    <span className={styles.inputRow}>
+                      <LockKeyhole aria-hidden="true" />
+                      <input name="confirmPassword" type="password" autoComplete="new-password" minLength={12} required />
+                    </span>
+                  </label>
+                  {error ? (
+                    <p className={styles.formMessage} role="alert">{ERROR_COPY[error] ?? ERROR_COPY.invalid}</p>
+                  ) : null}
+                  <button className={styles.signIn} type="submit">
+                    <span>Change password</span><ArrowRight aria-hidden="true" />
+                  </button>
+                </form>
+                <p className={styles.recovery}><Link href="/forgot-password">Request a new reset link</Link></p>
+              </>
+            )}
           </div>
-          <p className="auth-secondary-link auth-secondary-link-primary">
-            <Link href="/login">Go to sign in <ArrowRight aria-hidden="true" /></Link>
-          </p>
-        </>
-      ) : (
-        <>
-          <span className="auth-card-copy">
-            Enter a password with at least 12 characters.
-          </span>
-          {error ? (
-            <div className="local-login-error" role="alert">
-              {ERROR_COPY[error] ?? ERROR_COPY.invalid}
-            </div>
-          ) : null}
-          <form className="local-login-form" action="/api/auth/reset-password" method="post">
-            <input type="hidden" name="token" value={token} />
-            <label>
-              <span>New password</span>
-              <input name="password" type="password" autoComplete="new-password" minLength={12} required />
-            </label>
-            <label>
-              <span>Confirm password</span>
-              <input name="confirmPassword" type="password" autoComplete="new-password" minLength={12} required />
-            </label>
-            <button className="auth-signin" type="submit">
-              <span>Change password</span>
-              <ArrowRight aria-hidden="true" />
-            </button>
-          </form>
-        </>
-      )}
-    </AuthShell>
+          <div className={styles.welcomeSide}>
+            <h2>Account<br /> security.</h2>
+            <p className={styles.welcomeCopy}>Reset links expire automatically and can only be used once.</p>
+          </div>
+        </section>
+      </main>
+    </WorkspaceShell>
   );
 }
