@@ -29,6 +29,30 @@ async function checked<T>(promise: PromiseLike<{ data: T; error: unknown }>) {
   return result.data;
 }
 
+function missingCalendarCredentialTable(error: unknown) {
+  const value = error as { code?: unknown; message?: unknown } | null;
+  const code = String(value?.code ?? "");
+  const message = String(value?.message ?? "");
+  return code === "42P01" || code === "PGRST205" ||
+    (message.includes("google_calendar_credentials") &&
+      (message.includes("does not exist") || message.includes("schema cache")));
+}
+
+async function calendarCredential(organizationId: string, clientId: string) {
+  const database = getSupabaseAdminClient();
+  const select = (table: string) => database.from(table)
+    .select("refresh_token_ciphertext,refresh_token_iv,scopes")
+    .eq("organization_id", organizationId)
+    .eq("client_id", clientId)
+    .maybeSingle();
+  const preferred = await select("google_calendar_credentials");
+  if (!preferred.error) return preferred.data;
+  if (!missingCalendarCredentialTable(preferred.error)) {
+    throw new Error("Calendar database request failed.");
+  }
+  return checked(select("google_business_credentials"));
+}
+
 async function accessToken(organizationId: string, clientId: string) {
   const database = getSupabaseAdminClient();
   const [connection, credential] = await Promise.all([
@@ -41,14 +65,7 @@ async function accessToken(organizationId: string, clientId: string) {
         .eq("provider", "google_calendar")
         .maybeSingle(),
     ),
-    checked(
-      database
-        .from("google_calendar_credentials")
-        .select("refresh_token_ciphertext,refresh_token_iv,scopes")
-        .eq("organization_id", organizationId)
-        .eq("client_id", clientId)
-        .maybeSingle(),
-    ),
+    calendarCredential(organizationId, clientId),
   ]);
   if (String((connection as Record<string, unknown> | null)?.status ?? "") !== "connected" || !credential) {
     return null;

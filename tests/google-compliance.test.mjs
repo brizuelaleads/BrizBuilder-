@@ -99,3 +99,14 @@ test("Calendar consent is independent and credential migration denies browser ac
   assert.match(migration, /revoke all[^;]+from public, anon, authenticated/);
   assert.match(migration, /on conflict \(organization_id, client_id\) do nothing/);
 });
+
+test("pre-migration compatibility only falls back when the Calendar table is missing", () => {
+  const read = (file) => readFileSync(new URL("../" + file, import.meta.url), "utf8");
+  for (const file of ["db/supabase-crm.ts", "lib/google-calendar-store.ts", "lib/google-disconnect-store.ts"]) {
+    const source = read(file);
+    assert.match(source, /PGRST205/);
+    assert.match(source, /42P01/);
+    assert.match(source, /google_business_credentials/);
+    assert.match(source, /google_calendar_credentials/);
+  }
+});

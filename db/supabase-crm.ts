@@ -1839,6 +1839,27 @@ function safeIntegrationError(error: unknown) {
     : "Google Business Profile request failed.";
 }
 
+function missingGoogleCalendarCredentialTable(error: unknown) {
+  const value = error as { code?: unknown; message?: unknown } | null;
+  const code = String(value?.code ?? "");
+  const message = String(value?.message ?? "");
+  return code === "42P01" || code === "PGRST205" ||
+    (message.includes("google_calendar_credentials") &&
+      (message.includes("does not exist") || message.includes("schema cache")));
+}
+
+async function saveGoogleCalendarCredential(values: AnyRecord) {
+  const write = (table: string) => supabase().from(table).upsert(values, {
+    onConflict: "organization_id,client_id",
+  });
+  const preferred = await write("google_calendar_credentials");
+  if (!preferred.error) return;
+  if (!missingGoogleCalendarCredentialTable(preferred.error)) {
+    throw new Error(preferred.error.message);
+  }
+  await assertOk(write("google_business_credentials"));
+}
+
 async function googleCredential(
   organizationId: string,
   clientId: string,
@@ -2462,22 +2483,15 @@ export async function finishSupabaseGoogleCalendarConnect(
       organizationId,
       clientId,
     );
-    await assertOk(
-      supabase()
-        .from("google_calendar_credentials")
-        .upsert(
-          {
-            organization_id: authorization.organization_id,
-            client_id: authorization.client_id,
-            refresh_token_ciphertext: encrypted.ciphertext,
-            refresh_token_iv: encrypted.iv,
-            scopes: tokens.scopes,
-            connected_by_email: callbackContext.email,
-            updated_at: now,
-          },
-          { onConflict: "organization_id,client_id" },
-        ),
-    );
+    await saveGoogleCalendarCredential({
+      organization_id: authorization.organization_id,
+      client_id: authorization.client_id,
+      refresh_token_ciphertext: encrypted.ciphertext,
+      refresh_token_iv: encrypted.iv,
+      scopes: tokens.scopes,
+      connected_by_email: callbackContext.email,
+      updated_at: now,
+    });
 
     const upcomingAppointments = await assertOk(
       supabase()

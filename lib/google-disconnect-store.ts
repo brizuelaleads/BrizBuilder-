@@ -8,6 +8,27 @@ async function checked<T>(promise: PromiseLike<{ data: T; error: unknown }>) {
   return result.data;
 }
 
+function missingCalendarCredentialTable(error: unknown) {
+  const value = error as { code?: unknown; message?: unknown } | null;
+  const code = String(value?.code ?? "");
+  const message = String(value?.message ?? "");
+  return code === "42P01" || code === "PGRST205" ||
+    (message.includes("google_calendar_credentials") &&
+      (message.includes("does not exist") || message.includes("schema cache")));
+}
+
+async function optionalCalendarTable<T>(
+  table: string,
+  request: PromiseLike<{ data: T; error: unknown }>,
+) {
+  const result = await request;
+  if (!result.error) return result.data;
+  if (table === "google_calendar_credentials" && missingCalendarCredentialTable(result.error)) {
+    return null;
+  }
+  throw new Error("Google connection data could not be updated.");
+}
+
 // Call only after the actor's permission and tenant/client access are checked.
 export async function disconnectStoredGoogleAccess(organizationId: string, clientId: string) {
   const database = getSupabaseAdminClient();
@@ -24,7 +45,7 @@ export async function disconnectStoredGoogleAccess(organizationId: string, clien
     },
     loadRefreshTokens: async () => {
       const credentials = await Promise.all(credentialTables.map((table) =>
-        checked(database.from(table).select("refresh_token_ciphertext,refresh_token_iv")
+        optionalCalendarTable(table, database.from(table).select("refresh_token_ciphertext,refresh_token_iv")
           .eq("organization_id", organizationId).eq("client_id", clientId).maybeSingle())));
       return Promise.all(credentials.filter((credential) => credential !== null).map((credential) =>
         decryptGoogleSecret({ ciphertext: String(credential.refresh_token_ciphertext),
@@ -34,7 +55,7 @@ export async function disconnectStoredGoogleAccess(organizationId: string, clien
     deleteLocalData: async () => {
       // Attempt every cleanup even if one database request fails.
       const results = await Promise.allSettled([
-        ...credentialTables.map((table) => checked(database.from(table).delete()
+        ...credentialTables.map((table) => optionalCalendarTable(table, database.from(table).delete()
           .eq("organization_id", organizationId).eq("client_id", clientId))),
         checked(database.from("appointments").update({ calendar_event_id: null })
           .eq("organization_id", organizationId).eq("client_id", clientId)),
