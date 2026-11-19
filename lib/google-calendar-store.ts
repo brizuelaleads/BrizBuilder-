@@ -1,6 +1,5 @@
 import {
   decryptGoogleSecret,
-  GOOGLE_CALENDAR_SCOPE,
   refreshGoogleAccessToken,
 } from "./google-business";
 import {
@@ -8,6 +7,7 @@ import {
   type GoogleCalendarSyncResult,
 } from "./google-calendar";
 import { getSupabaseAdminClient } from "./supabase/server";
+import { hasGoogleCalendarScope } from "./google-calendar-scopes";
 
 type AppointmentForCalendar = {
   id: string;
@@ -29,6 +29,30 @@ async function checked<T>(promise: PromiseLike<{ data: T; error: unknown }>) {
   return result.data;
 }
 
+function missingCalendarCredentialTable(error: unknown) {
+  const value = error as { code?: unknown; message?: unknown } | null;
+  const code = String(value?.code ?? "");
+  const message = String(value?.message ?? "");
+  return code === "42P01" || code === "PGRST205" ||
+    (message.includes("google_calendar_credentials") &&
+      (message.includes("does not exist") || message.includes("schema cache")));
+}
+
+async function calendarCredential(organizationId: string, clientId: string) {
+  const database = getSupabaseAdminClient();
+  const select = (table: string) => database.from(table)
+    .select("refresh_token_ciphertext,refresh_token_iv,scopes")
+    .eq("organization_id", organizationId)
+    .eq("client_id", clientId)
+    .maybeSingle();
+  const preferred = await select("google_calendar_credentials");
+  if (!preferred.error) return preferred.data;
+  if (!missingCalendarCredentialTable(preferred.error)) {
+    throw new Error("Calendar database request failed.");
+  }
+  return checked(select("google_business_credentials"));
+}
+
 async function accessToken(organizationId: string, clientId: string) {
   const database = getSupabaseAdminClient();
   const [connection, credential] = await Promise.all([
@@ -41,21 +65,14 @@ async function accessToken(organizationId: string, clientId: string) {
         .eq("provider", "google_calendar")
         .maybeSingle(),
     ),
-    checked(
-      database
-        .from("google_business_credentials")
-        .select("refresh_token_ciphertext,refresh_token_iv,scopes")
-        .eq("organization_id", organizationId)
-        .eq("client_id", clientId)
-        .maybeSingle(),
-    ),
+    calendarCredential(organizationId, clientId),
   ]);
   if (String((connection as Record<string, unknown> | null)?.status ?? "") !== "connected" || !credential) {
     return null;
   }
   const row = credential as Record<string, unknown>;
   const scopes = Array.isArray(row.scopes) ? row.scopes.map(String) : [];
-  if (!scopes.includes(GOOGLE_CALENDAR_SCOPE)) return null;
+  if (!hasGoogleCalendarScope(scopes)) return null;
   const refreshToken = await decryptGoogleSecret(
     {
       ciphertext: String(row.refresh_token_ciphertext),
@@ -104,7 +121,8 @@ export async function syncStoredAppointmentToGoogleCalendar(
           })
           .eq("organization_id", organizationId)
           .eq("client_id", clientId)
-          .eq("provider", "google_calendar"),
+          .eq("provider", "google_calendar")
+          .in("status", ["connected", "attention"]),
       ),
     ]);
     return result;
@@ -124,7 +142,8 @@ export async function syncStoredAppointmentToGoogleCalendar(
         })
         .eq("organization_id", organizationId)
         .eq("client_id", clientId)
-        .eq("provider", "google_calendar"),
+        .eq("provider", "google_calendar")
+        .in("status", ["connected", "attention"]),
     );
     return { action: "failed", eventId: null };
   }

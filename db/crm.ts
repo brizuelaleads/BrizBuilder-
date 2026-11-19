@@ -1299,6 +1299,13 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
     return { saved: true };
   }
 
+  if (action === "disconnect_google_calendar") {
+    requirePermission(context, "calendar.connect");
+    const clientId = requireText(input.clientId, "Client", 80);
+    await requireClient(context, clientId);
+    throw new Error("Google Calendar OAuth requires the production Supabase backend.");
+  }
+
   if (action === "disconnect_google_profile") {
     requirePermission(context, "profiles.connect");
     const clientId = requireText(input.clientId, "Client", 80);

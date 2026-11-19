@@ -288,7 +288,7 @@ export function GoogleProfilesView({
     );
     const confirmation = retryingRevocation
       ? "Retry removing BrizBuilder's access from this Google account?"
-      : "Disconnect this Google Business Profile from BrizBuilder?";
+      : "Disconnect Google for this client? This stops Business Profile and Calendar syncing. Existing CRM appointments and Google Calendar events remain.";
     if (!clientId || !canConnect || !window.confirm(confirmation)) return;
     setDisconnecting(true);
     setActionError(null);
