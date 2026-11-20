@@ -51,3 +51,10 @@ test('workspace sign-in posts through existing authentication with password reco
  assert.match(form,/autoComplete="current-password"/);
  assert.match(form,/href="\/forgot-password"/);
 });
+
+test('signed-out dashboard uses the same sign-in panel as the login route',()=>{
+ const dashboard=read('app/dashboard/page.tsx');
+ const signedOut=dashboard.match(/if \(!user\) \{([\s\S]*?)\n  \}/)?.[1] ?? '';
+ assert.match(signedOut,/<WorkspaceShell>[\s\S]*<SignInPanel returnTo="\/dashboard"\s*\/>/);
+ assert.doesNotMatch(dashboard,/\bAuthShell\b|Continue to dashboard/);
+});

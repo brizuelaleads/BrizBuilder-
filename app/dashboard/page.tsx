@@ -1,10 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { cache } from "react";
 import { headers } from "next/headers";
-import { ArrowRight } from "lucide-react";
 import {
   getChatGPTUser,
-  signInPathForCurrentRequest,
   signOutPathForCurrentRequest,
 } from "../chatgpt-auth";
 import { CrmApp } from "../CrmApp";
@@ -17,7 +15,8 @@ import { subscriptionCountForEmail } from "../../db/supabase-push";
 import { pushConfigured, vapidPublicKey } from "../../lib/push-notifications";
 import { BrandHead } from "../components/BrandHead";
 import { PwaRegistrar } from "../components/PwaRegistrar";
-import { AuthNote, AuthShell } from "../auth/AuthShell";
+import { WorkspaceShell } from "../auth/WorkspaceShell";
+import { SignInPanel } from "../auth/SignInPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -78,30 +77,6 @@ export async function generateViewport(): Promise<Viewport> {
   };
 }
 
-function SignInScreen({ signInPath }: { signInPath: string }) {
-  return (
-    <AuthShell
-      eyebrow="Secure agency workspace"
-      title="Every lead. Every client. Every website."
-      description="Admins manage the agency while each client sees only their own leads, contacts, appointments, and performance."
-      trustItems={["Identity verified", "Role protected", "Client data isolated"]}
-    >
-      <p>WELCOME TO BRIZBUILDER</p>
-      <h2>Sign in to continue</h2>
-      <span className="auth-card-copy">
-        Continue with your authorized account to open the dashboard.
-      </span>
-      <a className="auth-signin" href={signInPath}>
-        <span>Continue to dashboard</span>
-        <ArrowRight aria-hidden="true" />
-      </a>
-      <AuthNote title="Private by default">
-        Access and permissions are checked on the server every time.
-      </AuthNote>
-    </AuthShell>
-  );
-}
-
 function AccessPending({ name, signOutPath }: { name: string; signOutPath: string }) {
   return (
     <main className="auth-page auth-pending-page">
@@ -148,9 +123,14 @@ function isMissingDatabase(error: unknown) {
 
 export default async function DashboardPage() {
   const user = await getChatGPTUser();
+  // Signed-out visitors get the same glass sign-in as /login, in place, so
+  // the dashboard URL never shows a second, older entry screen.
   if (!user) {
-    const signInPath = await signInPathForCurrentRequest("/dashboard");
-    return <SignInScreen signInPath={signInPath} />;
+    return (
+      <WorkspaceShell>
+        <SignInPanel returnTo="/dashboard" />
+      </WorkspaceShell>
+    );
   }
 
   const access = await getAccountAccess(user);
