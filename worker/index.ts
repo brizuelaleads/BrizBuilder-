@@ -9,6 +9,7 @@ import {
 import { runNotificationSweeps } from "../lib/notification-sweeps";
 import { syncMetaAdsInsights } from "../lib/meta-ads-sync";
 import { advanceMetaAdsBackfills } from "../lib/meta-ads-backfill";
+import { legacyPasswordResetRedirect } from "../lib/password-recovery-url";
 
 interface Env {
   ASSETS: Fetcher;
@@ -66,6 +67,12 @@ function secureResponse(response: Response) {
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    const passwordResetRedirect = legacyPasswordResetRedirect(url, request.method);
+    if (passwordResetRedirect) {
+      const response = secureResponse(passwordResetRedirect);
+      response.headers.set("Referrer-Policy", "no-referrer");
+      return response;
+    }
 
     if (url.pathname.startsWith("/api/callrail/webhook/")) {
       return secureResponse(await handleCallRailWebhook(request, ctx));

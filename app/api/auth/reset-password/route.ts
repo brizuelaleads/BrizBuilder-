@@ -2,6 +2,7 @@ import {
   resetPasswordWithToken,
   SystemAuthTokenError,
 } from "../../../../lib/system-auth";
+import { passwordRecoveryUrl } from "../../../../lib/password-recovery-url";
 
 export const dynamic = "force-dynamic";
 
@@ -12,23 +13,19 @@ export async function POST(request: Request) {
   const confirmPassword = String(form.get("confirmPassword") ?? "");
 
   if (password !== confirmPassword) {
-    return redirectTo(request, "/reset-password", { token, error: "mismatch" });
+    return redirectTo(request, { token, error: "mismatch" });
   }
 
   try {
     await resetPasswordWithToken(token, password);
-    return redirectTo(request, "/reset-password", { success: "1" });
+    return redirectTo(request, { success: "1" });
   } catch (error) {
     const code =
       error instanceof SystemAuthTokenError ? "invalid" : password.length < 12 ? "weak" : "invalid";
-    return redirectTo(request, "/reset-password", { token, error: code });
+    return redirectTo(request, { token, error: code });
   }
 }
 
-function redirectTo(request: Request, path: string, params: Record<string, string>) {
-  const url = new URL(path, request.url);
-  for (const [key, value] of Object.entries(params)) {
-    if (value) url.searchParams.set(key, value);
-  }
-  return Response.redirect(url, 303);
+function redirectTo(request: Request, params: Record<string, string>) {
+  return Response.redirect(passwordRecoveryUrl("/reset-password", request, params), 303);
 }

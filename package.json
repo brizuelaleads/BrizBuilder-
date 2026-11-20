@@ -27,7 +27,7 @@
     "db:pg:push": "drizzle-kit push --config drizzle.supabase.config.ts",
     "db:pg:studio": "drizzle-kit studio --config drizzle.supabase.config.ts",
     "test:auth": "node --test tests/auth-password-security.test.mjs",
-    "test:system-email": "node --test tests/system-email-security.test.mjs",
+    "test:system-email": "node --experimental-strip-types --test tests/system-email-security.test.mjs",
     "test:meta": "node --test tests/meta-conversions-security.test.mjs",
     "test:meta-redaction": "node --experimental-strip-types --test tests/meta-redaction.test.mjs",
     "test:meta-value": "node --experimental-strip-types --test tests/meta-conversion-value.test.mjs",

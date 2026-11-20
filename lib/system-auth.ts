@@ -1,5 +1,6 @@
 import type { CrmRole } from "../db/crm";
 import { getSupabaseAdminClient } from "./supabase/server";
+import { passwordRecoveryUrl } from "./password-recovery-url";
 import {
   buildAppLink,
   EMAIL_VERIFICATION_TOKEN_TTL_MS,
@@ -169,7 +170,7 @@ export async function requestPasswordResetEmail(emailInput: unknown, request?: R
       expires_at: expiresAt(PASSWORD_RESET_TOKEN_TTL_MS),
     }),
   );
-  const link = buildAppLink("/reset-password", { token: rawToken }, request);
+  const link = passwordRecoveryUrl("/reset-password", request, { token: rawToken }).href;
   await sendSystemEmail(passwordResetEmail({ to: email, link }));
 }
 

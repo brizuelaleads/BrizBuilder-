@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { legacyPasswordResetRedirect, passwordRecoveryUrl } from "../lib/password-recovery-url.ts";
 
 const root = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
 // Line endings are normalized so the block-matching patterns below behave the
@@ -86,6 +87,42 @@ test("password reset does not reveal whether an account exists", () => {
   assert.match(forgotRoute, /catch \{/);
   assert.doesNotMatch(forgotRoute, /not found|unknown|no account/i);
   assert.doesNotMatch(forgotRoute, /console\.(log|warn|error)/);
+});
+
+test("password recovery links and form redirects use the canonical site", () => {
+  const workerRequest = new Request("https://brizbuilder.example.workers.dev/api/auth/forgot-password");
+  const forwardedRequest = new Request("https://elsewhere.example/api/auth/forgot-password", {
+    headers: { "x-forwarded-host": "somewhere-else.example" },
+  });
+  const token = "synthetic+token/=";
+  for (const request of [undefined, workerRequest, forwardedRequest]) {
+    const link = passwordRecoveryUrl("/reset-password", request, { token });
+    assert.equal(link.origin, "https://brizbuilder.com");
+    assert.equal(link.searchParams.get("token"), token);
+  }
+  assert.equal(
+    passwordRecoveryUrl("/forgot-password?sent=1", workerRequest).href,
+    "https://brizbuilder.com/forgot-password?sent=1",
+  );
+  assert.equal(
+    passwordRecoveryUrl("/reset-password", new Request("http://localhost:3000/")).origin,
+    "http://localhost:3000",
+  );
+  assert.match(authSource, /passwordRecoveryUrl\("\/reset-password", request, \{ token: rawToken \}\)/);
+  assert.match(resetRoute, /Response\.redirect\(passwordRecoveryUrl\("\/reset-password", request, params\), 303\)/);
+});
+
+test("old Worker reset links redirect without changing the token or caching it", () => {
+  const url = "https://brizbuilder.example.workers.dev/reset-password?token=synthetic%2Btoken&error=mismatch";
+  for (const method of ["GET", "HEAD"]) {
+    const redirect = legacyPasswordResetRedirect(new URL(url), method);
+    assert.equal(redirect?.status, 307);
+    assert.equal(redirect?.headers.get("location"), url.replace("brizbuilder.example.workers.dev", "brizbuilder.com"));
+    assert.equal(redirect?.headers.get("cache-control"), "no-store");
+  }
+  assert.equal(legacyPasswordResetRedirect(new URL(url), "POST"), undefined);
+  assert.equal(legacyPasswordResetRedirect(new URL("https://brizbuilder.com/reset-password"), "GET"), undefined);
+  assert.match(read("worker/index.ts"), /legacyPasswordResetRedirect\(url, request.method\)/);
 });
 
 test("account pages and API routes are present", () => {

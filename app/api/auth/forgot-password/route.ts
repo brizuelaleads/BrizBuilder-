@@ -1,4 +1,5 @@
 import { requestPasswordResetEmail } from "../../../../lib/system-auth";
+import { passwordRecoveryUrl } from "../../../../lib/password-recovery-url";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
     }
   }
 
-  return redirectTo(request, "/forgot-password?sent=1");
+  return Response.redirect(passwordRecoveryUrl("/forgot-password?sent=1", request), 303);
 }
 
 function throttled(key: string): boolean {
@@ -40,8 +41,4 @@ function clientIp(request: Request): string {
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     "ipless"
   );
-}
-
-function redirectTo(request: Request, path: string) {
-  return Response.redirect(new URL(path, request.url), 303);
 }
