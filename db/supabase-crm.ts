@@ -3381,13 +3381,12 @@ export async function getSupabaseCrmBootstrap(
 
   // The generic documents the expected row shape until generated Supabase types are available.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const query = <T>(table: string, select = "*") => {
-    let builder = supabase()
+  const query = <T>(table: string, select = "*", clientColumn = "client_id") => {
+    const builder = supabase()
       .from(table)
       .select(select)
       .eq("organization_id", context.organizationId);
-    builder = applyClientScope(context, builder);
-    return builder;
+    return applyClientScope(context, builder, clientColumn);
   };
 
   const [
@@ -3422,13 +3421,11 @@ export async function getSupabaseCrmBootstrap(
     metaAdInsights,
     metaAdsBackfills,
   ] = await Promise.all([
-    (() => {
-      let builder = query<AnyRecord>("clients")
+    assertOk(
+      query<AnyRecord>("clients", "*", "id")
         .neq("status", "archived")
-        .order("business_name");
-      builder = applyClientScope(context, builder, "id");
-      return assertOk(builder);
-    })(),
+        .order("business_name"),
+    ),
     assertOk(
       query<AnyRecord>("contacts")
         .is("archived_at", null)

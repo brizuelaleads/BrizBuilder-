@@ -347,6 +347,18 @@ test("client sessions are pinned to their own selected client in the UI", () => 
   );
 });
 
+test("CRM bootstrap scopes workspace rows by clients.id and child rows by client_id", () => {
+  const start = supabaseSource.indexOf("export async function getSupabaseCrmBootstrap(");
+  const end = supabaseSource.indexOf("const clientRows", start);
+  assert.ok(start >= 0 && end > start, "workspace read block exists");
+  const bootstrap = supabaseSource.slice(start, end);
+  assert.match(bootstrap, /clientColumn = "client_id"/);
+  assert.match(bootstrap, /\.eq\("organization_id", context\.organizationId\)/);
+  assert.match(bootstrap, /return applyClientScope\(context, builder, clientColumn\)/);
+  assert.match(bootstrap, /query<AnyRecord>\("clients", "\*", "id"\)/);
+  assert.doesNotMatch(bootstrap, /query<AnyRecord>\("clients"\)/);
+});
+
 test("every role-specific nav item declares a section", () => {
   for (const name of ["clientNavigation", "agencyNavigation"]) {
     for (const entry of navigationEntries(name)) {
