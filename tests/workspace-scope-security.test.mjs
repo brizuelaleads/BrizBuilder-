@@ -277,8 +277,9 @@ test("agency navigation restores the historical menu and retains Pipeline and Ca
 test("authenticated account type selects navigation independently of client selection", () => {
   assert.match(
     appSource,
-    /const navigation = data\.viewer\.isAgency\s*\? agencyNavigation\s*: clientNavigation;/,
+    /const navigation = data\.viewer\.isAgency\s*\? agencyNavigation\s*: \[\s*\.\.\.clientNavigation,\s*\.\.\.agencyNavigation\.filter\(\(item\) => item\.id === "team"\),?\s*\];/,
   );
+  assert.match(appSource, /const visibleNav = navigation\.filter\(\(item\) =>\s*canAccessNavigationItem\(/);
   assert.doesNotMatch(
     appSource.match(/const navigation = [\s\S]*?;/)?.[0] ?? "",
     /selectedClient|effectiveSelectedClientId/,

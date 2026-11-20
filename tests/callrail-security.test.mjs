@@ -2698,7 +2698,8 @@ test("calls reach the interface only through the tenant-scoped query", () => {
   const helper = section(crmSource, "const query = <T>(table: string", "const [");
   assert.ok(helper);
   assert.match(helper, /\.eq\("organization_id", context\.organizationId\)/);
-  assert.match(helper, /applyClientScope\(context, builder\)/);
+  assert.match(helper, /clientColumn = "client_id"/);
+  assert.match(helper, /applyClientScope\(context, builder, clientColumn\)/);
   assert.match(crmSource, /query<AnyRecord>\(\s*\n?\s*"callrail_calls",/);
 
   // Nothing sensitive is selected into the browser payload.

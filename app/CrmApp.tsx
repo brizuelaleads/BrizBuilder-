@@ -413,7 +413,10 @@ export function CrmApp({
 
   const navigation = data.viewer.isAgency
     ? agencyNavigation
-    : clientNavigation;
+    : [
+        ...clientNavigation,
+        ...agencyNavigation.filter((item) => item.id === "team"),
+      ];
   const visibleNav = navigation.filter((item) =>
     canAccessNavigationItem(
       item,
