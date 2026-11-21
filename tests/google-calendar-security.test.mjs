@@ -61,6 +61,23 @@ test("calendar connection stays actionable in all-client workspaces", () => {
   assert.match(operationsView, /googleCalendarClientId/);
 });
 
+test("Calendar shows saved connection status before the schedule, even without appointments", () => {
+  const connectionHelpers = supabaseCrm.slice(
+    supabaseCrm.indexOf("function providerIsLinked"),
+    supabaseCrm.indexOf("type StripeAccountSummary"),
+  );
+  assert.match(connectionHelpers, /if \(row\.provider === GOOGLE_CALENDAR_PROVIDER\)\s*return status === "connected" \|\| status === "attention";/);
+  assert.match(connectionHelpers, /row\?\.provider === GOOGLE_CALENDAR_PROVIDER \|\| providerAccountStatus\(row\) === "active"/);
+  const statusCard = operationsView.indexOf('className="crm-cal-card crm-cal-sync"');
+  const schedule = operationsView.indexOf('className="crm-cal-layout"');
+  assert.ok(statusCard >= 0 && statusCard < schedule);
+  const controls = operationsView.slice(statusCard, schedule);
+  assert.match(controls, /role="status"/);
+  assert.match(controls, /googleCalendarLinked && canConnectGoogleCalendar/);
+  assert.match(controls, /Disconnect Google Calendar/);
+  assert.doesNotMatch(controls, /appointments\.length|leads\.length/);
+});
+
 test("Google refresh tokens stay encrypted and server-only", () => {
   assert.match(
     supabaseCrm,

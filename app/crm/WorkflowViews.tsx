@@ -525,7 +525,7 @@ export function ConnectionsView({
     googleProfile?.status === "connected" ? "connected" : googleProfile?.status === "attention" || profileUnavailable ? "setup" : "available";
   const calendarConnection = connections.find((item) => item.clientId === clientId && item.provider === "google_calendar");
   const calendarStatus: IntegrationStatus =
-    calendarConnection?.isLinked || calendarConnection?.isActive ? "connected" : calendarUnavailable ? "setup" : "available";
+    calendarConnection?.isActive ? "connected" : calendarConnection?.isLinked || calendarUnavailable ? "setup" : "available";
   const integrationStatuses = [
     twilioStatus,
     aiStatus,
@@ -612,7 +612,7 @@ export function ConnectionsView({
       status: calendarStatus,
       view: "calendar",
       connectHref: `/api/integrations/google-calendar/connect?clientId=${encodeURIComponent(clientId)}`,
-      connectLabel: "Link Google Calendar",
+      connectLabel: calendarConnection?.isLinked ? "Reconnect Google Calendar" : "Link Google Calendar",
       connectUnavailable: calendarUnavailable,
       facts: [
         ["Calendar", calendarConnection?.accountLabel ?? (calendarStatus === "connected" ? "Connected" : "Not connected")],

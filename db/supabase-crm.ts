@@ -1042,17 +1042,19 @@ function providerAccountStatus(row: AnyRecord | null | undefined) {
 }
 
 function providerIsLinked(row: AnyRecord | null | undefined) {
-  if (!row?.external_account_id || row.disconnected_at) return false;
-  return !UNLINKED_PROVIDER_STATUSES.has(
-    String(row.status ?? "not_connected").toLowerCase(),
-  );
+  if (!row || row.disconnected_at) return false;
+  const status = String(row.status ?? "not_connected").toLowerCase();
+  // Calendar links the primary calendar without fetching an external account ID.
+  if (row.provider === GOOGLE_CALENDAR_PROVIDER)
+    return status === "connected" || status === "attention";
+  return Boolean(row.external_account_id) && !UNLINKED_PROVIDER_STATUSES.has(status);
 }
 
 function providerIsActive(row: AnyRecord | null | undefined) {
   return (
     providerIsLinked(row) &&
     String(row?.status ?? "").toLowerCase() === "connected" &&
-    providerAccountStatus(row) === "active"
+    (row?.provider === GOOGLE_CALENDAR_PROVIDER || providerAccountStatus(row) === "active")
   );
 }
 

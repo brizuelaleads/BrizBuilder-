@@ -373,6 +373,81 @@ export function CalendarView({
 
   return (
     <div className="crm-view crm-calendar-view">
+      <section className="crm-cal-card crm-cal-sync" aria-labelledby="crm-cal-sync-title">
+        <header>
+          <div className="crm-cal-sync-title">
+            <h3 id="crm-cal-sync-title">Google Calendar</h3>
+            <span role="status">
+              <Badge tone={googleCalendarNeedsAttention ? "orange" : googleCalendarLinked ? "green" : "neutral"}>
+                {!googleCalendarClientId ? "Select a workspace" : googleCalendarNeedsAttention ? "Needs attention" : googleCalendarLinked ? "Connected" : "Not connected"}
+              </Badge>
+            </span>
+          </div>
+          <p>
+            {!googleCalendarClientId
+              ? "Choose a sub-account to see its connection."
+              : googleCalendarNeedsAttention
+                ? "Reconnect Google Calendar to resume syncing appointments."
+                : googleCalendarLinked
+                  ? "New appointments sync to the connected Google Calendar."
+                  : "Link Google Calendar to sync appointments from this workspace."}
+          </p>
+        </header>
+        <div className="crm-cal-sync-actions">
+          {!selectedClientId && clients.length > 1 && (
+            <select
+              className="crm-google-calendar-client-select"
+              value={connectionClientId}
+              onChange={(event) => setConnectionClientId(event.target.value)}
+              aria-label="Client calendar to connect"
+            >
+              <option value="">Choose a sub-account</option>
+              {clients.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.businessName}
+                </option>
+              ))}
+            </select>
+          )}
+          {(!googleCalendarLinked || googleCalendarNeedsAttention) && (
+            googleCalendarClientId && canConnectGoogleCalendar && googleCalendarConfigured ? (
+              <a
+                className="crm-google-calendar-link"
+                href={"/api/integrations/google-calendar/connect?clientId=" + encodeURIComponent(googleCalendarClientId)}
+              >
+                {googleCalendarNeedsAttention ? "Reconnect Google Calendar" : "Link Google Calendar"}
+              </a>
+            ) : (
+              <button
+                type="button"
+                className="crm-google-calendar-link"
+                disabled
+                title={
+                  !googleCalendarClientId
+                    ? "Choose a sub-account before linking a calendar."
+                    : !canConnectGoogleCalendar
+                      ? "Ask a workspace admin to link Google Calendar."
+                      : "Google Calendar setup is pending."
+                }
+              >
+                {googleCalendarNeedsAttention ? "Reconnect Google Calendar" : "Link Google Calendar"}
+              </button>
+            )
+          )}
+          {googleCalendarLinked && canConnectGoogleCalendar && (
+            <button
+              type="button"
+              className="crm-button-secondary"
+              disabled={disconnectingGoogle}
+              onClick={() => void disconnectGoogle()}
+            >
+              {disconnectingGoogle ? "Disconnecting?" : "Disconnect Google Calendar"}
+            </button>
+          )}
+        </div>
+        {googleDisconnectMessage && <p className="crm-cal-sync-message" role="status">{googleDisconnectMessage}</p>}
+      </section>
+
       <div className="crm-cal-layout">
         <aside className="crm-cal-sidebar" aria-label="Calendar tools">
           <section className="crm-cal-card crm-cal-month" aria-label={`Month of ${monthLabel}`}>
@@ -436,83 +511,6 @@ export function CalendarView({
                 </label>
               ))}
             </div>
-          </section>
-
-          <section className="crm-cal-card crm-cal-sync" aria-labelledby="crm-cal-sync-title">
-            <header>
-              <h3 id="crm-cal-sync-title">Google Calendar</h3>
-              <p>
-                {!googleCalendarClientId
-                  ? "Choose a client to link their calendar."
-                  : googleCalendarNeedsAttention
-                    ? "The link stopped working. Reconnect to keep syncing."
-                    : googleCalendarLinked
-                      ? "Appointments sync to this client’s Google Calendar."
-                      : "Not linked. Appointments stay in BrizBuilder only."}
-              </p>
-            </header>
-            {!selectedClientId && clients.length > 1 ? (
-              <label className="crm-cal-field">
-                <span>Client</span>
-                <select
-                  className="crm-google-calendar-client-select"
-                  value={connectionClientId}
-                  onChange={(event) => setConnectionClientId(event.target.value)}
-                  aria-label="Client calendar to connect"
-                >
-                  <option value="">Choose client</option>
-                  {clients.map((client) => (
-                    <option key={client.id} value={client.id}>
-                      {client.businessName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-            {googleCalendarClientId &&
-            canConnectGoogleCalendar &&
-            googleCalendarConfigured ? (
-              <a
-                className={`crm-google-calendar-link ${
-                  googleCalendarNeedsAttention
-                    ? "needs-attention"
-                    : googleCalendarLinked
-                      ? "connected"
-                      : ""
-                }`}
-                href={`/api/integrations/google-calendar/connect?clientId=${encodeURIComponent(googleCalendarClientId)}`}
-              >
-                <span aria-hidden="true">G</span>
-                {googleCalendarNeedsAttention
-                  ? "Reconnect Google Calendar"
-                  : googleCalendarLinked
-                    ? "Google Calendar linked"
-                    : "Link Google Calendar"}
-              </a>
-            ) : (
-              <button
-                type="button"
-                className="crm-google-calendar-link"
-                disabled
-                title={
-                  !googleCalendarClientId
-                    ? "Choose a client before linking a calendar."
-                    : !canConnectGoogleCalendar
-                      ? "You do not have permission to connect Google Calendar."
-                      : "Google Calendar connection is not configured."
-                }
-              >
-                <span aria-hidden="true">G</span>
-                Link Google Calendar
-              </button>
-            )}
-            {googleCalendarLinked && canConnectGoogleCalendar ? (
-              <button type="button" className="crm-button-secondary"
-                disabled={disconnectingGoogle} onClick={() => void disconnectGoogle()}>
-                {disconnectingGoogle ? "Disconnecting…" : "Disconnect Google"}
-              </button>
-            ) : null}
-            {googleDisconnectMessage ? <p role="status">{googleDisconnectMessage}</p> : null}
           </section>
         </aside>
 

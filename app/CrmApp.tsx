@@ -370,6 +370,7 @@ export function CrmApp({
         ? "all"
         : initialData.clients[0]?.id ?? ""),
   );
+  const [initialWorkspaceResolved, setInitialWorkspaceResolved] = useState(false);
   const [range, setRange] = useState("30");
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   // A business opened from its Agency card lands on its profile in Settings.
@@ -492,6 +493,8 @@ export function CrmApp({
   }, [switcherOpen]);
 
   useEffect(() => {
+    // Read and validate the callback's workspace before normalizing the URL.
+    if (!initialWorkspaceResolved) return;
     if (!data.viewer.isAgency) {
       if (selectedClientId !== data.viewer.clientId) {
         // Keep client sessions pinned even if a stale agency query is present.
@@ -527,6 +530,7 @@ export function CrmApp({
     data.viewer.canViewAllClients,
     data.viewer.clientId,
     data.viewer.isAgency,
+    initialWorkspaceResolved,
     selectedClientId,
   ]);
 
@@ -541,6 +545,7 @@ export function CrmApp({
         initialData.clients.some((client) => client.id === requestedClient)
       )
         setSelectedClientId(requestedClient);
+      setInitialWorkspaceResolved(true);
       const connectionError = query.get("connection_error");
       if (connectionError) setError(connectionError);
       if (query.get("connected") === "twilio") {
