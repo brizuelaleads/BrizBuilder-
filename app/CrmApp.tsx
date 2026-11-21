@@ -1583,6 +1583,12 @@ export function CrmApp({
             squareConnections={data.squareConnections}
             squareSandbox={data.squareMode === "sandbox"}
             googleProfiles={data.googleProfiles}
+            googleAccess={{
+              configured: data.googleProfileRuntime.configured,
+              connectCalendar: data.viewer.permissions.includes("calendar.connect"),
+              connectProfile: data.viewer.permissions.includes("profiles.connect"),
+              manageProfile: accessibleSecondaryViews.some((item) => item.id === "profiles"),
+            }}
             onOpenView={(next) => navigate(next)}
           />
         )}

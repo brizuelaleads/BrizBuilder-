@@ -55,6 +55,20 @@ const callRailEventLabel = (event: string) =>
 
 type IntegrationStatus = "connected" | "setup" | "available";
 
+type LinkedIntegrationCard = {
+  id: string;
+  logo: string;
+  name: string;
+  description: string;
+  status: IntegrationStatus;
+  view: "payments" | "profiles" | "calendar";
+  connectHref: string;
+  facts: [string, string][];
+  canManage?: boolean;
+  connectUnavailable?: string;
+  connectLabel?: string;
+};
+
 /**
  * Ad spend in the ad account's own currency.
  *
@@ -110,6 +124,7 @@ export function ConnectionsView({
   onViewCalls,
   squareConnections = [],
   googleProfiles = [],
+  googleAccess,
   onOpenView,
   squareSandbox = false,
 }: {
@@ -125,6 +140,12 @@ export function ConnectionsView({
   /** Square status (labels only, no tokens), from square_connections. */
   squareConnections?: CrmSquareStatus[];
   googleProfiles?: CrmGoogleProfile[];
+  googleAccess: {
+    configured: boolean;
+    connectCalendar: boolean;
+    connectProfile: boolean;
+    manageProfile: boolean;
+  };
   /** Opens the tab where a provider is actually set up. */
   onOpenView?: (view: "payments" | "profiles" | "calendar") => void;
   /** Square is in test mode: its sign-in needs a Square test account open first. */
@@ -493,12 +514,18 @@ export function ConnectionsView({
   const squareConnection = squareConnections.find((item) => item.clientId === clientId);
   const squareStatus: IntegrationStatus =
     squareConnection?.status === "connected" ? "connected" : squareConnection?.status === "attention" ? "setup" : "available";
+  const profileUnavailable = !googleAccess.connectProfile
+    ? "Your agency manages Google Business Profile connections."
+    : !googleAccess.configured ? "Google Business Profile setup is pending." : undefined;
+  const calendarUnavailable = !googleAccess.connectCalendar
+    ? "A workspace owner or manager can link Google Calendar."
+    : !googleAccess.configured ? "Google Calendar setup is pending." : undefined;
   const googleProfile = googleProfiles.find((item) => item.clientId === clientId);
   const googleProfileStatus: IntegrationStatus =
-    googleProfile?.status === "connected" ? "connected" : googleProfile?.status === "attention" ? "setup" : "available";
+    googleProfile?.status === "connected" ? "connected" : googleProfile?.status === "attention" || profileUnavailable ? "setup" : "available";
   const calendarConnection = connections.find((item) => item.clientId === clientId && item.provider === "google_calendar");
   const calendarStatus: IntegrationStatus =
-    calendarConnection?.isLinked || calendarConnection?.isActive ? "connected" : "available";
+    calendarConnection?.isLinked || calendarConnection?.isActive ? "connected" : calendarUnavailable ? "setup" : "available";
   const integrationStatuses = [
     twilioStatus,
     aiStatus,
@@ -548,14 +575,14 @@ export function ConnectionsView({
     "Pull campaign spend clicks and cost per lead into reporting",
     metaAdsStatus,
   );
-  const linkedCards = [
+  const paymentCards: LinkedIntegrationCard[] = [
     {
       id: "stripe",
       logo: "/integrations/stripe.svg",
       name: "Stripe",
       description: "Card payments and payouts through the business's own Stripe account",
       status: stripeStatus,
-      view: "payments" as const,
+      view: "payments",
       connectHref: `/api/integrations/stripe/connect?clientId=${encodeURIComponent(clientId)}`,
       facts: [
         ["Account", stripeConnection?.accountLabel ?? "Not connected"],
@@ -568,11 +595,28 @@ export function ConnectionsView({
       name: "Square",
       description: "Invoices and payments through the business's own Square account",
       status: squareStatus,
-      view: "payments" as const,
+      view: "payments",
       connectHref: `/api/integrations/square/connect?clientId=${encodeURIComponent(clientId)}`,
       facts: [
         ["Merchant", squareConnection?.merchantName ?? "Not connected"],
         ["Location", squareConnection ? (squareConnection.locationName ?? "—") + (squareConnection.environment === "sandbox" ? " (sandbox)" : "") : "—"],
+      ],
+    },
+  ];
+  const googleCards: LinkedIntegrationCard[] = [
+    {
+      id: "google-calendar",
+      logo: "/integrations/google-calendar.svg",
+      name: "Google Calendar",
+      description: "Booked appointments on the business's Google Calendar",
+      status: calendarStatus,
+      view: "calendar",
+      connectHref: `/api/integrations/google-calendar/connect?clientId=${encodeURIComponent(clientId)}`,
+      connectLabel: "Link Google Calendar",
+      connectUnavailable: calendarUnavailable,
+      facts: [
+        ["Calendar", calendarConnection?.accountLabel ?? (calendarStatus === "connected" ? "Connected" : "Not connected")],
+        ["Status", calendarStatus === "connected" ? "Syncing" : "—"],
       ],
     },
     {
@@ -581,34 +625,71 @@ export function ConnectionsView({
       name: "Google Business Profile",
       description: "Reviews, replies and the business listing on Google",
       status: googleProfileStatus,
-      view: "profiles" as const,
+      view: "profiles",
       connectHref: `/api/integrations/google/connect?clientId=${encodeURIComponent(clientId)}`,
+      canManage: googleAccess.manageProfile,
+      connectUnavailable: profileUnavailable,
       facts: [
         ["Location", googleProfile?.locationName ?? googleProfile?.businessName ?? "Not connected"],
         ["Last synced", googleProfile?.lastSyncedAt ? integrationSyncLabel(googleProfile.lastSyncedAt) : "—"],
       ],
     },
-    {
-      id: "google-calendar",
-      logo: "/integrations/google-calendar.svg",
-      name: "Google Calendar",
-      description: "Booked appointments on the business's Google Calendar",
-      status: calendarStatus,
-      view: "calendar" as const,
-      connectHref: `/api/integrations/google-calendar/connect?clientId=${encodeURIComponent(clientId)}`,
-      facts: [
-        ["Calendar", calendarConnection?.accountLabel ?? (calendarStatus === "connected" ? "Connected" : "Not connected")],
-        ["Status", calendarStatus === "connected" ? "Syncing" : "—"],
-      ],
-    },
-  ].filter((card) => integrationMatches(card.name, card.description, card.status));
+  ];
+  const visibleGoogleCards = googleCards.filter((card) => integrationMatches(card.name, card.description, card.status));
+  const visiblePaymentCards = paymentCards.filter((card) => integrationMatches(card.name, card.description, card.status));
   const visibleIntegrationCount = [
     twilioVisible,
     aiVisible,
     callRailVisible,
     metaVisible,
     metaAdsVisible,
-  ].filter(Boolean).length + linkedCards.length;
+  ].filter(Boolean).length + visibleGoogleCards.length + visiblePaymentCards.length;
+  const renderLinkedCard = (card: LinkedIntegrationCard) => (
+    <article key={card.id} className={`crm-connection-card crm-integration-card crm-integration-linked is-${card.id}`}>
+      <header>
+        <span className={`crm-connection-brand is-${card.id}`} aria-hidden="true">
+          {/* Local brand assets keep provider marks available without third-party requests. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={card.logo} alt="" width={120} height={48} />
+        </span>
+        <div>
+          <h3>{card.name}</h3>
+          <p>{card.description}</p>
+        </div>
+        <Badge tone={card.status === "connected" ? "green" : card.status === "setup" ? "orange" : "neutral"}>
+          {card.status === "connected" ? "Connected" : card.status === "setup" ? "Needs attention" : "Available"}
+        </Badge>
+      </header>
+      <div className="crm-integration-facts">
+        {card.facts.map(([label, value]) => (
+          <div key={label}><Database aria-hidden="true" /><span>{label}<strong>{value}</strong></span></div>
+        ))}
+      </div>
+      <div className="crm-integration-footer">
+        {card.status === "connected" ? (
+          onOpenView && card.canManage !== false ? (
+            <button className="crm-integration-primary" type="button" onClick={() => onOpenView(card.view)}>
+              Manage in {{ payments: "Payments", profiles: "Profiles", calendar: "Calendar" }[card.view]}
+            </button>
+          ) : null
+        ) : clientId && !card.connectUnavailable ? (
+          <a className="crm-integration-primary" href={card.connectHref}>
+            {card.connectLabel ?? "Connect"}
+          </a>
+        ) : null}
+        {card.connectUnavailable && (card.status !== "connected" || card.canManage === false) ? (
+          <span className="crm-integration-linked-note">{card.connectUnavailable}</span>
+        ) : card.status !== "connected" && card.id === "square" && squareSandbox ? (
+          <span className="crm-integration-linked-note is-warning">
+            Square is in test mode. First open a test account from the{" "}
+            <a href="https://developer.squareup.com/apps" target="_blank" rel="noreferrer">Square Developer Console</a>
+            {" "}in this browser, or Square&apos;s page loads blank.
+          </span>
+        ) : card.status !== "connected" ? <span className="crm-integration-linked-note">Secure sign-in on {card.name.startsWith("Google") ? "Google" : card.name}</span> : null}
+      </div>
+    </article>
+  );
+
   const showAllIntegrations = () => {
     setIntegrationQuery("");
     setIntegrationFilter("all");
@@ -741,6 +822,7 @@ export function ConnectionsView({
             ) : null}
           </div>
           <div className="crm-integration-card-grid">
+          {visibleGoogleCards.map(renderLinkedCard)}
           {twilioVisible ? (
           <article className={`crm-connection-card crm-integration-card featured ${expandedIntegration === "twilio" ? "expanded" : ""}`}>
             <header>
@@ -1840,49 +1922,7 @@ export function ConnectionsView({
             </div>
           </article>
           ) : null}
-          {linkedCards.map((card) => (
-            <article key={card.id} className={`crm-connection-card crm-integration-card crm-integration-linked is-${card.id}`}>
-              <header>
-                <span className={`crm-connection-brand is-${card.id}`} aria-hidden="true">
-                  {/* Local brand assets keep provider marks available without third-party requests. */}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={card.logo} alt="" width={120} height={48} />
-                </span>
-                <div>
-                  <h3>{card.name}</h3>
-                  <p>{card.description}</p>
-                </div>
-                <Badge tone={card.status === "connected" ? "green" : card.status === "setup" ? "orange" : "neutral"}>
-                  {card.status === "connected" ? "Connected" : card.status === "setup" ? "Needs attention" : "Available"}
-                </Badge>
-              </header>
-              <div className="crm-integration-facts">
-                {card.facts.map(([label, value]) => (
-                  <div key={label}><Database aria-hidden="true" /><span>{label}<strong>{value}</strong></span></div>
-                ))}
-              </div>
-              <div className="crm-integration-footer">
-                {card.status === "connected" ? (
-                  onOpenView ? (
-                    <button className="crm-integration-primary" type="button" onClick={() => onOpenView(card.view)}>
-                      Manage in {{"payments":"Payments","profiles":"Profiles","calendar":"Calendar"}[card.view]}
-                    </button>
-                  ) : null
-                ) : clientId ? (
-                  <a className="crm-integration-primary" href={card.connectHref}>
-                    Connect
-                  </a>
-                ) : null}
-                {card.status !== "connected" && card.id === "square" && squareSandbox ? (
-                  <span className="crm-integration-linked-note is-warning">
-                    Square is in test mode. First open a test account from the{" "}
-                    <a href="https://developer.squareup.com/apps" target="_blank" rel="noreferrer">Square Developer Console</a>
-                    {" "}in this browser, or Square&apos;s page loads blank.
-                  </span>
-                ) : card.status !== "connected" ? <span className="crm-integration-linked-note">Secure sign-in on {card.name.startsWith("Google") ? "Google" : card.name}</span> : null}
-              </div>
-            </article>
-          ))}
+          {visiblePaymentCards.map(renderLinkedCard)}
           {visibleIntegrationCount === 0 ? (
             <section className="crm-integrations-no-results">
               <Search aria-hidden="true" />

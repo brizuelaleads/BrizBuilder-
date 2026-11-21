@@ -1874,7 +1874,7 @@
 }
 
 /* Keep the four newer providers after every existing integration. */
-#crm-app .crm-integration-card-grid > .crm-integration-linked { order: 100; }
+#crm-app .crm-integration-card-grid > .crm-integration-linked:not(.is-google-calendar, .is-google-profile) { order: 100; }
 
 /* Google Business Profiles (app/crm/GoogleProfilesView.tsx): one profile
    header with four facts and the actions, the review link panel, and the
