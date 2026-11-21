@@ -48,7 +48,7 @@ export async function getSupabaseAccountAccess(
   // the "access pending" screen even though their membership is active.
   const { data: agencyMembership, error: agencyError } = await supabase
     .from("organization_members")
-    .select("role,status")
+    .select("role,status,organization_id")
     .eq("profile_id", profile.id)
     .eq("status", "active")
     .limit(1)
@@ -56,6 +56,20 @@ export async function getSupabaseAccountAccess(
 
   if (agencyError) throw new Error(agencyError.message);
   if (agencyMembership?.role) {
+    if (!["SUPER_ADMIN", "AGENCY_OWNER", "LB_OWNER"].includes(String(agencyMembership.role))) {
+      const assignments = supabase
+        .from("client_members")
+        .select("id")
+        .eq("profile_id", profile.id)
+        .eq("organization_id", agencyMembership.organization_id)
+        .eq("status", "active")
+        .limit(1);
+      if (["AGENCY_ADMIN", "LB_ADMIN"].includes(String(agencyMembership.role)))
+        assignments.eq("role", "AGENCY_ADMIN");
+      const { data: assignment, error } = await assignments.maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!assignment) return null;
+    }
     return {
       email,
       displayName: String(profile.display_name ?? user.displayName),
@@ -71,6 +85,7 @@ export async function getSupabaseAccountAccess(
     )
     .eq("profile_id", profile.id)
     .eq("status", "active")
+    .in("role", ["CLIENT_OWNER", "CLIENT_MANAGER", "CLIENT_EMPLOYEE"])
     .limit(1)
     .maybeSingle();
 
@@ -97,8 +112,9 @@ export async function getSupabaseAccountAccess(
 }
 
 export async function listSupabaseAccounts(actor: ChatGPTUser) {
-  const access = await getSupabaseAccountAccess(actor);
-  if (access?.role !== "admin") throw new Error("Forbidden");
+  const { getSupabaseTenantContext, supabaseRoleHasPermission } = await import("./supabase-crm");
+  const context = await getSupabaseTenantContext(actor);
+  if (!supabaseRoleHasPermission(context, "clients.delete")) throw new Error("Forbidden");
 
   const supabase = getSupabaseAdminClient();
   const { data, error } = await supabase
@@ -106,6 +122,7 @@ export async function listSupabaseAccounts(actor: ChatGPTUser) {
     .select(
       "role,status,created_at,profiles(email,display_name),clients(id,business_name)",
     )
+    .eq("organization_id", context.organizationId)
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(error.message);

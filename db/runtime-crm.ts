@@ -1,4 +1,5 @@
 import type { ChatGPTUser } from "../app/chatgpt-auth";
+import { MAIN_ADMIN_EMAIL } from "../app/auth-config";
 import {
   executeCrmAction as executeD1CrmAction,
   getCrmBootstrap as getD1CrmBootstrap,
@@ -17,6 +18,7 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
   try {
     return await getSupabaseCrmBootstrap(user);
   } catch (error) {
+    if (user.email.trim().toLowerCase() !== MAIN_ADMIN_EMAIL) throw error;
     console.error("Supabase CRM failed; falling back to D1.", error);
     return getD1CrmBootstrap(user);
   }

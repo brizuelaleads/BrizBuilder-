@@ -93,8 +93,8 @@ test("the team roster never leaks beyond the viewer's own workspace", () => {
   // Only people who can manage a team receive a roster at all.
   assert.match(rosterBlock, /supabaseRoleHasPermission\(context, "team\.manage"\)/);
   // A client owner gets no agency memberships and only their own client's rows.
-  assert.match(rosterBlock, /context\.clientId\s*\?\s*Promise\.resolve\(\[\]/);
-  assert.match(rosterBlock, /clientMemberQuery\.eq\("client_id", context\.clientId\)/);
+  assert.match(rosterBlock, /clientAccessList\(context\)\s*\?\s*Promise\.resolve\(\[\]/);
+  assert.match(rosterBlock, /applyClientScope\(context, clientMemberQuery\)/);
   assert.match(rosterBlock, /\.eq\("organization_id", context\.organizationId\)/);
 });
 

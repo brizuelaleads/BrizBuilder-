@@ -67,6 +67,7 @@ import {
   AddContactModal,
   AddLeadModal,
   AddTaskModal,
+  AdminAssignmentsModal,
   InviteMemberModal,
 } from "./crm/ActionForms";
 import {
@@ -91,7 +92,7 @@ import { PaymentsView } from "./crm/PaymentsView";
 import { ReviewsView } from "./crm/ReviewsView";
 import { AiConnectorView } from "./crm/AiConnectorView";
 import { CallsView } from "./crm/CallsView";
-import { Badge, BusinessMark, initials, Modal } from "./crm/ui";
+import { Badge, BusinessMark, EmptyState, initials, Modal } from "./crm/ui";
 import { callNeedsFollowUp } from "../lib/call-attention";
 
 // The Glass theme's own accent, used while a tenant keeps the default brand colour.
@@ -306,10 +307,11 @@ function canAccessNavigationItem(
   item: NavItem,
   isAgency: boolean,
   permissions: CrmPermission[],
+  hasFullSidebar: boolean,
 ) {
   return (
     (!item.agencyOnly || isAgency) &&
-    (!item.permission || permissions.includes(item.permission))
+    (hasFullSidebar || !item.permission || permissions.includes(item.permission))
   );
 }
 
@@ -373,6 +375,7 @@ export function CrmApp({
   // A business opened from its Agency card lands on its profile in Settings.
   const [settingsBusinessId, setSettingsBusinessId] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalName>(null);
+  const [adminAssignmentMemberId, setAdminAssignmentMemberId] = useState<string | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
   // While the phone menu sheet is open it is the only thing that scrolls: the
   // page behind it is locked, the way native apps behave. The CSS lock in
@@ -411,6 +414,9 @@ export function CrmApp({
         : firstVisibleClientId
     : data.viewer.clientId;
 
+  const scopedAdmin = data.viewer.isAgency && data.viewer.role === "LB_ADMIN";
+  const isAgencyOwner = data.viewer.isAgency && data.viewer.canViewAllClients;
+  const adminAssignmentMember = data.team.find((member) => member.id === adminAssignmentMemberId);
   const navigation = data.viewer.isAgency
     ? agencyNavigation
     : [
@@ -422,6 +428,7 @@ export function CrmApp({
       item,
       data.viewer.isAgency,
       data.viewer.permissions,
+      scopedAdmin,
     ),
   );
   // Hidden legacy routes remain available to roles that historically had
@@ -431,6 +438,7 @@ export function CrmApp({
       item,
       data.viewer.isAgency,
       data.viewer.permissions,
+      scopedAdmin,
     ),
   );
   const logoFor = (clientId: string) =>
@@ -1239,7 +1247,7 @@ export function CrmApp({
                 <span>New task</span>
               </button>
             ) : null}
-            {view === "clients" && data.viewer.isAgency ? (
+            {view === "clients" && isAgencyOwner ? (
               <button
                 type="button"
                 className="crm-topbar-action crm-topbar-action-primary"
@@ -1556,7 +1564,13 @@ export function CrmApp({
             onOpenConnections={openConnections}
           />
         )}
-        {view === "payments" && (
+        {view === "payments" && (scopedAdmin ? (
+          <div className="crm-view">
+            <EmptyState title="Payments" description="The agency owner manages payment accounts and invoices. You can view connection status for your assigned businesses." action={
+              <button type="button" className="crm-button-secondary" onClick={() => navigate("connections")}>View connections</button>
+            } />
+          </div>
+        ) : (
           <PaymentsView
             clients={data.clients}
             connections={data.providerConnections}
@@ -1566,7 +1580,7 @@ export function CrmApp({
             organizationName={data.organization.name}
             mutate={mutate}
           />
-        )}
+        ))}
         {view === "connections" && (
           <ConnectionsView
             clients={data.clients}
@@ -1627,8 +1641,11 @@ export function CrmApp({
             onOpenConnections={openConnections}
           />
         )}
-        {view === "ai" &&
-          data.viewer.permissions.includes("ai_connector.manage") && (
+        {view === "ai" && (scopedAdmin ? (
+          <div className="crm-view">
+            <EmptyState title="AI Connector" description="The agency owner manages which AI apps can access workspace data." />
+          </div>
+        ) : (
             <AiConnectorView
               clients={data.clients}
               authorizations={data.aiAuthorizations}
@@ -1640,12 +1657,12 @@ export function CrmApp({
                 "ai_connector.manage",
               )}
             />
-          )}
+        ))}
         {futureModules.includes(view as FutureModule) && (
           <FutureModuleView module={view as FutureModule} />
         )}
-        {view === "custom-data" &&
-          data.viewer.permissions.includes("custom_data.manage") && (
+        {view === "custom-data" && (
+          data.viewer.permissions.includes("custom_data.manage") ? (
             <CustomDataView
               clients={data.clients}
               contacts={filteredContacts}
@@ -1659,12 +1676,24 @@ export function CrmApp({
               onAddField={() => setModal("custom-field")}
               onAddValue={() => setModal("custom-value")}
             />
-          )}
+          ) : (
+            <div className="crm-view">
+              <EmptyState title="Custom data" description="The agency owner manages custom fields and reusable values." />
+            </div>
+          )
+        )}
         {view === "audit" && data.viewer.permissions.includes("audit.read") && (
           <AuditLogView logs={data.auditLogs} />
         )}
-        {view === "team" && data.viewer.permissions.includes("team.manage") && (
-          <TeamView team={data.team} onInvite={() => setModal("invite")} mutate={mutate} />
+        {view === "team" && (
+          <TeamView
+            team={data.team}
+            clients={data.clients}
+            canManage={data.viewer.permissions.includes("team.manage")}
+            onEditAdmin={isAgencyOwner ? setAdminAssignmentMemberId : undefined}
+            onInvite={() => setModal("invite")}
+            mutate={mutate}
+          />
         )}
         {view === "settings" && data.viewer.permissions.includes("clients.manage") && (
           <SettingsView
@@ -1828,7 +1857,16 @@ export function CrmApp({
         <AddClientModal mutate={mutate} onClose={() => setModal(null)} />
       )}
       {modal === "invite" && (
-        <InviteMemberModal clients={filteredClients} isAgency={data.viewer.isAgency} viewerRole={data.viewer.role} mutate={mutate} onClose={() => setModal(null)} />
+        <InviteMemberModal clients={data.clients} isAgency={data.viewer.isAgency} viewerRole={data.viewer.role} mutate={mutate} onClose={() => setModal(null)} />
+      )}
+      {adminAssignmentMember && isAgencyOwner && (
+        <AdminAssignmentsModal
+          key={adminAssignmentMember.id}
+          member={adminAssignmentMember}
+          clients={data.clients}
+          mutate={mutate}
+          onClose={() => setAdminAssignmentMemberId(null)}
+        />
       )}
       {modal === "search" && (
         <Modal

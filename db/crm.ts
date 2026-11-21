@@ -47,7 +47,7 @@ export type CrmPermission =
   | "reports.read";
 
 const fullAccessPermissions: CrmPermission[] = ["clients.manage", "clients.delete", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "call_tracking.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "payments.manage", "messages.write", "automations.manage", "ai_connector.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage", "reports.read"];
-const lbAdminPermissions: CrmPermission[] = ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "call_tracking.manage", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "messages.write", "automations.manage", "team.manage", "reports.read"];
+const lbAdminPermissions: CrmPermission[] = ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "call_tracking.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "messages.write", "automations.manage", "audit.read", "reports.read"];
 const lbTeamMemberPermissions: CrmPermission[] = ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "messages.write"];
 
 const rolePermissions: Record<CrmRole, CrmPermission[]> = {
@@ -299,6 +299,7 @@ export type CrmTeamMember = {
   lastLoginAt: string | null;
   clientId: string | null;
   clientName: string | null;
+  assignedClientIds?: string[];
 };
 
 export type CrmWebsite = {
@@ -981,9 +982,7 @@ async function getTenantContext(user: ChatGPTUser): Promise<TenantContext> {
     if (!membership) throw new Error("Forbidden");
     const role = normalizeCrmRole(membership.role);
     const assignedClientIds = await assignedClientIdsForAccount(account.id, membership.organization_id);
-    const accessibleClientIds = isLbOwner(role) || (role === "LB_ADMIN" && !assignedClientIds.length)
-      ? null
-      : assignedClientIds;
+    const accessibleClientIds = isLbOwner(role) ? null : assignedClientIds;
     if (role === "LB_TEAM_MEMBER" && !assignedClientIds.length) throw new Error("Forbidden");
     return { organizationId: membership.organization_id, organizationName: "LB Marketing", accountId: account.id, email: access.email, name: access.displayName, role, clientId: null, accessibleClientIds };
   }
@@ -1059,8 +1058,18 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
     db.prepare(`SELECT x.*, c.first_name || ' ' || c.last_name AS contact_name, cc.business_name AS client_name FROM appointments x JOIN contacts c ON c.id = x.contact_id JOIN crm_clients cc ON cc.id = x.client_id WHERE x.organization_id = ?${scope.sql} ORDER BY x.starts_at`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.* FROM activities x WHERE x.organization_id = ?${scope.sql} ORDER BY x.occurred_at DESC LIMIT 200`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
     db.prepare(`SELECT x.* FROM crm_notes x WHERE x.organization_id = ?${scope.sql} ORDER BY x.created_at DESC LIMIT 200`).bind(context.organizationId, ...scope.values).all<Record<string, unknown>>(),
-    context.clientId ? Promise.resolve({ results: [] as Record<string, unknown>[] }) : db.prepare(`SELECT om.id, a.email, a.display_name, om.role, om.status, a.last_login_at FROM organization_members om JOIN accounts a ON a.id = om.account_id WHERE om.organization_id = ? ORDER BY CASE om.role WHEN 'LB_OWNER' THEN 0 WHEN 'SUPER_ADMIN' THEN 0 WHEN 'AGENCY_OWNER' THEN 0 WHEN 'LB_ADMIN' THEN 1 WHEN 'AGENCY_ADMIN' THEN 1 ELSE 2 END, a.display_name`).bind(context.organizationId).all<Record<string, unknown>>(),
-    rolePermissions[context.role].includes("audit.read") ? db.prepare(`SELECT id, actor_email, action, record_type, record_id, metadata_json, created_at FROM audit_logs WHERE organization_id = ? ORDER BY created_at DESC LIMIT 150`).bind(context.organizationId).all<Record<string, unknown>>() : Promise.resolve({ results: [] as Record<string, unknown>[] }),
+    clientAccessList(context) === null
+      ? db.prepare(`SELECT om.id, a.email, a.display_name, om.role, om.status, a.last_login_at,
+          (SELECT json_group_array(cm.client_id) FROM client_members cm WHERE cm.account_id = om.account_id AND cm.organization_id = om.organization_id AND cm.status = 'active') AS assigned_client_ids
+          FROM organization_members om JOIN accounts a ON a.id = om.account_id WHERE om.organization_id = ? ORDER BY a.display_name`)
+        .bind(context.organizationId).all<Record<string, unknown>>()
+      : context.role === "LB_ADMIN"
+        ? db.prepare(`SELECT x.id, a.email, a.display_name, x.role, x.status, a.last_login_at, x.client_id, c.business_name AS client_name
+            FROM client_members x JOIN accounts a ON a.id = x.account_id JOIN crm_clients c ON c.id = x.client_id
+            WHERE x.organization_id = ? AND x.role IN ('CLIENT_OWNER', 'CLIENT_MANAGER', 'CLIENT_EMPLOYEE')${scope.sql} ORDER BY a.display_name`)
+          .bind(context.organizationId, ...scope.values).all<Record<string, unknown>>()
+        : Promise.resolve({ results: [] as Record<string, unknown>[] }),
+    clientAccessList(context) === null && rolePermissions[context.role].includes("audit.read") ? db.prepare(`SELECT id, actor_email, action, record_type, record_id, metadata_json, created_at FROM audit_logs WHERE organization_id = ? ORDER BY created_at DESC LIMIT 150`).bind(context.organizationId).all<Record<string, unknown>>() : Promise.resolve({ results: [] as Record<string, unknown>[] }),
   ]);
 
   const linkedAppointmentRows = linkAppointmentRows(appointmentRows.results, leadRows.results.map(mapLead));
@@ -1105,7 +1114,12 @@ export async function getCrmBootstrap(user: ChatGPTUser): Promise<CrmBootstrap> 
     // CallRail ingestion writes to Supabase, not D1. This loader has no
     // calls to hand over, and says so rather than leaving the field absent.
     calls: [],
-    team: teamRows.results.map((row) => ({ id: String(row.id), email: String(row.email), displayName: String(row.display_name), role: String(row.role) as CrmRole, status: String(row.status), lastLoginAt: nullable(row.last_login_at), clientId: null, clientName: null })),
+    team: teamRows.results.map((row) => ({
+      id: String(row.id), email: String(row.email), displayName: String(row.display_name),
+      role: String(row.role) as CrmRole, status: String(row.status), lastLoginAt: nullable(row.last_login_at),
+      clientId: nullable(row.client_id), clientName: nullable(row.client_name),
+      ...(normalizeCrmRole(row.role) === "LB_ADMIN" ? { assignedClientIds: parseStringArray(row.assigned_client_ids) } : {}),
+    })),
     auditLogs: auditRows.results.map((row) => ({ id: String(row.id), actorEmail: String(row.actor_email), action: String(row.action), recordType: String(row.record_type), recordId: nullable(row.record_id), metadata: (() => { try { return JSON.parse(String(row.metadata_json ?? "{}")) as Record<string, unknown>; } catch { return {}; } })(), createdAt: String(row.created_at) })),
     // White-label branding lives only in Supabase; this backend has no rows
     // to hand over and says so rather than leaving the field absent.
@@ -1232,6 +1246,31 @@ async function requireClient(context: TenantContext, clientId: string) {
   if (clientIds && !clientIds.includes(clientId)) throw new Error("Forbidden");
   const client = await database().prepare("SELECT id FROM crm_clients WHERE id = ? AND organization_id = ? AND status != 'archived' LIMIT 1").bind(clientId, context.organizationId).first();
   if (!client) throw new Error("Client not found.");
+}
+
+async function saveAdminSubAccounts(context: TenantContext, accountId: string, input: unknown, required: boolean) {
+  requireAgencyAdministrator(context);
+  if (!Array.isArray(input) || input.length > 100) throw new Error("Select the sub-accounts this admin can access.");
+  const clientIds = [...new Set(input.map((id) => requireText(id, "Sub-account", 100)))];
+  if (required && !clientIds.length) throw new Error("Select at least one sub-account.");
+  for (const id of clientIds) await requireClient(context, id);
+  const db = database();
+  const protectedAccount = await db.prepare(`SELECT a.id FROM accounts a WHERE a.id = ? AND (
+    lower(a.email) = ? OR EXISTS (SELECT 1 FROM organization_members om WHERE om.account_id = a.id
+      AND om.status = 'active' AND (om.organization_id <> ? OR om.role IN ('LB_OWNER', 'AGENCY_OWNER', 'SUPER_ADMIN')))
+  )`).bind(accountId, MAIN_ADMIN_EMAIL, context.organizationId).first();
+  if (protectedAccount) throw new Error("This account already has protected agency access");
+  await db.batch([
+    db.prepare("UPDATE accounts SET role = 'admin', status = 'active' WHERE id = ?").bind(accountId),
+    db.prepare("INSERT INTO organization_members (id, organization_id, account_id, role, status) VALUES (?, ?, ?, 'LB_ADMIN', 'active') ON CONFLICT(organization_id, account_id) DO UPDATE SET role = 'LB_ADMIN', status = 'active'")
+      .bind(`org_member_${crypto.randomUUID()}`, context.organizationId, accountId),
+    db.prepare("UPDATE client_members SET status = 'archived' WHERE organization_id = ? AND account_id = ? AND status = 'active'")
+      .bind(context.organizationId, accountId),
+    ...clientIds.map((id) => db.prepare("INSERT INTO client_members (id, organization_id, client_id, account_id, role, status) VALUES (?, ?, ?, ?, 'LB_ADMIN', 'active') ON CONFLICT(client_id, account_id) DO UPDATE SET role = 'LB_ADMIN', status = 'active'")
+      .bind(`client_member_${crypto.randomUUID()}`, context.organizationId, id, accountId)),
+  ]);
+  await audit(context, "team.admin_assignments_changed", "account", accountId, { clientIds });
+  return { clientIds };
 }
 
 async function audit(context: TenantContext, action: string, recordType: string, recordId: string | null, metadata: Record<string, unknown> = {}, clientId: string | null = context.clientId) {
@@ -1737,7 +1776,7 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
   }
 
   if (action === "create_client") {
-    requirePermission(context, "clients.manage");
+    requireAgencyAdministrator(context);
     const businessName = requireText(input.businessName, "Business name", 160);
     const slug = businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70) || crypto.randomUUID();
     const legacyId = `client_${crypto.randomUUID()}`;
@@ -1871,6 +1910,7 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
   if (action === "invite_member") {
     requirePermission(context, "team.manage");
     const email = requireText(input.email, "Email", 160).toLowerCase();
+    if (email === MAIN_ADMIN_EMAIL) throw new Error("The LB Owner cannot be reassigned.");
     if (!email.includes("@")) throw new Error("Enter a valid email address.");
     const displayName = requireText(input.displayName, "Name", 120);
     const role = normalizeCrmRole(String(input.role) as CrmRole);
@@ -1891,10 +1931,13 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
     const accountId = existing?.id ?? `account_${crypto.randomUUID()}`;
     const existingOrgMember = await db.prepare("SELECT role FROM organization_members WHERE organization_id = ? AND account_id = ? AND status = 'active' LIMIT 1").bind(context.organizationId, accountId).first<{ role: CrmRole }>();
     if (existingOrgMember?.role && isLbOwner(normalizeCrmRole(existingOrgMember.role)) && role !== "LB_OWNER") throw new Error("The LB Owner cannot be downgraded.");
+    if (existingOrgMember?.role && targetIsClientUser) throw new Error("Update this agency member's access in Team.");
     await db.prepare(`INSERT INTO accounts (id, email, display_name, role, status) VALUES (?, ?, ?, 'admin', 'active') ON CONFLICT(email) DO UPDATE SET display_name = excluded.display_name, role = 'admin', status = 'active'`)
       .bind(accountId, email, displayName)
       .run();
-    if (targetIsClientUser && clientId) {
+    if (role === "LB_ADMIN") {
+      await saveAdminSubAccounts(context, accountId, input.clientIds, true);
+    } else if (targetIsClientUser && clientId) {
       await db.prepare(`INSERT INTO client_members (id, organization_id, client_id, account_id, role, status) VALUES (?, ?, ?, ?, ?, 'active') ON CONFLICT(client_id, account_id) DO UPDATE SET role = excluded.role, status = 'active'`)
         .bind(`client_member_${crypto.randomUUID()}`, context.organizationId, clientId, accountId, role)
         .run();
@@ -1910,6 +1953,18 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
     }
     await audit(context, "member.invited", "account", accountId, { role, clientId }, clientId);
     return { id: accountId, role, clientId };
+  }
+
+  if (action === "set_admin_assignments") {
+    requireAgencyAdministrator(context);
+    const memberId = requireText(input.memberId, "Member", 100);
+    const promoteClient = input.scope === "client";
+    const lookup = promoteClient
+      ? "SELECT account_id FROM client_members WHERE id = ? AND organization_id = ? AND status = 'active' AND role IN ('CLIENT_OWNER', 'CLIENT_MANAGER', 'CLIENT_EMPLOYEE')"
+      : "SELECT account_id FROM organization_members WHERE id = ? AND organization_id = ? AND status = 'active' AND role IN ('LB_ADMIN', 'AGENCY_ADMIN')";
+    const member = await db.prepare(lookup).bind(memberId, context.organizationId).first<{ account_id: string }>();
+    if (!member) throw new Error("Active team member not found.");
+    return saveAdminSubAccounts(context, member.account_id, input.clientIds, promoteClient);
   }
 
   throw new Error("Unsupported action.");

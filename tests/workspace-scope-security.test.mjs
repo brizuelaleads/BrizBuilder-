@@ -188,7 +188,10 @@ test("LB Marketing agency roles follow owner/admin/team boundaries", () => {
   assert.ok(admin.includes("reports.read"));
   assert.ok(!admin.includes("clients.delete"));
   assert.ok(!admin.includes("payments.manage"));
-  assert.ok(!admin.includes("audit.read"));
+  assert.ok(admin.includes("audit.read"));
+  assert.ok(admin.includes("profiles.connect"));
+  assert.ok(!admin.includes("billing.read_shared"));
+  assert.ok(!admin.includes("team.manage"));
   const team = rolePermissions(supabaseSource, "LB_TEAM_MEMBER");
   for (const permission of ["contacts.write", "opportunities.write", "tasks.write", "appointments.write", "messages.write"]) {
     assert.ok(team.includes(permission), `LB_TEAM_MEMBER needs ${permission}`);
@@ -245,8 +248,8 @@ test("client navigation is exactly the requested shared tabs", () => {
   }
   assert.match(
     appSource,
-    /view === "team" && data\.viewer\.permissions\.includes\("team\.manage"\)/,
-    "Team must render for permitted client owners, not only agency users",
+    /view === "team" && \(\s*<TeamView[\s\S]*?canManage=\{data\.viewer\.permissions\.includes\("team\.manage"\)\}/,
+    "Team management must remain permission-gated for clients",
   );
   assert.match(
     appSource,
@@ -387,8 +390,9 @@ test("a client owner can never revoke an agency membership", () => {
   // Client users are pinned to the client branch regardless of requested scope.
   assert.match(block, /const scope = context\.clientId\s*\?\s*"client"/);
   // And their own client id constrains both the lookup and the update.
-  const clientIdGuards = block.match(/\.eq\("client_id", context\.clientId\)/g) ?? [];
-  assert.ok(clientIdGuards.length >= 2, "lookup and update are both client-scoped");
+  assert.match(block, /applyClientScope\(context, lookup\)/);
+  assert.match(block, /applyClientScope\(context, update\)/);
+  assert.match(block, /requireAgencyAdministrator\(context\)/);
 });
 
 test("the team roster is scoped to the viewer's own sub-account", () => {
@@ -398,8 +402,8 @@ test("the team roster is scoped to the viewer's own sub-account", () => {
   assert.ok(block, "roster block exists");
   assert.match(block, /supabaseRoleHasPermission\(context, "team\.manage"\)/);
   // Client users get no agency memberships and only their own client's rows.
-  assert.match(block, /context\.clientId\s*\?\s*Promise\.resolve\(\[\]/);
-  assert.match(block, /clientMemberQuery\.eq\("client_id", context\.clientId\)/);
+  assert.match(block, /clientAccessList\(context\)\s*\?\s*Promise\.resolve\(\[\]/);
+  assert.match(block, /applyClientScope\(context, clientMemberQuery\)/);
 });
 
 test("the invite form hides agency roles from client owners", () => {

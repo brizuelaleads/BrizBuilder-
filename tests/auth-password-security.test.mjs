@@ -121,10 +121,9 @@ test("setting someone else's password keeps the tenant guards", () => {
   const permissionIndex = block.indexOf('requirePermission(context, "team.manage")');
   const updateIndex = block.indexOf("auth.admin.updateUserById");
   assert.ok(permissionIndex >= 0 && updateIndex > permissionIndex);
-  // A client owner is pinned to the client branch and to their own sub-account.
-  assert.match(block, /const scope = context\.clientId\s*\?\s*"client"/);
+  assert.match(block, /requireAgencyAdministrator\(context\)/);
   assert.match(block, /passwordActionMember\(context, memberId, scope\)/);
-  assert.match(helper, /\.eq\("client_id", context\.clientId\)/);
+  assert.match(helper, /applyClientScope\(context, lookup\)/);
   assert.match(helper, /\.eq\("organization_id", context\.organizationId\)/);
 });
 

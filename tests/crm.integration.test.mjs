@@ -604,6 +604,36 @@ test("Phase 1 CRM authentication, tenant isolation, imports, custom data, compan
       body: JSON.stringify({ action: "create_client", businessName: "Not Allowed", industry: "HVAC" }),
     });
     assert.equal(forbiddenClientCreate.status, 403, "client roles cannot create clients");
+
+    const scopedAdminHeaders = authHeaders("client@tenant-one.example", "Assigned Admin");
+    const crmAction = (headers, input) => mf.dispatchFetch("http://crm.test/api/crm", {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json", origin: "http://crm.test" },
+      body: JSON.stringify(input),
+    });
+    const grant = await crmAction(authHeaders(), {
+      action: "set_admin_assignments", memberId: "client_member_test", scope: "client", clientIds: [primaryClient.id],
+    });
+    assert.equal(grant.status, 200, await grant.text());
+    const adminBootstrap = await mf.dispatchFetch("http://crm.test/api/crm", { headers: scopedAdminHeaders });
+    assert.equal(adminBootstrap.status, 200);
+    const adminData = (await adminBootstrap.json()).data;
+    assert.equal(adminData.viewer.role, "LB_ADMIN");
+    assert.equal(adminData.viewer.isAgency, true);
+    assert.equal(adminData.viewer.canViewAllClients, false);
+    assert.deepEqual(adminData.clients.map((client) => client.id), [primaryClient.id]);
+    assert.ok(adminData.leads.every((lead) => lead.clientId === primaryClient.id));
+    assert.ok(adminData.team.every((member) => member.clientId === primaryClient.id));
+    assert.equal(adminData.auditLogs.length, 0, "legacy audit rows lack sub-account tags");
+    assert.equal((await crmAction(scopedAdminHeaders, { action: "update_lead", leadId: secondLeadId, firstName: "Out of scope" })).status, 403);
+    assert.equal((await crmAction(scopedAdminHeaders, { action: "create_client", businessName: "Out of scope", industry: "HVAC" })).status, 403);
+    assert.equal((await mf.dispatchFetch("http://crm.test/api/access/accounts", { headers: scopedAdminHeaders })).status, 403);
+    const agencyMember = await db.prepare("SELECT id FROM organization_members WHERE account_id = 'account_client_test'").first();
+    assert.equal((await crmAction(scopedAdminHeaders, { action: "set_admin_assignments", memberId: agencyMember.id, clientIds: [secondClientId] })).status, 403);
+    const removeAssignments = await crmAction(authHeaders(), { action: "set_admin_assignments", memberId: agencyMember.id, clientIds: [] });
+    assert.equal(removeAssignments.status, 200, await removeAssignments.text());
+    const afterUnassign = await mf.dispatchFetch("http://crm.test/api/crm", { headers: scopedAdminHeaders });
+    assert.deepEqual((await afterUnassign.json()).data.clients, [], "an empty assignment never opens every sub-account");
   } finally {
     await mf.dispose();
   }

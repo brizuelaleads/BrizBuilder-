@@ -323,13 +323,15 @@ const lbAdminPermissions: CrmPermission[] = [
   "calendar.connect",
   "websites.manage",
   "call_tracking.manage",
+  "profiles.manage",
+  "profiles.connect",
   "reviews.read",
   "reviews.reply",
   "reviews.request",
   "reviews.settings.manage",
   "messages.write",
   "automations.manage",
-  "team.manage",
+  "audit.read",
   "reports.read",
 ];
 
@@ -876,15 +878,39 @@ function isClientRole(role: CrmRole) {
   return role === "CLIENT_OWNER" || role === "CLIENT_MANAGER" || role === "CLIENT_EMPLOYEE";
 }
 
-async function assignedClientIdsForProfile(profileId: string, organizationId: string) {
-  const rows = await assertOk(
-    supabase()
-      .from("client_members")
-      .select("client_id")
-      .eq("organization_id", organizationId)
-      .eq("profile_id", profileId)
-      .eq("status", "active"),
-  );
+const clientRoles = ["CLIENT_OWNER", "CLIENT_MANAGER", "CLIENT_EMPLOYEE"] as const;
+
+async function saveAdminSubAccounts(
+  context: TenantContext,
+  profileId: string,
+  clientIds: string[],
+) {
+  requireAgencyAdministrator(context);
+  await assertOk(supabase().rpc("assign_admin_sub_accounts", {
+    p_organization_id: context.organizationId,
+    p_profile_id: profileId,
+    p_client_ids: clientIds,
+    p_actor_email: context.email,
+  }));
+}
+
+function adminSubAccountIds(input: unknown, required = false) {
+  if (!Array.isArray(input) || input.length > 100)
+    throw new Error("Select the sub-accounts this admin can access.");
+  const ids = [...new Set(input.map((id) => requireText(id, "Sub-account", 100)))];
+  if (required && !ids.length) throw new Error("Select at least one sub-account.");
+  return ids;
+}
+
+async function assignedClientIdsForProfile(profileId: string, organizationId: string, role: CrmRole) {
+  const assignments = supabase()
+    .from("client_members")
+    .select("client_id")
+    .eq("organization_id", organizationId)
+    .eq("profile_id", profileId)
+    .eq("status", "active");
+  if (role === "LB_ADMIN") assignments.eq("role", "AGENCY_ADMIN");
+  const rows = await assertOk(assignments);
   return [...new Set(((rows ?? []) as AnyRecord[]).map((row) => String(row.client_id)))];
 }
 
@@ -941,11 +967,9 @@ async function getTenantContext(user: ChatGPTUser): Promise<TenantContext> {
     const organization = nestedOne(agencyMembership.organizations);
     const organizationId = String(organization?.id ?? ORGANIZATION_ID);
     const role = normalizeCrmRole(agencyMembership.role);
-    const assignedClientIds = await assignedClientIdsForProfile(String(profile.id), organizationId);
-    const accessibleClientIds = isLbOwner(role) || (role === "LB_ADMIN" && !assignedClientIds.length)
-      ? null
-      : assignedClientIds;
-    if (role === "LB_TEAM_MEMBER" && !assignedClientIds.length)
+    const assignedClientIds = await assignedClientIdsForProfile(String(profile.id), organizationId, role);
+    const accessibleClientIds = isLbOwner(role) ? null : assignedClientIds;
+    if (accessibleClientIds?.length === 0)
       throw new Error("Forbidden");
     return {
       organizationId,
@@ -966,6 +990,7 @@ async function getTenantContext(user: ChatGPTUser): Promise<TenantContext> {
       )
       .eq("profile_id", profile.id)
       .eq("status", "active")
+      .in("role", clientRoles)
       .limit(1)
       .maybeSingle(),
   );
@@ -2170,11 +2195,9 @@ async function revalidateGoogleCallbackAuthorization(
     const assignedClientIds = await assignedClientIdsForProfile(
       String(profile.id),
       organizationId,
+      agencyRole,
     );
-    const accessibleClientIds =
-      isLbOwner(agencyRole) || (agencyRole === "LB_ADMIN" && !assignedClientIds.length)
-        ? null
-        : assignedClientIds;
+    const accessibleClientIds = isLbOwner(agencyRole) ? null : assignedClientIds;
     const context: TenantContext = {
       organizationId,
       organizationName: String(organization.name ?? ORGANIZATION_NAME),
@@ -2884,12 +2907,9 @@ async function passwordActionMember(
       .select("profile_id,profiles(email)")
       .eq("id", memberId)
       .eq("organization_id", context.organizationId);
-    member = await assertOk(
-      context.clientId
-        ? lookup.eq("client_id", context.clientId).maybeSingle()
-        : lookup.maybeSingle(),
-    );
+    member = await assertOk(applyClientScope(context, lookup).maybeSingle());
   } else {
+    requireAgencyAdministrator(context);
     member = await assertOk(
       supabase()
         .from("organization_members")
@@ -3388,6 +3408,17 @@ export async function getSupabaseCrmBootstrap(
       .eq("organization_id", context.organizationId);
     return applyClientScope(context, builder, clientColumn);
   };
+  const allowedClientIds = clientAccessList(context);
+  const stageQuery = supabase()
+    .from("pipeline_stages")
+    .select(allowedClientIds ? "*,pipelines!inner(client_id)" : "*")
+    .eq("organization_id", context.organizationId)
+    .order("position");
+  if (allowedClientIds) {
+    stageQuery.or(`client_id.is.null,client_id.in.(${allowedClientIds.join(",")})`, {
+      referencedTable: "pipelines",
+    });
+  }
 
   const [
     clients,
@@ -3445,13 +3476,7 @@ export async function getSupabaseCrmBootstrap(
         .is("archived_at", null)
         .order("created_at", { ascending: false }),
     ),
-    assertOk(
-      supabase()
-        .from("pipeline_stages")
-        .select("*")
-        .eq("organization_id", context.organizationId)
-        .order("position"),
-    ),
+    assertOk(stageQuery),
     assertOk(
       query<AnyRecord>("tasks").order("due_at", {
         ascending: true,
@@ -3471,10 +3496,7 @@ export async function getSupabaseCrmBootstrap(
     ),
     rolePermissions[context.role].includes("audit.read")
       ? assertOk(
-          supabase()
-            .from("audit_events")
-            .select("*")
-            .eq("organization_id", context.organizationId)
+          query<AnyRecord>("audit_events")
             .order("created_at", { ascending: false })
             .limit(150),
         )
@@ -3805,31 +3827,26 @@ export async function getSupabaseCrmBootstrap(
     }
   }
 
-  // Team roster. Agency users see everyone in the organization; a client owner
-  // sees only their own sub-account's members and never agency memberships.
+  // Only owners receive the agency roster and its assignment lists.
   let teamMembers: CrmTeamMember[] = [];
-  if (supabaseRoleHasPermission(context, "team.manage")) {
+  if (supabaseRoleHasPermission(context, "team.manage") || context.role === "LB_ADMIN") {
     try {
       const clientMemberQuery = supabase()
         .from("client_members")
         .select(
-          "id,role,status,client_id,profiles(email,display_name),clients(business_name)",
+          "id,profile_id,role,status,client_id,profiles(email,display_name),clients(business_name)",
         )
         .eq("organization_id", context.organizationId);
       const [agencyRows, clientRows] = await Promise.all([
-        context.clientId
+        clientAccessList(context)
           ? Promise.resolve([] as AnyRecord[])
           : assertOk(
               supabase()
                 .from("organization_members")
-                .select("id,role,status,profiles(email,display_name)")
+                .select("id,profile_id,role,status,profiles(email,display_name)")
                 .eq("organization_id", context.organizationId),
             ),
-        assertOk(
-          context.clientId
-            ? clientMemberQuery.eq("client_id", context.clientId)
-            : clientMemberQuery,
-        ),
+        assertOk(applyClientScope(context, clientMemberQuery)),
       ]);
       const mapMember = (row: AnyRecord, clientScoped: boolean): CrmTeamMember => {
         const profile = nestedOne(row.profiles) ?? {};
@@ -3845,9 +3862,21 @@ export async function getSupabaseCrmBootstrap(
           clientName: client ? String(client.business_name ?? "") : null,
         };
       };
+      const allClientMembers = (clientRows ?? []) as AnyRecord[];
+      const allAgencyMembers = (agencyRows ?? []) as AnyRecord[];
       teamMembers = [
-        ...((agencyRows ?? []) as AnyRecord[]).map((row) => mapMember(row, false)),
-        ...((clientRows ?? []) as AnyRecord[]).map((row) => mapMember(row, true)),
+        ...allAgencyMembers.map((row) => {
+          const member = mapMember(row, false);
+          if (normalizeCrmRole(row.role) === "LB_ADMIN") {
+            member.assignedClientIds = allClientMembers
+              .filter((entry) => entry.profile_id === row.profile_id && entry.status === "active" && normalizeCrmRole(entry.role) === "LB_ADMIN")
+              .map((entry) => String(entry.client_id));
+          }
+          return member;
+        }),
+        ...allClientMembers
+          .filter((row) => normalizeCrmRole(row.role) !== "LB_ADMIN")
+          .map((row) => mapMember(row, true)),
       ];
     } catch (error) {
       console.error("Team roster could not be loaded.", error);
@@ -3929,14 +3958,11 @@ export async function getSupabaseCrmBootstrap(
   try {
     const squareClientIds = clientRows.map((row) => String(row.id));
     const rows = (await assertOk(
-      supabase()
-        .from("square_connections")
-        .select("client_id,status,environment,merchant_name,location_name,connected_at")
-        .eq("organization_id", context.organizationId),
+        query<AnyRecord>("square_connections", "client_id,status,environment,merchant_name,location_name,connected_at"),
     )) as AnyRecord[] | null;
     squareConnections = (rows ?? [])
       .filter((row) =>
-        row.client_id == null ? !context.clientId : squareClientIds.includes(String(row.client_id)),
+        row.client_id == null ? allowedClientIds === null : squareClientIds.includes(String(row.client_id)),
       )
       .map((row) => ({
         clientId: row.client_id == null ? null : String(row.client_id),
@@ -7384,7 +7410,7 @@ export async function executeSupabaseCrmAction(
   }
 
   if (action === "create_client") {
-    requirePermission(context, "clients.manage");
+    requireAgencyAdministrator(context);
     const businessName = requireText(input.businessName, "Business name", 160);
     const slugBase =
       businessName
@@ -8494,6 +8520,7 @@ export async function executeSupabaseCrmAction(
     requirePermission(context, "team.manage");
     const displayName = requireText(input.displayName, "Full name", 120);
     const email = requireText(input.email, "Email", 160).toLowerCase();
+    if (email === MAIN_ADMIN_EMAIL) throw new Error("The LB Owner cannot be reassigned.");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       throw new Error("Enter a valid email address.");
     const role = normalizeCrmRole(requireText(input.role, "Role", 40));
@@ -8501,11 +8528,14 @@ export async function executeSupabaseCrmAction(
       throw new Error("That role cannot be assigned here.");
     const targetIsClientUser = isClientRole(role);
     const targetIsLbTeamMember = role === "LB_TEAM_MEMBER";
-    const targetIsAgencySide = role === "LB_ADMIN" || targetIsLbTeamMember;
+    const targetIsLbAdmin = role === "LB_ADMIN";
+    const targetIsAgencySide = targetIsLbAdmin || targetIsLbTeamMember;
     if (targetIsAgencySide && !isLbOwner(context.role))
       throw new Error("Only the LB Owner can grant LB agency roles.");
     let clientId: string | null = null;
     let clientName: string | null = null;
+    const adminClientIds = targetIsLbAdmin ? adminSubAccountIds(input.clientIds, true) : [];
+    for (const id of adminClientIds) await requireClient(context, id);
     if (context.clientId) {
       if (!targetIsClientUser)
         throw new Error("You can only invite people to your own business.");
@@ -8520,7 +8550,8 @@ export async function executeSupabaseCrmAction(
 
     // A profile requires an auth user, but invites no longer create a shared
     // starting password. The emailed token lets the recipient set their own.
-    const profileId = await ensureSupabaseInviteProfile({ email, displayName });
+    const existingProfile = await assertOk(supabase().from("profiles").select("id").eq("email", email).maybeSingle());
+    const profileId = existingProfile?.id ? String(existingProfile.id) : await ensureSupabaseInviteProfile({ email, displayName });
 
     const now = new Date().toISOString();
     const existingOrganizationMembership = await assertOk(
@@ -8535,8 +8566,12 @@ export async function executeSupabaseCrmAction(
     if (existingOrganizationMembership?.role && isLbOwner(normalizeCrmRole(existingOrganizationMembership.role)) && role !== "LB_OWNER") {
       throw new Error("The LB Owner cannot be downgraded.");
     }
+    if (existingOrganizationMembership?.role && targetIsClientUser)
+      throw new Error("Update this agency member's access in Team.");
 
-    if (targetIsClientUser && clientId) {
+    if (targetIsLbAdmin) {
+      await saveAdminSubAccounts(context, profileId, adminClientIds);
+    } else if (targetIsClientUser && clientId) {
       await assertOk(
         supabase()
           .from("client_members")
@@ -8559,7 +8594,7 @@ export async function executeSupabaseCrmAction(
             {
               organization_id: context.organizationId,
               profile_id: profileId,
-              role,
+              role: "AGENCY_MEMBER",
               status: "active",
             },
             { onConflict: "organization_id,profile_id" },
@@ -8574,7 +8609,7 @@ export async function executeSupabaseCrmAction(
                 organization_id: context.organizationId,
                 client_id: clientId,
                 profile_id: profileId,
-                role,
+                role: "AGENCY_MEMBER",
                 status: "active",
               },
               { onConflict: "client_id,profile_id" },
@@ -8587,7 +8622,7 @@ export async function executeSupabaseCrmAction(
       "team.access_granted",
       "profile",
       profileId,
-      { role, clientId },
+      { role, clientId, ...(targetIsLbAdmin ? { clientIds: adminClientIds } : {}) },
       clientId,
     );
     await createInviteTokenAndSendEmail({
@@ -8615,6 +8650,26 @@ export async function executeSupabaseCrmAction(
       // should not strand an otherwise valid invite.
     }
     return { invited: true, email, role, clientId, grantedAt: now };
+  }
+
+  if (action === "set_admin_assignments") {
+    requireAgencyAdministrator(context);
+    const memberId = requireText(input.memberId, "Member", 100);
+    const promoteClient = input.scope === "client";
+    const clientIds = adminSubAccountIds(input.clientIds, promoteClient);
+    const member = await assertOk(supabase()
+      .from(promoteClient ? "client_members" : "organization_members")
+      .select("profile_id,profiles(email)")
+      .eq("id", memberId)
+      .eq("organization_id", context.organizationId)
+      .in("role", promoteClient ? clientRoles : ["AGENCY_ADMIN"])
+      .eq("status", "active")
+      .maybeSingle());
+    if (!member) throw new Error("Active team member not found.");
+    if (nestedOne(member.profiles)?.email === MAIN_ADMIN_EMAIL)
+      throw new Error("The LB Owner cannot be reassigned.");
+    await saveAdminSubAccounts(context, String(member.profile_id), clientIds);
+    return { clientIds };
   }
 
   if (action === "change_own_password") {
@@ -8666,6 +8721,7 @@ export async function executeSupabaseCrmAction(
 
   if (action === "set_member_password") {
     requirePermission(context, "team.manage");
+    requireAgencyAdministrator(context);
     const memberId = requireText(input.memberId, "Member", 100);
     const password = requireText(input.password, "Password", 200);
     assertUsablePassword(password);
@@ -8718,21 +8774,16 @@ export async function executeSupabaseCrmAction(
         .from("client_members")
         .select("id,profile_id,client_id")
         .eq("id", memberId)
-        .eq("organization_id", context.organizationId);
-      const member = await assertOk(
-        context.clientId
-          ? lookup.eq("client_id", context.clientId).maybeSingle()
-          : lookup.maybeSingle(),
-      );
+        .eq("organization_id", context.organizationId)
+        .in("role", clientRoles);
+      const member = await assertOk(applyClientScope(context, lookup).maybeSingle());
       if (!member) throw new Error("Team member not found.");
       const update = supabase()
         .from("client_members")
         .update({ status: "archived" })
         .eq("id", memberId)
         .eq("organization_id", context.organizationId);
-      await assertOk(
-        context.clientId ? update.eq("client_id", context.clientId) : update,
-      );
+      await assertOk(applyClientScope(context, update));
       await audit(
         context,
         "team.access_revoked",
@@ -8744,6 +8795,7 @@ export async function executeSupabaseCrmAction(
       return { revoked: true };
     }
 
+    requireAgencyAdministrator(context);
     const member = await assertOk(
       supabase()
         .from("organization_members")

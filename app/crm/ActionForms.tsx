@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import type { CrmClient, CrmContact, CrmLead, CrmRole } from "../../db/crm";
+import type { CrmClient, CrmContact, CrmLead, CrmRole, CrmTeamMember } from "../../db/crm";
 import { Field, getFormValue, Modal } from "./ui";
 
 type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
@@ -50,16 +50,61 @@ export function AddClientModal({ mutate, onClose }: { mutate: Mutate; onClose: (
   return <Modal title="Add a sub-account" eyebrow="AGENCY · SUB-ACCOUNTS" onClose={onClose} wide><form className="crm-form" onSubmit={save}><Field label="Business name" span><input name="businessName" required autoFocus /></Field><Field label="Industry"><input name="industry" required placeholder="Pest control" /></Field><Field label="Website"><input name="website" type="url" /></Field><Field label="Phone"><input name="phone" type="tel" /></Field><Field label="Email"><input name="email" type="email" /></Field><Field label="Address" span><input name="address" /></Field><Field label="City"><input name="city" /></Field><Field label="State"><input name="state" maxLength={2} /></Field><Field label="ZIP"><input name="zip" /></Field><Field label="Time zone"><select name="timeZone"><option>America/Chicago</option><option>America/New_York</option><option>America/Denver</option><option>America/Los_Angeles</option></select></Field><Field label="Monthly ad budget"><input name="monthlyAdBudget" type="number" min="0" /></Field><Field label="Account manager"><input name="assignedAccountManager" defaultValue="Luciano Brizuela" /></Field><Field label="Service areas" span><input name="serviceAreas" placeholder="Austin, Round Rock, Georgetown" /></Field><Field label="Notes" span><textarea name="notes" rows={3} /></Field><footer><button className="crm-button-secondary" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={submit.busy}>Create Sub-Account</SubmitButton></footer></form></Modal>;
 }
 
+function AdminSubAccountChoices({ clients, selectedIds = [] }: { clients: CrmClient[]; selectedIds?: string[] }) {
+  return (
+    <fieldset className="crm-admin-subaccounts crm-field-span">
+      <legend>Assigned sub-accounts</legend>
+      {clients.map((client) => (
+        <label key={client.id}>
+          <input type="checkbox" name="clientIds" value={client.id} defaultChecked={selectedIds.includes(client.id)} />
+          {client.businessName}
+        </label>
+      ))}
+      {!clients.length && <p>Add a sub-account before assigning access.</p>}
+    </fieldset>
+  );
+}
+
+export function AdminAssignmentsModal({ member, clients, mutate, onClose }: { member: CrmTeamMember; clients: CrmClient[]; mutate: Mutate; onClose: () => void }) {
+  const submit = useSubmit(mutate, onClose);
+
+  function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const clientIds = new FormData(event.currentTarget).getAll("clientIds");
+    void submit.run({ action: "set_admin_assignments", memberId: member.id, scope: member.clientId ? "client" : "agency", clientIds }, "Admin access updated");
+  }
+
+  return <Modal title={`Edit access for ${member.displayName}`} eyebrow="TEAM ACCESS" onClose={onClose}>
+    <form className="crm-form" onSubmit={save}>
+      <AdminSubAccountChoices clients={clients} selectedIds={member.assignedClientIds ?? (member.clientId ? [member.clientId] : [])} />
+      <p className="crm-form-note crm-field-span">{member.clientId ? "Choose the sub-accounts this admin can open." : "Clear every selection to suspend workspace access."}</p>
+      <footer><button className="crm-button-secondary" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={submit.busy}>Save access</SubmitButton></footer>
+    </form>
+  </Modal>;
+}
+
 export function InviteMemberModal({ clients, isAgency, viewerRole, mutate, onClose }: { clients: CrmClient[]; isAgency: boolean; viewerRole: CrmRole; mutate: Mutate; onClose: () => void }) {
   const submit = useSubmit(mutate, onClose);
   const canInviteLbRoles = isAgency && ["LB_OWNER", "SUPER_ADMIN", "AGENCY_OWNER"].includes(viewerRole);
   const [role, setRole] = useState<CrmRole>("CLIENT_OWNER");
   const isClientRole = role.startsWith("CLIENT_");
   const isLbTeamMember = role === "LB_TEAM_MEMBER";
+  const isLbAdmin = role === "LB_ADMIN";
   // Client owners only ever add their own staff; the server takes the
   // sub-account from their session and refuses agency roles outright.
   const needsSubAccount = isAgency && (isClientRole || isLbTeamMember);
-  function save(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); void submit.run({ action: "invite_member", displayName: getFormValue(form, "displayName"), email: getFormValue(form, "email"), role, clientId: needsSubAccount ? getFormValue(form, "clientId") : "" }, "Invite email sent"); }
+  function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    void submit.run({
+      action: "invite_member",
+      displayName: getFormValue(form, "displayName"),
+      email: getFormValue(form, "email"),
+      role,
+      clientId: needsSubAccount ? getFormValue(form, "clientId") : "",
+      ...(isLbAdmin ? { clientIds: form.getAll("clientIds") } : {}),
+    }, "Invite email sent");
+  }
   return <Modal title="Give someone access" eyebrow="TEAM ACCESS" onClose={onClose}><form className="crm-form" onSubmit={save}>
     <Field label="Full name" span><input name="displayName" required autoFocus /></Field>
     <Field label="Email" span><input name="email" type="email" required /></Field>
@@ -78,7 +123,8 @@ export function InviteMemberModal({ clients, isAgency, viewerRole, mutate, onClo
       <option value="" disabled>Choose the business they can see</option>
       {clients.map((client) => <option key={client.id} value={client.id}>{client.businessName}</option>)}
     </select></Field> : null}
-    <div className="crm-form-note crm-field-span">{!isAgency ? "This person joins your business only. " : isClientRole ? "This person will only see the selected client sub-account. " : isLbTeamMember ? "LB Team Members only see the assigned client sub-account. " : "LB Admins can work across LB Marketing sub-accounts, with server-side permission checks. "}BrizBuilder will email a secure invite link so they can choose their own password.</div>
+    {isLbAdmin && <AdminSubAccountChoices clients={clients} />}
+    <div className="crm-form-note crm-field-span">{isLbAdmin ? "LB Admins can open every sidebar tab and work in the sub-accounts you select. " : !isAgency ? "This person joins your business only. " : "This person can access the selected sub-account. "}BrizBuilder will email a secure invite link so they can choose their own password.</div>
     <footer><button className="crm-button-secondary" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={submit.busy}>Send Invite</SubmitButton></footer>
   </form></Modal>;
 }

@@ -20,22 +20,12 @@ export async function getAccountAccess(
   user: ChatGPTUser,
 ): Promise<AccountAccess | null> {
   if (!shouldUseSupabaseBackend()) return getD1AccountAccess(user);
-  try {
-    return await getSupabaseAccountAccess(user);
-  } catch (error) {
-    console.error("Supabase access failed; falling back to D1.", error);
-    return getD1AccountAccess(user);
-  }
+  return getSupabaseAccountAccess(user);
 }
 
 export async function listAccounts(actor: ChatGPTUser) {
   if (!shouldUseSupabaseBackend()) return listD1Accounts(actor);
-  try {
-    return await listSupabaseAccounts(actor);
-  } catch (error) {
-    console.error("Supabase account list failed; falling back to D1.", error);
-    return listD1Accounts(actor);
-  }
+  return listSupabaseAccounts(actor);
 }
 
 export async function getClientPortalData(

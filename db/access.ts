@@ -176,6 +176,13 @@ export async function getAccountAccess(
 export async function listAccounts(actor: ChatGPTUser) {
   const access = await getAccountAccess(actor);
   if (access?.role !== "admin") throw new Error("Forbidden");
+  if (access.email !== MAIN_ADMIN_EMAIL) {
+    const owner = await database().prepare(`SELECT om.id FROM organization_members om
+      JOIN accounts a ON a.id = om.account_id
+      WHERE lower(a.email) = ? AND om.status = 'active' AND om.role IN ('LB_OWNER', 'AGENCY_OWNER', 'SUPER_ADMIN')`)
+      .bind(access.email).first();
+    if (!owner) throw new Error("Forbidden");
+  }
   return database()
     .prepare(
       `SELECT a.email, a.display_name, a.role, a.status, a.client_id,
