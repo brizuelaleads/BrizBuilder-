@@ -1,4 +1,4 @@
-import { linkAppointmentRows, appointmentTimePatch, projectLeadAppointment, leadCorrectionPatch, manualProvenance } from "../lib/lead-corrections";
+import { linkAppointmentRows, appointmentDetailsPatch, appointmentTimePatch, projectLeadAppointment, leadCorrectionPatch, manualProvenance } from "../lib/lead-corrections";
 import type { ChatGPTUser } from "../app/chatgpt-auth";
 import { MAIN_ADMIN_EMAIL } from "../app/auth-config";
 import { getSupabaseAdminClient } from "../lib/supabase/server";
@@ -24,14 +24,17 @@ import {
   updateGoogleBusinessReviewReply,
   type GoogleBusinessLocation,
 } from "../lib/google-business";
-import {
-  syncGoogleCalendarAppointment,
-  verifyGoogleCalendarAccess,
-} from "../lib/google-calendar";
+import { verifyGoogleCalendarAccess } from "../lib/google-calendar";
 import { googleCalendarAuthorizationScopes, hasGoogleCalendarScope, shouldUseOwnedGoogleCalendarScope } from "../lib/google-calendar-scopes";
 import { readRuntimeValue } from "../lib/supabase/env";
 import { disconnectStoredGoogleAccess } from "../lib/google-disconnect-store";
-import { syncStoredAppointmentToGoogleCalendar } from "../lib/google-calendar-store";
+import {
+  GOOGLE_CALENDAR_APPOINTMENT_FIELDS,
+  googleCalendarAppointmentFromRow,
+  syncGoogleCalendarWithLead,
+  syncLeadStatusToGoogleCalendar,
+  syncStoredAppointmentToGoogleCalendar,
+} from "../lib/google-calendar-store";
 import {
   assertCallRailAccountId,
   assertCallRailCompanyId,
@@ -1906,21 +1909,14 @@ async function googleCredential(
 async function syncAppointmentToGoogleCalendar(
   organizationId: string,
   clientId: string,
-  appointment: {
-    id: string;
-    contactName: string;
-    serviceType: string;
-    startsAt: string;
-    endsAt: string;
-    notes: string;
-    status: string;
-  },
+  appointment: Parameters<typeof syncStoredAppointmentToGoogleCalendar>[2],
 ) {
-  await syncStoredAppointmentToGoogleCalendar(
+  const sync = await syncStoredAppointmentToGoogleCalendar(
     organizationId,
     clientId,
     appointment,
   );
+  return sync.action === "failed" ? "Appointment saved. Google Calendar could not be updated." : null;
 }
 
 async function authorizedGoogleLocations(
@@ -2521,9 +2517,7 @@ export async function finishSupabaseGoogleCalendarConnect(
     const upcomingAppointments = await assertOk(
       supabase()
         .from("appointments")
-        .select(
-          "id,service_type,starts_at,ends_at,notes,status,contacts(first_name,last_name)",
-        )
+        .select(GOOGLE_CALENDAR_APPOINTMENT_FIELDS)
         .eq("organization_id", organizationId)
         .eq("client_id", clientId)
         .neq("status", "CANCELED")
@@ -2532,21 +2526,12 @@ export async function finishSupabaseGoogleCalendarConnect(
         .limit(10),
     );
     const syncResults = await Promise.allSettled(
-      ((upcomingAppointments ?? []) as AnyRecord[]).map((appointment) => {
-        const contact = nestedOne(appointment.contacts) ?? {};
-        const contactName =
-          `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() ||
-          "Customer";
-        return syncGoogleCalendarAppointment(tokens.accessToken, {
-          id: String(appointment.id),
-          contactName,
-          serviceType: String(appointment.service_type),
-          startsAt: String(appointment.starts_at),
-          endsAt: String(appointment.ends_at),
-          notes: String(appointment.notes ?? ""),
-          status: String(appointment.status),
-        });
-      }),
+      (upcomingAppointments ?? []).map((appointment) => syncGoogleCalendarWithLead(
+        tokens.accessToken,
+        organizationId,
+        clientId,
+        googleCalendarAppointmentFromRow(appointment),
+      )),
     );
     const failedSyncs = syncResults.filter(
       (result) => result.status === "rejected",
@@ -8012,7 +7997,11 @@ export async function executeSupabaseCrmAction(
       String(lead.client_id),
       leadId,
     );
-    return metaWarning ? { id: leadId, warning: metaWarning } : { id: leadId };
+    const calendarWarning = status !== String(lead.status)
+      ? await syncLeadStatusToGoogleCalendar(context.organizationId, String(lead.client_id), leadId, nullable(lead.contact_id))
+      : null;
+    const warning = [metaWarning, calendarWarning].filter(Boolean).join(" ");
+    return warning ? { id: leadId, warning } : { id: leadId };
   }
 
   if (action === "move_lead") {
@@ -8022,7 +8011,7 @@ export async function executeSupabaseCrmAction(
     const lead = await assertOk(
       supabase()
         .from("leads")
-        .select("client_id,status")
+        .select("client_id,contact_id,status")
         .eq("id", leadId)
         .eq("organization_id", context.organizationId)
         .is("archived_at", null)
@@ -8074,7 +8063,11 @@ export async function executeSupabaseCrmAction(
       String(lead.client_id),
       leadId,
     );
-    return metaWarning ? { id: leadId, warning: metaWarning } : { id: leadId };
+    const calendarWarning = nextStatus !== String(lead.status)
+      ? await syncLeadStatusToGoogleCalendar(context.organizationId, String(lead.client_id), leadId, nullable(lead.contact_id))
+      : null;
+    const warning = [metaWarning, calendarWarning].filter(Boolean).join(" ");
+    return warning ? { id: leadId, warning } : { id: leadId };
   }
 
   if (action === "archive_lead") {
@@ -8266,7 +8259,7 @@ export async function executeSupabaseCrmAction(
     const contact = await assertOk(
       supabase()
         .from("contacts")
-        .select("id,first_name,last_name")
+        .select("id")
         .eq("id", contactId)
         .eq("client_id", clientId)
         .eq("organization_id", context.organizationId)
@@ -8297,37 +8290,24 @@ export async function executeSupabaseCrmAction(
           notes: optionalText(input.notes, 1000) ?? "",
           status: "SCHEDULED",
         })
-        .select("id")
+        .select(GOOGLE_CALENDAR_APPOINTMENT_FIELDS)
         .single(),
     );
-    const createdAppointment = requireRow(
-      appointment,
-      "Appointment was not created.",
-    );
+    if (!appointment) throw new Error("Appointment was not created.");
     await audit(
       context,
       "appointment.created",
       "appointment",
-      createdAppointment.id,
+      appointment.id,
       {},
       clientId,
     );
-    await syncAppointmentToGoogleCalendar(
+    const warning = await syncAppointmentToGoogleCalendar(
       context.organizationId,
       clientId,
-      {
-        id: String(createdAppointment.id),
-        contactName:
-          `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() ||
-          "Customer",
-        serviceType: requireText(input.serviceType, "Service", 160),
-        startsAt,
-        endsAt,
-        notes: optionalText(input.notes, 1000) ?? "",
-        status: "SCHEDULED",
-      },
+      googleCalendarAppointmentFromRow(appointment),
     );
-    return { id: createdAppointment.id };
+    return warning ? { id: appointment.id, warning } : { id: appointment.id };
   }
 
   if (action === "update_appointment_status" || action === "update_appointment") {
@@ -8343,51 +8323,43 @@ export async function executeSupabaseCrmAction(
     const appointment = await assertOk(
       supabase()
         .from("appointments")
-        .select(
-          "id,client_id,service_type,starts_at,ends_at,notes,contacts(first_name,last_name)",
-        )
+        .select("client_id,starts_at,ends_at")
         .eq("id", appointmentId)
         .eq("organization_id", context.organizationId)
         .maybeSingle(),
     );
     if (!appointment) throw new Error("Appointment not found.");
     await requireClient(context, appointment.client_id);
-    const timePatch = appointmentTimePatch(input, { startsAt: String(appointment.starts_at), endsAt: String(appointment.ends_at) });
-    await assertOk(
+    const clientId = String(appointment.client_id);
+    const timePatch = input.startsAt !== undefined || input.endsAt !== undefined
+      ? appointmentTimePatch(input, { startsAt: String(appointment.starts_at), endsAt: String(appointment.ends_at) })
+      : {};
+    const details = action === "update_appointment" ? appointmentDetailsPatch(input) : {};
+    const updated = await assertOk(
       supabase()
         .from("appointments")
-        .update({ status, ...timePatch })
+        .update({ status, ...timePatch, ...details, updated_at: new Date().toISOString() })
         .eq("id", appointmentId)
-        .eq("organization_id", context.organizationId),
+        .eq("organization_id", context.organizationId)
+        .eq("client_id", clientId)
+        .select(GOOGLE_CALENDAR_APPOINTMENT_FIELDS)
+        .single(),
     );
+    if (!updated) throw new Error("Appointment not found.");
     await audit(
       context,
-      "appointment.status_changed",
+      action === "update_appointment" ? "appointment.updated" : "appointment.status_changed",
       "appointment",
       appointmentId,
       { status },
-      appointment.client_id,
+      clientId,
     );
-    const appointmentContact =
-      nestedOne(
-        appointment.contacts as AnyRecord | AnyRecord[] | null,
-      ) ?? {};
-    await syncAppointmentToGoogleCalendar(
+    const warning = await syncAppointmentToGoogleCalendar(
       context.organizationId,
-      String(appointment.client_id),
-      {
-        id: appointmentId,
-        contactName:
-          `${appointmentContact.first_name ?? ""} ${appointmentContact.last_name ?? ""}`.trim() ||
-          "Customer",
-        serviceType: String(appointment.service_type),
-        startsAt: timePatch.starts_at,
-        endsAt: timePatch.ends_at,
-        notes: String(appointment.notes ?? ""),
-        status,
-      },
+      clientId,
+      googleCalendarAppointmentFromRow(updated),
     );
-    return { id: appointmentId, status };
+    return warning ? { id: appointmentId, status, warning } : { id: appointmentId, status };
   }
 
   if (action === "delete_appointment") {

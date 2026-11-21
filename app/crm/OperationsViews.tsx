@@ -10,9 +10,9 @@ import type {
   CrmTask,
   CrmTeamMember,
 } from "../../db/crm";
-import { ChevronLeft, ChevronRight, Clock3, Globe, MapPin, Settings2, Trash2, UserRound, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock3, Globe, MapPin, Pencil, Settings2, Trash2, UserRound, X } from "lucide-react";
 import type { TenantBranding } from "../../db/branding";
-import { Badge, BusinessMark, dateTime, EmptyState, Modal, money, shortDate } from "./ui";
+import { Badge, BusinessMark, dateTime, EmptyState, Field, getFormValue, localDateTimeInputValue, Modal, money, shortDate } from "./ui";
 
 type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
 
@@ -179,6 +179,7 @@ export function CalendarView({
   onOpenLead,
   mutate,
   onAddAppointment,
+  canEditAppointments,
   selectedClientId,
   clients,
   googleCalendarConnections,
@@ -190,6 +191,7 @@ export function CalendarView({
   onOpenLead: (lead: CrmLead) => void;
   mutate: Mutate;
   onAddAppointment: () => void;
+  canEditAppointments: boolean;
   selectedClientId: string | null;
   clients: CrmClient[];
   googleCalendarConnections: CrmProviderConnection[];
@@ -208,6 +210,7 @@ export function CalendarView({
   // week navigation without an effect keeping two dates in sync.
   const [monthPaging, setMonthPaging] = useState({ week: "", offset: 0 });
   const [openEvent, setOpenEvent] = useState<{ id: string; dayIndex: number; top: number } | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
   const calendarScrollRef = useRef<HTMLElement>(null);
   const popoverCloseRef = useRef<HTMLButtonElement>(null);
@@ -334,6 +337,9 @@ export function CalendarView({
   const openAppointment = openEvent
     ? appointments.find((appointment) => appointment.id === openEvent.id) ?? null
     : null;
+  const editingAppointment = canEditAppointments
+    ? appointments.find((appointment) => appointment.id === editingId)
+    : undefined;
   const closeEvent = () => {
     const id = openEvent?.id;
     setOpenEvent(null);
@@ -643,6 +649,10 @@ export function CalendarView({
                         onClose={closeEvent}
                         mutate={mutate}
                         onDelete={deleteAppointment}
+                        onEdit={canEditAppointments ? () => {
+                          closeEvent();
+                          setEditingId(openAppointment.id);
+                        } : undefined}
                       />
                     ) : null}
                   </div>
@@ -667,10 +677,15 @@ export function CalendarView({
                         <small>{appointment.address ?? "Address not provided"}</small>
                       </div>
                       <div className="crm-calendar-list-actions">
-                        <select value={appointment.status} onChange={(event) => void mutate({ action: "update_appointment_status", appointmentId: appointment.id, status: event.target.value }, "Appointment status updated")} aria-label={`Status for ${appointment.contactName}`}>
-                          {APPOINTMENT_STATUSES.map((status) => <option key={status} value={status}>{APPOINTMENT_STATUS_LABELS[status]}</option>)}
-                        </select>
-                        <button type="button" onClick={() => void deleteAppointment(appointment)} aria-label={`Delete appointment for ${appointment.contactName}`}>Delete</button>
+                        {canEditAppointments ? (
+                          <>
+                            <select value={appointment.status} onChange={(event) => void mutate({ action: "update_appointment_status", appointmentId: appointment.id, status: event.target.value }, "Appointment status updated")} aria-label={`Status for ${appointment.contactName}`}>
+                              {APPOINTMENT_STATUSES.map((status) => <option key={status} value={status}>{APPOINTMENT_STATUS_LABELS[status]}</option>)}
+                            </select>
+                            <button className="crm-button-secondary" type="button" onClick={() => setEditingId(appointment.id)} aria-label={`Edit appointment for ${appointment.contactName}`}>Edit</button>
+                            <button className="crm-cal-delete" type="button" onClick={() => void deleteAppointment(appointment)} aria-label={`Delete appointment for ${appointment.contactName}`}>Delete</button>
+                          </>
+                        ) : <span>{APPOINTMENT_STATUS_LABELS[appointment.status] ?? appointment.status}</span>}
                       </div>
                     </div>
                   ))}
@@ -684,12 +699,89 @@ export function CalendarView({
           {mode === "week" && !weekAppointments.length ? (
             <div className="crm-cal-empty">
               <strong>Nothing scheduled this week</strong>
-              <button type="button" onClick={onAddAppointment}>Book an appointment</button>
+              {canEditAppointments ? <button type="button" onClick={onAddAppointment}>Book an appointment</button> : null}
             </div>
           ) : null}
         </div>
       </div>
+      {editingAppointment ? (
+        <EditAppointmentModal key={editingAppointment.id} appointment={editingAppointment} mutate={mutate} onClose={() => setEditingId(null)} />
+      ) : null}
     </div>
+  );
+}
+
+function EditAppointmentModal({ appointment, mutate, onClose }: {
+  appointment: CrmAppointment;
+  mutate: Mutate;
+  onClose: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const storedStart = Date.parse(appointment.startsAt);
+  const storedEnd = Date.parse(appointment.endsAt);
+  const endTime = storedEnd > storedStart ? appointment.endsAt
+    : Number.isFinite(storedStart) ? new Date(storedStart + 30 * 60_000).toISOString() : "";
+  const initialStart = localDateTimeInputValue(appointment.startsAt);
+  const initialEnd = localDateTimeInputValue(endTime);
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy) return;
+    const form = new FormData(event.currentTarget);
+    const startValue = getFormValue(form, "startsAt");
+    const endValue = getFormValue(form, "endsAt");
+    const start = new Date(startValue === initialStart ? appointment.startsAt : startValue);
+    const end = new Date(endValue === initialEnd ? endTime : endValue);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+      setError("Enter an end time after the start time.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    const serviceType = getFormValue(form, "serviceType");
+    const assignedEmployee = getFormValue(form, "assignedEmployee");
+    const notes = getFormValue(form, "notes");
+    try {
+      await mutate({
+        action: "update_appointment",
+        appointmentId: appointment.id,
+        status: getFormValue(form, "status"),
+        ...(start.getTime() !== storedStart || end.getTime() !== storedEnd
+          ? { startsAt: start.toISOString(), endsAt: end.toISOString() }
+          : {}),
+        ...(serviceType !== appointment.serviceType ? { serviceType } : {}),
+        ...(assignedEmployee !== (appointment.assignedEmployee ?? "") ? { assignedEmployee } : {}),
+        ...(notes !== appointment.notes ? { notes } : {}),
+      }, "Appointment updated");
+      onClose();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The appointment could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="Edit appointment" eyebrow={appointment.contactName} onClose={() => { if (!busy) onClose(); }}>
+      <form className="crm-form" onSubmit={(event) => void save(event)}>
+        <Field label="Service type" span><input name="serviceType" defaultValue={appointment.serviceType} maxLength={160} required /></Field>
+        <Field label="Start time"><input name="startsAt" type="datetime-local" defaultValue={initialStart} required /></Field>
+        <Field label="End time"><input name="endsAt" type="datetime-local" defaultValue={initialEnd} required /></Field>
+        <Field label="Status">
+          <select name="status" defaultValue={appointment.status}>
+            {APPOINTMENT_STATUSES.map((status) => <option key={status} value={status}>{APPOINTMENT_STATUS_LABELS[status]}</option>)}
+          </select>
+        </Field>
+        <Field label="Assigned employee"><input name="assignedEmployee" defaultValue={appointment.assignedEmployee ?? ""} maxLength={120} /></Field>
+        <Field label="Appointment notes" span><textarea name="notes" defaultValue={appointment.notes} maxLength={1000} rows={3} /></Field>
+        {error ? <p className="crm-form-note crm-field-span" role="alert">{error}</p> : null}
+        <footer>
+          <button type="button" className="crm-button-secondary" disabled={busy} onClick={onClose}>Cancel</button>
+          <button type="submit" className="crm-button-primary" disabled={busy}>{busy ? "Saving…" : "Save changes"}</button>
+        </footer>
+      </form>
+    </Modal>
   );
 }
 
@@ -703,6 +795,7 @@ function CalendarEventPopover({
   onClose,
   mutate,
   onDelete,
+  onEdit,
 }: {
   appointment: CrmAppointment;
   onOpenLead?: () => void;
@@ -712,6 +805,7 @@ function CalendarEventPopover({
   onClose: () => void;
   mutate: Mutate;
   onDelete: (appointment: CrmAppointment) => Promise<void>;
+  onEdit?: () => void;
 }) {
   const starts = new Date(appointment.startsAt);
   const ends = new Date(appointment.endsAt);
@@ -745,27 +839,35 @@ function CalendarEventPopover({
         {appointment.assignedEmployee ? <div><dt>Assigned</dt><dd>{appointment.assignedEmployee}</dd></div> : null}
         {appointment.address ? <div><dt>Address</dt><dd>{appointment.address}</dd></div> : null}
       </dl>
-      <label className="crm-cal-field">
-        <span>Status</span>
-        <select
-          value={appointment.status}
-          onChange={(event) => void mutate({ action: "update_appointment_status", appointmentId: appointment.id, status: event.target.value }, "Appointment status updated")}
-          aria-label={`Status for ${appointment.contactName}`}
-        >
-          {APPOINTMENT_STATUSES.map((status) => <option key={status} value={status}>{APPOINTMENT_STATUS_LABELS[status]}</option>)}
-        </select>
-      </label>
-      <footer>
-        <button
-          type="button"
-          className="crm-cal-delete"
-          onClick={() => void deleteAppointment(appointment)}
-          aria-label={`Delete appointment for ${appointment.contactName}`}
-        >
-          <Trash2 aria-hidden="true" />
-          Delete appointment
-        </button>
-      </footer>
+      {onEdit ? (
+        <>
+          <label className="crm-cal-field">
+            <span>Status</span>
+            <select
+              value={appointment.status}
+              onChange={(event) => void mutate({ action: "update_appointment_status", appointmentId: appointment.id, status: event.target.value }, "Appointment status updated")}
+              aria-label={`Status for ${appointment.contactName}`}
+            >
+              {APPOINTMENT_STATUSES.map((status) => <option key={status} value={status}>{APPOINTMENT_STATUS_LABELS[status]}</option>)}
+            </select>
+          </label>
+          <footer>
+            <button type="button" className="crm-button-secondary" onClick={onEdit} aria-label={`Edit appointment for ${appointment.contactName}`}>
+              <Pencil aria-hidden="true" />
+              Edit
+            </button>
+            <button
+              type="button"
+              className="crm-cal-delete"
+              onClick={() => void deleteAppointment(appointment)}
+              aria-label={`Delete appointment for ${appointment.contactName}`}
+            >
+              <Trash2 aria-hidden="true" />
+              Delete appointment
+            </button>
+          </footer>
+        </>
+      ) : null}
     </section>
   );
 }

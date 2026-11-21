@@ -79,7 +79,9 @@ test("Calendar verification and sync read only identifiers and preserve write be
     assert.match(requests[1].url.searchParams.get("privateExtendedProperty"), /^brizbuilderAppointmentId=/);
     assert.equal(requests[2].url.searchParams.get("fields"), "id");
     assert.equal(requests[2].init.method, "POST");
-    assert.equal(JSON.parse(requests[2].init.body).summary, "Service — Demo Customer");
+    const event = JSON.parse(requests[2].init.body);
+    assert.equal(event.summary, "Scheduled · Service — Demo Customer");
+    assert.equal(event.status, "tentative");
   } finally { globalThis.fetch = previous; }
 });
 

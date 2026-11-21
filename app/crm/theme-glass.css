@@ -177,7 +177,7 @@
     --btn-bg: transparent; --btn-fg: #e4e4e7; --btn-bg-hover: rgb(255 255 255 / 8%);
     --btn-ring: 0 0 #0000; --btn-ring-hover: 0 0 #0000;
   }
-  & :is(.crm-cal-delete, .crm-calendar-list-actions > button, .crm-website-footer-actions .danger, .crm-payments-view .danger, button.danger:not(.crm-lead-status-menu button)) {
+  & :is(.crm-cal-delete, .crm-website-footer-actions .danger, .crm-payments-view .danger, button.danger:not(.crm-lead-status-menu button)) {
     --btn-bg: rgb(239 68 68 / 10%); --btn-fg: #fca5a5; --btn-bg-hover: rgb(239 68 68 / 18%);
     --btn-ring: inset 0 0 0 1px rgb(239 68 68 / 30%); --btn-ring-hover: inset 0 0 0 1px rgb(239 68 68 / 45%);
     --btn-shadow: 0 0 #0000;

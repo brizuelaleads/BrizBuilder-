@@ -646,7 +646,8 @@
   & .crm-cal-popover dl > div { display: grid; grid-template-columns: 64px minmax(0,1fr); gap: 8px; }
   & .crm-cal-popover dt { color: var(--crm-muted); font-size: 13px; line-height: 20px; }
   & .crm-cal-popover dd { margin: 0; color: var(--crm-ink); font-size: 13px; line-height: 20px; overflow-wrap: anywhere; }
-  & .crm-cal-popover > footer { display: flex; }
+  & .crm-cal-popover > footer { display: flex; align-items: center; gap: 8px; }
+  & .crm-cal-popover > footer svg { width: 16px; height: 16px; }
   & .crm-cal-delete {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 16px;
     border: 1px solid #fecdd3; border-radius: 6px; background: var(--crm-card); color: #b91c1c;
@@ -679,7 +680,6 @@
   & .crm-cal-agenda-row small { color: var(--crm-muted); font-size: 12px; line-height: 18px; }
   & .crm-calendar-list-actions { display: flex; align-items: center; gap: 8px; }
   & .crm-calendar-list-actions > select { min-width: 140px; }
-  & .crm-calendar-list-actions > button { min-height: 40px; padding: 8px 16px; border: 1px solid #fecdd3; border-radius: 6px; background: var(--crm-card); color: #b91c1c; }
   & .crm-task-list > article { padding: 16px 24px; border-color: var(--crm-line); }
   & .crm-task-list strong { color: var(--crm-ink); font-size: 14px; font-weight: 500; }
   & .crm-task-list small { color: var(--crm-muted); font-size: 12px; }
@@ -827,6 +827,7 @@
     & .crm-calendar-list .crm-cal-agenda-row { grid-template-columns: 64px minmax(0,1fr); padding-inline: 16px 16px; padding-left: 19px; }
     & .crm-cal-agenda-row > .crm-avatar { display: none; }
     & .crm-cal-agenda-row > .crm-calendar-list-actions { grid-column: 1 / -1; }
+    & .crm-calendar-list-actions { flex-wrap: wrap; }
     & .crm-calendar-list-actions > select { flex: 1; }
   }
 }

@@ -2,16 +2,12 @@
 
 import { useState, type FormEvent } from "react";
 import type { CrmAppointment, CrmLead } from "../../db/crm";
+import { localDateTimeInputValue } from "./ui";
 
 type Mutate = (input: Record<string, unknown>, message: string) => Promise<unknown>;
 const statuses = ["NEW", "CONTACTED", "QUALIFIED", "APPOINTMENT_BOOKED", "ESTIMATE_SENT", "WON", "LOST", "SPAM", "UNRESPONSIVE"];
 const appointmentStatuses = ["SCHEDULED", "CONFIRMED", "COMPLETED", "CANCELED", "NO_SHOW"];
 const label = (value: string) => value.toLowerCase().replaceAll("_", " ").replace(/^./, letter => letter.toUpperCase());
-function localDate(value: string) {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "";
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0,16);
-}
 
 export function LeadEditForm({ lead, appointment, mutate, onDone }: { lead: CrmLead; appointment: CrmAppointment | null; mutate: Mutate; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
@@ -41,7 +37,7 @@ export function LeadEditForm({ lead, appointment, mutate, onDone }: { lead: CrmL
       const end = new Date(String(data.get("endsAt")));
       if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) { setError("Appointment end must be after its start."); return; }
       const status = String(data.get("appointmentStatus"));
-      if (localDate(appointment.startsAt) !== data.get("startsAt") || localDate(appointment.endsAt) !== data.get("endsAt") || status !== appointment.status) {
+      if (localDateTimeInputValue(appointment.startsAt) !== data.get("startsAt") || localDateTimeInputValue(appointment.endsAt) !== data.get("endsAt") || status !== appointment.status) {
         appointmentPatch = { action: "update_appointment", appointmentId: appointment.id, startsAt: start.toISOString(), endsAt: end.toISOString(), status };
       }
     }
@@ -71,8 +67,8 @@ export function LeadEditForm({ lead, appointment, mutate, onDone }: { lead: CrmL
       <label>Call summary<textarea name="message" rows={6} maxLength={10000} defaultValue={lead.message} /></label>
     </fieldset>
     {appointment ? <fieldset disabled={busy}><legend>Calendar appointment</legend><p>Times are shown in your local time zone. Changes update this same calendar booking.</p>
-      <label>Starts<input name="startsAt" type="datetime-local" required defaultValue={localDate(appointment.startsAt)} /></label>
-      <label>Ends<input name="endsAt" type="datetime-local" required defaultValue={localDate(appointment.endsAt)} /></label>
+      <label>Starts<input name="startsAt" type="datetime-local" required defaultValue={localDateTimeInputValue(appointment.startsAt)} /></label>
+      <label>Ends<input name="endsAt" type="datetime-local" required defaultValue={localDateTimeInputValue(appointment.endsAt)} /></label>
       <label>Appointment status<select name="appointmentStatus" defaultValue={appointment.status}>{appointmentStatuses.map(status => <option key={status} value={status}>{label(status)}</option>)}</select></label>
     </fieldset> : null}
     <footer><button type="button" className="lead-record-secondary" disabled={busy} onClick={onDone}>Cancel</button><button type="submit" disabled={busy}>{busy ? "Saving..." : "Save changes"}</button></footer>

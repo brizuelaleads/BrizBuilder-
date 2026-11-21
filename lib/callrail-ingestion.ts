@@ -1467,6 +1467,8 @@ async function syncTranscriptAppointment(input: {
     input.clientId,
     {
       id: appointmentId,
+      leadId: input.leadId,
+      contactId: input.contactId,
       contactName: input.contactName,
       serviceType: input.serviceType,
       startsAt: extracted.start,

@@ -259,7 +259,7 @@ test("a refused conversion warns the admin without blocking the save", () => {
     const source = block(crmSource, `if (action === "${handler}")`);
     assert.match(
       source,
-      /return metaWarning \? \{ id: leadId, warning: metaWarning \} : \{ id: leadId \};/,
+      /const warning = \[metaWarning, calendarWarning\]\.filter\(Boolean\)\.join\(" "\);\s*return warning \? \{ id: leadId, warning \} : \{ id: leadId \};/,
       `${handler} returns the warning without failing`,
     );
   }

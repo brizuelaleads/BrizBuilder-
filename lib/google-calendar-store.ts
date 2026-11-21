@@ -4,20 +4,50 @@ import {
 } from "./google-business";
 import {
   syncGoogleCalendarAppointment,
+  type GoogleCalendarAppointment,
   type GoogleCalendarSyncResult,
 } from "./google-calendar";
 import { getSupabaseAdminClient } from "./supabase/server";
 import { hasGoogleCalendarScope } from "./google-calendar-scopes";
 
-type AppointmentForCalendar = {
-  id: string;
-  contactName: string;
-  serviceType: string;
-  startsAt: string;
-  endsAt: string;
-  notes: string;
-  status: string;
+type AppointmentForCalendar = GoogleCalendarAppointment & {
+  leadId?: string | null;
+  contactId?: string | null;
 };
+
+type AppointmentContact = { first_name?: string | null; last_name?: string | null };
+type AppointmentRow = {
+  id: string;
+  lead_id: string | null;
+  contact_id: string | null;
+  service_type: string;
+  starts_at: string;
+  ends_at: string | null;
+  notes: string | null;
+  status: string;
+  contacts: AppointmentContact | AppointmentContact[] | null;
+};
+
+export const GOOGLE_CALENDAR_APPOINTMENT_FIELDS =
+  "id,lead_id,contact_id,service_type,starts_at,ends_at,notes,status,contacts(first_name,last_name)";
+
+export function googleCalendarAppointmentFromRow(row: AppointmentRow): AppointmentForCalendar {
+  const contact = Array.isArray(row.contacts) ? row.contacts[0] : row.contacts;
+  const start = Date.parse(row.starts_at);
+  const end = Date.parse(row.ends_at ?? "");
+  return {
+    id: row.id,
+    leadId: row.lead_id,
+    contactId: row.contact_id,
+    contactName: `${contact?.first_name ?? ""} ${contact?.last_name ?? ""}`.trim() || "Customer",
+    serviceType: row.service_type,
+    startsAt: row.starts_at,
+    // Older appointments can have no recorded end time.
+    endsAt: row.ends_at && end > start ? row.ends_at : new Date(start + 30 * 60_000).toISOString(),
+    notes: row.notes ?? "",
+    status: row.status,
+  };
+}
 
 export type StoredGoogleCalendarSyncResult =
   | GoogleCalendarSyncResult
@@ -53,6 +83,35 @@ async function calendarCredential(organizationId: string, clientId: string) {
   return checked(select("google_business_credentials"));
 }
 
+async function appointmentLead(
+  organizationId: string,
+  clientId: string,
+  { leadId, contactId }: Pick<AppointmentForCalendar, "leadId" | "contactId">,
+) {
+  if (!leadId && !contactId) return null;
+  let query = getSupabaseAdminClient()
+    .from("leads")
+    .select("id,status")
+    .eq("organization_id", organizationId)
+    .eq("client_id", clientId)
+    .is("archived_at", null);
+  if (leadId) query = query.eq("id", leadId);
+  if (contactId) query = query.eq("contact_id", contactId);
+  // A legacy contact-only appointment resolves only when the contact has one lead.
+  const leads = await checked(query.limit(2));
+  return leads?.length === 1 ? leads[0] : null;
+}
+
+export async function syncGoogleCalendarWithLead(
+  token: string,
+  organizationId: string,
+  clientId: string,
+  appointment: AppointmentForCalendar,
+) {
+  const lead = appointment.status === "CANCELED" ? null : await appointmentLead(organizationId, clientId, appointment);
+  return syncGoogleCalendarAppointment(token, { ...appointment, leadStatus: lead?.status });
+}
+
 async function accessToken(organizationId: string, clientId: string) {
   const database = getSupabaseAdminClient();
   const [connection, credential] = await Promise.all([
@@ -67,7 +126,7 @@ async function accessToken(organizationId: string, clientId: string) {
     ),
     calendarCredential(organizationId, clientId),
   ]);
-  if (String((connection as Record<string, unknown> | null)?.status ?? "") !== "connected" || !credential) {
+  if (!["connected", "attention"].includes(String(connection?.status ?? "")) || !credential) {
     return null;
   }
   const row = credential as Record<string, unknown>;
@@ -82,6 +141,46 @@ async function accessToken(organizationId: string, clientId: string) {
     clientId,
   );
   return (await refreshGoogleAccessToken(refreshToken)).accessToken;
+}
+
+export async function syncLeadStatusToGoogleCalendar(
+  organizationId: string,
+  clientId: string,
+  leadId: string,
+  contactId: string | null,
+) {
+  try {
+    const database = getSupabaseAdminClient();
+    const [lead, contactLead] = await Promise.all([
+      appointmentLead(organizationId, clientId, { leadId, contactId }),
+      contactId ? appointmentLead(organizationId, clientId, { contactId }) : null,
+    ]);
+    if (!lead) return null;
+    const appointments = database.from("appointments")
+      .select(GOOGLE_CALENDAR_APPOINTMENT_FIELDS)
+      .eq("organization_id", organizationId)
+      .eq("client_id", clientId)
+      .in("status", ["SCHEDULED", "CONFIRMED"])
+      .gte("starts_at", new Date().toISOString());
+    const rows = await checked(contactLead?.id === leadId && contactId
+      ? appointments.or(`lead_id.eq.${leadId},and(lead_id.is.null,contact_id.eq.${contactId})`)
+      : appointments.eq("lead_id", leadId));
+    if (!rows?.length) return null;
+
+    const token = await accessToken(organizationId, clientId);
+    if (!token) return null;
+    const results = await Promise.allSettled(rows.map((row) => syncGoogleCalendarAppointment(
+      token,
+      { ...googleCalendarAppointmentFromRow(row), leadStatus: lead.status },
+      { leadStatusOnly: true },
+    )));
+    if (results.some((result) => result.status === "rejected")) {
+      return "Lead saved. Some Google Calendar events could not be updated.";
+    }
+    return null;
+  } catch {
+    return "Lead saved. Google Calendar could not be updated.";
+  }
 }
 
 /**
@@ -99,7 +198,7 @@ export async function syncStoredAppointmentToGoogleCalendar(
   try {
     const token = await accessToken(organizationId, clientId);
     if (!token) return { action: "not_connected", eventId: null };
-    const result = await syncGoogleCalendarAppointment(token, appointment);
+    const result = await syncGoogleCalendarWithLead(token, organizationId, clientId, appointment);
     const now = new Date().toISOString();
     await Promise.all([
       checked(

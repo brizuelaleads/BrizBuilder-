@@ -76,6 +76,29 @@ export function appointmentTimePatch(input: Record<string, unknown>, existing: {
   return { starts_at: new Date(startsAt).toISOString(), ends_at: new Date(endsAt).toISOString() };
 }
 
+export function appointmentDetailsPatch(input: Record<string, unknown>) {
+  const patch: { service_type?: string; assigned_employee?: string | null; notes?: string } = {};
+  if (input.serviceType !== undefined) {
+    if (typeof input.serviceType !== "string" || !input.serviceType.trim() || input.serviceType.trim().length > 160) {
+      throw new Error("Enter a service type of 160 characters or fewer.");
+    }
+    patch.service_type = input.serviceType.trim();
+  }
+  if (input.assignedEmployee !== undefined) {
+    if (typeof input.assignedEmployee !== "string" || input.assignedEmployee.trim().length > 120) {
+      throw new Error("Enter an assigned employee of 120 characters or fewer.");
+    }
+    patch.assigned_employee = input.assignedEmployee.trim() || null;
+  }
+  if (input.notes !== undefined) {
+    if (typeof input.notes !== "string" || input.notes.trim().length > 1000) {
+      throw new Error("Enter appointment notes of 1000 characters or fewer.");
+    }
+    patch.notes = input.notes.trim();
+  }
+  return patch;
+}
+
 /** Legacy contact-only bookings can resolve only when that contact has one lead. */
 export function linkAppointmentRows<T extends Record<string, unknown>>(rows: T[], leads: { id: string; clientId: string; contactId: string }[]): T[] {
   return rows.map(row => {

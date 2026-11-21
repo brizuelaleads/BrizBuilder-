@@ -106,3 +106,9 @@ export function Field({ label, children, span = false }: { label: string; childr
 export function getFormValue(form: FormData, key: string) {
   return String(form.get(key) ?? "").trim();
 }
+
+export function localDateTimeInputValue(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}

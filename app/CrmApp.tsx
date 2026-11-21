@@ -638,6 +638,7 @@ export function CrmApp({
       effectiveSelectedClientId === "all" ||
       appointment.clientId === effectiveSelectedClientId,
   );
+  const canEditAppointments = data.viewer.permissions.includes("appointments.write");
   const filteredPhoneCalls = data.phoneCalls.filter(
     (call) =>
       (effectiveSelectedClientId === "all" ||
@@ -1232,7 +1233,7 @@ export function CrmApp({
                 <span>Add company</span>
               </button>
             ) : null}
-            {view === "calendar" ? (
+            {view === "calendar" && canEditAppointments ? (
               <button
                 type="button"
                 className="crm-topbar-action crm-topbar-action-primary"
@@ -1451,6 +1452,7 @@ export function CrmApp({
             appointments={filteredAppointments}
             mutate={mutate}
             onAddAppointment={() => setModal("appointment")}
+            canEditAppointments={canEditAppointments}
             selectedClientId={
               effectiveSelectedClientId === "all"
                 ? null

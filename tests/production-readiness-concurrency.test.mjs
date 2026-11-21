@@ -136,6 +136,62 @@ test("concurrent Google Calendar creates converge on one deterministic event", a
   }
 });
 
+test("Google events show the appointment status and follow the linked lead color", async (t) => {
+  let providerEventId = null;
+  const writes = [];
+  t.mock.method(globalThis, "fetch", async (url, init = {}) => {
+    const method = init.method ?? "GET";
+    if (method === "GET") return Response.json({ items: providerEventId ? [{ id: providerEventId }] : [] });
+    const parsed = new URL(String(url));
+    assert.equal(parsed.searchParams.get("sendUpdates"), "none");
+    const body = init.body ? JSON.parse(String(init.body)) : null;
+    writes.push({ method, body });
+    if (method === "DELETE") return new Response(null, { status: 204 });
+    return Response.json({ id: body.id ?? providerEventId });
+  });
+
+  const appointment = {
+    id: "7c5d041b-af61-49ce-b61d-97e5d25d4720",
+    contactName: "Casey Customer",
+    serviceType: "Roof inspection",
+    startsAt: "2026-09-01T15:00:00.000Z",
+    endsAt: "2026-09-01T16:00:00.000Z",
+    notes: "Use the side gate.",
+    status: "SCHEDULED",
+    leadStatus: "NEW",
+  };
+
+  await syncGoogleCalendarAppointment("token", appointment, { leadStatusOnly: true });
+  assert.equal(writes.length, 0, "a lead status change does not create an unsynced event");
+
+  const created = await syncGoogleCalendarAppointment("token", appointment);
+  providerEventId = created.eventId;
+  assert.equal(writes[0].method, "POST");
+  assert.equal(writes[0].body.status, "tentative");
+  assert.equal(writes[0].body.colorId, "3");
+  assert.match(writes[0].body.description, /Appointment status: Scheduled\nLead status: New/);
+  assert.doesNotMatch(JSON.stringify(writes[0].body), /"attendees"/);
+
+  const confirmed = { ...appointment, status: "CONFIRMED", leadStatus: "CONTACTED" };
+  const updated = await syncGoogleCalendarAppointment("token", confirmed);
+  assert.equal(updated.eventId, providerEventId);
+  assert.equal(writes[1].method, "PUT");
+  assert.equal(writes[1].body.status, "confirmed");
+  assert.equal(writes[1].body.colorId, "6");
+  assert.match(writes[1].body.summary, /^Confirmed · Roof inspection/);
+
+  await syncGoogleCalendarAppointment("token", { ...confirmed, leadStatus: "WON" }, { leadStatusOnly: true });
+  assert.equal(writes[2].method, "PATCH");
+  assert.equal(writes[2].body.colorId, "10");
+  assert.match(writes[2].body.description, /Appointment status: Confirmed\nLead status: Won/);
+  assert.match(writes[2].body.summary, /^Confirmed · Roof inspection/);
+  assert.equal(writes[2].body.status, "confirmed");
+  assert.deepEqual(Object.keys(writes[2].body).sort(), ["colorId", "description", "status", "summary"]);
+
+  await syncGoogleCalendarAppointment("token", { ...confirmed, status: "CANCELED" });
+  assert.deepEqual(writes[3], { method: "DELETE", body: null });
+});
+
 test("atomic lead matching is tenant/contact locked and has no unlocked decision", () => {
   assert.match(
     migration,

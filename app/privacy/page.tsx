@@ -157,8 +157,10 @@ export default function PrivacyPage() {
             </p>
             <p>
               BrizBuilder sends the appointment&apos;s customer name, service
-              type, notes, start and end times, and an appointment identifier
-              to Google to create and maintain the corresponding event.
+              type, notes, start and end times, status, and an appointment
+              identifier to Google to create and maintain the corresponding
+              event. If the appointment has a linked lead, the event includes
+              the lead status and a matching Google Calendar color.
               Canceling a synced appointment in BrizBuilder deletes its linked
               Google Calendar event. When you first connect, BrizBuilder also
               attempts to sync up to ten upcoming, non-canceled appointments.

@@ -449,8 +449,23 @@ test("Phase 1 CRM authentication, tenant isolation, imports, custom data, compan
     assert.equal((await reloadLead()).email, null);
     const appointmentResult = await editAction({ action: "create_appointment", clientId: primaryClient.id, contactId: createdLead.contactId, leadId: createdLeadId, serviceType: "Repair", startsAt: "2026-10-01T15:00:00Z", endsAt: "2026-10-01T16:00:00Z" });
     assert.equal((await reloadLead()).appointmentStatus, "scheduled");
-    await editAction({ action: "update_appointment", appointmentId: appointmentResult.id, status: "CONFIRMED", startsAt: "2026-10-02T15:00:00Z", endsAt: "2026-10-02T16:00:00Z" });
+    await editAction({
+      action: "update_appointment",
+      appointmentId: appointmentResult.id,
+      status: "CONFIRMED",
+      startsAt: "2026-10-02T15:00:00Z",
+      endsAt: "2026-10-02T16:00:00Z",
+      serviceType: "Roof inspection",
+      assignedEmployee: "Casey Brooks",
+      notes: "Use the side gate.",
+    });
     assert.equal((await reloadLead()).appointmentStart, "2026-10-02T15:00:00.000Z");
+    const savedCalendar = await mf.dispatchFetch("http://crm.test/api/crm", { headers: authHeaders() });
+    const savedAppointment = (await savedCalendar.json()).data.appointments.find((appointment) => appointment.id === appointmentResult.id);
+    assert.equal(savedAppointment.serviceType, "Roof inspection");
+    assert.equal(savedAppointment.assignedEmployee, "Casey Brooks");
+    assert.equal(savedAppointment.notes, "Use the side gate.");
+    assert.equal(savedAppointment.status, "CONFIRMED");
     for (const status of ["COMPLETED", "NO_SHOW", "CANCELED"]) {
       await editAction({ action: "update_appointment_status", appointmentId: appointmentResult.id, status });
       assert.equal((await reloadLead()).appointmentStatus, status.toLowerCase());

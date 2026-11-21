@@ -1,7 +1,7 @@
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 const GOOGLE_CALENDAR_TIMEOUT_MS = 10_000;
 
-type GoogleCalendarAppointment = {
+export type GoogleCalendarAppointment = {
   id: string;
   contactName: string;
   serviceType: string;
@@ -9,6 +9,27 @@ type GoogleCalendarAppointment = {
   endsAt: string;
   notes: string;
   status: string;
+  leadStatus?: string | null;
+};
+
+const APPOINTMENT_APPEARANCE = {
+  SCHEDULED: { label: "Scheduled", colorId: "9", googleStatus: "tentative" },
+  CONFIRMED: { label: "Confirmed", colorId: "10", googleStatus: "confirmed" },
+  COMPLETED: { label: "Completed", colorId: "8", googleStatus: "confirmed" },
+  NO_SHOW: { label: "No-show", colorId: "6", googleStatus: "confirmed" },
+} satisfies Record<string, { label: string; colorId: string; googleStatus: "tentative" | "confirmed" }>;
+
+// Use the closest colors in Google's fixed palette to the Leads status badges.
+const LEAD_APPEARANCE = {
+  NEW: { label: "New", colorId: "3" },
+  CONTACTED: { label: "Contacted", colorId: "6" },
+  QUALIFIED: { label: "Qualified", colorId: "7" },
+  APPOINTMENT_BOOKED: { label: "Appointment booked", colorId: "7" },
+  ESTIMATE_SENT: { label: "Estimate sent", colorId: "7" },
+  WON: { label: "Won", colorId: "10" },
+  LOST: { label: "Lost", colorId: "11" },
+  SPAM: { label: "Spam", colorId: "11" },
+  UNRESPONSIVE: { label: "Unresponsive", colorId: "11" },
 };
 
 type GoogleCalendarEvent = {
@@ -133,9 +154,18 @@ export async function verifyGoogleCalendarAccess(accessToken: string) {
   await googleCalendarRequest(accessToken, url);
 }
 
+function googleCalendarWriteUrl(eventId?: string | null, returnsEvent = true) {
+  const resource = eventId ? `/${encodeURIComponent(eventId)}` : "";
+  const url = new URL(`${GOOGLE_CALENDAR_API}/calendars/primary/events${resource}`);
+  url.searchParams.set("sendUpdates", "none");
+  if (returnsEvent) url.searchParams.set("fields", "id");
+  return url;
+}
+
 export async function syncGoogleCalendarAppointment(
   accessToken: string,
   appointment: GoogleCalendarAppointment,
+  { leadStatusOnly = false }: { leadStatusOnly?: boolean } = {},
 ): Promise<GoogleCalendarSyncResult> {
   const existingEventId = await findGoogleCalendarEvent(
     accessToken,
@@ -143,39 +173,52 @@ export async function syncGoogleCalendarAppointment(
   );
   if (appointment.status === "CANCELED") {
     if (!existingEventId) return { action: "unchanged", eventId: null };
-    const url = new URL(
-      `${GOOGLE_CALENDAR_API}/calendars/primary/events/${encodeURIComponent(existingEventId)}`,
-    );
-    url.searchParams.set("sendUpdates", "none");
-    await googleCalendarRequest(accessToken, url, { method: "DELETE" });
+    await googleCalendarRequest(accessToken, googleCalendarWriteUrl(existingEventId, false), { method: "DELETE" });
     return { action: "cancelled", eventId: null };
+  }
+
+  const appointmentAppearance =
+    APPOINTMENT_APPEARANCE[appointment.status as keyof typeof APPOINTMENT_APPEARANCE] ?? APPOINTMENT_APPEARANCE.SCHEDULED;
+  const leadAppearance = appointment.leadStatus
+    ? LEAD_APPEARANCE[appointment.leadStatus as keyof typeof LEAD_APPEARANCE]
+    : undefined;
+  const appearance = {
+    summary: `${appointmentAppearance.label} · ${appointment.serviceType} — ${appointment.contactName}`,
+    description: [
+      `Appointment status: ${appointmentAppearance.label}`,
+      ...(leadAppearance ? [`Lead status: ${leadAppearance.label}`] : []),
+      ...(appointment.notes ? ["", appointment.notes] : []),
+      "",
+      "Synced from BrizBuilder",
+    ].join("\n"),
+    colorId: leadAppearance?.colorId ?? appointmentAppearance.colorId,
+    status: appointmentAppearance.googleStatus,
+  };
+  if (leadStatusOnly) {
+    if (!existingEventId) return { action: "unchanged", eventId: null };
+    await googleCalendarRequest(accessToken, googleCalendarWriteUrl(existingEventId), {
+      method: "PATCH",
+      body: JSON.stringify(appearance),
+    });
+    return { action: "updated", eventId: existingEventId };
   }
 
   const start = new Date(appointment.startsAt);
   const end = new Date(appointment.endsAt);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
     throw new Error("The appointment time is invalid for Google Calendar.");
   }
-  const deterministicEventId = await googleCalendarEventId(appointment.id);
+  const deterministicEventId = existingEventId ?? await googleCalendarEventId(appointment.id);
   const body = JSON.stringify({
     ...(!existingEventId ? { id: deterministicEventId } : {}),
-    summary: `${appointment.serviceType} — ${appointment.contactName}`,
-    description: appointment.notes
-      ? `${appointment.notes}\n\nSynced from BrizBuilder`
-      : "Synced from BrizBuilder",
+    ...appearance,
     start: { dateTime: start.toISOString() },
     end: { dateTime: end.toISOString() },
     extendedProperties: {
       private: { brizbuilderAppointmentId: appointment.id },
     },
   });
-  const url = existingEventId
-    ? new URL(
-        `${GOOGLE_CALENDAR_API}/calendars/primary/events/${encodeURIComponent(existingEventId)}`,
-      )
-    : new URL(`${GOOGLE_CALENDAR_API}/calendars/primary/events`);
-  url.searchParams.set("sendUpdates", "none");
-  url.searchParams.set("fields", "id");
+  const url = googleCalendarWriteUrl(existingEventId);
   let response: Response;
   try {
     response = await googleCalendarRequest(accessToken, url, {
@@ -192,12 +235,7 @@ export async function syncGoogleCalendarAppointment(
     }
     // A concurrent creator won after our lookup. PUT converges both workers
     // on the deterministic resource rather than creating a second event.
-    const conflictUrl = new URL(
-      `${GOOGLE_CALENDAR_API}/calendars/primary/events/${encodeURIComponent(deterministicEventId)}`,
-    );
-    conflictUrl.searchParams.set("sendUpdates", "none");
-    conflictUrl.searchParams.set("fields", "id");
-    await googleCalendarRequest(accessToken, conflictUrl, {
+    await googleCalendarRequest(accessToken, googleCalendarWriteUrl(deterministicEventId), {
       method: "PUT",
       body,
     });

@@ -1,4 +1,4 @@
-import { linkAppointmentRows, appointmentTimePatch, projectLeadAppointment, leadCorrectionPatch } from "../lib/lead-corrections";
+import { linkAppointmentRows, appointmentDetailsPatch, appointmentTimePatch, projectLeadAppointment, leadCorrectionPatch } from "../lib/lead-corrections";
 import { env } from "cloudflare:workers";
 import type { ChatGPTUser } from "../app/chatgpt-auth";
 import { MAIN_ADMIN_EMAIL } from "../app/auth-config";
@@ -1532,9 +1532,15 @@ export async function executeCrmAction(user: ChatGPTUser, input: CrmAction) {
     const appointment = await db.prepare("SELECT client_id, starts_at, ends_at FROM appointments WHERE id = ? AND organization_id = ? LIMIT 1").bind(appointmentId, context.organizationId).first<{ client_id: string; starts_at: string; ends_at: string }>();
     if (!appointment) throw new Error("Appointment not found.");
     await requireClient(context, appointment.client_id);
-    const timePatch = appointmentTimePatch(input, { startsAt: appointment.starts_at, endsAt: appointment.ends_at });
-    await db.prepare("UPDATE appointments SET status = ?, starts_at = ?, ends_at = ? WHERE id = ? AND organization_id = ?").bind(status, timePatch.starts_at, timePatch.ends_at, appointmentId, context.organizationId).run();
-    await audit(context, "appointment.status_changed", "appointment", appointmentId, { status });
+    const timePatch = input.startsAt !== undefined || input.endsAt !== undefined
+      ? appointmentTimePatch(input, { startsAt: appointment.starts_at, endsAt: appointment.ends_at })
+      : {};
+    const details = action === "update_appointment" ? appointmentDetailsPatch(input) : {};
+    const fields = Object.entries({ status, ...timePatch, ...details });
+    await db.prepare(`UPDATE appointments SET ${fields.map(([column]) => `${column} = ?`).join(", ")} WHERE id = ? AND organization_id = ? AND client_id = ?`)
+      .bind(...fields.map(([, value]) => value), appointmentId, context.organizationId, appointment.client_id)
+      .run();
+    await audit(context, action === "update_appointment" ? "appointment.updated" : "appointment.status_changed", "appointment", appointmentId, { status }, appointment.client_id);
     return { id: appointmentId, status };
   }
 
