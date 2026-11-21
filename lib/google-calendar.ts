@@ -13,23 +13,23 @@ export type GoogleCalendarAppointment = {
 };
 
 const APPOINTMENT_APPEARANCE = {
-  SCHEDULED: { label: "Scheduled", colorId: "9", googleStatus: "tentative" },
+  SCHEDULED: { label: "Scheduled", colorId: "3", googleStatus: "tentative" },
   CONFIRMED: { label: "Confirmed", colorId: "10", googleStatus: "confirmed" },
-  COMPLETED: { label: "Completed", colorId: "8", googleStatus: "confirmed" },
+  COMPLETED: { label: "Completed", colorId: "7", googleStatus: "confirmed" },
   NO_SHOW: { label: "No-show", colorId: "6", googleStatus: "confirmed" },
 } satisfies Record<string, { label: string; colorId: string; googleStatus: "tentative" | "confirmed" }>;
 
-// Use the closest colors in Google's fixed palette to the Leads status badges.
-const LEAD_APPEARANCE = {
-  NEW: { label: "New", colorId: "3" },
-  CONTACTED: { label: "Contacted", colorId: "6" },
-  QUALIFIED: { label: "Qualified", colorId: "7" },
-  APPOINTMENT_BOOKED: { label: "Appointment booked", colorId: "7" },
-  ESTIMATE_SENT: { label: "Estimate sent", colorId: "7" },
-  WON: { label: "Won", colorId: "10" },
-  LOST: { label: "Lost", colorId: "11" },
-  SPAM: { label: "Spam", colorId: "11" },
-  UNRESPONSIVE: { label: "Unresponsive", colorId: "11" },
+// Keep the lead's badge color visible alongside its status in the event details.
+const LEAD_STATUS_MARKERS = {
+  NEW: "New 🟣",
+  CONTACTED: "Contacted 🟠",
+  QUALIFIED: "Qualified 🔵",
+  APPOINTMENT_BOOKED: "Appointment booked 🔵",
+  ESTIMATE_SENT: "Estimate sent 🔵",
+  WON: "Won 🟢",
+  LOST: "Lost 🔴",
+  SPAM: "Spam 🔴",
+  UNRESPONSIVE: "Unresponsive 🔴",
 };
 
 type GoogleCalendarEvent = {
@@ -179,19 +179,19 @@ export async function syncGoogleCalendarAppointment(
 
   const appointmentAppearance =
     APPOINTMENT_APPEARANCE[appointment.status as keyof typeof APPOINTMENT_APPEARANCE] ?? APPOINTMENT_APPEARANCE.SCHEDULED;
-  const leadAppearance = appointment.leadStatus
-    ? LEAD_APPEARANCE[appointment.leadStatus as keyof typeof LEAD_APPEARANCE]
+  const leadStatusLabel = appointment.leadStatus
+    ? LEAD_STATUS_MARKERS[appointment.leadStatus as keyof typeof LEAD_STATUS_MARKERS]
     : undefined;
   const appearance = {
     summary: `${appointmentAppearance.label} · ${appointment.serviceType} — ${appointment.contactName}`,
     description: [
       `Appointment status: ${appointmentAppearance.label}`,
-      ...(leadAppearance ? [`Lead status: ${leadAppearance.label}`] : []),
+      ...(leadStatusLabel ? [`Lead status: ${leadStatusLabel}`] : []),
       ...(appointment.notes ? ["", appointment.notes] : []),
       "",
       "Synced from BrizBuilder",
     ].join("\n"),
-    colorId: leadAppearance?.colorId ?? appointmentAppearance.colorId,
+    colorId: appointmentAppearance.colorId,
     status: appointmentAppearance.googleStatus,
   };
   if (leadStatusOnly) {
