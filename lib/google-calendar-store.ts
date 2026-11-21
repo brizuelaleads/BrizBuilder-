@@ -107,18 +107,24 @@ export async function syncGoogleCalendarWithLead(
   organizationId: string,
   clientId: string,
   appointment: AppointmentForCalendar,
+  connectionStartedAt?: string,
 ) {
   const lead = appointment.status === "CANCELED" ? null : await appointmentLead(organizationId, clientId, appointment);
-  return syncGoogleCalendarAppointment(token, { ...appointment, leadStatus: lead?.status });
+  return syncGoogleCalendarAppointment(token, {
+    ...appointment,
+    workspaceId: clientId,
+    connectionStartedAt,
+    leadStatus: lead?.status,
+  });
 }
 
-async function accessToken(organizationId: string, clientId: string) {
+async function calendarAccess(organizationId: string, clientId: string) {
   const database = getSupabaseAdminClient();
   const [connection, credential] = await Promise.all([
     checked(
       database
         .from("provider_connections")
-        .select("status")
+        .select("status,connected_at")
         .eq("organization_id", organizationId)
         .eq("client_id", clientId)
         .eq("provider", "google_calendar")
@@ -140,7 +146,11 @@ async function accessToken(organizationId: string, clientId: string) {
     organizationId,
     clientId,
   );
-  return (await refreshGoogleAccessToken(refreshToken)).accessToken;
+  const { accessToken } = await refreshGoogleAccessToken(refreshToken);
+  return {
+    token: accessToken,
+    connectedAt: connection?.connected_at ? new Date(connection.connected_at).toISOString() : undefined,
+  };
 }
 
 export async function syncLeadStatusToGoogleCalendar(
@@ -167,10 +177,10 @@ export async function syncLeadStatusToGoogleCalendar(
       : appointments.eq("lead_id", leadId));
     if (!rows?.length) return null;
 
-    const token = await accessToken(organizationId, clientId);
-    if (!token) return null;
+    const access = await calendarAccess(organizationId, clientId);
+    if (!access) return null;
     const results = await Promise.allSettled(rows.map((row) => syncGoogleCalendarAppointment(
-      token,
+      access.token,
       { ...googleCalendarAppointmentFromRow(row), leadStatus: lead.status },
       { leadStatusOnly: true },
     )));
@@ -184,8 +194,8 @@ export async function syncLeadStatusToGoogleCalendar(
 }
 
 /**
- * Syncs one stored appointment using its BrizBuilder id as the Google-side
- * idempotency key. The provider event id is useful state, but never the key we
+ * Creates events idempotently within the current connection. The provider
+ * event ID is useful state, but never the key we
  * trust for finding an event: a partial database write can therefore be safely
  * retried without creating a second event.
  */
@@ -196,9 +206,9 @@ export async function syncStoredAppointmentToGoogleCalendar(
 ): Promise<StoredGoogleCalendarSyncResult> {
   const database = getSupabaseAdminClient();
   try {
-    const token = await accessToken(organizationId, clientId);
-    if (!token) return { action: "not_connected", eventId: null };
-    const result = await syncGoogleCalendarWithLead(token, organizationId, clientId, appointment);
+    const access = await calendarAccess(organizationId, clientId);
+    if (!access) return { action: "not_connected", eventId: null };
+    const result = await syncGoogleCalendarWithLead(access.token, organizationId, clientId, appointment, access.connectedAt);
     const now = new Date().toISOString();
     await Promise.all([
       checked(

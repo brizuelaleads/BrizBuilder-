@@ -1,5 +1,6 @@
 export type GoogleDisconnectOperations = {
   stopSync: () => Promise<void>;
+  removeCalendarAppointments?: () => Promise<number>;
   loadRefreshTokens: () => Promise<string[]>;
   revoke: (token: string) => Promise<void>;
   deleteLocalData: () => Promise<void>;
@@ -8,6 +9,15 @@ export type GoogleDisconnectOperations = {
 /** Revocation is best effort; failed provider requests never retain local tokens. */
 export async function disconnectGoogleAccess(operations: GoogleDisconnectOperations) {
   await operations.stopSync();
+  let calendarAppointmentsRemoved: number | null = null;
+  let calendarCleanupWarning: string | null = null;
+  if (operations.removeCalendarAppointments) {
+    try {
+      calendarAppointmentsRemoved = await operations.removeCalendarAppointments();
+    } catch {
+      calendarCleanupWarning = "Google Calendar could not confirm removal of all synced appointments. Check Google Calendar for any remaining BrizBuilder events.";
+    }
+  }
   let googleRevocationConfirmed = false;
   try {
     const tokens = [...new Set(await operations.loadRefreshTokens())];
@@ -20,6 +30,8 @@ export async function disconnectGoogleAccess(operations: GoogleDisconnectOperati
   await operations.deleteLocalData();
   return {
     disconnected: true,
+    calendarAppointmentsRemoved,
+    calendarCleanupWarning,
     googleRevocationConfirmed,
     revocationRetryAvailable: false,
     revocationWarning: googleRevocationConfirmed ? null :

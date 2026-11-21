@@ -1,5 +1,7 @@
 import { getSupabaseAdminClient } from "./supabase/server";
-import { decryptGoogleSecret, revokeGoogleRefreshToken } from "./google-business";
+import { decryptGoogleSecret, refreshGoogleAccessToken, revokeGoogleRefreshToken } from "./google-business";
+import { removeWorkspaceGoogleCalendarAppointments } from "./google-calendar";
+import { hasGoogleCalendarScope } from "./google-calendar-scopes";
 import { disconnectGoogleAccess } from "./google-disconnect";
 
 async function checked<T>(promise: PromiseLike<{ data: T; error: unknown }>) {
@@ -30,11 +32,37 @@ async function optionalCalendarTable<T>(
 }
 
 // Call only after the actor's permission and tenant/client access are checked.
-export async function disconnectStoredGoogleAccess(organizationId: string, clientId: string) {
+export async function disconnectStoredGoogleAccess(
+  organizationId: string,
+  clientId: string,
+  source: "calendar" | "profile",
+) {
   const database = getSupabaseAdminClient();
   const providers = ["google_calendar", "google_business_profile"];
   const credentialTables = ["google_calendar_credentials", "google_business_credentials"];
   const now = new Date().toISOString();
+  const loadCredentials = () => Promise.all(credentialTables.map((table) =>
+    optionalCalendarTable(table, database.from(table).select("refresh_token_ciphertext,refresh_token_iv,scopes")
+      .eq("organization_id", organizationId).eq("client_id", clientId).maybeSingle())));
+  let credentials: ReturnType<typeof loadCredentials> | undefined;
+  const getCredentials = () => credentials ??= loadCredentials();
+
+  async function* appointmentIds() {
+    let cursor: string | null = null;
+    const pageSize = 250;
+    for (;;) {
+      let query = database.from("appointments").select("id")
+        .eq("organization_id", organizationId).eq("client_id", clientId)
+        .order("id", { ascending: true }).limit(pageSize);
+      if (cursor) query = query.gt("id", cursor);
+      const rows = await checked(query);
+      if (!rows?.length) return;
+      yield rows.map((row) => String(row.id));
+      if (rows.length < pageSize) return;
+      cursor = String(rows[rows.length - 1].id);
+    }
+  }
+
   return disconnectGoogleAccess({
     stopSync: async () => {
       await checked(database.from("provider_connections")
@@ -43,11 +71,23 @@ export async function disconnectStoredGoogleAccess(organizationId: string, clien
       await checked(database.from("provider_authorization_states").delete()
         .eq("organization_id", organizationId).eq("client_id", clientId).in("provider", providers));
     },
+    removeCalendarAppointments: source === "calendar" ? async () => {
+      const [calendar, legacy] = await getCredentials();
+      const credential = calendar ?? legacy;
+      const scopes = Array.isArray(credential?.scopes) ? credential.scopes.map(String) : [];
+      if (!credential || !hasGoogleCalendarScope(scopes)) {
+        throw new Error("Calendar permission is unavailable for unlink cleanup.");
+      }
+      const refreshToken = await decryptGoogleSecret({
+        ciphertext: String(credential.refresh_token_ciphertext),
+        iv: String(credential.refresh_token_iv),
+      }, organizationId, clientId);
+      const { accessToken } = await refreshGoogleAccessToken(refreshToken);
+      return removeWorkspaceGoogleCalendarAppointments(accessToken, clientId, appointmentIds());
+    } : undefined,
     loadRefreshTokens: async () => {
-      const credentials = await Promise.all(credentialTables.map((table) =>
-        optionalCalendarTable(table, database.from(table).select("refresh_token_ciphertext,refresh_token_iv")
-          .eq("organization_id", organizationId).eq("client_id", clientId).maybeSingle())));
-      return Promise.all(credentials.filter((credential) => credential !== null).map((credential) =>
+      const rows = await getCredentials();
+      return Promise.all(rows.filter((credential) => credential !== null).map((credential) =>
         decryptGoogleSecret({ ciphertext: String(credential.refresh_token_ciphertext),
           iv: String(credential.refresh_token_iv) }, organizationId, clientId)));
     },

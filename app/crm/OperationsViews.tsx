@@ -229,7 +229,7 @@ export function CalendarView({
     googleCalendarLinked && !googleCalendarConnection?.isActive;
   async function disconnectGoogle() {
     if (!googleCalendarClientId || !canConnectGoogleCalendar || disconnectingGoogle) return;
-    if (!window.confirm("Disconnect Google for this client? This stops Calendar syncing and disconnects Business Profile too, because Google may revoke both permissions together. Existing appointments and Google Calendar events will remain.")) return;
+    if (!window.confirm("Disconnect Google Calendar for this workspace? BrizBuilder will remove the appointments it synced to Google Calendar and keep your bookings in BrizBuilder. This also disconnects Google Business Profile for the workspace.")) return;
     setDisconnectingGoogle(true);
     setGoogleDisconnectMessage(null);
     try {
@@ -237,9 +237,17 @@ export function CalendarView({
         { action: "disconnect_google_calendar", clientId: googleCalendarClientId },
         "Google disconnected",
       );
-      if (result && typeof result === "object" && "revocationWarning" in result &&
-        typeof result.revocationWarning === "string") {
-        setGoogleDisconnectMessage(result.revocationWarning);
+      if (result && typeof result === "object") {
+        const payload = result as Record<string, unknown>;
+        const removed = payload.calendarAppointmentsRemoved;
+        const messages = [
+          typeof removed === "number" && removed > 0
+            ? `Removed ${removed} synced appointment${removed === 1 ? "" : "s"} from Google Calendar.`
+            : null,
+          payload.calendarCleanupWarning,
+          payload.revocationWarning,
+        ].filter((message): message is string => typeof message === "string");
+        if (messages.length) setGoogleDisconnectMessage(messages.join(" "));
       }
     } catch (error) {
       setGoogleDisconnectMessage(error instanceof Error ? error.message : "Google could not be disconnected. Try again.");

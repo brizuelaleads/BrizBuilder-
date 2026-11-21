@@ -157,8 +157,8 @@ export default function PrivacyPage() {
             </p>
             <p>
               BrizBuilder sends the appointment&apos;s customer name, service
-              type, notes, start and end times, status, and an appointment
-              identifier to Google to create and maintain the corresponding
+              type, notes, start and end times, status, and appointment and
+              workspace identifiers to Google to create and maintain the corresponding
               event. The Google Calendar event color follows the appointment
               status. For a linked lead, the event details show the lead status
               and its color marker.
@@ -207,11 +207,12 @@ export default function PrivacyPage() {
               so BrizBuilder&apos;s disconnect action stops and clears both
               connections for the selected client workspace. Other BrizBuilder
               connections using that Google account may also need to reconnect.
-              Removing access stops
-              future Calendar syncing; it does not automatically delete
-              existing events from Google Calendar or appointment records
-              from BrizBuilder. You can manage those events in Google Calendar
-              and request deletion of BrizBuilder data using the contact
+              Choosing Disconnect Google Calendar in BrizBuilder removes the
+              events it synced for that workspace from the linked Google
+              Calendar and keeps the original appointments in BrizBuilder.
+              If you remove access directly in Google Account permissions,
+              you can remove previously synced events in Google Calendar.
+              You can request deletion of BrizBuilder data using the contact
               details below.
             </p>
           </section>

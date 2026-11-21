@@ -2531,6 +2531,7 @@ export async function finishSupabaseGoogleCalendarConnect(
         organizationId,
         clientId,
         googleCalendarAppointmentFromRow(appointment),
+        now,
       )),
     );
     const failedSyncs = syncResults.filter(
@@ -2706,9 +2707,12 @@ export async function disconnectSupabaseGoogleProfile(
   const context = await getTenantContext(user);
   requirePermission(context, source === "calendar" ? "calendar.connect" : "profiles.connect");
   await requireClient(context, clientId);
-  const result = await disconnectStoredGoogleAccess(context.organizationId, clientId);
+  const result = await disconnectStoredGoogleAccess(context.organizationId, clientId, source);
   await audit(context, "google.disconnected", "provider_connection", clientId,
-    { googleRevocationConfirmed: result.googleRevocationConfirmed }, clientId);
+    {
+      googleRevocationConfirmed: result.googleRevocationConfirmed,
+      calendarAppointmentsRemoved: result.calendarAppointmentsRemoved,
+    }, clientId);
   return result;
 }
 

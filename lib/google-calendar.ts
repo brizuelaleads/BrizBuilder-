@@ -1,5 +1,6 @@
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 const GOOGLE_CALENDAR_TIMEOUT_MS = 10_000;
+const CALENDAR_CLEANUP_CONCURRENCY = 6;
 
 export type GoogleCalendarAppointment = {
   id: string;
@@ -10,6 +11,8 @@ export type GoogleCalendarAppointment = {
   notes: string;
   status: string;
   leadStatus?: string | null;
+  workspaceId?: string;
+  connectionStartedAt?: string;
 };
 
 const APPOINTMENT_APPEARANCE = {
@@ -95,7 +98,7 @@ async function googleCalendarRequest(
 
 const BASE32HEX = "0123456789abcdefghijklmnopqrstuv";
 
-/** Stable base32hex provider id for one BrizBuilder appointment. */
+/** Stable base32hex provider ID for an appointment creation key. */
 export async function googleCalendarEventId(
   appointmentId: string,
 ): Promise<string> {
@@ -162,6 +165,72 @@ function googleCalendarWriteUrl(eventId?: string | null, returnsEvent = true) {
   return url;
 }
 
+async function deleteGoogleCalendarEvent(accessToken: string, eventId: string) {
+  try {
+    await googleCalendarRequest(accessToken, googleCalendarWriteUrl(eventId, false), { method: "DELETE" });
+    return true;
+  } catch (error) {
+    if (error instanceof GoogleCalendarRequestError && [404, 410].includes(error.status)) return false;
+    throw error;
+  }
+}
+
+async function* listGoogleCalendarAppointmentIds(accessToken: string, filters: string[]) {
+  const url = new URL(`${GOOGLE_CALENDAR_API}/calendars/primary/events`);
+  for (const filter of filters) url.searchParams.append("privateExtendedProperty", filter);
+  url.searchParams.set("fields", "nextPageToken,items(id)");
+  url.searchParams.set("maxResults", "2500");
+  let pageToken: string | undefined;
+  do {
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const response = await googleCalendarRequest(accessToken, url);
+    const page = (await response.json()) as { items?: GoogleCalendarEvent[]; nextPageToken?: string };
+    for (const event of page.items ?? []) if (event.id) yield event.id;
+    pageToken = page.nextPageToken;
+  } while (pageToken);
+}
+
+export async function removeWorkspaceGoogleCalendarAppointments(
+  accessToken: string,
+  workspaceId: string,
+  appointmentBatches: AsyncIterable<string[]>,
+) {
+  const eventIds = new Set<string>();
+  let failed = false;
+  const collect = async (filters: string[]) => {
+    try {
+      for await (const id of listGoogleCalendarAppointmentIds(accessToken, filters)) eventIds.add(id);
+    } catch {
+      failed = true;
+    }
+  };
+  await collect([`brizbuilderWorkspaceId=${workspaceId}`]);
+
+  // Existing integrations only stamped the appointment ID. Look those up using
+  // IDs from this workspace's CRM rows, including events synced during connect.
+  try {
+    for await (const batch of appointmentBatches) {
+      // Google ORs repeated private-property filters. Bound the URL length.
+      for (let offset = 0; offset < batch.length; offset += 20) {
+        await collect(batch.slice(offset, offset + 20).map((id) => `brizbuilderAppointmentId=${id}`));
+      }
+    }
+  } catch {
+    failed = true;
+  }
+
+  const ids = [...eventIds];
+  let removed = 0;
+  for (let offset = 0; offset < ids.length; offset += CALENDAR_CLEANUP_CONCURRENCY) {
+    const results = await Promise.allSettled(ids.slice(offset, offset + CALENDAR_CLEANUP_CONCURRENCY)
+      .map((id) => deleteGoogleCalendarEvent(accessToken, id)));
+    removed += results.filter((result) => result.status === "fulfilled" && result.value).length;
+    failed ||= results.some((result) => result.status === "rejected");
+  }
+  if (failed) throw new Error("Some Google Calendar appointments could not be removed.");
+  return removed;
+}
+
 export async function syncGoogleCalendarAppointment(
   accessToken: string,
   appointment: GoogleCalendarAppointment,
@@ -173,7 +242,7 @@ export async function syncGoogleCalendarAppointment(
   );
   if (appointment.status === "CANCELED") {
     if (!existingEventId) return { action: "unchanged", eventId: null };
-    await googleCalendarRequest(accessToken, googleCalendarWriteUrl(existingEventId, false), { method: "DELETE" });
+    await deleteGoogleCalendarEvent(accessToken, existingEventId);
     return { action: "cancelled", eventId: null };
   }
 
@@ -208,14 +277,19 @@ export async function syncGoogleCalendarAppointment(
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
     throw new Error("The appointment time is invalid for Google Calendar.");
   }
-  const deterministicEventId = existingEventId ?? await googleCalendarEventId(appointment.id);
+  // Reconnecting can recreate bookings whose previous Google IDs were deleted.
+  const creationKey = appointment.connectionStartedAt ? `${appointment.id}:${appointment.connectionStartedAt}` : appointment.id;
+  const deterministicEventId = existingEventId ?? await googleCalendarEventId(creationKey);
   const body = JSON.stringify({
     ...(!existingEventId ? { id: deterministicEventId } : {}),
     ...appearance,
     start: { dateTime: start.toISOString() },
     end: { dateTime: end.toISOString() },
     extendedProperties: {
-      private: { brizbuilderAppointmentId: appointment.id },
+      private: {
+        brizbuilderAppointmentId: appointment.id,
+        ...(appointment.workspaceId ? { brizbuilderWorkspaceId: appointment.workspaceId } : {}),
+      },
     },
   });
   const url = googleCalendarWriteUrl(existingEventId);

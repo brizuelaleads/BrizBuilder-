@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { disconnectGoogleAccess } from "../lib/google-disconnect.ts";
 import { GOOGLE_CALENDAR_SCOPE, hasGoogleCalendarScope,
   googleCalendarAuthorizationScopes, shouldUseOwnedGoogleCalendarScope } from "../lib/google-calendar-scopes.ts";
-import { verifyGoogleCalendarAccess, syncGoogleCalendarAppointment } from "../lib/google-calendar.ts";
+import { removeWorkspaceGoogleCalendarAppointments, verifyGoogleCalendarAccess, syncGoogleCalendarAppointment } from "../lib/google-calendar.ts";
 
 test("new Calendar consent is owned-only while existing grants remain usable", () => {
   assert.deepEqual(googleCalendarAuthorizationScopes(), ["https://www.googleapis.com/auth/calendar.events.owned"]);
@@ -56,6 +56,93 @@ test("successful revocation clears local data and database failures are not hidd
   await assert.rejects(disconnectGoogleAccess({ ...operations,
     deleteLocalData: async () => { throw new Error("database unavailable"); },
   }), /database unavailable/);
+});
+
+test("Calendar unlink removes synced events before revoking Google access", async () => {
+  const calls = [];
+  const result = await disconnectGoogleAccess({
+    stopSync: async () => { calls.push("stop"); },
+    removeCalendarAppointments: async () => { calls.push("remove events"); return 3; },
+    loadRefreshTokens: async () => { calls.push("load tokens"); return ["token"]; },
+    revoke: async () => { calls.push("revoke"); },
+    deleteLocalData: async () => { calls.push("delete connection"); },
+  });
+  assert.deepEqual(calls, ["stop", "remove events", "load tokens", "revoke", "delete connection"]);
+  assert.equal(result.calendarAppointmentsRemoved, 3);
+  assert.equal(result.calendarCleanupWarning, null);
+});
+
+test("failed Calendar cleanup is reported and unlink still clears credentials", async () => {
+  const result = await disconnectGoogleAccess({
+    stopSync: async () => {},
+    removeCalendarAppointments: async () => { throw new Error("Calendar permission expired"); },
+    loadRefreshTokens: async () => ["token"],
+    revoke: async () => {},
+    deleteLocalData: async () => {},
+  });
+  assert.equal(result.disconnected, true);
+  assert.equal(result.calendarAppointmentsRemoved, null);
+  assert.match(result.calendarCleanupWarning, /remaining BrizBuilder events/);
+});
+
+test("workspace cleanup deletes paginated and legacy events once using exact private filters", async (t) => {
+  const queryFilters = [];
+  const deleted = [];
+  t.mock.method(globalThis, "fetch", async (input, init = {}) => {
+    const url = new URL(String(input));
+    if (init.method === "DELETE") {
+      assert.equal(url.searchParams.get("sendUpdates"), "none");
+      const id = url.pathname.split("/").at(-1);
+      deleted.push(id);
+      return new Response(null, { status: id === "already-done" ? 410 : 204 });
+    }
+    const filters = url.searchParams.getAll("privateExtendedProperty");
+    queryFilters.push(filters);
+    assert.equal(url.searchParams.get("fields"), "nextPageToken,items(id)");
+    if (filters.includes("brizbuilderWorkspaceId=target-workspace")) {
+      return url.searchParams.has("pageToken")
+        ? Response.json({ items: [{ id: "orphan-tagged-to-workspace" }, { id: "already-done" }] })
+        : Response.json({ items: [{ id: "tagged-event" }], nextPageToken: "page-2" });
+    }
+    return Response.json({ items: [{ id: "tagged-event" }, { id: "legacy-event" }] });
+  });
+  async function* appointmentBatches() {
+    yield ["own-1", "own-2"];
+  }
+  const removed = await removeWorkspaceGoogleCalendarAppointments("token", "target-workspace", appointmentBatches());
+  assert.deepEqual(queryFilters, [
+    ["brizbuilderWorkspaceId=target-workspace"], ["brizbuilderWorkspaceId=target-workspace"],
+    ["brizbuilderAppointmentId=own-1", "brizbuilderAppointmentId=own-2"],
+  ]);
+  assert.deepEqual(deleted.sort(), ["already-done", "legacy-event", "orphan-tagged-to-workspace", "tagged-event"]);
+  assert.equal(removed, 3);
+});
+
+test("reconnecting can sync a kept appointment under a fresh Google event ID", async (t) => {
+  const writes = [];
+  t.mock.method(globalThis, "fetch", async (_input, init = {}) => {
+    if (init.method !== "POST") return Response.json({ items: [] });
+    const event = JSON.parse(String(init.body));
+    writes.push(event);
+    return Response.json({ id: event.id });
+  });
+  const appointment = {
+    id: "kept-appointment",
+    workspaceId: "workspace",
+    contactName: "Casey Customer",
+    serviceType: "Roof inspection",
+    startsAt: "2026-12-01T15:00:00Z",
+    endsAt: "2026-12-01T16:00:00Z",
+    notes: "",
+    status: "CONFIRMED",
+  };
+  await syncGoogleCalendarAppointment("token", { ...appointment, connectionStartedAt: "2026-11-20T16:00:00.000Z" });
+  await syncGoogleCalendarAppointment("token", { ...appointment, connectionStartedAt: "2026-11-21T16:00:00.000Z" });
+  assert.notEqual(writes[0].id, writes[1].id);
+  assert.deepEqual(writes[1].extendedProperties.private, {
+    brizbuilderAppointmentId: appointment.id,
+    brizbuilderWorkspaceId: appointment.workspaceId,
+  });
 });
 
 test("Calendar verification and sync read only identifiers and preserve write behavior", async () => {
