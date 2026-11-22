@@ -1997,6 +1997,25 @@
 #crm-app[data-theme="glass"] .gp-view .crm-inline-error { border-color: rgb(255 92 112 / 35%); background: rgb(255 92 112 / 10%); color: #fecdd3; text-shadow: none; }
 
 /* Google profile media studio. Media is the visual focus; controls stay quiet. */
+#crm-app .gp-listing { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 24px; align-items: center; padding: 24px; }
+#crm-app .gp-listing-copy > span, #crm-app .gp-listing-photos > small { color: var(--crm-muted); font-size: 12px; }
+#crm-app .gp-listing-copy h3 { margin: 8px 0; color: var(--crm-ink); font-size: clamp(23px, 3vw, 36px); line-height: 1.12; overflow-wrap: anywhere; }
+#crm-app .gp-listing-copy p { margin: 4px 0; color: var(--crm-muted); font-size: 14px; overflow-wrap: anywhere; }
+#crm-app .gp-listing-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+#crm-app .gp-listing-actions a { display: inline-flex; gap: 7px; align-items: center; min-height: 38px; padding: 6px 12px; border: 1px solid var(--crm-line); border-radius: 8px; color: var(--crm-ink); font-size: 13px; text-decoration: none; }
+#crm-app .gp-listing-actions a:hover { background: var(--crm-subtle); }
+#crm-app .gp-listing-photos { display: grid; gap: 8px; min-width: 0; }
+#crm-app .gp-listing-photo-grid, #crm-app .gp-listing-placeholder { height: 200px; overflow: hidden; border-radius: 10px; background: var(--crm-subtle); }
+#crm-app .gp-listing-photo-grid { display: grid; grid-template-columns: 2fr 1fr; grid-auto-rows: minmax(0, 1fr); gap: 4px; }
+#crm-app .gp-listing-photo-grid[data-count="1"] { grid-template-columns: 1fr; }
+#crm-app .gp-listing-photo-grid img { width: 100%; height: 100%; object-fit: cover; }
+#crm-app .gp-listing-photo-grid[data-count="3"] img:first-child { grid-row: span 2; }
+#crm-app .gp-listing-placeholder { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; padding: 16px; color: var(--crm-muted); text-align: center; font-size: 13px; }
+@media (max-width: 720px) {
+  #crm-app .gp-listing { grid-template-columns: 1fr; gap: 16px; padding: 18px; }
+  #crm-app .gp-listing-photo-grid, #crm-app .gp-listing-placeholder { height: 150px; }
+}
+
 #crm-app .gp-media { display: grid; gap: 0; overflow: hidden; }
 #crm-app .gp-media-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 82px; padding: 20px 24px; border-bottom: 1px solid var(--crm-line); }
 #crm-app .gp-media-header > div { display: flex; align-items: center; gap: 12px; min-width: 0; }

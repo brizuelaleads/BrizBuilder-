@@ -15,6 +15,9 @@ import {
   Film,
   Grid2X2,
   Image as ImageIcon,
+  Globe,
+  MapPin,
+  Phone,
   Search,
   Trash2,
   Upload,
@@ -428,7 +431,7 @@ export function GoogleProfilesView({
         <div>
           <p>LOCAL MARKETING</p>
           <h2>Google Business Profiles</h2>
-          <span>Manage the Google profile and review link for this business.</span>
+          <span>Preview your business listing and manage its media and review link.</span>
         </div>
         {clients.length > 1 ? (
           <label className="gp-picker">
@@ -455,6 +458,7 @@ export function GoogleProfilesView({
         />
       ) : showExistingProfile ? (
         <>
+          <MediaLibrary key={JSON.stringify([client.id, profile?.locationId])} profileName={profileLabel} profile={profile} canManage={canManage} />
           {/* The connected profile: who customers find on Google, at a glance. */}
           <section className="crm-panel gp-hero" aria-label="Connected Google Business Profile">
             <div className="gp-identity">
@@ -540,8 +544,6 @@ export function GoogleProfilesView({
               ) : null}
             </footer>
           </section>
-
-          <MediaLibrary profileName={profileLabel} canManage={canManage} />
 
           {showCandidateChooser ? (
             <LocationChooser
@@ -752,7 +754,7 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function MediaLibrary({ profileName, canManage }: { profileName: string; canManage: boolean }) {
+function MediaLibrary({ profileName, profile, canManage }: { profileName: string; profile: CrmGoogleProfile | null; canManage: boolean }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const mediaRef = useRef<StagedMedia[]>([]);
   const [media, setMedia] = useState<StagedMedia[]>([]);
@@ -827,7 +829,37 @@ function MediaLibrary({ profileName, canManage }: { profileName: string; canMana
       : [...current, id]);
   }
 
+  const photos = media.filter((item) => item.kind === "image").slice(0, 3);
+  const website = /^https?:\/\//i.test(profile?.website ?? "") ? profile?.website : null;
+  const phone = profile?.phone?.replace(/[^+\d]/g, "");
+  const mapsQuery = encodeURIComponent([profileName, profile?.address].filter(Boolean).join(" "));
+
   return (
+    <>
+    <section className="crm-panel gp-listing" aria-label="Customer listing preview">
+      <div className="gp-listing-copy">
+        <span>Customer view preview</span>
+        <h3>{profileName}</h3>
+        {profile?.primaryCategory ? <p>{profile.primaryCategory}</p> : null}
+        {profile?.address ? <p>{profile.address}</p> : null}
+        <div className="gp-listing-actions">
+          {website ? <a href={website} target="_blank" rel="noreferrer"><Globe size={16} aria-hidden="true" /> Website</a> : null}
+          <a href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`} target="_blank" rel="noreferrer"><MapPin size={16} aria-hidden="true" /> Find on Maps</a>
+          {phone ? <a href={`tel:${phone}`}><Phone size={16} aria-hidden="true" /> Call</a> : null}
+        </div>
+      </div>
+      <div className="gp-listing-photos">
+        {photos.length ? (
+          <div className="gp-listing-photo-grid" data-count={photos.length}>
+            {photos.map((photo) => (
+              // eslint-disable-next-line @next/next/no-img-element -- Local draft object URL
+              <img key={photo.id} src={photo.url} alt={photo.name} />
+            ))}
+          </div>
+        ) : <div className="gp-listing-placeholder"><ImageIcon size={24} aria-hidden="true" /> Add a photo below to preview it here</div>}
+        <small>{photos.length ? "Draft photos · Visible only in this browser" : "Live Google photos are available on the listing in Maps."}</small>
+      </div>
+    </section>
     <section className="crm-panel gp-media" aria-labelledby="gp-media-title">
       <header className="gp-media-header">
         <div>
@@ -922,6 +954,7 @@ function MediaLibrary({ profileName, canManage }: { profileName: string; canMana
         <a href="https://support.google.com/business/answer/6103862" target="_blank" rel="noreferrer">Google media guidelines</a>
       </footer>
     </section>
+    </>
   );
 }
 
