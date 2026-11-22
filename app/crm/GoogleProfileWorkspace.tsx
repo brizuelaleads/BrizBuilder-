@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type CSSProperties,
   type DragEvent,
   type FormEvent,
   type ReactNode,
@@ -29,8 +30,14 @@ import {
   Upload,
   X,
   CalendarCheck,
+  AlertTriangle,
+  CheckCircle2,
+  ChevronRight,
+  Info,
+  XCircle,
 } from "lucide-react";
 import type { CrmGoogleProfile } from "../../db/crm";
+import { profileAlerts, profileHealth, type HealthFix } from "../../lib/google-profile-health";
 import type {
   GoogleBusinessPerformance,
   GoogleBusinessReviewsPage,
@@ -306,6 +313,100 @@ export function GooglePerformancePanel({ clientId }: { clientId: string }) {
   );
 }
 
+
+/* ───────────────────────────── Health and alerts ───────────────────────────── */
+
+const ALERT_ICON = {
+  critical: <XCircle size={18} aria-hidden="true" />,
+  warning: <AlertTriangle size={18} aria-hidden="true" />,
+  info: <Info size={18} aria-hidden="true" />,
+};
+
+export function GoogleProfileHealthPanel({ listing, reviews, hasReviewLink, onFix }: {
+  listing: LiveListing | null;
+  reviews: GoogleBusinessReviewsPage | null;
+  hasReviewLink: boolean;
+  onFix: (fix: HealthFix) => void;
+}) {
+  const [showPassed, setShowPassed] = useState(false);
+  const [now] = useState(() => new Date());
+  if (!listing?.detailsAvailable) return null;
+  const health = profileHealth({ listing, reviews, hasReviewLink, now });
+  const alerts = profileAlerts({ listing, reviews, now });
+  const failing = health.checks.filter((item) => item.status === "fail").sort((a, b) => b.weight - a.weight);
+  const passed = health.checks.filter((item) => item.status === "pass");
+  const unknown = health.checks.filter((item) => item.status === "unknown");
+
+  return (
+    <>
+      {alerts.length ? (
+        <section className="crm-panel gbw-alerts" aria-labelledby="gbw-alerts-title">
+          <h3 id="gbw-alerts-title">Needs attention</h3>
+          <ul>
+            {alerts.slice(0, 6).map((alert) => (
+              <li key={alert.id} className={`is-${alert.tone}`}>
+                <span className="gbw-alert-icon">{ALERT_ICON[alert.tone]}</span>
+                <div>
+                  <strong>{alert.title}</strong>
+                  <p>{alert.detail}</p>
+                </div>
+                {alert.action === "google" ? <a className="crm-button-secondary" href="https://business.google.com/locations" target="_blank" rel="noreferrer">Review on Google</a> : null}
+                {alert.action === "reviews" ? <a className="crm-button-secondary" href="/dashboard?view=reviews">Reply</a> : null}
+                {alert.action === "edit" ? <button className="crm-button-secondary" type="button" onClick={() => onFix({ kind: "edit", section: "about" })}>Change status</button> : null}
+              </li>
+            ))}
+          </ul>
+          {alerts.length > 6 ? <p className="gbw-hint">{alerts.length - 6} more in the Reviews inbox.</p> : null}
+        </section>
+      ) : null}
+
+      <section className="crm-panel gbw-health" aria-labelledby="gbw-health-title">
+        <div className="gbw-health-score">
+          <div className="gbw-ring" style={{ "--gbw-score": `${health.score}%` } as CSSProperties} role="img" aria-label={`Profile health ${health.score} out of 100`}>
+            <strong>{health.score}</strong>
+            <span>/100</span>
+          </div>
+          <div>
+            <h3 id="gbw-health-title">Profile health</h3>
+            <p className={`gbw-grade is-${health.grade === "Strong" ? "good" : health.grade === "Good" ? "ok" : "bad"}`}>{health.grade}</p>
+            <p className="gbw-hint">{passed.length} of {passed.length + failing.length} checks passed{unknown.length ? ` · ${unknown.length} not checked` : ""}</p>
+          </div>
+        </div>
+        <div className="gbw-health-list">
+          {failing.length ? (
+            <ul>
+              {failing.map((item) => (
+                <li key={item.id}>
+                  <XCircle size={18} aria-hidden="true" className="gbw-check-bad" />
+                  <div>
+                    <strong>{item.label}</strong>
+                    <p>{item.detail}</p>
+                  </div>
+                  {item.fix ? (
+                    item.fix.kind === "reviews"
+                      ? <a className="gbw-fix" href="/dashboard?view=reviews">Fix <ChevronRight size={15} aria-hidden="true" /></a>
+                      : <button type="button" className="gbw-fix" onClick={() => onFix(item.fix as HealthFix)}>Fix <ChevronRight size={15} aria-hidden="true" /></button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : <p className="gbw-all-good"><CheckCircle2 size={18} aria-hidden="true" /> Every check passes. Keep adding photos and reviews to stay ahead.</p>}
+          {passed.length ? (
+            <details className="gbw-passed" open={showPassed} onToggle={(event) => setShowPassed((event.target as HTMLDetailsElement).open)}>
+              <summary>{passed.length} passed</summary>
+              <ul>
+                {passed.map((item) => (
+                  <li key={item.id}><CheckCircle2 size={16} aria-hidden="true" className="gbw-check-good" /> {item.label}</li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </div>
+      </section>
+    </>
+  );
+}
+
 /* ───────────────────────────── Edit profile ───────────────────────────── */
 
 const EDIT_DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"] as const;
@@ -439,15 +540,20 @@ function CategoryPicker({ clientId, regionCode, onPick, placeholder }: {
   );
 }
 
-export function GoogleProfileEditor({ clientId, profile, listing, canManage, mutate, onSaved }: {
+export function GoogleProfileEditor({ clientId, profile, listing, canManage, mutate, onSaved, initialSection = null }: {
   clientId: string;
   profile: CrmGoogleProfile | null;
   listing: LiveListing | null;
   canManage: boolean;
   mutate: Mutate;
   onSaved: () => void;
+  initialSection?: string | null;
 }) {
-  const [openSection, setOpenSection] = useState<string | null>(null);
+  const [openSection, setOpenSection] = useState<string | null>(initialSection);
+  useEffect(() => {
+    if (!initialSection || !listing) return;
+    document.getElementById(`gbw-${initialSection === "specialHours" ? "special" : initialSection}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [initialSection, listing]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 

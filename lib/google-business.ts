@@ -960,6 +960,22 @@ export async function deleteGoogleBusinessMedia(accessToken: string, accountName
   await googleApiJson(new URL(`${GOOGLE_MY_BUSINESS_API}/${mediaName}`), accessToken, { remainingFetches: 2 }, { method: "DELETE" });
 }
 
+/** The small slice of profile state the hourly alert sweep needs. */
+export async function getGoogleBusinessAlertState(accessToken: string, accountName: string, locationName: string) {
+  const location = googleResourceName(locationName, "locations");
+  const infoUrl = new URL(`${BUSINESS_INFO_API}/${location}`);
+  infoUrl.searchParams.set("readMask", "title,metadata");
+  const [info, reviews] = await Promise.all([
+    googleApiJson(infoUrl, accessToken, { remainingFetches: 2 }),
+    listGoogleBusinessReviews(accessToken, accountName, locationName),
+  ]);
+  return {
+    title: asString(info.title),
+    hasGoogleUpdated: asRecord(info.metadata).hasGoogleUpdated === true,
+    reviews: reviews.reviews,
+  };
+}
+
 export async function updateGoogleBusinessReviewReply(
   accessToken: string,
   accountResourceName: string,

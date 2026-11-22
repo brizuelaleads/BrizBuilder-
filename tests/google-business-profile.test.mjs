@@ -130,3 +130,94 @@ test("media routes only touch media that belongs to the connected location", () 
   const crm = readFileSync(new URL("../db/supabase-crm.ts", import.meta.url), "utf8");
   assert.match(crm, /action === "update_google_location"[\s\S]{0,200}requirePermission\(context, "profiles.manage"\)/);
 });
+
+import { googleProfilePushAlerts, holidaysMissingHours, profileAlerts, profileHealth } from "../lib/google-profile-health.ts";
+
+const now = new Date(2026, 10, 22, 12);
+const daysAgo = (days) => new Date(now.getTime() - days * 86_400_000).toISOString();
+const fullListing = () => ({
+  editable: {
+    description: "x".repeat(300), primaryPhone: "(760) 851-3652", website: "https://example.com",
+    primaryCategory: { name: "categories/gcid:pest_control_service" }, additionalCategories: [{}],
+    serviceItems: [{}, {}, {}], openStatus: "OPEN",
+  },
+  hasGoogleUpdated: false, hasPendingEdits: false,
+  hours: [{}],
+  specialHours: [{ date: "2026-11-26" }, { date: "2026-12-25" }, { date: "2027-01-01" }],
+  mediaAvailable: true,
+  media: [
+    { kind: "PHOTO", category: "COVER", createTime: daysAgo(3) },
+    { kind: "PHOTO", category: "PROFILE", createTime: daysAgo(40) },
+    ...Array.from({ length: 8 }, () => ({ kind: "PHOTO", category: "AT_WORK", createTime: daysAgo(60) })),
+  ],
+});
+const goodReviews = { totalReviewCount: 2, reviews: [
+  { reviewId: "a", reviewerName: "Ana", starRating: 5, createTime: daysAgo(5), reply: { comment: "Thanks" } },
+  { reviewId: "b", reviewerName: "Bo", starRating: 4, createTime: daysAgo(40), reply: { comment: "Thanks" } },
+] };
+
+test("a complete profile scores 100 and missing basics cost points", () => {
+  const full = profileHealth({ listing: fullListing(), reviews: goodReviews, hasReviewLink: true, now });
+  assert.equal(full.score, 100);
+  assert.equal(full.grade, "Strong");
+
+  const listing = fullListing();
+  listing.editable.description = "Short.";
+  listing.hours = [];
+  listing.media = [];
+  const weak = profileHealth({ listing, reviews: goodReviews, hasReviewLink: false, now });
+  const failing = weak.checks.filter((item) => item.status === "fail").map((item) => item.id);
+  assert.deepEqual(failing.sort(), ["cover", "description", "freshPhotos", "hours", "logo", "photos", "reviewLink"].sort());
+  assert.ok(weak.score < 65);
+  assert.deepEqual(weak.checks.find((item) => item.id === "hours").fix, { kind: "edit", section: "hours" });
+});
+
+test("checks that could not be loaded do not count against the score", () => {
+  const listing = fullListing();
+  listing.mediaAvailable = false;
+  listing.media = [];
+  const result = profileHealth({ listing, reviews: null, hasReviewLink: true, now });
+  assert.equal(result.score, 100);
+  assert.equal(result.checks.filter((item) => item.status === "unknown").length, 6);
+});
+
+test("upcoming holidays without special hours are flagged", () => {
+  // 45 days ahead of Nov 22 reaches Thanksgiving, Christmas and New Year's Day.
+  assert.deepEqual(holidaysMissingHours([{ date: "2026-12-25" }], now).map((holiday) => holiday.name), ["Thanksgiving", "New Year's Day"]);
+  assert.deepEqual(holidaysMissingHours([{ date: "2026-11-26" }, { date: "2026-12-25" }, { date: "2027-01-01" }], now), []);
+});
+
+test("alerts surface Google edits and reviews that need a reply", () => {
+  const listing = { ...fullListing(), hasGoogleUpdated: true };
+  const alerts = profileAlerts({ listing, now, reviews: { totalReviewCount: 3, reviews: [
+    { reviewId: "low", reviewerName: "Cy", starRating: 1, createTime: daysAgo(1), reply: null },
+    { reviewId: "wait", reviewerName: "Di", starRating: 5, createTime: daysAgo(3), reply: null },
+    { reviewId: "fresh", reviewerName: "Ed", starRating: 5, createTime: daysAgo(0.5), reply: null },
+  ] } });
+  assert.deepEqual(alerts.map((alert) => alert.id), ["google-updated", "low-low", "unanswered-wait"]);
+});
+
+test("push alerts use stable keys and skip old reviews", () => {
+  const alerts = googleProfilePushAlerts({
+    clientId: "client-1", businessName: "Segovia", hasGoogleUpdated: true, now,
+    reviews: [
+      { reviewId: "low", reviewerName: "Cy", starRating: 2, createTime: daysAgo(1), reply: null },
+      { reviewId: "wait", reviewerName: "Di", starRating: 4, createTime: daysAgo(3), reply: null },
+      { reviewId: "old", reviewerName: "Fa", starRating: 1, createTime: daysAgo(20), reply: null },
+      { reviewId: "done", reviewerName: "Gi", starRating: 1, createTime: daysAgo(1), reply: { comment: "Sorry" } },
+    ],
+  });
+  assert.deepEqual(alerts.map((alert) => alert.eventKey), [
+    "gbp:client-1:google-updated:2026-11-16",
+    "review:low:low",
+    "review:wait:unanswered",
+  ]);
+  assert.ok(alerts.every((alert) => alert.url.startsWith("/dashboard?view=")));
+});
+
+test("the hourly sweep is wired to the cron and respects the notification toggle", () => {
+  const worker = readFileSync(new URL("../worker/index.ts", import.meta.url), "utf8");
+  assert.match(worker, /getUTCMinutes\(\) < 15\)[\s\S]{0,200}sweepGoogleProfileAlerts/);
+  const sweep = readFileSync(new URL("../lib/google-profile-alerts.ts", import.meta.url), "utf8");
+  assert.match(sweep, /branding\.notifications\.googleProfile/);
+});

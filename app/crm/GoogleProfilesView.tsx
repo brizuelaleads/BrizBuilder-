@@ -28,6 +28,7 @@ import type { CrmClient, CrmGoogleProfile } from "../../db/crm";
 import type { GoogleBusinessReviewsPage } from "../../lib/google-business";
 import {
   GooglePerformancePanel,
+  GoogleProfileHealthPanel,
   GooglePhotosPanel,
   GoogleProfileEditor,
   useGoogleListing,
@@ -410,6 +411,12 @@ export function GoogleProfilesView({
   }
 
   const [tab, setTab] = useState<ProfileTab>("overview");
+  const [editSection, setEditSection] = useState<string | null>(null);
+  const navigateProfile = useCallback((next: ProfileTab, section: string | null = null) => {
+    setEditSection(section);
+    setTab(next);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
   const activeTab: ProfileTab = activeCandidateState !== "idle" ? "settings" : tab;
   const profileLabel = profile?.businessName ?? client?.businessName ?? "Business profile";
   const locationSummary = useMemo(
@@ -507,7 +514,7 @@ export function GoogleProfilesView({
                 type="button"
                 className={activeTab === item.key ? "active" : ""}
                 aria-current={activeTab === item.key ? "page" : undefined}
-                onClick={() => setTab(item.key)}
+                onClick={() => { setEditSection(null); setTab(item.key); }}
               >
                 {item.icon}{item.label}
                 {item.key === "settings" && !profile?.googleReviewUrl ? <span className="gbw-dot" role="img" aria-label="needs attention" /> : null}
@@ -598,6 +605,8 @@ export function GoogleProfilesView({
               canManage={canManage}
               canReadReviews={canReadReviews}
               mutate={mutate}
+              editSection={editSection}
+              onNavigate={navigateProfile}
             />
           )}
         </>
@@ -881,8 +890,10 @@ const PROFILE_TABS: { key: ProfileTab; label: string; icon: ReactNode }[] = [
 ];
 
 /** One business's live Google data, shared by the Overview, Edit and Photos tabs. */
-function ProfileTabContent({ tab, clientId, profile, profileName, canManage, canReadReviews, mutate }: {
+function ProfileTabContent({ tab, clientId, profile, profileName, canManage, canReadReviews, mutate, editSection, onNavigate }: {
   tab: Exclude<ProfileTab, "settings">;
+  editSection: string | null;
+  onNavigate: (tab: ProfileTab, section?: string | null) => void;
   clientId: string;
   profile: CrmGoogleProfile | null;
   profileName: string;
@@ -894,13 +905,21 @@ function ProfileTabContent({ tab, clientId, profile, profileName, canManage, can
   const { listing, reviews, listingStatus, reviewStatus, reload } = useGoogleListing(clientId, connected, canReadReviews);
 
   if (tab === "edit") {
-    return <GoogleProfileEditor clientId={clientId} profile={profile} listing={listing} canManage={canManage} mutate={mutate} onSaved={reload} />;
+    return <GoogleProfileEditor clientId={clientId} profile={profile} listing={listing} canManage={canManage} mutate={mutate} onSaved={reload} initialSection={editSection} />;
   }
   if (tab === "photos") {
     return <GooglePhotosPanel clientId={clientId} listing={listing} canManage={canManage} onChanged={reload} />;
   }
   return (
     <>
+      {connected ? (
+        <GoogleProfileHealthPanel
+          listing={listing}
+          reviews={canReadReviews ? reviews : null}
+          hasReviewLink={Boolean(profile?.googleReviewUrl)}
+          onFix={(fix) => fix.kind === "edit" ? onNavigate("edit", fix.section) : fix.kind === "tab" ? onNavigate(fix.tab) : undefined}
+        />
+      ) : null}
       {connected && canManage ? <GooglePerformancePanel clientId={clientId} /> : null}
       <GoogleKnowledgePanel
         profileName={profileName}

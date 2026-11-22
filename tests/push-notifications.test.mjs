@@ -331,8 +331,16 @@ test("thresholds are clamped into range rather than rejected", () => {
 });
 
 test("SQL and TypeScript agree on the notification keys", () => {
+  // The newest migration that sets the column default is the one in force.
+  const latestDefault = fs
+    .readdirSync(path.join(root, "supabase/migrations"))
+    .filter((file) => file.endsWith(".sql"))
+    .sort()
+    .map((file) => read(`supabase/migrations/${file}`))
+    .filter((sql) => /notification_preferences set default/.test(sql))
+    .at(-1);
   const sqlKeys = (
-    migration.match(/jsonb_build_object\(([\s\S]*?)\n  \)/)?.[1].match(/'(\w+)'/g) ?? []
+    latestDefault.match(/jsonb_build_object\(([\s\S]*?)\n  \)/)?.[1].match(/'(\w+)'/g) ?? []
   ).map((item) => item.replaceAll("'", ""));
   assert.deepEqual(
     sqlKeys.sort(),

@@ -83,6 +83,7 @@ const notificationNames: Record<NotificationKey, string> = {
   hotLead: "Hot Lead / High Lead Score",
   reviewRequest: "Review Requests",
   dailyDigest: "Daily Digest",
+  googleProfile: "Google Profile Alerts",
 };
 
 function toFormState(value: TenantBranding | undefined): FormState {

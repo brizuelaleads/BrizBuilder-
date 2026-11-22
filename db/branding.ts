@@ -16,6 +16,7 @@ export type TenantNotificationPreferences = {
   hotLead: boolean;
   reviewRequest: boolean;
   dailyDigest: boolean;
+  googleProfile: boolean;
 };
 
 /**
@@ -53,6 +54,7 @@ export const NOTIFICATION_KEYS = [
   "hotLead",
   "reviewRequest",
   "dailyDigest",
+  "googleProfile",
 ] as const;
 
 export type NotificationKey = (typeof NOTIFICATION_KEYS)[number];
@@ -66,6 +68,7 @@ export const NOTIFICATION_LABELS: Record<NotificationKey, string> = {
   hotLead: "Hot lead (high score)",
   reviewRequest: "Review requests",
   dailyDigest: "Daily summary digest",
+  googleProfile: "Google profile alerts",
 };
 
 /** One line of plain description per alert, shown under its toggle. */
@@ -78,6 +81,7 @@ export const NOTIFICATION_DESCRIPTIONS: Record<NotificationKey, string> = {
   hotLead: "A lead's score crosses the hot-lead threshold.",
   reviewRequest: "A review request is sent or answered.",
   dailyDigest: "A once-daily summary of the day's activity.",
+  googleProfile: "Google changes the profile, a low-star review arrives, or a review waits 2 days for a reply.",
 };
 
 export const DEFAULT_NOTIFICATIONS: TenantNotificationPreferences = {
@@ -89,6 +93,7 @@ export const DEFAULT_NOTIFICATIONS: TenantNotificationPreferences = {
   hotLead: true,
   reviewRequest: false,
   dailyDigest: false,
+  googleProfile: true,
 };
 
 export const DEFAULT_THRESHOLDS: TenantNotificationThresholds = {

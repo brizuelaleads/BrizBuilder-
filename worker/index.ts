@@ -7,6 +7,7 @@ import {
   reconcileCallRailIngestion,
 } from "../lib/callrail-ingestion";
 import { runNotificationSweeps } from "../lib/notification-sweeps";
+import { sweepGoogleProfileAlerts } from "../lib/google-profile-alerts";
 import { syncMetaAdsInsights } from "../lib/meta-ads-sync";
 import { advanceMetaAdsBackfills } from "../lib/meta-ads-backfill";
 import { legacyPasswordResetRedirect } from "../lib/password-recovery-url";
@@ -94,7 +95,7 @@ const worker = {
   },
 
   async scheduled(
-    _controller: ScheduledController,
+    controller: ScheduledController,
     _env: Env,
     ctx: ExecutionContext,
   ): Promise<void> {
@@ -112,6 +113,15 @@ const worker = {
     // event, so they ride the same tick. Kept as a separate waitUntil so
     // neither job can delay or fail the other.
     ctx.waitUntil(runNotificationSweeps());
+    // Google profile alerts call Google twice per business, so they run once an
+    // hour (the first tick of each hour) rather than on every 15-minute tick.
+    if (new Date(controller.scheduledTime).getUTCMinutes() < 15) {
+      ctx.waitUntil(
+        sweepGoogleProfileAlerts().catch(() => {
+          console.error("Google profile alert sweep could not run.");
+        }),
+      );
+    }
     // Meta reports spend on its own schedule and offers no webhook, so the only
     // way to have it is to ask. Same tick, its own waitUntil: an ad platform
     // being slow or throttled must never hold up call ingestion.

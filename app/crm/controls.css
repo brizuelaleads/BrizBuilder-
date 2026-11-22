@@ -45,7 +45,7 @@
       .crm-task-check, .crm-visual-node, .crm-client-toggle, .crm-ads-disclosure,
       .crm-ads-campaign-leads button, .crm-workflow-list > button, .crm-appearance-option,
       .gbw-kpi, .gbw-tabs > button, .gbw-segmented > button, .gbw-icon-button, .gbw-link-button,
-      .gbw-chip button, .gbw-category-results button, .gbp-hours-toggle, .gbp-actions > button)) {
+      .gbw-chip button, .gbw-category-results button, .gbp-hours-toggle, .gbp-actions > button, .gbw-fix)) {
     display: var(--btn-display, inline-flex);
     flex-direction: var(--btn-direction, row);
     align-items: center;
@@ -2419,3 +2419,57 @@
 /* Legacy .crm-panel > header skins add a rule and bold copy; these headers are plain. */
 #crm-app .gp-view .crm-panel > header.gbw-panel-head { min-height: 0; padding: 0; border: 0; background: none; box-shadow: none; }
 #crm-app .gp-view .gbw-panel-head p { font-weight: 400; letter-spacing: 0; }
+
+/* Profile health score and attention list (Overview). */
+#crm-app .gbw-alerts { display: grid; gap: 12px; padding: 20px 24px; }
+#crm-app .gbw-alerts h3 { margin: 0; color: var(--crm-ink); font-size: 16px; }
+#crm-app .gbw-alerts ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+#crm-app .gbw-alerts li { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--crm-line); border-left-width: 3px; border-radius: 10px; }
+#crm-app .gbw-alerts li > div { flex: 1; min-width: 0; }
+#crm-app .gbw-alerts li strong { color: var(--crm-ink); font-size: 14px; }
+#crm-app .gbw-alerts li p { margin: 2px 0 0; color: var(--crm-muted); font-size: 13px; }
+#crm-app .gbw-alerts li > :is(a, button) { flex-shrink: 0; }
+#crm-app .gbw-alerts li.is-critical { border-left-color: var(--gbw-bad); }
+#crm-app .gbw-alerts li.is-warning { border-left-color: #e37400; }
+#crm-app .gbw-alerts li.is-info { border-left-color: var(--gbw-series); }
+#crm-app .gbw-alert-icon { display: grid; flex-shrink: 0; }
+#crm-app .is-critical .gbw-alert-icon { color: var(--gbw-bad); }
+#crm-app .is-warning .gbw-alert-icon { color: #e37400; }
+#crm-app .is-info .gbw-alert-icon { color: var(--gbw-series); }
+
+#crm-app .gbw-health { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 24px; padding: 22px 24px; }
+#crm-app .gbw-health-score { display: flex; align-items: center; gap: 16px; align-self: start; }
+#crm-app .gbw-health-score h3 { margin: 0; color: var(--crm-ink); font-size: 16px; }
+#crm-app .gbw-ring { display: grid; place-items: center; align-content: center; flex-shrink: 0; width: 96px; height: 96px; border-radius: 50%; background: radial-gradient(closest-side, var(--crm-card) 79%, transparent 80% 100%), conic-gradient(var(--gbw-series) var(--gbw-score), var(--crm-subtle) 0); }
+#crm-app .gbw-ring strong { color: var(--crm-ink); font-size: 28px; line-height: 1; font-variant-numeric: tabular-nums; }
+#crm-app .gbw-ring span { color: var(--crm-muted); font-size: 11px; }
+#crm-app .gbw-grade { margin: 4px 0 2px; font-size: 14px; font-weight: 650; }
+#crm-app .gbw-grade.is-good { color: var(--gbw-good); }
+#crm-app .gbw-grade.is-ok { color: #b06000; }
+#crm-app .gbw-grade.is-bad { color: var(--gbw-bad); }
+#crm-app[data-theme="glass"] .gbw-grade.is-ok { color: #fdd663; }
+#crm-app .gbw-health-list > ul { display: grid; margin: 0; padding: 0; list-style: none; }
+#crm-app .gbw-health-list > ul > li { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px solid var(--crm-line); }
+#crm-app .gbw-health-list > ul > li:first-child { border-top: 0; padding-top: 0; }
+#crm-app .gbw-health-list li > div { flex: 1; min-width: 0; }
+#crm-app .gbw-health-list strong { color: var(--crm-ink); font-size: 14px; }
+#crm-app .gbw-health-list li p { margin: 2px 0 0; color: var(--crm-muted); font-size: 13px; }
+#crm-app .gbw-check-bad { flex-shrink: 0; margin-top: 1px; color: var(--gbw-bad); }
+#crm-app .gbw-check-good { flex-shrink: 0; color: var(--gbw-good); }
+#crm-app .gbw-fix { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; padding: 4px 6px; border: 0; border-radius: 6px; background: none; color: var(--gbw-series); font: inherit; font-size: 13px; font-weight: 650; text-decoration: none; cursor: pointer; }
+#crm-app .gbw-fix:hover { background: var(--gbw-series-soft); }
+#crm-app .gbw-all-good { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--crm-ink); font-size: 14px; }
+#crm-app .gbw-all-good svg { color: var(--gbw-good); }
+#crm-app .gbw-passed { margin-top: 10px; }
+#crm-app .gbw-passed summary { color: var(--crm-muted); font-size: 13px; cursor: pointer; }
+#crm-app .gbw-passed ul { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+#crm-app .gbw-passed li { display: flex; align-items: center; gap: 8px; color: var(--crm-ink); font-size: 13px; }
+@media (max-width: 860px) {
+  #crm-app .gbw-health { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  #crm-app :is(.gbw-alerts, .gbw-health) { padding: 16px; }
+  #crm-app .gbw-alerts li { flex-wrap: wrap; align-items: flex-start; }
+  #crm-app .gbw-alerts li > div { flex: 1 1 calc(100% - 40px); }
+  #crm-app .gbw-alerts li > :is(a, button) { margin-left: 30px; }
+}
