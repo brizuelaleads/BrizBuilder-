@@ -358,7 +358,7 @@ async function googleApiJson(
   url: URL,
   accessToken: string,
   budget: GoogleRequestBudget,
-  init: { method?: "GET" | "PUT" | "DELETE"; body?: UnknownRecord } = {},
+  init: { method?: "GET" | "PUT" | "DELETE" | "PATCH"; body?: UnknownRecord } = {},
 ) {
   let response: Response | null = null;
   let requestError: unknown = null;
@@ -651,6 +651,51 @@ export async function listGoogleBusinessReviews(
         : 0,
     nextPageToken: asString(payload.nextPageToken),
   };
+}
+
+export async function getGoogleBusinessListing(accessToken: string, accountName: string, locationName: string) {
+  const account = googleResourceName(accountName, "accounts");
+  const location = googleResourceName(locationName, "locations");
+  const infoUrl = new URL(`${BUSINESS_INFO_API}/${location}`);
+  infoUrl.searchParams.set("readMask", "metadata,profile,regularHours,websiteUri");
+  const mediaUrl = new URL(`${GOOGLE_MY_BUSINESS_API}/${account}/${location}/media`);
+  mediaUrl.searchParams.set("pageSize", "12");
+  const [info, media] = await Promise.allSettled([
+    googleApiJson(infoUrl, accessToken, { remainingFetches: 2 }),
+    googleApiJson(mediaUrl, accessToken, { remainingFetches: 2 }),
+  ]);
+  const details = info.status === "fulfilled" ? info.value : {};
+  return {
+    mapsUrl: asString(asRecord(details.metadata).mapsUri),
+    description: asString(asRecord(details.profile).description),
+    website: asString(details.websiteUri),
+    hours: asArray(asRecord(details.regularHours).periods).map(asRecord).map((period) => ({
+      openDay: asString(period.openDay),
+      closeDay: asString(period.closeDay),
+      openTime: asString(period.openTime),
+      closeTime: asString(period.closeTime),
+    })),
+    detailsAvailable: info.status === "fulfilled",
+    mediaAvailable: media.status === "fulfilled",
+    hasMoreMedia: media.status === "fulfilled" && Boolean(media.value.nextPageToken),
+    media: media.status === "fulfilled" ? asArray(media.value.mediaItems).map(asRecord).map((item) => ({
+      name: asString(item.name),
+      url: asString(item.googleUrl),
+      thumbnail: asString(item.thumbnailUrl),
+      kind: asString(item.mediaFormat),
+      description: asString(item.description),
+    })) : [],
+  };
+}
+
+export async function updateGoogleBusinessListing(accessToken: string, locationName: string, website: string, description: string) {
+  const location = googleResourceName(locationName, "locations");
+  const url = new URL(`${BUSINESS_INFO_API}/${location}`);
+  url.searchParams.set("updateMask", "websiteUri,profile.description");
+  await googleApiJson(url, accessToken, { remainingFetches: 2 }, {
+    method: "PATCH",
+    body: { websiteUri: website, profile: { description } },
+  });
 }
 
 export async function updateGoogleBusinessReviewReply(

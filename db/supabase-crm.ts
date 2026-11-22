@@ -20,6 +20,8 @@ import {
   listGoogleBusinessReviews,
   listGoogleBusinessLocations,
   deleteGoogleBusinessReviewReply,
+  getGoogleBusinessListing,
+  updateGoogleBusinessListing,
   refreshGoogleAccessToken,
   updateGoogleBusinessReviewReply,
   type GoogleBusinessLocation,
@@ -1946,6 +1948,13 @@ async function authorizedGoogleLocations(
   }, organizationId, clientId);
   const tokens = await refreshGoogleAccessToken(refreshToken);
   return listGoogleBusinessLocations(tokens.accessToken);
+}
+
+export async function getSupabaseGoogleListing(user: ChatGPTUser, clientId: string) {
+  const context = await getTenantContext(user);
+  requirePermission(context, "profiles.manage");
+  const { accessToken, accountResourceName, locationResourceName } = await authorizedGoogleReviewContext(context, clientId);
+  return getGoogleBusinessListing(accessToken, accountResourceName, locationResourceName);
 }
 
 async function authorizedGoogleReviewContext(
@@ -5105,6 +5114,26 @@ export async function executeSupabaseCrmAction(
   if (action === "disconnect_google_profile") {
     const clientId = requireText(input.clientId, "Client", 100);
     return disconnectSupabaseGoogleProfile(user, clientId);
+  }
+
+  if (action === "update_google_listing") {
+    requirePermission(context, "profiles.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    if (typeof input.website !== "string" || typeof input.description !== "string" ||
+        input.description.length > 750 || input.website.length > 2048) {
+      throw new Error("Enter a valid website and a description of up to 750 characters.");
+    }
+    const website = input.website.trim();
+    if (website) {
+      const url = new URL(website);
+      if (!["https:", "http:"].includes(url.protocol) || url.username || url.password)
+        throw new Error("Enter a valid business website URL.");
+    }
+    const authorized = await authorizedGoogleReviewContext(context, clientId);
+    if (input.locationId !== authorized.locationResourceName)
+      throw new Error("The selected Google location changed. Reload the listing before saving.");
+    await updateGoogleBusinessListing(authorized.accessToken, authorized.locationResourceName, website, input.description.trim());
+    return { saved: true };
   }
 
   if (action === "refresh_google_profile") {

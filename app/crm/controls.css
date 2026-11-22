@@ -2011,6 +2011,18 @@
 #crm-app .gp-listing-photo-grid img { width: 100%; height: 100%; object-fit: cover; }
 #crm-app .gp-listing-photo-grid[data-count="3"] img:first-child { grid-row: span 2; }
 #crm-app .gp-listing-placeholder { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; padding: 16px; color: var(--crm-muted); text-align: center; font-size: 13px; }
+#crm-app .gp-seo-map { display: block; width: 100%; height: 200px; border: 0; border-radius: 10px; background: var(--crm-subtle); }
+#crm-app .gp-seo-details { grid-column: 1 / -1; display: grid; gap: 10px; min-width: 0; }
+#crm-app .gp-seo-details h4 { margin: 12px 0 0; font-size: 15px; }
+#crm-app .gp-seo-details p { margin: 0; color: var(--crm-muted); overflow-wrap: anywhere; }
+#crm-app .gp-seo-live-media { display: grid; grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); gap: 8px; }
+#crm-app .gp-seo-live-media a { display: grid; place-items: center; min-width: 0; aspect-ratio: 4 / 3; border-radius: 8px; overflow: hidden; background: var(--crm-subtle); }
+#crm-app .gp-seo-live-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+#crm-app .gp-seo-review { display: grid; gap: 5px; padding: 12px 0; border-bottom: 1px solid var(--crm-line); font-size: 13px; }
+#crm-app .gp-seo-details details { margin-top: 10px; }
+#crm-app .gp-seo-details summary { cursor: pointer; font-weight: 600; }
+#crm-app .gp-seo-details form { display: grid; gap: 12px; margin-top: 12px; max-width: 580px; }
+#crm-app .gp-seo-details form button { justify-self: start; }
 @media (max-width: 720px) {
   #crm-app .gp-listing { grid-template-columns: 1fr; gap: 16px; padding: 18px; }
   #crm-app .gp-listing-photo-grid, #crm-app .gp-listing-placeholder { height: 150px; }

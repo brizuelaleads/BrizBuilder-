@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import type { CrmClient, CrmGoogleProfile } from "../../db/crm";
+import type { GoogleBusinessReviewsPage, getGoogleBusinessListing } from "../../lib/google-business";
 import { Badge, EmptyState, Field, getFormValue, shortDate } from "./ui";
 
 type Mutate = (
@@ -166,6 +167,7 @@ export function GoogleProfilesView({
   runtime,
   canManage,
   canConnect,
+  canReadReviews,
 }: {
   clients: CrmClient[];
   profiles: CrmGoogleProfile[];
@@ -174,6 +176,7 @@ export function GoogleProfilesView({
   runtime: { configured: boolean };
   canManage: boolean;
   canConnect: boolean;
+  canReadReviews: boolean;
 }) {
   const [localClientId, setLocalClientId] = useState(clients[0]?.id ?? "");
   const [busy, setBusy] = useState(false);
@@ -458,7 +461,7 @@ export function GoogleProfilesView({
         />
       ) : showExistingProfile ? (
         <>
-          <MediaLibrary key={JSON.stringify([client.id, profile?.locationId])} profileName={profileLabel} profile={profile} canManage={canManage} />
+          <MediaLibrary key={JSON.stringify([client.id, profile?.locationId])} profileName={profileLabel} profile={profile} canManage={canManage} canReadReviews={canReadReviews} clientId={client.id} mutate={mutate} />
           {/* The connected profile: who customers find on Google, at a glance. */}
           <section className="crm-panel gp-hero" aria-label="Connected Google Business Profile">
             <div className="gp-identity">
@@ -754,7 +757,27 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function MediaLibrary({ profileName, profile, canManage }: { profileName: string; profile: CrmGoogleProfile | null; canManage: boolean }) {
+function httpsLink(value: string | null | undefined) {
+  return value && /^https:\/\//i.test(value) ? value : undefined;
+}
+
+type LiveListing = Awaited<ReturnType<typeof getGoogleBusinessListing>>;
+
+async function readListingData<T>(path: string, clientId: string, signal: AbortSignal): Promise<T> {
+  const response = await fetch(`${path}?${new URLSearchParams({ clientId })}`, { signal });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error);
+  return payload.data as T;
+}
+
+function MediaLibrary({ profileName, profile, canManage, canReadReviews, clientId, mutate }: {
+  profileName: string;
+  profile: CrmGoogleProfile | null;
+  canManage: boolean;
+  canReadReviews: boolean;
+  clientId: string;
+  mutate: Mutate;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const mediaRef = useRef<StagedMedia[]>([]);
   const [media, setMedia] = useState<StagedMedia[]>([]);
@@ -763,6 +786,50 @@ function MediaLibrary({ profileName, profile, canManage }: { profileName: string
   const [filter, setFilter] = useState<"all" | "image" | "video">("all");
   const [dragging, setDragging] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [listing, setListing] = useState<LiveListing | null>(null);
+  const [reviews, setReviews] = useState<GoogleBusinessReviewsPage | null>(null);
+  const [listingStatus, setListingStatus] = useState("Loading listing from Google…");
+  const [reviewStatus, setReviewStatus] = useState("Loading Google reviews…");
+  const [loadVersion, setLoadVersion] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const connected = profile?.status === "connected";
+
+  useEffect(() => {
+    if (!connected) return;
+    const controller = new AbortController();
+    void readListingData<LiveListing>("/api/integrations/google/listing", clientId, controller.signal)
+      .then((data) => { if (!controller.signal.aborted) { setListing(data); setListingStatus(""); } })
+      .catch(() => { if (!controller.signal.aborted) setListingStatus("Google listing data is unavailable."); });
+    if (canReadReviews) {
+      void readListingData<GoogleBusinessReviewsPage>("/api/reviews", clientId, controller.signal)
+        .then((data) => { if (!controller.signal.aborted) { setReviews(data); setReviewStatus(""); } })
+        .catch(() => { if (!controller.signal.aborted) setReviewStatus("Google reviews are unavailable."); });
+    }
+    return () => controller.abort();
+  }, [canReadReviews, clientId, connected, loadVersion]);
+
+  async function saveListing(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canManage || !connected || !listing?.detailsAvailable || saving) return;
+    const form = new FormData(event.currentTarget);
+    setSaving(true);
+    setSaveError("");
+    try {
+      await mutate({
+        action: "update_google_listing",
+        clientId,
+        locationId: profile?.locationId,
+        website: getFormValue(form, "website"),
+        description: getFormValue(form, "description"),
+      }, "Listing changes sent to Google");
+      setLoadVersion((value) => value + 1);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Google could not save the listing.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   useEffect(() => { mediaRef.current = media; }, [media]);
   useEffect(() => () => {
@@ -830,9 +897,10 @@ function MediaLibrary({ profileName, profile, canManage }: { profileName: string
   }
 
   const photos = media.filter((item) => item.kind === "image").slice(0, 3);
-  const website = /^https?:\/\//i.test(profile?.website ?? "") ? profile?.website : null;
+  const website = httpsLink(listing?.detailsAvailable ? listing.website : profile?.website);
   const phone = profile?.phone?.replace(/[^+\d]/g, "");
   const mapsQuery = encodeURIComponent([profileName, profile?.address].filter(Boolean).join(" "));
+  const mapsUrl = httpsLink(listing?.mapsUrl) ?? `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
 
   return (
     <>
@@ -842,9 +910,19 @@ function MediaLibrary({ profileName, profile, canManage }: { profileName: string
         <h3>{profileName}</h3>
         {profile?.primaryCategory ? <p>{profile.primaryCategory}</p> : null}
         {profile?.address ? <p>{profile.address}</p> : null}
+        {canReadReviews && reviews?.averageRating != null ? <p>{reviews.averageRating.toFixed(1)} out of 5 · {reviews.totalReviewCount} Google reviews</p> : null}
+        {listing?.description ? <p>{listing.description}</p> : null}
+        {listing?.hours.length ? (
+          <details>
+            <summary>Business hours</summary>
+            {listing.hours.map((period, index) => (
+              <p key={index}>{period.openDay?.toLowerCase()} {period.openTime} – {period.closeDay !== period.openDay ? period.closeDay?.toLowerCase() : ""} {period.closeTime}</p>
+            ))}
+          </details>
+        ) : null}
         <div className="gp-listing-actions">
           {website ? <a href={website} target="_blank" rel="noreferrer"><Globe size={16} aria-hidden="true" /> Website</a> : null}
-          <a href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`} target="_blank" rel="noreferrer"><MapPin size={16} aria-hidden="true" /> Find on Maps</a>
+          <a href={mapsUrl} target="_blank" rel="noreferrer"><MapPin size={16} aria-hidden="true" /> Find on Maps</a>
           {phone ? <a href={`tel:${phone}`}><Phone size={16} aria-hidden="true" /> Call</a> : null}
         </div>
       </div>
@@ -856,8 +934,54 @@ function MediaLibrary({ profileName, profile, canManage }: { profileName: string
               <img key={photo.id} src={photo.url} alt={photo.name} />
             ))}
           </div>
-        ) : <div className="gp-listing-placeholder"><ImageIcon size={24} aria-hidden="true" /> Add a photo below to preview it here</div>}
-        <small>{photos.length ? "Draft photos · Visible only in this browser" : "Live Google photos are available on the listing in Maps."}</small>
+        ) : <iframe className="gp-seo-map" title={`Map of ${profileName}`} src={`https://maps.google.com/maps?q=${mapsQuery}&output=embed`} loading="lazy" referrerPolicy="no-referrer" />}
+        {photos.length ? <small>Draft photos · Visible only in this browser</small> : null}
+      </div>
+      <div className="gp-seo-details">
+        <h4>Media on Google</h4>
+        <div className="gp-seo-live-media">
+          {listing?.media.map((item, index) => {
+            const url = httpsLink(item.url);
+            const src = httpsLink(item.thumbnail) ?? (item.kind === "PHOTO" ? url : undefined);
+            return (
+              <a key={item.name ?? index} href={url ?? mapsUrl} target="_blank" rel="noreferrer" aria-label={item.description ?? `Open Google media ${index + 1}`}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- Google's media thumbnail */}
+                {src ? <img src={src} alt={item.description ?? ""} loading="lazy" referrerPolicy="no-referrer" /> : <Film aria-hidden="true" />}
+              </a>
+            );
+          })}
+        </div>
+        {(!connected || listingStatus || !listing?.media.length) ? (
+          <p>{connected ? listingStatus || (listing?.mediaAvailable ? "Google returned no business media." : "Google media is unavailable.") : "Connect the location to load its media."}</p>
+        ) : null}
+        {connected && (listingStatus === "Google listing data is unavailable." || (listing && (!listing.detailsAvailable || !listing.mediaAvailable))) ? (
+          <button className="crm-button-secondary" type="button" onClick={() => setLoadVersion((value) => value + 1)}>Retry loading Google data</button>
+        ) : null}
+        {listing?.hasMoreMedia ? <a href={mapsUrl} target="_blank" rel="noreferrer">See more photos on Google</a> : null}
+        {photos.length ? <iframe className="gp-seo-map" title={`Map of ${profileName}`} src={`https://maps.google.com/maps?q=${mapsQuery}&output=embed`} loading="lazy" referrerPolicy="no-referrer" /> : null}
+        {canReadReviews ? (
+          <>
+            <h4>Recent Google reviews</h4>
+            {connected && (reviewStatus || (reviews?.reviews.length === 0 && "No reviews yet.")) ? <p>{reviewStatus || "No reviews yet."}</p> : null}
+            {connected ? reviews?.reviews.slice(0, 3).map((review) => (
+              <article className="gp-seo-review" key={review.reviewId}>
+                <strong>{review.reviewerName} · {review.starRating}/5</strong>
+                {review.comment ? <p>{review.comment}</p> : null}
+              </article>
+            )) : null}
+          </>
+        ) : null}
+        {canManage && connected && listing?.detailsAvailable ? (
+          <details>
+            <summary>Edit business details</summary>
+            <form key={JSON.stringify([listing.website, listing.description])} onSubmit={(event) => void saveListing(event)}>
+              <Field label="Website"><input type="url" name="website" defaultValue={listing.website ?? ""} maxLength={2048} /></Field>
+              <Field label="Business description"><textarea name="description" defaultValue={listing.description ?? ""} maxLength={750} rows={4} /></Field>
+              {saveError ? <p role="alert">{saveError}</p> : null}
+              <button type="submit" className="crm-button-primary" disabled={saving}>{saving ? "Saving…" : "Save to Google"}</button>
+            </form>
+          </details>
+        ) : null}
       </div>
     </section>
     <section className="crm-panel gp-media" aria-labelledby="gp-media-title">

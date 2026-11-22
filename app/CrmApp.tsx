@@ -111,6 +111,7 @@ type View =
   | "reports"
   | "ads"
   | "websites"
+  | "seo"
   | "profiles"
   | "reviews"
   | "payments"
@@ -299,9 +300,10 @@ const agencyNavigation: NavItem[] = [
   { id: "settings", label: "Settings", icon: <SettingsIcon />, section: "TOOLS", permission: "clients.manage" },
 ];
 
-const knownViews = new Set<View>(
-  [...agencyNavigation, ...clientNavigation].map((item) => item.id),
-);
+const knownViews = new Set<View>([
+  ...[...agencyNavigation, ...clientNavigation].map((item) => item.id),
+  "seo",
+]);
 
 function canAccessNavigationItem(
   item: NavItem,
@@ -424,7 +426,10 @@ export function CrmApp({
         ...clientNavigation,
         ...agencyNavigation.filter((item) => item.id === "team"),
       ];
+  const canReadSeoReviews = data.viewer.permissions.includes("reviews.read");
+  const canOpenSeoProfile = data.viewer.isAgency && data.viewer.permissions.includes("profiles.manage");
   const visibleNav = navigation.filter((item) =>
+    item.id !== "reviews" && item.id !== "profiles" &&
     canAccessNavigationItem(
       item,
       data.viewer.isAgency,
@@ -432,6 +437,11 @@ export function CrmApp({
       scopedAdmin,
     ),
   );
+  if (canReadSeoReviews || canOpenSeoProfile) {
+    const seoItem: NavItem = { id: "seo", label: "SEO", icon: <MapPin />, section: "GROWTH" };
+    const growthIndex = visibleNav.findIndex((item) => item.section === "GROWTH");
+    visibleNav.splice(growthIndex < 0 ? visibleNav.length : growthIndex, 0, seoItem);
+  }
   // Hidden legacy routes remain available to roles that historically had
   // access, while agency-only routes are rejected for true client sessions.
   const accessibleSecondaryViews = agencyNavigation.filter((item) =>
@@ -456,11 +466,14 @@ export function CrmApp({
   }, [data.clients, accountSearch]);
   const requested = requestedView as View;
   const view: View =
-    visibleNav.some((item) => item.id === requested) ||
+    requested === "seo" && (canOpenSeoProfile || canReadSeoReviews)
+      ? canOpenSeoProfile ? "profiles" : "reviews"
+      : visibleNav.some((item) => item.id === requested) ||
     accessibleSecondaryViews.some((item) => item.id === requested)
       ? requested
       : "dashboard";
-  const title =
+  const isSeo = view === "profiles" || view === "reviews";
+  const title = isSeo ? "SEO" :
     visibleNav.find((item) => item.id === view)?.label ??
     agencyNavigation.find((item) => item.id === view)?.label ??
     view.replaceAll("-", " ").replace(/^\w/u, (letter) => letter.toUpperCase());
@@ -1066,13 +1079,13 @@ export function CrmApp({
               ) : null}
               <button
                 className={
-                  view === item.id
+                  (view === item.id || (item.id === "seo" && isSeo))
                     ? "value active"
                     : "value"
                 }
                 onClick={() => navigate(item.id)}
                 aria-current={
-                  view === item.id
+                  (view === item.id || (item.id === "seo" && isSeo))
                     ? "page"
                     : undefined
                 }
@@ -1282,16 +1295,6 @@ export function CrmApp({
                 onClick={() => navigate("connections")}
               >
                 Connections
-              </button>
-            ) : null}
-            {view === "reviews" &&
-            visibleNav.some((item) => item.id === "profiles") ? (
-              <button
-                type="button"
-                className="crm-topbar-action"
-                onClick={() => navigate("profiles")}
-              >
-                Google Profiles
               </button>
             ) : null}
             <button
@@ -1534,6 +1537,12 @@ export function CrmApp({
             canManage={data.viewer.permissions.includes("websites.manage")}
           />
         )}
+        {isSeo && canOpenSeoProfile && canReadSeoReviews ? (
+          <nav className="crm-tabs" aria-label="SEO sections">
+            <button type="button" aria-current={view === "profiles" ? "page" : undefined} className={view === "profiles" ? "active" : ""} onClick={() => navigate("profiles")}>Business profile</button>
+            <button type="button" aria-current={view === "reviews" ? "page" : undefined} className={view === "reviews" ? "active" : ""} onClick={() => navigate("reviews")}>Reviews</button>
+          </nav>
+        ) : null}
         {view === "profiles" && (
           <GoogleProfilesView
             clients={data.clients}
@@ -1543,6 +1552,7 @@ export function CrmApp({
             runtime={data.googleProfileRuntime}
             canManage={data.viewer.permissions.includes("profiles.manage")}
             canConnect={data.viewer.permissions.includes("profiles.connect")}
+            canReadReviews={canReadSeoReviews}
           />
         )}
         {view === "reviews" && (
