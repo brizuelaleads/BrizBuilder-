@@ -7,17 +7,24 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type CSSProperties,
+  type ReactNode,
   type DragEvent,
   type FormEvent,
 } from "react";
 import {
+  Bookmark,
   Check,
+  ChevronDown,
+  ExternalLink,
   Film,
   Grid2X2,
   Image as ImageIcon,
   Globe,
-  MapPin,
+  Navigation,
+  Pencil,
   Phone,
+  Share2,
   Search,
   Trash2,
   Upload,
@@ -770,6 +777,389 @@ async function readListingData<T>(path: string, clientId: string, signal: AbortS
   return payload.data as T;
 }
 
+const GBP_DAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const;
+const WEEK_MINUTES = 7 * 24 * 60;
+
+function minutesOf(time: string | null) {
+  const match = /^(\d{1,2}):(\d{2})/.exec(time ?? "");
+  return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
+}
+
+/** "17:30" → "5:30 PM", Google style ("5 PM" when on the hour). */
+function formatGoogleTime(time: string | null) {
+  const total = minutesOf(time) % (24 * 60);
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
+  const suffix = hours < 12 ? "AM" : "PM";
+  const hour12 = hours % 12 || 12;
+  return `${hour12}${minutes ? `:${String(minutes).padStart(2, "0")}` : ""} ${suffix}`;
+}
+
+function titleCaseDay(day: string) {
+  return day.charAt(0) + day.slice(1).toLowerCase();
+}
+
+type HoursPeriod = LiveListing["hours"][number];
+
+/** Turns Google periods into week-minute intervals, handling overnight closes. */
+function weeklyIntervals(periods: HoursPeriod[]) {
+  return periods.flatMap((period) => {
+    const openDay = GBP_DAYS.indexOf((period.openDay ?? "") as typeof GBP_DAYS[number]);
+    if (openDay < 0) return [];
+    const closeDayIndex = GBP_DAYS.indexOf((period.closeDay ?? period.openDay ?? "") as typeof GBP_DAYS[number]);
+    const start = openDay * 1440 + minutesOf(period.openTime);
+    let end = (closeDayIndex < 0 ? openDay : closeDayIndex) * 1440 + minutesOf(period.closeTime);
+    if (end <= start) end += WEEK_MINUTES;
+    return [{ start, end }];
+  });
+}
+
+function hoursForDay(periods: HoursPeriod[], day: typeof GBP_DAYS[number]) {
+  const todays = periods.filter((period) => period.openDay === day);
+  if (!todays.length) return "Closed";
+  if (todays.some((period) => minutesOf(period.openTime) === 0 && (minutesOf(period.closeTime) === 1440 || (period.closeDay !== day && minutesOf(period.closeTime) === 0)))) {
+    return "Open 24 hours";
+  }
+  return todays
+    .sort((a, b) => minutesOf(a.openTime) - minutesOf(b.openTime))
+    .map((period) => `${formatGoogleTime(period.openTime)}–${formatGoogleTime(period.closeTime)}`)
+    .join(", ");
+}
+
+function openNowStatus(periods: HoursPeriod[], now: Date) {
+  const intervals = weeklyIntervals(periods);
+  if (!intervals.length) return null;
+  const current = now.getDay() * 1440 + now.getHours() * 60 + now.getMinutes();
+  const active = intervals.find(({ start, end }) =>
+    (current >= start && current < end) || (current + WEEK_MINUTES >= start && current + WEEK_MINUTES < end));
+  if (active) {
+    if (active.end - active.start >= WEEK_MINUTES) return { tone: "open" as const, label: "Open 24 hours", detail: "" };
+    const closesIn = ((active.end - current) % WEEK_MINUTES + WEEK_MINUTES) % WEEK_MINUTES;
+    const closeLabel = formatGoogleTime(`${Math.floor((active.end % 1440) / 60)}:${String(active.end % 60).padStart(2, "0")}`);
+    return closesIn <= 60
+      ? { tone: "soon" as const, label: "Closes soon", detail: closeLabel }
+      : { tone: "open" as const, label: "Open", detail: `Closes ${closeLabel}` };
+  }
+  const next = intervals
+    .map(({ start }) => ({ start, wait: ((start - current) % WEEK_MINUTES + WEEK_MINUTES) % WEEK_MINUTES }))
+    .sort((a, b) => a.wait - b.wait)[0];
+  const startDay = Math.floor((next.start % WEEK_MINUTES) / 1440);
+  const opensLabel = formatGoogleTime(`${Math.floor((next.start % 1440) / 60)}:${String(next.start % 60).padStart(2, "0")}`);
+  const sameDay = startDay === now.getDay() && next.wait < 1440;
+  return {
+    tone: "closed" as const,
+    label: "Closed",
+    detail: `Opens ${opensLabel}${sameDay ? "" : ` ${titleCaseDay(GBP_DAYS[startDay]).slice(0, 3)}`}`,
+  };
+}
+
+function formatPhone(value: string | null | undefined) {
+  if (!value) return null;
+  const digits = value.replace(/\D/g, "");
+  const local = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  return local.length === 10 ? `(${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6)}` : value;
+}
+
+function relativeReviewTime(value: string | null, now: Date) {
+  if (!value) return "";
+  const then = new Date(value);
+  if (Number.isNaN(then.getTime())) return "";
+  const days = Math.floor((now.getTime() - then.getTime()) / 86_400_000);
+  const plural = (count: number, unit: string) => count === 1 ? `a ${unit} ago` : `${count} ${unit}s ago`;
+  if (days < 1) return "today";
+  if (days < 7) return days === 1 ? "a day ago" : `${days} days ago`;
+  if (days < 30) return plural(Math.floor(days / 7), "week");
+  if (days < 365) return plural(Math.floor(days / 30), "month");
+  return plural(Math.floor(days / 365), "year");
+}
+
+const AVATAR_COLORS = ["#1a73e8", "#e8710a", "#188038", "#a142f4", "#d93025", "#12b5cb", "#e52592", "#5f6368"];
+
+function avatarColor(name: string) {
+  let hash = 0;
+  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+}
+
+function GoogleStars({ rating, size = "sm" }: { rating: number; size?: "sm" | "lg" }) {
+  const percent = Math.max(0, Math.min(100, (rating / 5) * 100));
+  return (
+    <span className={`gbp-stars gbp-stars-${size}`} style={{ "--gbp-rating": `${percent}%` } as CSSProperties} role="img" aria-label={`Rated ${rating.toFixed(1)} out of 5`}>
+      ★★★★★
+    </span>
+  );
+}
+
+function GoogleKnowledgePanel({ profileName, profile, listing, reviews, connected, listingStatus, reviewStatus, onRetry, editor }: {
+  profileName: string;
+  profile: CrmGoogleProfile | null;
+  listing: LiveListing | null;
+  reviews: GoogleBusinessReviewsPage | null;
+  connected: boolean;
+  listingStatus: string;
+  reviewStatus: string;
+  onRetry: () => void;
+  editor: ReactNode;
+}) {
+  const [hoursOpen, setHoursOpen] = useState(false);
+  const [shareNotice, setShareNotice] = useState("");
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const title = listing?.title ?? profileName;
+  const category = listing?.primaryCategory ?? profile?.primaryCategory ?? null;
+  const address = listing?.address ?? profile?.address ?? null;
+  const serviceAreas = listing?.serviceAreas ?? [];
+  const addressParts = address?.split(",").map((part) => part.trim()).filter(Boolean) ?? [];
+  const city = addressParts.length >= 3 ? addressParts[addressParts.length - 2] : serviceAreas[0]?.split(",")[0] ?? null;
+  const phoneDisplay = formatPhone(listing?.phone ?? profile?.phone);
+  const phoneHref = (listing?.phone ?? profile?.phone)?.replace(/[^+\d]/g, "");
+  const website = httpsLink(listing?.detailsAvailable ? listing.website : profile?.website);
+  const mapsQuery = encodeURIComponent([title, address ?? serviceAreas[0]].filter(Boolean).join(" "));
+  const mapsUrl = httpsLink(listing?.mapsUrl) ?? `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
+  const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${mapsQuery}`;
+  const reviewUrl = httpsLink(listing?.reviewUrl) ?? httpsLink(profile?.googleReviewUrl) ?? mapsUrl;
+
+  const photos = (listing?.media ?? [])
+    .map((item) => ({ ...item, src: httpsLink(item.thumbnail) ?? (item.kind === "PHOTO" ? httpsLink(item.url) : undefined) }))
+    .filter((item): item is typeof item & { src: string } => Boolean(item.src));
+  const coverFirst = [...photos].sort((a, b) => {
+    const rank = (category: string | null) => category === "COVER" ? 0 : category === "LOGO" || category === "PROFILE" ? 2 : 1;
+    return rank(a.category) - rank(b.category);
+  });
+  const gallery = coverFirst.slice(0, 3);
+
+  const hours = listing?.hours ?? [];
+  const status = listing?.openStatus === "CLOSED_PERMANENTLY"
+    ? { tone: "closed" as const, label: "Permanently closed", detail: "" }
+    : listing?.openStatus === "CLOSED_TEMPORARILY"
+      ? { tone: "closed" as const, label: "Temporarily closed", detail: "" }
+      : openNowStatus(hours, now);
+  const todayIndex = now.getDay();
+  const weekOrder = GBP_DAYS.map((_, offset) => GBP_DAYS[(todayIndex + offset) % 7]);
+  const todayKey = now.toISOString().slice(0, 10);
+  const upcomingSpecial = (listing?.specialHours ?? [])
+    .filter((period) => period.date && period.date >= todayKey)
+    .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))
+    .slice(0, 3);
+
+  const averageRating = reviews?.averageRating ?? null;
+  const totalReviews = reviews?.totalReviewCount ?? 0;
+  const loadedReviews = reviews?.reviews ?? [];
+  const distribution = [5, 4, 3, 2, 1].map((stars) => ({
+    stars,
+    count: loadedReviews.filter((review) => review.starRating === stars).length,
+  }));
+  const distributionMax = Math.max(1, ...distribution.map((row) => row.count));
+
+  async function share() {
+    try {
+      await navigator.clipboard.writeText(mapsUrl);
+      setShareNotice("Link copied");
+    } catch {
+      setShareNotice("Copy failed");
+    }
+    window.setTimeout(() => setShareNotice(""), 2000);
+  }
+
+  return (
+    <section className="crm-panel gbp-preview" aria-label="Customer view of the Google Business Profile">
+      <header className="gbp-preview-head">
+        <div>
+          <span>Customer view</span>
+          <p>How {title} appears on Google Search and Maps.</p>
+        </div>
+        <a href={mapsUrl} target="_blank" rel="noreferrer">Open on Google <ExternalLink size={14} aria-hidden="true" /></a>
+      </header>
+
+      <div className="gbp-layout">
+        <article className="gbp-panel">
+          <div className="gbp-gallery" data-count={gallery.length || 0}>
+            {gallery.length ? gallery.map((photo, index) => (
+              <a key={photo.name ?? index} href={httpsLink(photo.url) ?? mapsUrl} target="_blank" rel="noreferrer">
+                {/* eslint-disable-next-line @next/next/no-img-element -- Google's media thumbnail */}
+                <img src={photo.src} alt={photo.description ?? `${title} photo ${index + 1}`} loading="lazy" referrerPolicy="no-referrer" />
+              </a>
+            )) : (
+              <iframe title={`Map of ${title}`} src={`https://maps.google.com/maps?q=${mapsQuery}&output=embed`} loading="lazy" referrerPolicy="no-referrer" />
+            )}
+            {photos.length ? (
+              <a className="gbp-see-photos" href={mapsUrl} target="_blank" rel="noreferrer">
+                <ImageIcon size={14} aria-hidden="true" /> See photos
+              </a>
+            ) : null}
+          </div>
+
+          <div className="gbp-body">
+            <h3>{title}</h3>
+            <div className="gbp-rating-row">
+              {averageRating != null && totalReviews > 0 ? (
+                <>
+                  <span className="gbp-rating-value">{averageRating.toFixed(1)}</span>
+                  <GoogleStars rating={averageRating} />
+                  <a href={reviewUrl} target="_blank" rel="noreferrer">{totalReviews.toLocaleString()} Google review{totalReviews === 1 ? "" : "s"}</a>
+                </>
+              ) : (
+                <span className="gbp-muted">No reviews</span>
+              )}
+            </div>
+            {category ? <p className="gbp-category">{category}{city ? ` in ${city}` : ""}</p> : null}
+            {status?.label.includes("closed") ? <p className="gbp-status-closed">{status.label}</p> : null}
+
+            <div className="gbp-actions">
+              {website ? <a href={website} target="_blank" rel="noreferrer"><span><Globe size={18} aria-hidden="true" /></span>Website</a> : null}
+              <a href={directionsUrl} target="_blank" rel="noreferrer"><span><Navigation size={18} aria-hidden="true" /></span>Directions</a>
+              <a href={mapsUrl} target="_blank" rel="noreferrer"><span><Bookmark size={18} aria-hidden="true" /></span>Save</a>
+              <button type="button" onClick={() => void share()}><span><Share2 size={18} aria-hidden="true" /></span>{shareNotice || "Share"}</button>
+              {phoneHref ? <a href={`tel:${phoneHref}`}><span><Phone size={18} aria-hidden="true" /></span>Call</a> : null}
+            </div>
+
+            {listing?.description ? (
+              <div className="gbp-section gbp-description">
+                <p>{listing.description}</p>
+              </div>
+            ) : null}
+
+            <dl className="gbp-section gbp-facts">
+              {address ? (
+                <div><dt>Address:</dt><dd><a href={mapsUrl} target="_blank" rel="noreferrer" className="gbp-plain">{address}</a></dd></div>
+              ) : null}
+              {serviceAreas.length ? (
+                <div><dt>Areas served:</dt><dd>{serviceAreas.join(", ")}</dd></div>
+              ) : null}
+              {hours.length || status ? (
+                <div className="gbp-hours-row">
+                  <dt>Hours:</dt>
+                  <dd>
+                    <button type="button" className="gbp-hours-toggle" aria-expanded={hoursOpen} onClick={() => setHoursOpen((open) => !open)}>
+                      {status ? <span className={`gbp-open gbp-open-${status.tone}`}>{status.label}</span> : null}
+                      {status?.detail ? <span> ⋅ {status.detail}</span> : null}
+                      <ChevronDown size={16} aria-hidden="true" className={hoursOpen ? "is-open" : ""} />
+                    </button>
+                    {hoursOpen && hours.length ? (
+                      <table className="gbp-hours-table">
+                        <tbody>
+                          {weekOrder.map((day) => (
+                            <tr key={day} className={day === GBP_DAYS[todayIndex] ? "is-today" : ""}>
+                              <th scope="row">{titleCaseDay(day)}</th>
+                              <td>{hoursForDay(hours, day)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : null}
+                    {upcomingSpecial.length ? (
+                      <p className="gbp-special">
+                        Holiday hours: {upcomingSpecial.map((period) => {
+                          const label = new Date(`${period.date}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                          return `${label} ${period.closed ? "Closed" : `${formatGoogleTime(period.openTime)}–${formatGoogleTime(period.closeTime)}`}`;
+                        }).join(" · ")}
+                      </p>
+                    ) : null}
+                  </dd>
+                </div>
+              ) : null}
+              {phoneDisplay ? (
+                <div><dt>Phone:</dt><dd><a href={`tel:${phoneHref}`}>{phoneDisplay}</a></dd></div>
+              ) : null}
+              {website ? (
+                <div><dt>Website:</dt><dd><a href={website} target="_blank" rel="noreferrer">{website.replace(/^https:\/\/(www\.)?/i, "").replace(/\/$/, "")}</a></dd></div>
+              ) : null}
+              {listing?.services.length ? (
+                <div><dt>Services:</dt><dd>{listing.services.slice(0, 8).join(", ")}{listing.services.length > 8 ? ` +${listing.services.length - 8} more` : ""}</dd></div>
+              ) : null}
+              {listing?.additionalCategories.length ? (
+                <div><dt>Also:</dt><dd>{listing.additionalCategories.join(", ")}</dd></div>
+              ) : null}
+            </dl>
+
+            {photos.length > 3 ? (
+              <div className="gbp-section">
+                <h4>Photos</h4>
+                <div className="gbp-photo-strip">
+                  {coverFirst.slice(3).map((photo, index) => (
+                    <a key={photo.name ?? index} href={httpsLink(photo.url) ?? mapsUrl} target="_blank" rel="noreferrer">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- Google's media thumbnail */}
+                      <img src={photo.src} alt={photo.description ?? ""} loading="lazy" referrerPolicy="no-referrer" />
+                    </a>
+                  ))}
+                  {listing?.hasMoreMedia ? <a className="gbp-more-photos" href={mapsUrl} target="_blank" rel="noreferrer">See more</a> : null}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="gbp-section gbp-reviews">
+              <div className="gbp-reviews-head">
+                <h4>Google reviews</h4>
+                <a className="gbp-write-review" href={reviewUrl} target="_blank" rel="noreferrer"><Pencil size={14} aria-hidden="true" /> Write a review</a>
+              </div>
+              {averageRating != null && totalReviews > 0 ? (
+                <div className="gbp-review-summary">
+                  <div className="gbp-review-bars">
+                    {distribution.map((row) => (
+                      <div key={row.stars}>
+                        <span>{row.stars}</span>
+                        <span className="gbp-bar"><span style={{ width: `${(row.count / distributionMax) * 100}%` }} /></span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="gbp-review-score">
+                    <strong>{averageRating.toFixed(1)}</strong>
+                    <GoogleStars rating={averageRating} size="lg" />
+                    <span>{totalReviews.toLocaleString()} review{totalReviews === 1 ? "" : "s"}</span>
+                  </div>
+                </div>
+              ) : null}
+              {reviewStatus ? <p className="gbp-muted">{reviewStatus}</p> : null}
+              {!reviewStatus && reviews && !loadedReviews.length ? <p className="gbp-muted">No reviews yet. Be the first to review this business.</p> : null}
+              {loadedReviews.slice(0, 5).map((review) => (
+                <article className="gbp-review" key={review.reviewId}>
+                  <header>
+                    <span className="gbp-avatar" style={{ background: avatarColor(review.reviewerName) }} aria-hidden="true">
+                      {review.reviewerName.charAt(0).toUpperCase()}
+                    </span>
+                    <strong>{review.reviewerName}</strong>
+                  </header>
+                  <div className="gbp-review-meta">
+                    <GoogleStars rating={review.starRating} />
+                    <span>{relativeReviewTime(review.createTime, now)}</span>
+                  </div>
+                  {review.comment ? <p>{review.comment}</p> : null}
+                  {review.reply ? (
+                    <div className="gbp-owner-reply">
+                      <strong>Response from the owner</strong>
+                      {review.reply.updateTime ? <span> {relativeReviewTime(review.reply.updateTime, now)}</span> : null}
+                      <p>{review.reply.comment}</p>
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+              {totalReviews > 5 ? <a className="gbp-more-reviews" href={mapsUrl} target="_blank" rel="noreferrer">More Google reviews</a> : null}
+            </div>
+          </div>
+        </article>
+
+        <aside className="gbp-side">
+          {gallery.length ? (
+            <iframe className="gbp-map" title={`Map of ${title}`} src={`https://maps.google.com/maps?q=${mapsQuery}&output=embed`} loading="lazy" referrerPolicy="no-referrer" />
+          ) : null}
+          {!connected ? <p className="gbp-note">Connect the location to load its live Google profile.</p> : null}
+          {connected && listingStatus ? <p className="gbp-note">{listingStatus}</p> : null}
+          {connected && listing && !listing.mediaAvailable ? <p className="gbp-note">Google media is unavailable right now.</p> : null}
+          {connected && listing?.mediaAvailable && !photos.length ? <p className="gbp-note">No photos on this profile yet. Customers see a map instead — add a cover photo and logo on Google.</p> : null}
+          {connected && (listingStatus === "Google listing data is unavailable." || (listing && (!listing.detailsAvailable || !listing.mediaAvailable))) ? (
+            <button className="crm-button-secondary" type="button" onClick={onRetry}>Retry loading Google data</button>
+          ) : null}
+          {editor}
+        </aside>
+      </div>
+    </section>
+  );
+}
+
 function MediaLibrary({ profileName, profile, canManage, canReadReviews, clientId, mutate }: {
   profileName: string;
   profile: CrmGoogleProfile | null;
@@ -896,94 +1286,29 @@ function MediaLibrary({ profileName, profile, canManage, canReadReviews, clientI
       : [...current, id]);
   }
 
-  const photos = media.filter((item) => item.kind === "image").slice(0, 3);
-  const website = httpsLink(listing?.detailsAvailable ? listing.website : profile?.website);
-  const phone = profile?.phone?.replace(/[^+\d]/g, "");
-  const mapsQuery = encodeURIComponent([profileName, profile?.address].filter(Boolean).join(" "));
-  const mapsUrl = httpsLink(listing?.mapsUrl) ?? `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
-
   return (
     <>
-    <section className="crm-panel gp-listing" aria-label="Customer listing preview">
-      <div className="gp-listing-copy">
-        <span>Customer view preview</span>
-        <h3>{profileName}</h3>
-        {profile?.primaryCategory ? <p>{profile.primaryCategory}</p> : null}
-        {profile?.address ? <p>{profile.address}</p> : null}
-        {canReadReviews && reviews?.averageRating != null ? <p>{reviews.averageRating.toFixed(1)} out of 5 · {reviews.totalReviewCount} Google reviews</p> : null}
-        {listing?.description ? <p>{listing.description}</p> : null}
-        {listing?.hours.length ? (
-          <details>
-            <summary>Business hours</summary>
-            {listing.hours.map((period, index) => (
-              <p key={index}>{period.openDay?.toLowerCase()} {period.openTime} – {period.closeDay !== period.openDay ? period.closeDay?.toLowerCase() : ""} {period.closeTime}</p>
-            ))}
-          </details>
-        ) : null}
-        <div className="gp-listing-actions">
-          {website ? <a href={website} target="_blank" rel="noreferrer"><Globe size={16} aria-hidden="true" /> Website</a> : null}
-          <a href={mapsUrl} target="_blank" rel="noreferrer"><MapPin size={16} aria-hidden="true" /> Find on Maps</a>
-          {phone ? <a href={`tel:${phone}`}><Phone size={16} aria-hidden="true" /> Call</a> : null}
-        </div>
-      </div>
-      <div className="gp-listing-photos">
-        {photos.length ? (
-          <div className="gp-listing-photo-grid" data-count={photos.length}>
-            {photos.map((photo) => (
-              // eslint-disable-next-line @next/next/no-img-element -- Local draft object URL
-              <img key={photo.id} src={photo.url} alt={photo.name} />
-            ))}
-          </div>
-        ) : <iframe className="gp-seo-map" title={`Map of ${profileName}`} src={`https://maps.google.com/maps?q=${mapsQuery}&output=embed`} loading="lazy" referrerPolicy="no-referrer" />}
-        {photos.length ? <small>Draft photos · Visible only in this browser</small> : null}
-      </div>
-      <div className="gp-seo-details">
-        <h4>Media on Google</h4>
-        <div className="gp-seo-live-media">
-          {listing?.media.map((item, index) => {
-            const url = httpsLink(item.url);
-            const src = httpsLink(item.thumbnail) ?? (item.kind === "PHOTO" ? url : undefined);
-            return (
-              <a key={item.name ?? index} href={url ?? mapsUrl} target="_blank" rel="noreferrer" aria-label={item.description ?? `Open Google media ${index + 1}`}>
-                {/* eslint-disable-next-line @next/next/no-img-element -- Google's media thumbnail */}
-                {src ? <img src={src} alt={item.description ?? ""} loading="lazy" referrerPolicy="no-referrer" /> : <Film aria-hidden="true" />}
-              </a>
-            );
-          })}
-        </div>
-        {(!connected || listingStatus || !listing?.media.length) ? (
-          <p>{connected ? listingStatus || (listing?.mediaAvailable ? "Google returned no business media." : "Google media is unavailable.") : "Connect the location to load its media."}</p>
-        ) : null}
-        {connected && (listingStatus === "Google listing data is unavailable." || (listing && (!listing.detailsAvailable || !listing.mediaAvailable))) ? (
-          <button className="crm-button-secondary" type="button" onClick={() => setLoadVersion((value) => value + 1)}>Retry loading Google data</button>
-        ) : null}
-        {listing?.hasMoreMedia ? <a href={mapsUrl} target="_blank" rel="noreferrer">See more photos on Google</a> : null}
-        {photos.length ? <iframe className="gp-seo-map" title={`Map of ${profileName}`} src={`https://maps.google.com/maps?q=${mapsQuery}&output=embed`} loading="lazy" referrerPolicy="no-referrer" /> : null}
-        {canReadReviews ? (
-          <>
-            <h4>Recent Google reviews</h4>
-            {connected && (reviewStatus || (reviews?.reviews.length === 0 && "No reviews yet.")) ? <p>{reviewStatus || "No reviews yet."}</p> : null}
-            {connected ? reviews?.reviews.slice(0, 3).map((review) => (
-              <article className="gp-seo-review" key={review.reviewId}>
-                <strong>{review.reviewerName} · {review.starRating}/5</strong>
-                {review.comment ? <p>{review.comment}</p> : null}
-              </article>
-            )) : null}
-          </>
-        ) : null}
-        {canManage && connected && listing?.detailsAvailable ? (
-          <details>
-            <summary>Edit business details</summary>
-            <form key={JSON.stringify([listing.website, listing.description])} onSubmit={(event) => void saveListing(event)}>
-              <Field label="Website"><input type="url" name="website" defaultValue={listing.website ?? ""} maxLength={2048} /></Field>
-              <Field label="Business description"><textarea name="description" defaultValue={listing.description ?? ""} maxLength={750} rows={4} /></Field>
-              {saveError ? <p role="alert">{saveError}</p> : null}
-              <button type="submit" className="crm-button-primary" disabled={saving}>{saving ? "Saving…" : "Save to Google"}</button>
-            </form>
-          </details>
-        ) : null}
-      </div>
-    </section>
+    <GoogleKnowledgePanel
+      profileName={profileName}
+      profile={profile}
+      listing={listing}
+      reviews={canReadReviews ? reviews : null}
+      connected={connected}
+      listingStatus={listingStatus}
+      reviewStatus={canReadReviews ? reviewStatus : ""}
+      onRetry={() => setLoadVersion((value) => value + 1)}
+      editor={canManage && connected && listing?.detailsAvailable ? (
+        <details className="gbp-edit">
+          <summary>Edit business details</summary>
+          <form key={JSON.stringify([listing.website, listing.description])} onSubmit={(event) => void saveListing(event)}>
+            <Field label="Website"><input type="url" name="website" defaultValue={listing.website ?? ""} maxLength={2048} /></Field>
+            <Field label="Business description"><textarea name="description" defaultValue={listing.description ?? ""} maxLength={750} rows={6} /></Field>
+            {saveError ? <p role="alert">{saveError}</p> : null}
+            <button type="submit" className="crm-button-primary" disabled={saving}>{saving ? "Saving…" : "Save to Google"}</button>
+          </form>
+        </details>
+      ) : null}
+    />
     <section className="crm-panel gp-media" aria-labelledby="gp-media-title">
       <header className="gp-media-header">
         <div>

@@ -657,24 +657,61 @@ export async function getGoogleBusinessListing(accessToken: string, accountName:
   const account = googleResourceName(accountName, "accounts");
   const location = googleResourceName(locationName, "locations");
   const infoUrl = new URL(`${BUSINESS_INFO_API}/${location}`);
-  infoUrl.searchParams.set("readMask", "metadata,profile,regularHours,websiteUri");
+  infoUrl.searchParams.set(
+    "readMask",
+    "title,phoneNumbers,categories,storefrontAddress,websiteUri,regularHours,specialHours,serviceArea,openInfo,metadata,profile,serviceItems",
+  );
   const mediaUrl = new URL(`${GOOGLE_MY_BUSINESS_API}/${account}/${location}/media`);
-  mediaUrl.searchParams.set("pageSize", "12");
+  mediaUrl.searchParams.set("pageSize", "24");
   const [info, media] = await Promise.allSettled([
     googleApiJson(infoUrl, accessToken, { remainingFetches: 2 }),
     googleApiJson(mediaUrl, accessToken, { remainingFetches: 2 }),
   ]);
   const details = info.status === "fulfilled" ? info.value : {};
+  const categories = asRecord(details.categories);
+  const address = asRecord(details.storefrontAddress);
+  const addressLines = asArray(address.addressLines).map(asString).filter((line): line is string => Boolean(line));
+  const cityLine = [
+    asString(address.locality),
+    [asString(address.administrativeArea), asString(address.postalCode)].filter(Boolean).join(" "),
+  ].filter(Boolean).join(", ");
+  const formattedAddress = [...addressLines, cityLine].filter(Boolean).join(", ") || null;
+  const serviceArea = asRecord(details.serviceArea);
+  const metadata = asRecord(details.metadata);
+  const phones = asRecord(details.phoneNumbers);
   return {
-    mapsUrl: asString(asRecord(details.metadata).mapsUri),
+    title: asString(details.title),
+    phone: asString(phones.primaryPhone),
+    primaryCategory: asString(asRecord(categories.primaryCategory).displayName),
+    additionalCategories: asArray(categories.additionalCategories)
+      .map((category) => asString(asRecord(category).displayName))
+      .filter((name): name is string => Boolean(name)),
+    address: formattedAddress,
+    serviceAreas: asArray(asRecord(serviceArea.places).placeInfos)
+      .map((place) => asString(asRecord(place).placeName))
+      .filter((name): name is string => Boolean(name)),
+    openStatus: asString(asRecord(details.openInfo).status),
+    mapsUrl: asString(metadata.mapsUri),
+    reviewUrl: asString(metadata.newReviewUri),
     description: asString(asRecord(details.profile).description),
     website: asString(details.websiteUri),
     hours: asArray(asRecord(details.regularHours).periods).map(asRecord).map((period) => ({
       openDay: asString(period.openDay),
       closeDay: asString(period.closeDay),
-      openTime: asString(period.openTime),
-      closeTime: asString(period.closeTime),
+      openTime: googleTimeOfDay(period.openTime),
+      closeTime: googleTimeOfDay(period.closeTime),
     })),
+    specialHours: asArray(asRecord(details.specialHours).specialHourPeriods).map(asRecord).map((period) => ({
+      date: googleDate(period.startDate),
+      closed: period.closed === true,
+      openTime: googleTimeOfDay(period.openTime),
+      closeTime: googleTimeOfDay(period.closeTime),
+    })).filter((period) => period.date),
+    services: asArray(details.serviceItems).map(asRecord).map((item) =>
+      asString(asRecord(asRecord(item.freeFormServiceItem).label).displayName) ??
+      asString(asRecord(item.structuredServiceItem).serviceTypeId)?.replace(/^job_type_id:/, "").replace(/_/g, " ") ??
+      null,
+    ).filter((name): name is string => Boolean(name)),
     detailsAvailable: info.status === "fulfilled",
     mediaAvailable: media.status === "fulfilled",
     hasMoreMedia: media.status === "fulfilled" && Boolean(media.value.nextPageToken),
@@ -683,9 +720,30 @@ export async function getGoogleBusinessListing(accessToken: string, accountName:
       url: asString(item.googleUrl),
       thumbnail: asString(item.thumbnailUrl),
       kind: asString(item.mediaFormat),
+      category: asString(asRecord(item.locationAssociation).category),
       description: asString(item.description),
     })) : [],
   };
+}
+
+/** Google sends TimeOfDay as `{ hours, minutes }` with zero fields omitted. Returns "HH:MM". */
+function googleTimeOfDay(value: unknown) {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object") return null;
+  const time = asRecord(value);
+  const hours = Number(time.hours ?? 0);
+  const minutes = Number(time.minutes ?? 0);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function googleDate(value: unknown) {
+  const date = asRecord(value);
+  const year = Number(date.year);
+  const month = Number(date.month);
+  const day = Number(date.day);
+  if (!year || !month || !day) return null;
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 export async function updateGoogleBusinessListing(accessToken: string, locationName: string, website: string, description: string) {
