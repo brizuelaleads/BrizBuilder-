@@ -19,7 +19,7 @@
     "test:google-profile": "node --experimental-strip-types --test tests/google-business-profile.test.mjs",
     "test:theme": "node --test tests/theme-security.test.mjs",
     "test:team": "node --test tests/team-access-security.test.mjs",
-    "test:workspace": "node --test tests/workspace-scope-security.test.mjs",
+    "test:workspace": "node --experimental-strip-types --test tests/workspace-scope-security.test.mjs tests/social-planner.test.mjs",
     "test:client-deletion": "node --test tests/client-deletion-security.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern work --ignore-pattern .codex-reconcile",
     "typecheck": "tsc --noEmit",

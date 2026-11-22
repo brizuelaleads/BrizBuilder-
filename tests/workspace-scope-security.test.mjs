@@ -40,6 +40,7 @@ const CLIENT_TABS = [
   ["calls", "Calls", "PhoneCall", "MAIN"],
   ["calendar", "Calendar", "CalendarDays", "MAIN"],
   ["ads", "Ads", "Megaphone", "MAIN"],
+  ["social", "Social", "Share2", "MAIN"],
   ["connections", "Connections", "Plug", "MAIN"],
   // Square invoicing for the business's own customers. The tab carries no
   // permission flag; db/supabase-square.ts decides on the server who may
@@ -62,6 +63,7 @@ const AGENCY_TABS = [
   ["phone-system", "Phone & Texting", "PhoneCall", "COMMUNICATIONS"],
   ["automations", "Automations", "Workflow", "COMMUNICATIONS"],
   ["websites", "Websites", "Globe2", "GROWTH"],
+  ["social", "Social", "Share2", "GROWTH"],
   ["reviews", "Reviews", "Star", "GROWTH"],
   ["profiles", "Google Profiles", "MapPin", "GROWTH"],
   ["forms", "Forms", "FileText", "GROWTH"],
@@ -97,6 +99,7 @@ const NAV_PERMISSIONS = new Map([
   ["connections", "phone_system.manage"],
   ["phone-system", "phone_system.manage"],
   ["automations", "automations.manage"],
+  ["social", "social.plan"],
   ["reviews", "reviews.read"],
   ["profiles", "profiles.manage"],
   ["reports", "reports.read"],
@@ -244,7 +247,7 @@ test("client navigation is exactly the requested shared tabs", () => {
   );
   for (const entry of entries) {
     assert.equal(entry.agencyOnly, false, `${entry.id} must not be agency-only`);
-    assert.equal(entry.permission, undefined, `${entry.id} must not be permission-hidden`);
+    assert.equal(entry.permission, entry.id === "social" ? "social.plan" : undefined);
   }
   assert.match(
     appSource,
@@ -282,11 +285,23 @@ test("authenticated account type selects navigation independently of client sele
     appSource,
     /const navigation = data\.viewer\.isAgency\s*\? agencyNavigation\s*: \[\s*\.\.\.clientNavigation,\s*\.\.\.agencyNavigation\.filter\(\(item\) => item\.id === "team"\),?\s*\];/,
   );
-  assert.match(appSource, /const visibleNav = navigation\.filter\(\(item\) =>\s*canAccessNavigationItem\(/);
+  assert.match(appSource, /const visibleNav = navigation\.filter\(\(item\) =>[^;]*?canAccessNavigationItem\(/);
   assert.doesNotMatch(
     appSource.match(/const navigation = [\s\S]*?;/)?.[0] ?? "",
     /selectedClient|effectiveSelectedClientId/,
   );
+});
+
+test("the social planner is role-gated and requires the Supabase workspace", () => {
+  assert.match(appSource, /if \(item\.id === "social"\) return socialPlannerAvailable && permissions\.includes\("social\.plan"\)/);
+  for (const role of ["LB_OWNER", "LB_ADMIN", "CLIENT_OWNER", "CLIENT_MANAGER"]) {
+    const granted = rolePermissions(supabaseSource, role);
+    assert.ok(granted.includes("social.plan"));
+    assert.ok(granted.includes("social.review"));
+  }
+  assert.ok(rolePermissions(supabaseSource, "LB_TEAM_MEMBER").includes("social.plan"));
+  assert.ok(!rolePermissions(supabaseSource, "LB_TEAM_MEMBER").includes("social.review"));
+  assert.ok(!rolePermissions(supabaseSource, "CLIENT_EMPLOYEE").includes("social.plan"));
 });
 
 test("client deep links cannot bypass agency-only and permission route gates", () => {

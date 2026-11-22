@@ -71,6 +71,7 @@ test("client CRM navigation keeps the requested tabs in order", () => {
     "Calls",
     "Calendar",
     "Ads",
+    "Social",
     "Connections",
     "Payments",
   ]);

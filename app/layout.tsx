@@ -15,6 +15,7 @@ import "./crm/controls.css";
 import "./crm/theme-glass.css";
 import "./crm/mobile.css";
 import "./crm/account-switcher.css";
+import "./crm/social.css";
 
 const geist = Geist({ variable: "--font-sans", subsets: ["latin"] });
 const crmInter = Inter({ variable: "--font-crm", subsets: ["latin"] });
