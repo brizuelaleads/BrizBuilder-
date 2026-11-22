@@ -608,7 +608,7 @@ export function ConnectionsView({
       id: "google-calendar",
       logo: "/integrations/google-calendar.svg",
       name: "Google Calendar",
-      description: "Booked appointments on the business's Google Calendar",
+      description: "Share this workspace's appointment details with your primary Google Calendar",
       status: calendarStatus,
       view: "calendar",
       connectHref: `/api/integrations/google-calendar/connect?clientId=${encodeURIComponent(clientId)}`,
@@ -623,7 +623,7 @@ export function ConnectionsView({
       id: "google-profile",
       logo: "/integrations/google-profile.png",
       name: "Google Business Profile",
-      description: "Reviews, replies and the business listing on Google",
+      description: "View the Google listing and reviews, and publish changes or replies you approve",
       status: googleProfileStatus,
       view: "profiles",
       connectHref: `/api/integrations/google/connect?clientId=${encodeURIComponent(clientId)}`,
@@ -685,7 +685,13 @@ export function ConnectionsView({
             <a href="https://developer.squareup.com/apps" target="_blank" rel="noreferrer">Square Developer Console</a>
             {" "}in this browser, or Square&apos;s page loads blank.
           </span>
-        ) : card.status !== "connected" ? <span className="crm-integration-linked-note">Secure sign-in on {card.name.startsWith("Google") ? "Google" : card.name}</span> : null}
+        ) : card.status !== "connected" ? (
+          <span className="crm-integration-linked-note">
+            {card.view === "calendar" || card.view === "profiles"
+              ? <a href="/privacy#google">Google data use</a>
+              : `Secure sign-in on ${card.name}`}
+          </span>
+        ) : null}
       </div>
     </article>
   );

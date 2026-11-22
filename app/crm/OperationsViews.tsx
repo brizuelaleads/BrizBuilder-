@@ -404,7 +404,10 @@ export function CalendarView({
                 ? "Reconnect Google Calendar to resume syncing appointments."
                 : googleCalendarLinked
                   ? "New appointments sync to the connected Google Calendar."
-                  : "Link Google Calendar to sync appointments from this workspace."}
+                  : "Link Google Calendar to share appointment details with Google and keep your primary calendar in sync."}
+            {googleCalendarClientId && (!googleCalendarLinked || googleCalendarNeedsAttention) && (
+              <>{" "}<a href="/privacy#google">Google data use</a></>
+            )}
           </p>
         </header>
         <div className="crm-cal-sync-actions">

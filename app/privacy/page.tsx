@@ -10,7 +10,7 @@ export const metadata: Metadata = {
     "How BrizBuilder collects, uses, protects, and deletes account, CRM, communications, and connected Google Business Profile and Google Calendar data.",
 };
 
-const EFFECTIVE_DATE = "November 17, 2026";
+const EFFECTIVE_DATE = "November 21, 2026";
 
 const sections = [
   ["scope", "Scope"],
@@ -207,11 +207,13 @@ export default function PrivacyPage() {
               so BrizBuilder&apos;s disconnect action stops and clears both
               connections for the selected client workspace. Other BrizBuilder
               connections using that Google account may also need to reconnect.
-              Choosing Disconnect Google Calendar in BrizBuilder removes the
-              events it synced for that workspace from the linked Google
-              Calendar and keeps the original appointments in BrizBuilder.
-              If you remove access directly in Google Account permissions,
-              you can remove previously synced events in Google Calendar.
+              Choosing Disconnect Google Calendar in BrizBuilder attempts to
+              remove the events it synced for that workspace from the linked
+              Google Calendar before revoking access. Your original appointments
+              stay in BrizBuilder. If Google cannot confirm that all synced
+              events were removed, BrizBuilder tells you to check Google Calendar.
+              If you revoke access directly in your Google Account, manage any
+              remaining synced events in Google Calendar.
               You can request deletion of BrizBuilder data using the contact
               details below.
             </p>
@@ -266,12 +268,13 @@ export default function PrivacyPage() {
               if revocation cannot be confirmed, the app asks the user to remove
               access in Google Account permissions. If local deletion fails,
               the app reports an error so the user can retry or contact support.
-              Google Calendar events and independently entered CRM appointments
-              remain until separately deleted by the user or an authorized
-              deletion request. Security and audit records and backups may be
-              retained longer for security, recovery, and legal obligations;
-              they are not used to continue a disconnected integration. Contact
-              brizuelaleads@gmail.com to request deletion of remaining records.
+              Calendar disconnect attempts to remove the workspace&apos;s synced
+              Google events as described in the Google user data section. Other
+              Google events and the original BrizBuilder appointments stay in
+              their respective calendars. Security and audit records and
+              backups may be retained longer for security, recovery, and legal
+              obligations. Contact brizuelaleads@gmail.com to request deletion
+              of remaining BrizBuilder records.
             </p>
           </section>
 

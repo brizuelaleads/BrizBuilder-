@@ -578,7 +578,11 @@ export function GoogleProfilesView({
                     ? "Choose a Google Business Profile location"
                     : `Connect ${client.businessName}'s Google Business Profile`}
                 </h3>
-                <span>Sign in with the Google account that manages this business.</span>
+                <span>
+                  Sign in with the Google account that manages this business to view
+                  its listing and reviews and publish changes you approve.{" "}
+                  <a href="/privacy#google">Google data use</a>
+                </span>
               </div>
             </div>
             <ol className="gp-steps">
