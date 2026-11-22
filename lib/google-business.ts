@@ -1,4 +1,25 @@
 import { readRuntimeValue } from "./supabase/env";
+import {
+  GOOGLE_PERFORMANCE_RANGES,
+  PERFORMANCE_METRICS_LIST,
+  buildGooglePerformance,
+  googleDate,
+  googleLocationPatch,
+  googleTimeOfDay,
+  isoDay,
+  type GoogleBusinessPerformance,
+  type GoogleLocationUpdate,
+} from "./google-business-edits";
+
+export {
+  GOOGLE_PERFORMANCE_RANGES,
+  parseGoogleLocationUpdate,
+  sumGooglePerformance,
+  type GoogleBusinessPerformance,
+  type GoogleLocationUpdate,
+  type GooglePerformanceDay,
+  type GooglePerformanceTotals,
+} from "./google-business-edits";
 
 export const GOOGLE_BUSINESS_SCOPE =
   "https://www.googleapis.com/auth/business.manage";
@@ -358,7 +379,7 @@ async function googleApiJson(
   url: URL,
   accessToken: string,
   budget: GoogleRequestBudget,
-  init: { method?: "GET" | "PUT" | "DELETE" | "PATCH"; body?: UnknownRecord } = {},
+  init: { method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH"; body?: UnknownRecord } = {},
 ) {
   let response: Response | null = null;
   let requestError: unknown = null;
@@ -412,6 +433,10 @@ async function googleApiJson(
       throw new Error("Google authorization expired. Reconnect Google.");
     }
     if (response.status === 403) {
+      if (message && /has not been used|is disabled|SERVICE_DISABLED/i.test(message)) {
+        const api = /([a-z]+\.googleapis\.com)/i.exec(message)?.[1] ?? "this Google API";
+        throw new Error(`Turn on ${api} in the Google Cloud project, then try again.`);
+      }
       throw new Error(
         "Google Business Profile API access is not active for BrizBuilder yet. Google may still be reviewing the access request.",
       );
@@ -653,6 +678,8 @@ export async function listGoogleBusinessReviews(
   };
 }
 
+export type GoogleServiceItem = { kind: "free" | "structured"; serviceTypeId: string; label: string; description: string; category: string };
+
 export async function getGoogleBusinessListing(accessToken: string, accountName: string, locationName: string) {
   const account = googleResourceName(accountName, "accounts");
   const location = googleResourceName(locationName, "locations");
@@ -662,7 +689,7 @@ export async function getGoogleBusinessListing(accessToken: string, accountName:
     "title,phoneNumbers,categories,storefrontAddress,websiteUri,regularHours,specialHours,serviceArea,openInfo,metadata,profile,serviceItems",
   );
   const mediaUrl = new URL(`${GOOGLE_MY_BUSINESS_API}/${account}/${location}/media`);
-  mediaUrl.searchParams.set("pageSize", "24");
+  mediaUrl.searchParams.set("pageSize", "60");
   const [info, media] = await Promise.allSettled([
     googleApiJson(infoUrl, accessToken, { remainingFetches: 2 }),
     googleApiJson(mediaUrl, accessToken, { remainingFetches: 2 }),
@@ -679,7 +706,57 @@ export async function getGoogleBusinessListing(accessToken: string, accountName:
   const serviceArea = asRecord(details.serviceArea);
   const metadata = asRecord(details.metadata);
   const phones = asRecord(details.phoneNumbers);
+  const primaryCategory = asRecord(categories.primaryCategory);
   return {
+    editable: {
+      title: asString(details.title) ?? "",
+      description: asString(asRecord(details.profile).description) ?? "",
+      website: asString(details.websiteUri) ?? "",
+      primaryPhone: asString(phones.primaryPhone) ?? "",
+      additionalPhones: asArray(phones.additionalPhones).map(asString).filter((phone): phone is string => Boolean(phone)),
+      primaryCategory: asString(primaryCategory.name)
+        ? { name: String(primaryCategory.name), displayName: asString(primaryCategory.displayName) ?? String(primaryCategory.name) }
+        : null,
+      additionalCategories: asArray(categories.additionalCategories).map(asRecord)
+        .filter((category) => asString(category.name))
+        .map((category) => ({ name: String(category.name), displayName: asString(category.displayName) ?? String(category.name) })),
+      address: {
+        addressLines,
+        locality: asString(address.locality) ?? "",
+        administrativeArea: asString(address.administrativeArea) ?? "",
+        postalCode: asString(address.postalCode) ?? "",
+        regionCode: asString(address.regionCode) ?? "US",
+      },
+      hasStorefront: addressLines.length > 0,
+      serviceItems: asArray(details.serviceItems).map(asRecord).flatMap((item): GoogleServiceItem[] => {
+        const structured = asRecord(item.structuredServiceItem);
+        const free = asRecord(item.freeFormServiceItem);
+        const freeLabel = asRecord(free.label);
+        if (asString(structured.serviceTypeId)) {
+          const id = String(structured.serviceTypeId);
+          return [{
+            kind: "structured",
+            serviceTypeId: id,
+            label: id.replace(/^job_type_id:/, "").replace(/_/g, " "),
+            description: asString(structured.description) ?? "",
+            category: "",
+          }];
+        }
+        if (asString(freeLabel.displayName)) {
+          return [{
+            kind: "free",
+            serviceTypeId: "",
+            label: String(freeLabel.displayName),
+            description: asString(freeLabel.description) ?? "",
+            category: asString(free.category) ?? "",
+          }];
+        }
+        return [];
+      }),
+      openStatus: asString(asRecord(details.openInfo).status) ?? "OPEN",
+    },
+    hasPendingEdits: metadata.hasPendingEdits === true,
+    hasGoogleUpdated: metadata.hasGoogleUpdated === true,
     title: asString(details.title),
     phone: asString(phones.primaryPhone),
     primaryCategory: asString(asRecord(categories.primaryCategory).displayName),
@@ -722,28 +799,10 @@ export async function getGoogleBusinessListing(accessToken: string, accountName:
       kind: asString(item.mediaFormat),
       category: asString(asRecord(item.locationAssociation).category),
       description: asString(item.description),
+      createTime: asString(item.createTime),
+      views: Number.isFinite(Number(asRecord(item.insights).viewCount)) ? Number(asRecord(item.insights).viewCount) : null,
     })) : [],
   };
-}
-
-/** Google sends TimeOfDay as `{ hours, minutes }` with zero fields omitted. Returns "HH:MM". */
-function googleTimeOfDay(value: unknown) {
-  if (typeof value === "string") return value;
-  if (!value || typeof value !== "object") return null;
-  const time = asRecord(value);
-  const hours = Number(time.hours ?? 0);
-  const minutes = Number(time.minutes ?? 0);
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
-}
-
-function googleDate(value: unknown) {
-  const date = asRecord(value);
-  const year = Number(date.year);
-  const month = Number(date.month);
-  const day = Number(date.day);
-  if (!year || !month || !day) return null;
-  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 export async function updateGoogleBusinessListing(accessToken: string, locationName: string, website: string, description: string) {
@@ -754,6 +813,151 @@ export async function updateGoogleBusinessListing(accessToken: string, locationN
     method: "PATCH",
     body: { websiteUri: website, profile: { description } },
   });
+}
+
+const PERFORMANCE_API = "https://businessprofileperformance.googleapis.com/v1";
+/** Views, calls, clicks and direction requests from the Business Profile Performance API. */
+export async function getGoogleBusinessPerformance(
+  accessToken: string,
+  locationName: string,
+  rangeDays: number,
+  now = new Date(),
+): Promise<GoogleBusinessPerformance> {
+  const location = googleResourceName(locationName, "locations");
+  const days = (GOOGLE_PERFORMANCE_RANGES as readonly number[]).includes(rangeDays) ? rangeDays : 28;
+  // Google's insights lag a few days; ending yesterday keeps today's zeros out.
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
+  const start = new Date(end.getTime() - (days * 2 - 1) * 86_400_000);
+  const url = new URL(`${PERFORMANCE_API}/${location}:fetchMultiDailyMetricsTimeSeries`);
+  for (const metric of PERFORMANCE_METRICS_LIST()) url.searchParams.append("dailyMetrics", metric);
+  url.searchParams.set("dailyRange.startDate.year", String(start.getUTCFullYear()));
+  url.searchParams.set("dailyRange.startDate.month", String(start.getUTCMonth() + 1));
+  url.searchParams.set("dailyRange.startDate.day", String(start.getUTCDate()));
+  url.searchParams.set("dailyRange.endDate.year", String(end.getUTCFullYear()));
+  url.searchParams.set("dailyRange.endDate.month", String(end.getUTCMonth() + 1));
+  url.searchParams.set("dailyRange.endDate.day", String(end.getUTCDate()));
+
+  const keywordEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const keywordStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (days > 28 ? 5 : 2), 1));
+  const keywordUrl = new URL(`${PERFORMANCE_API}/${location}/searchkeywords/impressions/monthly`);
+  keywordUrl.searchParams.set("monthlyRange.startMonth.year", String(keywordStart.getUTCFullYear()));
+  keywordUrl.searchParams.set("monthlyRange.startMonth.month", String(keywordStart.getUTCMonth() + 1));
+  keywordUrl.searchParams.set("monthlyRange.endMonth.year", String(keywordEnd.getUTCFullYear()));
+  keywordUrl.searchParams.set("monthlyRange.endMonth.month", String(keywordEnd.getUTCMonth() + 1));
+  keywordUrl.searchParams.set("pageSize", "50");
+
+  const [series, keywordPayload] = await Promise.allSettled([
+    googleApiJson(url, accessToken, { remainingFetches: 2 }),
+    googleApiJson(keywordUrl, accessToken, { remainingFetches: 2 }),
+  ]);
+  if (series.status === "rejected") throw series.reason;
+
+  return buildGooglePerformance(
+    series.value,
+    keywordPayload.status === "fulfilled" ? keywordPayload.value : null,
+    start,
+    end,
+    days,
+    { start: isoDay(keywordStart).slice(0, 7), end: isoDay(keywordEnd).slice(0, 7) },
+  );
+}
+
+export async function searchGoogleBusinessCategories(accessToken: string, query: string, regionCode = "US") {
+  const term = query.replace(/["\\]/g, "").trim().slice(0, 60);
+  if (term.length < 2) return [];
+  const url = new URL(`${BUSINESS_INFO_API}/categories`);
+  url.searchParams.set("regionCode", /^[A-Z]{2}$/.test(regionCode) ? regionCode : "US");
+  url.searchParams.set("languageCode", "en");
+  url.searchParams.set("view", "BASIC");
+  url.searchParams.set("pageSize", "20");
+  url.searchParams.set("filter", `displayName=${term}`);
+  const payload = await googleApiJson(url, accessToken, { remainingFetches: 2 });
+  return asArray(payload.categories).map(asRecord).flatMap((category) => {
+    const name = asString(category.name);
+    return name && /^categories\/gcid:[a-z0-9_]{1,120}$/.test(name)
+      ? [{ name, displayName: asString(category.displayName) ?? name }]
+      : [];
+  });
+}
+
+export async function updateGoogleBusinessLocation(accessToken: string, locationName: string, update: GoogleLocationUpdate) {
+  const location = googleResourceName(locationName, "locations");
+  const { body, updateMask } = googleLocationPatch(update);
+  const url = new URL(`${BUSINESS_INFO_API}/${location}`);
+  url.searchParams.set("updateMask", updateMask);
+  await googleApiJson(url, accessToken, { remainingFetches: 2 }, { method: "PATCH", body });
+}
+
+export const GOOGLE_MEDIA_CATEGORIES = ["COVER", "PROFILE", "EXTERIOR", "INTERIOR", "PRODUCT", "AT_WORK", "TEAMS", "ADDITIONAL"] as const;
+export const GOOGLE_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+export const GOOGLE_VIDEO_MAX_BYTES = 30 * 1024 * 1024;
+
+/** Google's three-step upload: reserve a media slot, send the bytes, then attach it to the location. */
+export async function uploadGoogleBusinessMedia(
+  accessToken: string,
+  accountName: string,
+  locationName: string,
+  file: { bytes: ArrayBuffer; type: string },
+  category: string,
+) {
+  const account = googleResourceName(accountName, "accounts");
+  const location = googleResourceName(locationName, "locations");
+  const isVideo = file.type.startsWith("video/");
+  if (!/^(image\/(jpeg|png)|video\/(mp4|quicktime))$/.test(file.type)) throw new Error("Upload a JPG or PNG photo, or an MP4 or MOV video.");
+  if (file.bytes.byteLength < 10 * 1024) throw new Error("Google needs photos and videos of at least 10 KB.");
+  if (file.bytes.byteLength > (isVideo ? GOOGLE_VIDEO_MAX_BYTES : GOOGLE_PHOTO_MAX_BYTES)) {
+    throw new Error(isVideo ? "Videos must be 30 MB or smaller." : "Photos must be 5 MB or smaller.");
+  }
+  const mediaCategory = (GOOGLE_MEDIA_CATEGORIES as readonly string[]).includes(category) ? category : "ADDITIONAL";
+  if (isVideo && ["COVER", "PROFILE"].includes(mediaCategory)) throw new Error("Cover and logo must be photos.");
+
+  const start = await googleApiJson(
+    new URL(`${GOOGLE_MY_BUSINESS_API}/${account}/${location}/media:startUpload`),
+    accessToken,
+    { remainingFetches: 2 },
+    { method: "POST", body: {} },
+  );
+  const resourceName = asString(start.resourceName);
+  if (!resourceName || !/^[A-Za-z0-9_\-=/.]{1,500}$/.test(resourceName)) throw new Error("Google did not accept the upload. Try again.");
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 90_000);
+  try {
+    const upload = await fetch(`https://mybusiness.googleapis.com/upload/v1/media/${resourceName}?upload_type=media`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": file.type },
+      body: file.bytes,
+      signal: controller.signal,
+    });
+    if (!upload.ok) throw new Error(`Google could not store the file (${upload.status}). Try again.`);
+    await upload.arrayBuffer().catch(() => undefined);
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("The upload to Google timed out. Try a smaller file.");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const created = await googleApiJson(
+    new URL(`${GOOGLE_MY_BUSINESS_API}/${account}/${location}/media`),
+    accessToken,
+    { remainingFetches: 2 },
+    {
+      method: "POST",
+      body: { mediaFormat: isVideo ? "VIDEO" : "PHOTO", locationAssociation: { category: mediaCategory }, dataRef: { resourceName } },
+    },
+  );
+  return { name: asString(created.name), url: asString(created.googleUrl), thumbnail: asString(created.thumbnailUrl) };
+}
+
+export async function deleteGoogleBusinessMedia(accessToken: string, accountName: string, locationName: string, mediaName: string) {
+  const account = googleResourceName(accountName, "accounts");
+  const location = googleResourceName(locationName, "locations");
+  const prefix = `${account}/${location}/media/`;
+  if (!mediaName.startsWith(prefix) || !/^[A-Za-z0-9_-]{1,300}$/.test(mediaName.slice(prefix.length))) {
+    throw new Error("That photo does not belong to this business.");
+  }
+  await googleApiJson(new URL(`${GOOGLE_MY_BUSINESS_API}/${mediaName}`), accessToken, { remainingFetches: 2 }, { method: "DELETE" });
 }
 
 export async function updateGoogleBusinessReviewReply(

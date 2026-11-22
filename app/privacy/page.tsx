@@ -129,8 +129,11 @@ export default function PrivacyPage() {
               listings the user already owns or manages. Depending on the
               feature used, BrizBuilder may access authorized account and
               location identifiers, business names, categories, addresses,
-              phone numbers, websites, service areas, profile status, reviews,
-              and business replies.
+              phone numbers, websites, service areas, hours, descriptions,
+              services, photos and videos, profile status, reviews, business
+              replies, and profile performance insights such as views, calls,
+              website clicks, direction requests, and the search terms that
+              showed the profile.
             </p>
             <p>
               Google information is used only to show and manage the

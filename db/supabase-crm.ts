@@ -22,6 +22,12 @@ import {
   deleteGoogleBusinessReviewReply,
   getGoogleBusinessListing,
   updateGoogleBusinessListing,
+  getGoogleBusinessPerformance,
+  searchGoogleBusinessCategories,
+  parseGoogleLocationUpdate,
+  updateGoogleBusinessLocation,
+  uploadGoogleBusinessMedia,
+  deleteGoogleBusinessMedia,
   refreshGoogleAccessToken,
   updateGoogleBusinessReviewReply,
   type GoogleBusinessLocation,
@@ -1948,6 +1954,43 @@ async function authorizedGoogleLocations(
   }, organizationId, clientId);
   const tokens = await refreshGoogleAccessToken(refreshToken);
   return listGoogleBusinessLocations(tokens.accessToken);
+}
+
+export async function getSupabaseGooglePerformance(user: ChatGPTUser, clientId: string, rangeDays: number) {
+  const context = await getTenantContext(user);
+  requirePermission(context, "profiles.manage");
+  const { accessToken, locationResourceName } = await authorizedGoogleReviewContext(context, clientId);
+  return getGoogleBusinessPerformance(accessToken, locationResourceName, rangeDays);
+}
+
+export async function searchSupabaseGoogleCategories(user: ChatGPTUser, clientId: string, query: string, regionCode: string) {
+  const context = await getTenantContext(user);
+  requirePermission(context, "profiles.manage");
+  const { accessToken } = await authorizedGoogleReviewContext(context, clientId);
+  return searchGoogleBusinessCategories(accessToken, query, regionCode);
+}
+
+export async function uploadSupabaseGoogleMedia(
+  user: ChatGPTUser,
+  clientId: string,
+  file: { bytes: ArrayBuffer; type: string },
+  category: string,
+) {
+  const context = await getTenantContext(user);
+  requirePermission(context, "profiles.manage");
+  const authorized = await authorizedGoogleReviewContext(context, clientId);
+  const media = await uploadGoogleBusinessMedia(authorized.accessToken, authorized.accountResourceName, authorized.locationResourceName, file, category);
+  await audit(context, "google_profile.media_uploaded", "google_business_profile", null, { category, type: file.type, bytes: file.bytes.byteLength }, clientId);
+  return media;
+}
+
+export async function deleteSupabaseGoogleMedia(user: ChatGPTUser, clientId: string, mediaName: string) {
+  const context = await getTenantContext(user);
+  requirePermission(context, "profiles.manage");
+  const authorized = await authorizedGoogleReviewContext(context, clientId);
+  await deleteGoogleBusinessMedia(authorized.accessToken, authorized.accountResourceName, authorized.locationResourceName, mediaName);
+  await audit(context, "google_profile.media_deleted", "google_business_profile", null, {}, clientId);
+  return { deleted: true };
 }
 
 export async function getSupabaseGoogleListing(user: ChatGPTUser, clientId: string) {
@@ -5114,6 +5157,20 @@ export async function executeSupabaseCrmAction(
   if (action === "disconnect_google_profile") {
     const clientId = requireText(input.clientId, "Client", 100);
     return disconnectSupabaseGoogleProfile(user, clientId);
+  }
+
+  if (action === "update_google_location") {
+    requirePermission(context, "profiles.manage");
+    const clientId = requireText(input.clientId, "Client", 100);
+    const update = parseGoogleLocationUpdate(input);
+    const authorized = await authorizedGoogleReviewContext(context, clientId);
+    if (input.locationId !== authorized.locationResourceName)
+      throw new Error("The selected Google location changed. Reload the profile before saving.");
+    await updateGoogleBusinessLocation(authorized.accessToken, authorized.locationResourceName, update);
+    await audit(context, "google_profile.updated", "google_business_profile", null, { section: update.section }, clientId);
+    // Keep the CRM's cached name, phone, address and website in step with Google.
+    const synced = await refreshSupabaseGoogleProfile(user, clientId).then(() => true, () => false);
+    return { saved: true, section: update.section, synced };
   }
 
   if (action === "update_google_listing") {
