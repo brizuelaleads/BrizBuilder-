@@ -1,6 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type FormEvent,
+} from "react";
+import {
+  Check,
+  Film,
+  Grid2X2,
+  Image as ImageIcon,
+  Search,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import type { CrmClient, CrmGoogleProfile } from "../../db/crm";
 import { Badge, EmptyState, Field, getFormValue, shortDate } from "./ui";
 
@@ -522,6 +541,8 @@ export function GoogleProfilesView({
             </footer>
           </section>
 
+          <MediaLibrary profileName={profileLabel} canManage={canManage} />
+
           {showCandidateChooser ? (
             <LocationChooser
               state={activeCandidateState}
@@ -715,6 +736,192 @@ export function GoogleProfilesView({
         </>
       )}
     </div>
+  );
+}
+
+type StagedMedia = {
+  id: string;
+  name: string;
+  kind: "image" | "video";
+  size: number;
+  url: string;
+};
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function MediaLibrary({ profileName, canManage }: { profileName: string; canManage: boolean }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const mediaRef = useRef<StagedMedia[]>([]);
+  const [media, setMedia] = useState<StagedMedia[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "image" | "video">("all");
+  const [dragging, setDragging] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => { mediaRef.current = media; }, [media]);
+  useEffect(() => () => {
+    mediaRef.current.forEach((item) => URL.revokeObjectURL(item.url));
+  }, []);
+
+  const visibleMedia = useMemo(() => media.filter((item) => {
+    const matchesType = filter === "all" || item.kind === filter;
+    return matchesType && item.name.toLowerCase().includes(query.trim().toLowerCase());
+  }), [filter, media, query]);
+
+  function addFiles(files: FileList | File[]) {
+    if (!canManage) return;
+    const accepted = Array.from(files).filter((file) =>
+      file.type.startsWith("image/") || file.type.startsWith("video/"),
+    );
+    const tooLarge = accepted.filter((file) => file.size > 10 * 1024 * 1024);
+    const ready = accepted.filter((file) => file.size <= 10 * 1024 * 1024);
+    if (ready.length) {
+      setMedia((current) => [
+        ...ready.map((file) => ({
+          id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
+          name: file.name,
+          kind: file.type.startsWith("video/") ? "video" as const : "image" as const,
+          size: file.size,
+          url: URL.createObjectURL(file),
+        })),
+        ...current,
+      ]);
+    }
+    setNotice(
+      tooLarge.length
+        ? `${tooLarge.length} ${tooLarge.length === 1 ? "file was" : "files were"} over the 10 MB limit.`
+        : ready.length
+          ? `${ready.length} ${ready.length === 1 ? "file" : "files"} added to this draft library.`
+          : "Choose an image or video file.",
+    );
+  }
+
+  function onFileChange(event: ChangeEvent<HTMLInputElement>) {
+    if (event.target.files) addFiles(event.target.files);
+    event.target.value = "";
+  }
+
+  function onDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setDragging(false);
+    addFiles(event.dataTransfer.files);
+  }
+
+  function removeMedia(ids: string[]) {
+    const removing = new Set(ids);
+    setMedia((current) => {
+      current.filter((item) => removing.has(item.id)).forEach((item) => URL.revokeObjectURL(item.url));
+      return current.filter((item) => !removing.has(item.id));
+    });
+    setSelected((current) => current.filter((id) => !removing.has(id)));
+    setNotice(`${ids.length} ${ids.length === 1 ? "item" : "items"} removed.`);
+  }
+
+  function toggleSelected(id: string) {
+    setSelected((current) => current.includes(id)
+      ? current.filter((item) => item !== id)
+      : [...current, id]);
+  }
+
+  return (
+    <section className="crm-panel gp-media" aria-labelledby="gp-media-title">
+      <header className="gp-media-header">
+        <div>
+          <span className="gp-section-icon" aria-hidden="true"><Grid2X2 size={18} /></span>
+          <div>
+            <h3 id="gp-media-title">Media library</h3>
+            <p>Prepare photos and videos for {profileName}.</p>
+          </div>
+        </div>
+        {canManage ? (
+          <button className="crm-button-primary" type="button" onClick={() => inputRef.current?.click()}>
+            <Upload size={16} aria-hidden="true" /> Upload media
+          </button>
+        ) : null}
+        <input ref={inputRef} className="gp-file-input" type="file" accept="image/*,video/*" multiple onChange={onFileChange} />
+      </header>
+
+      <div
+        className={`gp-dropzone${dragging ? " is-dragging" : ""}`}
+        onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
+        onDragOver={(event) => event.preventDefault()}
+        onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false); }}
+        onDrop={onDrop}
+      >
+        <span aria-hidden="true"><Upload size={22} /></span>
+        <div>
+          <strong>Drop photos or videos here</strong>
+          <small>JPG, PNG, WebP, or MP4 up to 10 MB each</small>
+        </div>
+        {canManage ? <button type="button" onClick={() => inputRef.current?.click()}>Browse files</button> : null}
+      </div>
+
+      <div className="gp-media-toolbar">
+        <label className="gp-media-search">
+          <Search size={16} aria-hidden="true" />
+          <span className="sr-only">Search media</span>
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search media" />
+          {query ? <button type="button" onClick={() => setQuery("")} aria-label="Clear search"><X size={14} /></button> : null}
+        </label>
+        <div className="gp-media-filters" aria-label="Filter media">
+          {(["all", "image", "video"] as const).map((value) => (
+            <button key={value} type="button" className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>
+              {value === "all" ? "All media" : value === "image" ? "Photos" : "Videos"}
+            </button>
+          ))}
+        </div>
+        <span className="gp-media-count">{media.length} {media.length === 1 ? "item" : "items"}</span>
+      </div>
+
+      {selected.length ? (
+        <div className="gp-selection-bar" role="status">
+          <strong>{selected.length} selected</strong>
+          <button type="button" onClick={() => setSelected([])}>Clear</button>
+          {canManage ? <button className="is-danger" type="button" onClick={() => removeMedia(selected)}><Trash2 size={15} /> Remove</button> : null}
+        </div>
+      ) : null}
+
+      {notice ? <div className="gp-media-notice" role="status"><Check size={15} /> <span>{notice}</span><button type="button" onClick={() => setNotice(null)} aria-label="Dismiss"><X size={14} /></button></div> : null}
+
+      {visibleMedia.length ? (
+        <div className="gp-media-grid">
+          {visibleMedia.map((item) => {
+            const isSelected = selected.includes(item.id);
+            return (
+              <article key={item.id} className={isSelected ? "is-selected" : ""}>
+                <button className="gp-media-select" type="button" onClick={() => toggleSelected(item.id)} aria-label={`${isSelected ? "Deselect" : "Select"} ${item.name}`} aria-pressed={isSelected}>
+                  {isSelected ? <Check size={15} /> : null}
+                </button>
+                <div className="gp-media-preview">
+                  {item.kind === "image" ? <img src={item.url} alt="" /> : <video src={item.url} muted preload="metadata" />}
+                  <span>{item.kind === "image" ? <ImageIcon size={15} /> : <Film size={15} />} {item.kind === "image" ? "Photo" : "Video"}</span>
+                </div>
+                <footer>
+                  <div><strong title={item.name}>{item.name}</strong><small>{formatFileSize(item.size)} · Draft</small></div>
+                  {canManage ? <button type="button" onClick={() => removeMedia([item.id])} aria-label={`Remove ${item.name}`}><Trash2 size={16} /></button> : null}
+                </footer>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="gp-media-empty">
+          <span aria-hidden="true"><ImageIcon size={24} /></span>
+          <strong>{media.length ? "No media matches this view" : "Your media library is ready"}</strong>
+          <p>{media.length ? "Try another search or filter." : "Upload storefront photos, team shots, finished work, or short videos."}</p>
+          {!media.length && canManage ? <button className="crm-button-secondary" type="button" onClick={() => inputRef.current?.click()}>Choose media</button> : null}
+        </div>
+      )}
+
+      <footer className="gp-media-footnote">
+        <span>Uploads are staged in this browser for the redesign preview.</span>
+        <a href="https://support.google.com/business/answer/6103862" target="_blank" rel="noreferrer">Google media guidelines</a>
+      </footer>
+    </section>
   );
 }
 
