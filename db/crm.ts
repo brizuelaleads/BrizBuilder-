@@ -38,6 +38,8 @@ export type CrmPermission =
   | "billing.read_shared"
   | "payments.manage"
   | "messages.write"
+  | "social.plan"
+  | "social.review"
   | "automations.manage"
   | "ai_connector.manage"
   | "custom_data.manage"
@@ -46,9 +48,9 @@ export type CrmPermission =
   | "feature_flags.manage"
   | "reports.read";
 
-const fullAccessPermissions: CrmPermission[] = ["clients.manage", "clients.delete", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "call_tracking.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "payments.manage", "messages.write", "automations.manage", "ai_connector.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage", "reports.read"];
-const lbAdminPermissions: CrmPermission[] = ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "call_tracking.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "messages.write", "automations.manage", "audit.read", "reports.read"];
-const lbTeamMemberPermissions: CrmPermission[] = ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "messages.write"];
+const fullAccessPermissions: CrmPermission[] = ["clients.manage", "clients.delete", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "call_tracking.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "phone_system.manage", "billing.read_shared", "payments.manage", "messages.write", "social.plan", "social.review", "automations.manage", "ai_connector.manage", "custom_data.manage", "team.manage", "audit.read", "feature_flags.manage", "reports.read"];
+const lbAdminPermissions: CrmPermission[] = ["clients.manage", "contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "call_tracking.manage", "profiles.manage", "profiles.connect", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "messages.write", "social.plan", "social.review", "automations.manage", "audit.read", "reports.read"];
+const lbTeamMemberPermissions: CrmPermission[] = ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "messages.write", "social.plan"];
 
 const rolePermissions: Record<CrmRole, CrmPermission[]> = {
   LB_OWNER: fullAccessPermissions,
@@ -58,8 +60,8 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
   AGENCY_OWNER: fullAccessPermissions,
   AGENCY_ADMIN: lbAdminPermissions,
   AGENCY_MEMBER: lbTeamMemberPermissions,
-  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "call_tracking.manage", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "messages.write", "team.manage"],
-  CLIENT_MANAGER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "messages.write"],
+  CLIENT_OWNER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "call_tracking.manage", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "messages.write", "social.plan", "social.review", "team.manage"],
+  CLIENT_MANAGER: ["contacts.write", "contacts.import", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "calendar.connect", "websites.manage", "reviews.read", "reviews.reply", "reviews.request", "reviews.settings.manage", "messages.write", "social.plan", "social.review"],
   CLIENT_EMPLOYEE: ["contacts.write", "companies.write", "opportunities.write", "tasks.write", "appointments.write", "reviews.read", "messages.write"],
 };
 
@@ -728,6 +730,7 @@ export type CrmBootstrap = {
    * Developer Console, so the UI says so beside Connect.
    */
   squareMode?: "sandbox" | "production";
+  socialPlannerAvailable?: boolean;
   auditLogs: CrmAuditLog[];
   stages: CrmStage[];
   tasks: CrmTask[];

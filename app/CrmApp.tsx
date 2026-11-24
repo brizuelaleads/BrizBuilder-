@@ -36,6 +36,7 @@ import {
   Plug,
   Search,
   Settings as SettingsIcon,
+  Share2,
   Sparkles,
   Star,
   UserRoundSearch,
@@ -90,6 +91,7 @@ import { ConnectionsView, VisualAutomationsView } from "./crm/WorkflowViews";
 import { GoogleProfilesView } from "./crm/GoogleProfilesView";
 import { PaymentsView } from "./crm/PaymentsView";
 import { ReviewsView } from "./crm/ReviewsView";
+import { SocialView } from "./crm/SocialView";
 import { AiConnectorView } from "./crm/AiConnectorView";
 import { CallsView } from "./crm/CallsView";
 import { Badge, BusinessMark, EmptyState, initials, Modal } from "./crm/ui";
@@ -114,6 +116,7 @@ type View =
   | "seo"
   | "profiles"
   | "reviews"
+  | "social"
   | "payments"
   | "connections"
   | "phone-system"
@@ -168,6 +171,7 @@ const clientNavigation: NavItem[] = [
   { id: "calls", label: "Calls", icon: <PhoneCall />, section: "MAIN" },
   { id: "calendar", label: "Calendar", icon: <CalendarDays />, section: "MAIN" },
   { id: "ads", label: "Ads", icon: <Megaphone />, section: "MAIN" },
+  { id: "social", label: "Social", icon: <Share2 />, section: "MAIN", permission: "social.plan" },
   { id: "connections", label: "Connections", icon: <Plug />, section: "MAIN" },
   // Invoicing through the business's own Square account. The server decides
   // who may use it: owners and managers, never by what the browser sends.
@@ -224,6 +228,7 @@ const agencyNavigation: NavItem[] = [
     permission: "automations.manage",
   },
   { id: "websites", label: "Websites", icon: <Globe2 />, section: "GROWTH" },
+  { id: "social", label: "Social", icon: <Share2 />, section: "GROWTH", permission: "social.plan" },
   {
     id: "reviews",
     label: "Reviews",
@@ -310,7 +315,9 @@ function canAccessNavigationItem(
   isAgency: boolean,
   permissions: CrmPermission[],
   hasFullSidebar: boolean,
+  socialPlannerAvailable: boolean,
 ) {
+  if (item.id === "social") return socialPlannerAvailable && permissions.includes("social.plan");
   return (
     (!item.agencyOnly || isAgency) &&
     (hasFullSidebar || !item.permission || permissions.includes(item.permission))
@@ -435,6 +442,7 @@ export function CrmApp({
       data.viewer.isAgency,
       data.viewer.permissions,
       scopedAdmin,
+      data.socialPlannerAvailable === true,
     ),
   );
   if (canReadSeoReviews || canOpenSeoProfile) {
@@ -450,6 +458,7 @@ export function CrmApp({
       data.viewer.isAgency,
       data.viewer.permissions,
       scopedAdmin,
+      data.socialPlannerAvailable === true,
     ),
   );
   const logoFor = (clientId: string) =>
@@ -1579,6 +1588,15 @@ export function CrmApp({
             )}
             onOpenGoogleProfiles={openGoogleProfiles}
             onOpenConnections={openConnections}
+          />
+        )}
+        {view === "social" && (
+          <SocialView
+            clients={data.clients}
+            selectedClientId={effectiveSelectedClientId}
+            isAgency={data.viewer.isAgency}
+            canReview={data.viewer.permissions.includes("social.review")}
+            onSelectClient={setSelectedClientId}
           />
         )}
         {view === "payments" && (scopedAdmin ? (

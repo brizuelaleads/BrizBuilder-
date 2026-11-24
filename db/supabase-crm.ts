@@ -314,6 +314,8 @@ const fullAccessPermissions: CrmPermission[] = [
   "billing.read_shared",
   "payments.manage",
   "messages.write",
+  "social.plan",
+  "social.review",
   "automations.manage",
   "ai_connector.manage",
   "custom_data.manage",
@@ -341,6 +343,8 @@ const lbAdminPermissions: CrmPermission[] = [
   "reviews.request",
   "reviews.settings.manage",
   "messages.write",
+  "social.plan",
+  "social.review",
   "automations.manage",
   "audit.read",
   "reports.read",
@@ -354,6 +358,7 @@ const lbTeamMemberPermissions: CrmPermission[] = [
   "tasks.write",
   "appointments.write",
   "messages.write",
+  "social.plan",
 ];
 
 const rolePermissions: Record<CrmRole, CrmPermission[]> = {
@@ -379,6 +384,8 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "reviews.request",
     "reviews.settings.manage",
     "messages.write",
+    "social.plan",
+    "social.review",
     "team.manage",
   ],
   CLIENT_MANAGER: [
@@ -395,6 +402,8 @@ const rolePermissions: Record<CrmRole, CrmPermission[]> = {
     "reviews.request",
     "reviews.settings.manage",
     "messages.write",
+    "social.plan",
+    "social.review",
   ],
   CLIENT_EMPLOYEE: [
     "contacts.write",
@@ -4208,6 +4217,7 @@ export async function getSupabaseCrmBootstrap(
     customValues: [],
     squareConnections,
     squareMode: squareEnvironment(),
+    socialPlannerAvailable: true,
     featureFlags: defaultFeatureFlags(clientRows),
     auditLogs: auditRows.map((row: AnyRecord): CrmAuditLog => ({
       id: String(row.id),
