@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, MessageSquareText, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import type { CrmClient } from "../../db/crm";
+import type { MetaPage, MetaSocialWorkspace } from "../../lib/meta-social-core";
 import {
   SOCIAL_CHANNELS,
   SOCIAL_STATUSES,
@@ -11,6 +12,8 @@ import {
   type SocialStatus,
 } from "../../lib/social-core";
 import { Badge, EmptyState, Field, Modal } from "./ui";
+import { SocialAccounts, SocialInboxView } from "./SocialMetaViews";
+import { socialData, socialRead } from "./social-api";
 
 const channelName = { facebook: "Facebook", instagram: "Instagram" };
 const statusLabel = {
@@ -43,14 +46,6 @@ function formatDay(day: string) {
   }).format(new Date(`${day}T00:00:00Z`));
 }
 
-async function socialData<T>(response: Response): Promise<T> {
-  const payload = await response.json().catch(() => null) as { data?: T; error?: string } | null;
-  if (!response.ok || !payload?.data) {
-    throw new Error(payload?.error ?? "The social planner is temporarily unavailable.");
-  }
-  return payload.data;
-}
-
 export function SocialView({
   clients, selectedClientId, isAgency, canReview, onSelectClient,
 }: {
@@ -68,7 +63,7 @@ export function SocialView({
       <section className="crm-page-heading">
         <div>
           <h2>Social</h2>
-          <span>Plan and review Facebook and Instagram posts for each business.</span>
+          <span>Publish posts and reply across Facebook and Instagram.</span>
         </div>
         {isAgency && activeClients.length > 0 && (
           <Field label="Business">
@@ -82,7 +77,7 @@ export function SocialView({
         )}
       </section>
       {client ? (
-        <SocialPlanner key={client.id} client={client} canReview={canReview} />
+        <SocialWorkspace key={client.id} client={client} canReview={canReview} />
       ) : (
         <EmptyState
           title={activeClients.length ? "Choose a business" : "No businesses available"}
@@ -93,7 +88,72 @@ export function SocialView({
   );
 }
 
-function SocialPlanner({ client, canReview }: { client: CrmClient; canReview: boolean }) {
+function SocialWorkspace({ client, canReview }: { client: CrmClient; canReview: boolean }) {
+  const [callback] = useState(() => {
+    const params = typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search);
+    const target = params.get("client");
+    return {
+      openAccounts: params.get("social_section") === "accounts" && (!target || target === client.id),
+      error: params.get("social_connection_error") ?? "",
+    };
+  });
+  const [section, setSection] = useState<"planner" | "inbox" | "accounts">(callback.openAccounts ? "accounts" : "planner");
+  const [workspace, setWorkspace] = useState<MetaSocialWorkspace>();
+  const [error, setError] = useState("");
+  const [reload, setReload] = useState(0);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (callback.openAccounts) {
+      url.searchParams.delete("social_section");
+      url.searchParams.delete("social_connection_error");
+      window.history.replaceState(window.history.state, "", url);
+    }
+  }, [callback.openAccounts]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void socialRead<MetaSocialWorkspace>({ clientId: client.id, view: "accounts" }, controller.signal)
+      .then((data) => { if (!controller.signal.aborted) setWorkspace(data); })
+      .catch((error: Error) => { if (!controller.signal.aborted) setError(error.message); });
+    return () => controller.abort();
+  }, [client.id, reload]);
+
+  const sections = { planner: "Posts", inbox: "Inbox", accounts: "Accounts" } as const;
+  return (
+    <div className="crm-social-workspace">
+      <nav className="crm-tabs" aria-label="Social sections">
+        {(Object.keys(sections) as (keyof typeof sections)[]).map((key) => (
+          <button type="button" key={key} aria-current={key === section ? "page" : undefined}
+            className={key === section ? "active" : ""} onClick={() => setSection(key)}>{sections[key]}</button>
+        ))}
+      </nav>
+      {section === "planner" && (
+        <SocialPlanner client={client} canReview={canReview} account={workspace?.account ?? null} onAccounts={() => setSection("accounts")} />
+      )}
+      {section === "inbox" && (
+        <SocialInboxView clientId={client.id} connected={Boolean(workspace?.account)} onAccounts={() => setSection("accounts")} />
+      )}
+      {section === "accounts" && (workspace ? (
+        <SocialAccounts clientId={client.id} workspace={workspace} connectionError={callback.error} onChange={setWorkspace} />
+      ) : error ? (
+        <div className="crm-social-message" role="alert">
+          <p>{error}</p>
+          <button className="crm-button-secondary" type="button" onClick={() => {
+            setError(""); setReload((value) => value + 1);
+          }}>Try again</button>
+        </div>
+      ) : <p className="crm-social-message" role="status">Loading connected accounts…</p>)}
+    </div>
+  );
+}
+
+function SocialPlanner({ client, canReview, account, onAccounts }: {
+  client: CrmClient;
+  canReview: boolean;
+  account: MetaPage | null;
+  onAccounts: () => void;
+}) {
   const [filter, setFilter] = useState<SocialStatus | "">("");
   const [page, setPage] = useState(0);
   const [reload, setReload] = useState(0);
@@ -176,7 +236,9 @@ function SocialPlanner({ client, canReview }: { client: CrmClient; canReview: bo
                   <span className="crm-social-date">
                     {post.plannedDate ? <time dateTime={post.plannedDate}>{formatDay(post.plannedDate)}</time> : "No planned date"}
                   </span>
-                  <Badge tone={statusTone[post.status]}>{statusLabel[post.status]}</Badge>
+                  {post.status !== "published" && Object.keys(post.deliveries).length > 0
+                    ? <Badge tone="orange">{post.publishingStartedAt ? "Check publication" : "Needs attention"}</Badge>
+                    : <Badge tone={statusTone[post.status]}>{statusLabel[post.status]}</Badge>}
                 </button>
               </li>
             ))}
@@ -194,27 +256,29 @@ function SocialPlanner({ client, canReview }: { client: CrmClient; canReview: bo
           </div>
         )}
       </section>
-      <aside className="crm-panel crm-social-integration" aria-label="Meta integration status">
+      <aside className="crm-panel crm-social-integration" aria-label="Connected accounts">
         <div>
-          <h3><CalendarDays size={17} aria-hidden="true" /> Publishing</h3>
-          <p>Planned dates are for your team. Post from Facebook or Instagram, then record it here.</p>
-        </div>
-        <div>
-          <h3><MessageSquareText size={17} aria-hidden="true" /> Social inbox</h3>
-          <p>Replies, DMs and comments stay in Facebook and Instagram until the inbox integration is available.</p>
+          <h3>Publishing accounts</h3>
+          <p>{account ? account.name : "Connect this business’s Facebook Page to publish from here."}</p>
+          {account?.instagram && <p>Instagram: @{account.instagram.name}</p>}
+          <button className="crm-button-secondary" type="button" onClick={onAccounts}>View accounts</button>
         </div>
       </aside>
       {editor && (
         <SocialPostModal
+          key={editor === "new" ? "new" : `${editor.id}/${editor.revision}`}
           clientId={client.id}
           post={editor === "new" ? null : editor}
           canReview={canReview}
+          account={account}
           onClose={() => setEditor(null)}
           onReload={() => { setEditor(null); refresh(); }}
           onSave={(action, post) => {
-            setNotice(actionNotice[action]);
+            setNotice(action === "publish_now"
+              ? post.status === "published" ? "Post published." : "Check each channel’s publishing result."
+              : actionNotice[action]);
             if (filter && filter !== post.status) setFilter("");
-            setEditor(null);
+            setEditor(action === "publish_now" || (action === "create" && account && canReview) ? post : null);
             refresh();
           }}
         />
@@ -223,18 +287,24 @@ function SocialPlanner({ client, canReview }: { client: CrmClient; canReview: bo
   );
 }
 
-function SocialPostModal({ clientId, post, canReview, onClose, onReload, onSave }: {
+function SocialPostModal({ clientId, post, canReview, account, onClose, onReload, onSave }: {
   clientId: string;
   post: SocialPost | null;
   canReview: boolean;
+  account: MetaPage | null;
   onClose: () => void;
   onReload: () => void;
   onSave: (action: string, post: SocialPost) => void;
 }) {
-  const [mode, setMode] = useState<"details" | "edit" | "feedback" | "publication">(post ? "details" : "edit");
+  const [mode, setMode] = useState<"details" | "edit" | "feedback" | "publication" | "publish_now">(post ? "details" : "edit");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; stale: boolean }>();
   const isEditable = post?.status === "draft" || post?.status === "changes_requested";
+  const deliveries = Object.values(post?.deliveries ?? {});
+  const uncertain = deliveries.some(({ status }) => status === "unknown" || status === "sending");
+  const canReturnToDraft = !post?.publishingStartedAt && deliveries.every(({ status }) => status === "failed");
+  const mayPublish = canReview && Boolean(account) && !uncertain && !post?.publishingStartedAt &&
+    (post?.status === "draft" || post?.status === "approved");
 
   async function save(action: string, details: Record<string, unknown> = {}) {
     setBusy(true);
@@ -303,7 +373,7 @@ function SocialPostModal({ clientId, post, canReview, onClose, onReload, onSave 
           <Field label="Planned date">
             <input name="plannedDate" type="date" max="9999-12-31" defaultValue={post?.plannedDate ?? ""} />
           </Field>
-          <Field label="Media link">
+          <Field label="Public image link">
             <input name="mediaUrl" type="url" placeholder="https://" maxLength={2000} defaultValue={post?.mediaUrl ?? ""} />
           </Field>
           {errorMessage}
@@ -318,6 +388,7 @@ function SocialPostModal({ clientId, post, canReview, onClose, onReload, onSave 
           event.preventDefault();
           if (mode === "feedback") void save("request_changes", { feedback: new FormData(event.currentTarget).get("feedback") });
           if (mode === "publication") void save("record_published");
+          if (mode === "publish_now") void save("publish_now");
         }}>
           <div className="crm-social-detail crm-field-span">
             <Badge tone={statusTone[post.status]}>{statusLabel[post.status]}</Badge>
@@ -330,6 +401,13 @@ function SocialPostModal({ clientId, post, canReview, onClose, onReload, onSave 
             </dl>
             <div><h3>Caption</h3><p>{post.caption || "No caption yet."}</p></div>
             {post.mediaUrl && <a href={post.mediaUrl} target="_blank" rel="noreferrer">Open media link</a>}
+            {deliveries.length > 0 && <div><h3>Publishing results</h3><ul>
+              {post.channels.map((channel) => post.deliveries[channel] && (
+                <li key={channel}><strong>{channelName[channel]}</strong> {post.deliveries[channel].detail}</li>
+              ))}
+            </ul></div>}
+            {post.status !== "published" && (post.publishingStartedAt || uncertain) &&
+              <p>Check Facebook or Instagram for this post before recording publication.</p>}
             {post.feedback && <div><h3>Review feedback</h3><p>{post.feedback}</p></div>}
           </div>
           {mode === "feedback" && (
@@ -338,13 +416,19 @@ function SocialPostModal({ clientId, post, canReview, onClose, onReload, onSave 
           {mode === "publication" && (
             <p className="crm-form-note crm-field-span">Confirm this post has been published on every selected channel.</p>
           )}
+          {mode === "publish_now" && (
+            <p className="crm-form-note crm-field-span">
+              Publish to {post.channels.map((channel) => channel === "facebook" ? account?.name : account?.instagram?.name ?? "Instagram").join(" and ")} now.
+              {post.channels.includes("instagram") && " Instagram requires a public JPEG image link."}
+            </p>
+          )}
           {errorMessage}
           <footer>
             {mode !== "details" ? (
               <>
                 <button type="button" className="crm-button-secondary" disabled={busy} onClick={back}>Back</button>
                 <button type="submit" className="crm-button-primary" disabled={submitDisabled}>
-                  {busy ? "Saving…" : mode === "feedback" ? "Request changes" : "Record as published"}
+                  {busy ? "Working…" : mode === "feedback" ? "Request changes" : mode === "publish_now" ? "Publish now" : "Record as published"}
                 </button>
               </>
             ) : (
@@ -353,7 +437,7 @@ function SocialPostModal({ clientId, post, canReview, onClose, onReload, onSave 
                   <button type="button" className="crm-button-secondary" disabled={submitDisabled} onClick={() => setMode("edit")}>Edit draft</button>
                   <button type="button" className="crm-button-primary" disabled={submitDisabled} onClick={() => void save("submit")}>Submit for review</button>
                 </>}
-                {(post.status === "in_review" || post.status === "approved") && (
+                {canReturnToDraft && (post.status === "in_review" || post.status === "approved") && (
                   <button type="button" className="crm-button-secondary" disabled={submitDisabled} onClick={() => void save("withdraw")}>Return to draft</button>
                 )}
                 {canReview && post.status === "in_review" && <>
@@ -361,7 +445,12 @@ function SocialPostModal({ clientId, post, canReview, onClose, onReload, onSave 
                   <button type="button" className="crm-button-primary" disabled={submitDisabled} onClick={() => void save("approve")}>Approve post</button>
                 </>}
                 {canReview && post.status === "approved" && (
-                  <button type="button" className="crm-button-primary" disabled={submitDisabled} onClick={() => setMode("publication")}>Record as published</button>
+                  <button type="button" className="crm-button-secondary" disabled={submitDisabled} onClick={() => setMode("publication")}>Record as published</button>
+                )}
+                {mayPublish && (
+                  <button type="button" className="crm-button-primary" disabled={submitDisabled} onClick={() => setMode("publish_now")}>
+                    {deliveries.length ? "Retry failed channels" : "Publish now"}
+                  </button>
                 )}
                 {post.status === "published" && <button type="button" className="crm-button-secondary" onClick={onClose}>Close</button>}
               </>

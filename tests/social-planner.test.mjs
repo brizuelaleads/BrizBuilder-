@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { normalizeSocialContent, socialTransition } from "../lib/social-core.ts";
+import { canReplyToMetaMessage, metaPostContentError } from "../lib/meta-social-core.ts";
 
 const sample = {
   title: "  Winter promotion  ",
@@ -36,4 +38,23 @@ test("planning never grants review or publication authority", () => {
   });
   assert.deepEqual(socialTransition("submit", false).from, ["draft", "changes_requested"]);
   assert.deepEqual(socialTransition("record_published", true).from, ["approved"]);
+});
+
+test("publishing validates channel media and replies enforce the standard Meta window", () => {
+  assert.equal(metaPostContentError("facebook", "Launch caption", null), null);
+  assert.match(metaPostContentError("instagram", "Launch caption", null), /public JPEG/);
+  assert.equal(metaPostContentError("instagram", "Launch caption", "https://example.com/launch.jpg"), null);
+  const receivedAt = "2026-11-23T12:00:00Z";
+  const then = Date.parse(receivedAt);
+  const day = 24 * 60 * 60_000;
+  assert.equal(canReplyToMetaMessage(receivedAt, then + day - 1), true);
+  assert.equal(canReplyToMetaMessage(receivedAt, then + day), false);
+  assert.equal(canReplyToMetaMessage(receivedAt, then - 1), false);
+  assert.equal(canReplyToMetaMessage("unknown", then), false);
+});
+
+test("the Worker does not forward Meta credentials on redirects", async () => {
+  const source = await readFile(new URL("../lib/meta-social.ts", import.meta.url), "utf8");
+  assert.match(source, /redirect: "manual"/);
+  assert.match(source, /response\.status >= 300 && response\.status < 400/);
 });

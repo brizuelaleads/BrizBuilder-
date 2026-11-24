@@ -1,3 +1,5 @@
+import type { SocialDeliveries } from "./meta-social-core";
+
 export const SOCIAL_CHANNELS = ["facebook", "instagram"] as const;
 export const SOCIAL_STATUSES = [
   "draft",
@@ -24,6 +26,8 @@ export type SocialPost = SocialContent & {
   revision: number;
   feedback: string | null;
   publishedAt: string | null;
+  deliveries: SocialDeliveries;
+  publishingStartedAt: string | null;
 };
 
 export const SOCIAL_PAGE_SIZE = 25;
