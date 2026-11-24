@@ -1,8 +1,9 @@
 import { readRuntimeValue } from "./supabase/env";
-import { SocialRequestError, type SocialChannel } from "./social-core";
-import type { MetaPage } from "./meta-social-core";
+import { SocialRequestError } from "./social-core";
+import type { MetaPage, SocialProviderAccount } from "./meta-social-core";
 
 const GRAPH = "https://graph.facebook.com";
+const INSTAGRAM_GRAPH = "https://graph.instagram.com";
 const REQUIRED_CONFIG = [
   "META_SOCIAL_APP_ID", "META_SOCIAL_APP_SECRET", "META_SOCIAL_LOGIN_CONFIG_ID",
   "META_SOCIAL_REDIRECT_URI", "META_TOKEN_ENCRYPTION_KEY",
@@ -38,6 +39,52 @@ export function buildMetaSocialLogin(state: string) {
   url.search = new URLSearchParams({
     client_id: id, config_id: loginConfig, redirect_uri: redirect, state,
     response_type: "code", override_default_response_type: "true",
+  }).toString();
+  return url.toString();
+}
+
+const INSTAGRAM_SCOPES = [
+  "instagram_business_basic",
+  "instagram_business_content_publish",
+  "instagram_business_manage_comments",
+  "instagram_business_manage_messages",
+];
+
+function instagramConfig() {
+  const id = readRuntimeValue("META_SOCIAL_INSTAGRAM_APP_ID");
+  const secret = readRuntimeValue("META_SOCIAL_INSTAGRAM_APP_SECRET");
+  const redirect = readRuntimeValue("META_SOCIAL_INSTAGRAM_REDIRECT_URI");
+  const version = readRuntimeValue("META_SOCIAL_GRAPH_VERSION") || "v27.0";
+  if (!metaSocialId(id) || !secret || !redirect || !/^v\d+\.\d+$/.test(version) ||
+      !readRuntimeValue("META_TOKEN_ENCRYPTION_KEY")) return null;
+  try {
+    const url = new URL(redirect);
+    if (url.protocol === "https:" && !url.username && !url.password && !url.search && !url.hash &&
+        url.pathname.replace(/\/$/, "") === "/api/integrations/instagram-social/callback") {
+      return { id, secret, redirect, version };
+    }
+  } catch {
+    // The connection stays disabled until the exact redirect is configured.
+  }
+  return null;
+}
+
+export function instagramSocialConfigured() {
+  return instagramConfig() !== null;
+}
+
+function requireInstagramConfig() {
+  const settings = instagramConfig();
+  if (!settings) throw new SocialRequestError("Instagram sign-in is awaiting administrator setup.", 503);
+  return settings;
+}
+
+export function buildInstagramSocialLogin(state: string) {
+  const { id, redirect } = requireInstagramConfig();
+  const url = new URL("https://www.instagram.com/oauth/authorize");
+  url.search = new URLSearchParams({
+    client_id: id, redirect_uri: redirect, state, response_type: "code",
+    enable_fb_login: "false", force_reauth: "true", scope: INSTAGRAM_SCOPES.join(","),
   }).toString();
   return url.toString();
 }
@@ -99,12 +146,21 @@ export async function metaSocialRequest<T>(
   query: Record<string, string> = {},
   body?: Record<string, unknown>,
 ) {
+  const { version, secret } = config();
+  return requestGraph<T>(GRAPH, version, path, token, {
+    ...query, appsecret_proof: await metaSocialHmac(secret, token),
+  }, body);
+}
+
+function requestGraph<T>(
+  origin: string, version: string, path: string, token: string, query: Record<string, string>,
+  body?: Record<string, unknown>,
+) {
   if (!/^(?:me|[a-zA-Z0-9_=-]{1,350})(?:\/[a-z_]+)?$/.test(path)) {
     throw new SocialRequestError("Meta returned an invalid reference.");
   }
-  const { version, secret } = config();
-  const url = new URL(`${GRAPH}/${version}/${path}`);
-  url.search = new URLSearchParams({ ...query, appsecret_proof: await metaSocialHmac(secret, token) }).toString();
+  const url = new URL(`${origin}/${version}/${path}`);
+  url.search = new URLSearchParams(query).toString();
   const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
   if (!body) return callGraph<T>(url, headers);
   if (Object.values(body).every((value) => typeof value !== "object")) {
@@ -115,8 +171,73 @@ export async function metaSocialRequest<T>(
   return callGraph<T>(url, { ...headers, "Content-Type": "application/json" }, JSON.stringify(body));
 }
 
+export function socialAccountRequest<T>(
+  access: SocialProviderAccount, path: string, token: string, query: Record<string, string> = {},
+  body?: Record<string, unknown>,
+) {
+  return access.login === "instagram"
+    ? requestGraph<T>(INSTAGRAM_GRAPH, requireInstagramConfig().version, path, token, query, body)
+    : metaSocialRequest<T>(path, token, query, body);
+}
+
 export function metaSocialId(value: unknown): value is string {
   return typeof value === "string" && /^\d{1,40}$/.test(value);
+}
+
+function instagramId(value: unknown) {
+  if (metaSocialId(value)) return value;
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? String(value) : null;
+}
+
+type InstagramToken = { access_token?: string; expires_in?: number };
+
+function longLivedToken(result: InstagramToken) {
+  if (!result.access_token || !Number.isSafeInteger(result.expires_in) || !result.expires_in || result.expires_in <= 0 || result.expires_in > 90 * 86_400) {
+    throw new SocialRequestError("Instagram did not return a usable authorization.");
+  }
+  return { token: result.access_token, expiresAt: new Date(Date.now() + result.expires_in * 1000).toISOString() };
+}
+
+export async function exchangeInstagramSocialCode(code: string) {
+  const { id, secret, redirect, version } = requireInstagramConfig();
+  const body = new FormData();
+  for (const [name, value] of Object.entries({
+    client_id: id, client_secret: secret, grant_type: "authorization_code", redirect_uri: redirect, code,
+  })) body.set(name, value);
+  type Grant = { access_token?: string; permissions?: string | string[]; user_id?: unknown };
+  const grant = await callGraph<Grant & { data?: Grant[] }>(new URL("https://api.instagram.com/oauth/access_token"), {}, body);
+  const short = grant.data?.[0] ?? grant;
+  if (!short.access_token) throw new SocialRequestError("Instagram did not grant account access.");
+  if (short.permissions) {
+    const permissions = Array.isArray(short.permissions) ? short.permissions : short.permissions.split(/[ ,]+/u);
+    if (!INSTAGRAM_SCOPES.every((scope) => permissions.includes(scope))) {
+      throw new SocialRequestError("Authorize publishing, messages, and comments to connect Instagram.");
+    }
+  }
+
+  const url = new URL("/access_token", INSTAGRAM_GRAPH);
+  url.search = new URLSearchParams({
+    grant_type: "ig_exchange_token", client_secret: secret, access_token: short.access_token,
+  }).toString();
+  const long = longLivedToken(await callGraph<InstagramToken>(url, {}));
+
+  type Profile = { id?: unknown; user_id?: unknown; username?: string };
+  const result = await requestGraph<Profile & { data?: Profile[] }>(
+    INSTAGRAM_GRAPH, version, "me", long.token, { fields: "id,user_id,username" },
+  );
+  const profile = result.data?.[0] ?? result;
+  const userId = instagramId(profile.user_id);
+  const appUserId = instagramId(profile.id) ?? instagramId(short.user_id);
+  if (!userId || !appUserId || !profile.username || !/^[a-zA-Z0-9._]{1,30}$/.test(profile.username)) {
+    throw new SocialRequestError("Instagram did not return a professional account.");
+  }
+  return { ...long, id: userId, appUserId, username: profile.username };
+}
+
+export async function refreshInstagramSocialToken(token: string) {
+  const url = new URL("/refresh_access_token", INSTAGRAM_GRAPH);
+  url.search = new URLSearchParams({ grant_type: "ig_refresh_token", access_token: token }).toString();
+  return longLivedToken(await callGraph<InstagramToken>(url, {}));
 }
 
 export type MetaPageWithToken = MetaPage & { token: string };
@@ -156,25 +277,17 @@ export async function exchangeMetaSocialCode(code: string): Promise<MetaAuthoriz
   return { userId, userToken, pages };
 }
 
-export type MetaAccountAccess = {
-  pageId: string;
-  instagramId: string | null;
-  pageToken: string;
-  userToken: string;
-};
-
 export async function publishMetaSocialPost(
-  access: MetaAccountAccess,
-  channel: SocialChannel,
+  access: SocialProviderAccount,
   caption: string,
   mediaUrl: string | null,
 ) {
-  if (channel === "facebook") {
+  if (access.channel === "facebook") {
     const result = mediaUrl
-      ? await metaSocialRequest<{ id?: string; post_id?: string }>(`${access.pageId}/photos`, access.pageToken, {}, {
+      ? await socialAccountRequest<{ id?: string; post_id?: string }>(access, `${access.id}/photos`, access.token, {}, {
         url: mediaUrl, caption, published: true,
       })
-      : await metaSocialRequest<{ id?: string; post_id?: string }>(`${access.pageId}/feed`, access.pageToken, {}, {
+      : await socialAccountRequest<{ id?: string; post_id?: string }>(access, `${access.id}/feed`, access.token, {}, {
         message: caption,
       });
     const id = result.post_id ?? result.id;
@@ -182,16 +295,16 @@ export async function publishMetaSocialPost(
     return id;
   }
 
-  if (!access.instagramId || !mediaUrl) throw new SocialRequestError("Connect Instagram and add a public JPEG link.");
+  if (!mediaUrl) throw new SocialRequestError("Add a public JPEG link to publish on Instagram.");
   let container: string;
   try {
-    const { id } = await metaSocialRequest<{ id: string }>(`${access.instagramId}/media`, access.userToken, {}, {
+    const { id } = await socialAccountRequest<{ id: string }>(access, `${access.id}/media`, access.token, {}, {
       image_url: mediaUrl, caption,
     });
     if (!metaSocialId(id)) throw new MetaSocialError("Instagram could not prepare the image.");
     container = id;
     for (let attempt = 0; attempt < 5; attempt++) {
-      const { status_code } = await metaSocialRequest<{ status_code: string }>(container, access.userToken, { fields: "status_code" });
+      const { status_code } = await socialAccountRequest<{ status_code: string }>(access, container, access.token, { fields: "status_code" });
       if (status_code === "FINISHED") {
         break;
       }
@@ -204,7 +317,7 @@ export async function publishMetaSocialPost(
     // A container can exist after a timeout, but it cannot post without media_publish.
     throw new MetaSocialError(error instanceof SocialRequestError ? error.message : "Instagram could not prepare the image.");
   }
-  const { id } = await metaSocialRequest<{ id: string }>(`${access.instagramId}/media_publish`, access.userToken, {}, {
+  const { id } = await socialAccountRequest<{ id: string }>(access, `${access.id}/media_publish`, access.token, {}, {
     creation_id: container,
   });
   if (!metaSocialId(id)) throw new MetaSocialError("Instagram did not confirm publication.", true);

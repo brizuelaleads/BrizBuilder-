@@ -16,26 +16,27 @@ export function SocialAccounts({ clientId, workspace, connectionError, onChange 
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(connectionError);
-  const [disconnect, setDisconnect] = useState(false);
+  const [disconnect, setDisconnect] = useState<"Facebook" | "Instagram" | null>(null);
+  const { account, instagramAccount } = workspace;
 
-  async function connect() {
+  async function connect(action: "meta_connect" | "instagram_connect") {
     setError("");
     setBusy(true);
     try {
-      const { url } = await socialWrite<{ url: string }>({ clientId, action: "meta_connect" });
+      const { url } = await socialWrite<{ url: string }>({ clientId, action });
       window.location.assign(url);
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Meta could not be opened.");
+      setError(error instanceof Error ? error.message : "Could not open the sign-in.");
       setBusy(false);
     }
   }
 
-  async function save(action: "meta_select" | "meta_disconnect", pageId?: FormDataEntryValue | null) {
+  async function save(action: "meta_select" | "meta_disconnect" | "instagram_disconnect", pageId?: FormDataEntryValue | null) {
     setBusy(true);
     setError("");
     try {
       onChange(await socialWrite<MetaSocialWorkspace>({ clientId, action, pageId }));
-      setDisconnect(false);
+      setDisconnect(null);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not update the accounts.");
     } finally {
@@ -46,17 +47,22 @@ export function SocialAccounts({ clientId, workspace, connectionError, onChange 
   return (
     <section className="crm-panel crm-social-accounts">
       <header>
-        <div><h3>Connected accounts</h3><span className="crm-social-muted">Facebook Page and linked professional Instagram account</span></div>
-        {workspace.configured && workspace.canConnect && (
-          <button className="crm-button-primary" type="button" disabled={busy} onClick={() => void connect()}>
-            {workspace.account ? "Reconnect Meta" : "Connect Meta"}
-          </button>
-        )}
+        <div><h3>Connected accounts</h3><span className="crm-social-muted">Choose the accounts this business can publish to and reply from.</span></div>
       </header>
       {error && !disconnect && <p className="crm-social-message" role="alert">{error}</p>}
-      {!workspace.configured ? (
-        <EmptyState title="Meta setup is pending" description="Account linking will open once your BrizBuilder administrator configures the Meta app." />
-      ) : workspace.pages.length > 0 && workspace.canConnect ? (
+      <section className="crm-social-account" aria-label="Facebook connection">
+        <div>
+          <h4>Facebook</h4>
+          <p>{account?.name ?? (workspace.configured ? "Choose a Facebook Page you manage." : "Facebook sign-in is awaiting administrator setup.")}</p>
+        </div>
+        {workspace.configured && workspace.canConnect && <div className="crm-social-account-actions">
+          {account && <button className="crm-button-secondary" type="button" disabled={busy} onClick={() => setDisconnect("Facebook")}>Disconnect Facebook</button>}
+          <button className={account ? "crm-button-secondary" : "crm-button-primary"} type="button" disabled={busy} onClick={() => void connect("meta_connect")}>
+            {account ? "Reconnect Facebook" : "Connect Facebook"}
+          </button>
+        </div>}
+      </section>
+      {workspace.configured && workspace.pages.length > 0 && workspace.canConnect && (
         <form className="crm-form" onSubmit={(event) => {
           event.preventDefault();
           void save("meta_select", new FormData(event.currentTarget).get("pageId"));
@@ -69,26 +75,40 @@ export function SocialAccounts({ clientId, workspace, connectionError, onChange 
               </option>)}
             </select>
           </Field>
-          <footer><button className="crm-button-primary" type="submit" disabled={busy}>Link accounts</button></footer>
+          <footer><button className="crm-button-primary" type="submit" disabled={busy}>Link Facebook Page</button></footer>
         </form>
-      ) : workspace.account ? (
-        <div className="crm-social-account-lines">
-          <div><strong>Facebook</strong><span>{workspace.account.name}</span></div>
-          <div><strong>Instagram</strong><span>{workspace.account.instagram?.name ?? "Link a professional Instagram account to this Page, then reconnect."}</span></div>
-          {workspace.canConnect && <button className="crm-button-secondary" type="button" disabled={busy} onClick={() => setDisconnect(true)}>Disconnect Meta</button>}
-        </div>
-      ) : (
-        <EmptyState title="No connected accounts" description={workspace.canConnect
-          ? "Sign in with Meta and choose the Facebook Page for this business."
-          : "Ask your account manager to connect this business’s Facebook Page."} />
       )}
-      {disconnect && <Modal title="Disconnect Meta?" onClose={() => { if (!busy) setDisconnect(false); }}>
+      <section className="crm-social-account" aria-label="Instagram connection">
+        <div>
+          <h4>Instagram</h4>
+          <p>{instagramAccount ? `@${instagramAccount.name}` : "Connect a professional Instagram account."}</p>
+          {instagramAccount?.source === "facebook" && <p>Connected through Facebook.</p>}
+          {instagramAccount?.needsReconnect && <p>Instagram access expired. Reconnect to resume publishing and replies.</p>}
+          {!workspace.instagramConfigured && <p>Direct Instagram sign-in is awaiting administrator setup.</p>}
+        </div>
+        {workspace.instagramConfigured && workspace.canConnect && <div className="crm-social-account-actions">
+          {instagramAccount?.source === "instagram" &&
+            <button className="crm-button-secondary" type="button" disabled={busy} onClick={() => setDisconnect("Instagram")}>Disconnect Instagram login</button>}
+          <button className={instagramAccount ? "crm-button-secondary" : "crm-button-primary"} type="button" disabled={busy} onClick={() => void connect("instagram_connect")}>
+            {instagramAccount?.source === "instagram" ? "Reconnect Instagram" : "Connect Instagram"}
+          </button>
+        </div>}
+      </section>
+      {disconnect && <Modal title={`Disconnect ${disconnect}?`} onClose={() => { if (!busy) setDisconnect(null); }}>
         <div className="crm-form">
-          <p className="crm-field-span">This removes BrizBuilder’s saved access for this business. Previously published posts stay on Meta.</p>
+          <p className="crm-field-span">{disconnect === "Facebook"
+            ? instagramAccount?.source === "facebook"
+              ? "This removes access to the Page and the Instagram account linked through it."
+              : "This removes BrizBuilder’s saved access to the Facebook Page."
+            : account?.instagram
+              ? "This removes the direct sign-in. Instagram will use the account linked to your Facebook Page."
+              : "This removes BrizBuilder’s saved access to Instagram."}</p>
           {error && <p className="crm-field-span" role="alert">{error}</p>}
           <footer>
-            <button className="crm-button-secondary" type="button" disabled={busy} onClick={() => setDisconnect(false)}>Cancel</button>
-            <button className="crm-button-primary" type="button" disabled={busy} onClick={() => void save("meta_disconnect")}>Disconnect Meta</button>
+            <button className="crm-button-secondary" type="button" disabled={busy} onClick={() => setDisconnect(null)}>Cancel</button>
+            <button className="crm-button-primary" type="button" disabled={busy} onClick={() => void save(disconnect === "Facebook" ? "meta_disconnect" : "instagram_disconnect")}>
+              Disconnect {disconnect}
+            </button>
           </footer>
         </div>
       </Modal>}
@@ -127,7 +147,7 @@ export function SocialInboxView({ clientId, connected, onAccounts }: {
   }, [after, clientId, connected, kind, key]);
 
   if (!connected) {
-    return <EmptyState title="Connect Meta to open the inbox"
+    return <EmptyState title="Connect a social account to open the inbox"
       description="Read and reply to messages and comments from this business’s Facebook and Instagram accounts."
       action={<button className="crm-button-secondary" type="button" onClick={onAccounts}>View accounts</button>} />;
   }

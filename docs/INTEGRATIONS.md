@@ -86,10 +86,35 @@ community access to the Page.
    runtime. The social credential store uses the existing
    `META_TOKEN_ENCRYPTION_KEY` with a social-specific account scope.
    If the runtime has that key, keep its existing value.
-4. Open **Social → Accounts → Connect Meta**. Select a pilot Page and its
-   linked Instagram account. In Posts, publish a test post with a publicly
-   accessible JPEG URL. In Inbox, open a test DM and comment and send a
-   reply to each. Use a separate real customer account to verify delivery.
+4. Open **Social → Accounts → Connect Facebook**. Select a pilot Page.
+   A professional Instagram account linked to that Page also appears under
+   Instagram.
+
+For direct Instagram sign-in, configure the **Instagram API with Instagram
+Login** in the Meta app. This flow accepts business and creator accounts.
+Use the Instagram App ID and Instagram App Secret shown under Instagram
+API setup. Enable `instagram_business_basic`,
+`instagram_business_content_publish`, `instagram_business_manage_comments`,
+and `instagram_business_manage_messages`. Use Meta's app review for
+Advanced Access when serving clients outside the app's roles.
+
+1. Apply `20261125000000_social_instagram_login.sql` to Supabase.
+2. Register `https://brizbuilder.com/api/integrations/instagram-social/callback`
+   as a valid OAuth redirect, and
+   `https://brizbuilder.com/api/integrations/instagram-social/data-deletion`
+   for signed data deletion and deauthorization.
+3. Set `META_SOCIAL_INSTAGRAM_APP_ID`, `META_SOCIAL_INSTAGRAM_APP_SECRET`,
+   and `META_SOCIAL_INSTAGRAM_REDIRECT_URI` in the Worker runtime. The
+   redirect value must match the one registered in Meta. The connection uses
+   the existing `META_TOKEN_ENCRYPTION_KEY`.
+4. Open **Social → Accounts → Connect Instagram** and authorize a pilot
+   account. BrizBuilder uses this account for Instagram features whenever
+   it has a direct connection for the client.
+
+In **Social → New post → Post to**, select one or both channels. Check the
+destination names before publishing a test post with a publicly accessible
+JPEG URL. In the shared Inbox, test DMs and comments from a separate
+customer account.
 
 Facebook accepts text-only posts and single images. Instagram publishing uses
 a JPEG URL accessible to Meta. The planner date is a target for the team.

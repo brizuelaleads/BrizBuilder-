@@ -5,6 +5,7 @@ import {
   beginMetaSocialConnect, disconnectMetaSocial, getMetaSocialWorkspace, metaAccess, publishSocialPost, selectMetaSocialPage,
 } from "../../../db/supabase-meta-social";
 import { loadSocialInbox, loadSocialThread, replySocialThread } from "../../../lib/meta-social-inbox";
+import { beginInstagramConnect, disconnectInstagram } from "../../../db/supabase-instagram-social";
 
 export const dynamic = "force-dynamic";
 
@@ -95,6 +96,13 @@ export async function POST(request: Request) {
         return json({ data: await selectMetaSocialPage(await authorizeSocial(user, input.clientId), input.pageId) });
       case "meta_disconnect":
         return json({ data: await disconnectMetaSocial(await authorizeSocial(user, input.clientId)) });
+      case "instagram_connect":
+        return json({ data: { url: await beginInstagramConnect(await authorizeSocial(user, input.clientId)) } });
+      case "instagram_disconnect": {
+        const scope = await authorizeSocial(user, input.clientId);
+        await disconnectInstagram(scope);
+        return json({ data: await getMetaSocialWorkspace(scope) });
+      }
       case "publish_now":
         return json({ data: await publishSocialPost(await authorizeSocial(user, input.clientId), input) });
       case "social_reply": {

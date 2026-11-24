@@ -3,11 +3,12 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import type { CrmClient } from "../../db/crm";
-import type { MetaPage, MetaSocialWorkspace } from "../../lib/meta-social-core";
+import type { MetaSocialWorkspace } from "../../lib/meta-social-core";
 import {
   SOCIAL_CHANNELS,
   SOCIAL_STATUSES,
   type SocialPage,
+  type SocialChannel,
   type SocialPost,
   type SocialStatus,
 } from "../../lib/social-core";
@@ -16,6 +17,7 @@ import { SocialAccounts, SocialInboxView } from "./SocialMetaViews";
 import { socialData, socialRead } from "./social-api";
 
 const channelName = { facebook: "Facebook", instagram: "Instagram" };
+type PublishingTargets = Partial<Record<SocialChannel, { id: string; name: string; source: SocialChannel; needsReconnect?: boolean }>>;
 const statusLabel = {
   draft: "Draft",
   in_review: "In review",
@@ -120,6 +122,10 @@ function SocialWorkspace({ client, canReview }: { client: CrmClient; canReview: 
   }, [client.id, reload]);
 
   const sections = { planner: "Posts", inbox: "Inbox", accounts: "Accounts" } as const;
+  const targets: PublishingTargets = {
+    ...(workspace?.account ? { facebook: { id: workspace.account.id, name: workspace.account.name, source: "facebook" } } : {}),
+    ...(workspace?.instagramAccount ? { instagram: { ...workspace.instagramAccount, name: `@${workspace.instagramAccount.name}` } } : {}),
+  };
   return (
     <div className="crm-social-workspace">
       <nav className="crm-tabs" aria-label="Social sections">
@@ -129,10 +135,10 @@ function SocialWorkspace({ client, canReview }: { client: CrmClient; canReview: 
         ))}
       </nav>
       {section === "planner" && (
-        <SocialPlanner client={client} canReview={canReview} account={workspace?.account ?? null} onAccounts={() => setSection("accounts")} />
+        <SocialPlanner client={client} canReview={canReview} targets={targets} onAccounts={() => setSection("accounts")} />
       )}
       {section === "inbox" && (
-        <SocialInboxView clientId={client.id} connected={Boolean(workspace?.account)} onAccounts={() => setSection("accounts")} />
+        <SocialInboxView clientId={client.id} connected={Boolean(targets.facebook || targets.instagram)} onAccounts={() => setSection("accounts")} />
       )}
       {section === "accounts" && (workspace ? (
         <SocialAccounts clientId={client.id} workspace={workspace} connectionError={callback.error} onChange={setWorkspace} />
@@ -148,10 +154,10 @@ function SocialWorkspace({ client, canReview }: { client: CrmClient; canReview: 
   );
 }
 
-function SocialPlanner({ client, canReview, account, onAccounts }: {
+function SocialPlanner({ client, canReview, targets, onAccounts }: {
   client: CrmClient;
   canReview: boolean;
-  account: MetaPage | null;
+  targets: PublishingTargets;
   onAccounts: () => void;
 }) {
   const [filter, setFilter] = useState<SocialStatus | "">("");
@@ -259,8 +265,7 @@ function SocialPlanner({ client, canReview, account, onAccounts }: {
       <aside className="crm-panel crm-social-integration" aria-label="Connected accounts">
         <div>
           <h3>Publishing accounts</h3>
-          <p>{account ? account.name : "Connect this business’s Facebook Page to publish from here."}</p>
-          {account?.instagram && <p>Instagram: @{account.instagram.name}</p>}
+          {SOCIAL_CHANNELS.map((channel) => <p key={channel}>{channelName[channel]} <strong>{targets[channel]?.name ?? "Not connected"}</strong></p>)}
           <button className="crm-button-secondary" type="button" onClick={onAccounts}>View accounts</button>
         </div>
       </aside>
@@ -270,7 +275,7 @@ function SocialPlanner({ client, canReview, account, onAccounts }: {
           clientId={client.id}
           post={editor === "new" ? null : editor}
           canReview={canReview}
-          account={account}
+          targets={targets}
           onClose={() => setEditor(null)}
           onReload={() => { setEditor(null); refresh(); }}
           onSave={(action, post) => {
@@ -278,7 +283,7 @@ function SocialPlanner({ client, canReview, account, onAccounts }: {
               ? post.status === "published" ? "Post published." : "Check each channel’s publishing result."
               : actionNotice[action]);
             if (filter && filter !== post.status) setFilter("");
-            setEditor(action === "publish_now" || (action === "create" && account && canReview) ? post : null);
+            setEditor(action === "publish_now" || (action === "create" && canReview && (targets.facebook || targets.instagram)) ? post : null);
             refresh();
           }}
         />
@@ -287,11 +292,11 @@ function SocialPlanner({ client, canReview, account, onAccounts }: {
   );
 }
 
-function SocialPostModal({ clientId, post, canReview, account, onClose, onReload, onSave }: {
+function SocialPostModal({ clientId, post, canReview, targets, onClose, onReload, onSave }: {
   clientId: string;
   post: SocialPost | null;
   canReview: boolean;
-  account: MetaPage | null;
+  targets: PublishingTargets;
   onClose: () => void;
   onReload: () => void;
   onSave: (action: string, post: SocialPost) => void;
@@ -303,8 +308,11 @@ function SocialPostModal({ clientId, post, canReview, account, onClose, onReload
   const deliveries = Object.values(post?.deliveries ?? {});
   const uncertain = deliveries.some(({ status }) => status === "unknown" || status === "sending");
   const canReturnToDraft = !post?.publishingStartedAt && deliveries.every(({ status }) => status === "failed");
-  const mayPublish = canReview && Boolean(account) && !uncertain && !post?.publishingStartedAt &&
+  const remaining = post?.channels.filter((channel) => post.deliveries[channel]?.status !== "sent") ?? [];
+  const missing = remaining.filter((channel) => !targets[channel] || targets[channel]?.needsReconnect);
+  const mayPublish = canReview && missing.length === 0 && !uncertain && !post?.publishingStartedAt &&
     (post?.status === "draft" || post?.status === "approved");
+  const destinationNames = remaining.map((channel) => `${channelName[channel]} (${targets[channel]?.name ?? "Not connected"})`);
 
   async function save(action: string, details: Record<string, unknown> = {}) {
     setBusy(true);
@@ -359,11 +367,14 @@ function SocialPostModal({ clientId, post, canReview, account, onClose, onReload
             <input name="title" required maxLength={120} defaultValue={post?.title} />
           </Field>
           <fieldset className="crm-social-channels crm-field-span">
-            <legend>Channels</legend>
+            <legend>Post to</legend>
             {SOCIAL_CHANNELS.map((channel) => (
-              <label key={channel}>
-                <input type="checkbox" name="channels" value={channel} defaultChecked={post?.channels.includes(channel)} />
-                {channelName[channel]}
+              <label key={channel} className="crm-social-destination">
+                <input aria-label={channelName[channel]} type="checkbox" name="channels" value={channel} defaultChecked={post?.channels.includes(channel)} />
+                <span>
+                  <strong>{channelName[channel]}</strong>
+                  <small>{targets[channel]?.name ?? "Connect before publishing"}</small>
+                </span>
               </label>
             ))}
           </fieldset>
@@ -388,7 +399,12 @@ function SocialPostModal({ clientId, post, canReview, account, onClose, onReload
           event.preventDefault();
           if (mode === "feedback") void save("request_changes", { feedback: new FormData(event.currentTarget).get("feedback") });
           if (mode === "publication") void save("record_published");
-          if (mode === "publish_now") void save("publish_now");
+          if (mode === "publish_now") void save("publish_now", {
+            destinations: Object.fromEntries(remaining.flatMap((channel) => {
+              const target = targets[channel];
+              return target ? [[channel, `${target.source}:${target.id}`]] : [];
+            })),
+          });
         }}>
           <div className="crm-social-detail crm-field-span">
             <Badge tone={statusTone[post.status]}>{statusLabel[post.status]}</Badge>
@@ -408,6 +424,8 @@ function SocialPostModal({ clientId, post, canReview, account, onClose, onReload
             </ul></div>}
             {post.status !== "published" && (post.publishingStartedAt || uncertain) &&
               <p>Check Facebook or Instagram for this post before recording publication.</p>}
+            {canReview && (post.status === "draft" || post.status === "approved") && missing.length > 0 &&
+              <p>Connect {missing.map((channel) => channelName[channel]).join(" and ")} under Accounts to publish this post.</p>}
             {post.feedback && <div><h3>Review feedback</h3><p>{post.feedback}</p></div>}
           </div>
           {mode === "feedback" && (
@@ -418,8 +436,8 @@ function SocialPostModal({ clientId, post, canReview, account, onClose, onReload
           )}
           {mode === "publish_now" && (
             <p className="crm-form-note crm-field-span">
-              Publish to {post.channels.map((channel) => channel === "facebook" ? account?.name : account?.instagram?.name ?? "Instagram").join(" and ")} now.
-              {post.channels.includes("instagram") && " Instagram requires a public JPEG image link."}
+              Publish to {destinationNames.join(" and ")} now.
+              {remaining.includes("instagram") && " Instagram requires a public JPEG image link."}
             </p>
           )}
           {errorMessage}
