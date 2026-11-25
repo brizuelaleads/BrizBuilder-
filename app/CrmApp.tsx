@@ -445,10 +445,16 @@ export function CrmApp({
       data.socialPlannerAvailable === true,
     ),
   );
-  if (canReadSeoReviews || canOpenSeoProfile) {
-    const seoItem: NavItem = { id: "seo", label: "SEO", icon: <MapPin />, section: "GROWTH" };
+  // SEO (the Google Business Profile) and Reviews are separate menu items,
+  // side by side at the top of Growth. Client sessions have no Reviews entry
+  // in their own list, so both are added here from the same permissions.
+  const growthItems: NavItem[] = [
+    ...(canOpenSeoProfile ? [{ id: "seo", label: "SEO", icon: <MapPin />, section: "GROWTH" } satisfies NavItem] : []),
+    ...(canReadSeoReviews ? [{ id: "reviews", label: "Reviews", icon: <Star />, section: "GROWTH" } satisfies NavItem] : []),
+  ];
+  if (growthItems.length) {
     const growthIndex = visibleNav.findIndex((item) => item.section === "GROWTH");
-    visibleNav.splice(growthIndex < 0 ? visibleNav.length : growthIndex, 0, seoItem);
+    visibleNav.splice(growthIndex < 0 ? visibleNav.length : growthIndex, 0, ...growthItems);
   }
   // Hidden legacy routes remain available to roles that historically had
   // access, while agency-only routes are rejected for true client sessions.
@@ -474,6 +480,8 @@ export function CrmApp({
     );
   }, [data.clients, accountSearch]);
   const requested = requestedView as View;
+  // "seo" opens the Business Profile. Links saved while Reviews lived inside
+  // SEO still land on Reviews for people who can only read reviews.
   const view: View =
     requested === "seo" && (canOpenSeoProfile || canReadSeoReviews)
       ? canOpenSeoProfile ? "profiles" : "reviews"
@@ -481,7 +489,7 @@ export function CrmApp({
     accessibleSecondaryViews.some((item) => item.id === requested)
       ? requested
       : "dashboard";
-  const isSeo = view === "profiles" || view === "reviews";
+  const isSeo = view === "profiles";
   const title = isSeo ? "SEO" :
     visibleNav.find((item) => item.id === view)?.label ??
     agencyNavigation.find((item) => item.id === view)?.label ??
@@ -1306,6 +1314,15 @@ export function CrmApp({
                 Connections
               </button>
             ) : null}
+            {view === "reviews" && canOpenSeoProfile ? (
+              <button
+                type="button"
+                className="crm-topbar-action"
+                onClick={() => navigate("profiles")}
+              >
+                Google Profiles
+              </button>
+            ) : null}
             <button
               className="crm-command-button"
               type="button"
@@ -1546,12 +1563,6 @@ export function CrmApp({
             canManage={data.viewer.permissions.includes("websites.manage")}
           />
         )}
-        {isSeo && canOpenSeoProfile && canReadSeoReviews ? (
-          <nav className="crm-tabs" aria-label="SEO sections">
-            <button type="button" aria-current={view === "profiles" ? "page" : undefined} className={view === "profiles" ? "active" : ""} onClick={() => navigate("profiles")}>Business profile</button>
-            <button type="button" aria-current={view === "reviews" ? "page" : undefined} className={view === "reviews" ? "active" : ""} onClick={() => navigate("reviews")}>Reviews</button>
-          </nav>
-        ) : null}
         {view === "profiles" && (
           <GoogleProfilesView
             clients={data.clients}

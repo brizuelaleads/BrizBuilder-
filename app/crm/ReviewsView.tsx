@@ -3,11 +3,19 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import { QRCodeCanvas } from "qrcode.react";
+import {
+  MessageSquareText,
+  RefreshCw,
+  Send,
+  Settings as SettingsIcon,
+} from "lucide-react";
 import type {
   CrmClient,
   CrmContact,
@@ -23,12 +31,20 @@ import type {
 } from "../../lib/google-business";
 import { Badge, EmptyState } from "./ui";
 
+/*
+ * Reviews: one page with a Google status bar, four summary cards and three
+ * tabs -- the review inbox, the tools that ask customers for reviews, and the
+ * settings those requests follow. It reuses the Google Business Profile page's
+ * bar, tabs and cards (gbw-*, gp-*) so the two Growth pages read as a pair.
+ * Nothing here publishes or sends without a person clicking the button for it.
+ */
+
 type Mutate = (
   input: Record<string, unknown>,
   success: string,
 ) => Promise<unknown>;
 
-type ReviewTab = "overview" | "inbox" | "requests" | "settings";
+type ReviewTab = "inbox" | "requests" | "settings";
 type ReviewLoadStatus = "idle" | "loading" | "ready" | "error";
 
 type ReviewsApiResponse = {
@@ -36,11 +52,10 @@ type ReviewsApiResponse = {
   error?: string;
 };
 
-const tabs: Array<{ id: ReviewTab; label: string }> = [
-  { id: "overview", label: "Overview" },
-  { id: "inbox", label: "Review Inbox" },
-  { id: "requests", label: "Review Requests" },
-  { id: "settings", label: "Settings" },
+const tabs: Array<{ id: ReviewTab; label: string; icon: ReactNode }> = [
+  { id: "inbox", label: "Reviews", icon: <MessageSquareText size={16} aria-hidden="true" /> },
+  { id: "requests", label: "Get more reviews", icon: <Send size={16} aria-hidden="true" /> },
+  { id: "settings", label: "Settings", icon: <SettingsIcon size={16} aria-hidden="true" /> },
 ];
 
 const DEFAULT_REQUEST_TEMPLATE =
@@ -90,6 +105,10 @@ function reviewExcerpt(review: GoogleBusinessReview) {
   return review.comment?.trim() || "This reviewer left a star rating without a written comment.";
 }
 
+function initialOf(name: string) {
+  return name.trim().charAt(0).toUpperCase() || "?";
+}
+
 async function requestGoogleReviews(
   clientId: string,
   pageToken?: string | null,
@@ -115,6 +134,13 @@ function requestStatusTone(status: CrmReviewRequest["status"]) {
   if (status === "failed" || status === "cancelled") return "red" as const;
   if (status === "sent") return "blue" as const;
   return "orange" as const;
+}
+
+function replyStatusLabel(status: string) {
+  if (status === "APPROVED") return "Live on Google";
+  if (status === "PENDING") return "Waiting on Google";
+  if (status === "REJECTED") return "Rejected by Google";
+  return status.toLowerCase();
 }
 
 function renderRequestMessage(
@@ -154,6 +180,20 @@ async function copyText(value: string) {
   if (!copied) throw new Error("The review link could not be copied.");
 }
 
+function Stars({ rating, label }: { rating: number; label?: string }) {
+  const filled = Math.max(0, Math.min(5, Math.round(rating)));
+  return (
+    <span
+      className="rv-stars"
+      role="img"
+      aria-label={label ?? `${rating} out of 5 stars`}
+    >
+      {"★".repeat(filled)}
+      <i>{"★".repeat(5 - filled)}</i>
+    </span>
+  );
+}
+
 export function ReviewsView({
   clients,
   contacts,
@@ -189,7 +229,7 @@ export function ReviewsView({
   onOpenGoogleProfiles: (clientId: string) => void;
   onOpenConnections: (clientId: string) => void;
 }) {
-  const [tab, setTab] = useState<ReviewTab>("overview");
+  const [tab, setTab] = useState<ReviewTab>("inbox");
   const [localClientId, setLocalClientId] = useState(clients[0]?.id ?? "");
   const clientId = clientChoice(clients, selectedClientId, localClientId);
   const client = clients.find((item) => item.id === clientId) ?? null;
@@ -215,8 +255,8 @@ export function ReviewsView({
     : !phoneConfigured
       ? "Finish this business's phone and messaging setup."
       : !a2pApproved
-        ? "Business texting is connected, but carrier approval is still pending."
-        : "Business texting and carrier approval are ready.";
+        ? "Texting is connected, but carrier approval is still pending."
+        : "Texting is connected and carrier-approved.";
   const googleConnected = Boolean(
     profile?.status === "connected" && profile.locationId,
   );
@@ -377,101 +417,126 @@ export function ReviewsView({
     });
   }
 
+  const reviewsReady = reviewLoadStatus === "ready";
+  const needsReplyCount = reviewsReady
+    ? (googleReviews?.reviews ?? []).filter((review) => !review.reply).length
+    : 0;
+  const googleTitle = googleConnected
+    ? profile?.locationName || profile?.businessName || "Google location connected"
+    : "Google isn't connected yet";
+  const googleDetail = reviewsReady
+    ? "Live reviews from Google. Replies you publish appear on Google."
+    : reviewLoadStatus === "loading"
+      ? "Loading reviews from Google…"
+      : reviewLoadStatus === "error"
+        ? googleApprovalPending
+          ? "Google hasn't switched on review access for this business yet."
+          : reviewLoadError
+        : "Connect this business's Google profile to see and answer its reviews here.";
+  const googleBadge = reviewsReady
+    ? { tone: "green" as const, label: "Live" }
+    : reviewLoadStatus === "loading"
+      ? { tone: "neutral" as const, label: "Loading" }
+      : reviewLoadStatus === "error"
+        ? googleApprovalPending
+          ? { tone: "orange" as const, label: "Access pending" }
+          : { tone: "red" as const, label: "Needs attention" }
+        : { tone: "orange" as const, label: "Not connected" };
+
   return (
-    <div className="crm-view crm-reviews-view">
-      <section className="crm-page-heading crm-reviews-heading">
+    <div className="crm-view rv-view">
+      <section className="crm-page-heading rv-heading">
         <div>
           <p>REPUTATION</p>
           <h2>Reviews</h2>
           <span>
-            Request genuine customer feedback and manage every Google review
-            with the business owner in control.
+            Read and answer Google reviews, and ask customers to leave new ones.
           </span>
         </div>
-        {client && canRequest ? (
-          <button
-            className="crm-button-primary"
-            type="button"
-            onClick={() => chooseTab("requests")}
-          >
-            Request a review
-          </button>
-        ) : null}
-      </section>
-
-      {selectedClientId === "all" && clients.length ? (
-        <section className="crm-review-client-picker">
-          <label>
-            <span>Business</span>
-            <select
-              value={clientId}
-              onChange={(event) => setLocalClientId(event.target.value)}
-              aria-label="Choose a business for the reviews workspace"
+        <div className="rv-heading-actions">
+          {selectedClientId === "all" && clients.length ? (
+            <label className="gp-picker">
+              <span>Business</span>
+              <select
+                value={clientId}
+                onChange={(event) => setLocalClientId(event.target.value)}
+                aria-label="Choose a business for the reviews workspace"
+              >
+                {clients.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.businessName}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {client && canRequest ? (
+            <button
+              className="crm-button-primary"
+              type="button"
+              onClick={() => chooseTab("requests")}
             >
-              {clients.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.businessName}
-                </option>
-              ))}
-            </select>
-          </label>
-        </section>
-      ) : null}
+              Request a review
+            </button>
+          ) : null}
+        </div>
+      </section>
 
       {!client ? (
         <EmptyState
           title="Add a client first"
-          description="Reviews, review links, and requests must belong to a specific business workspace."
+          description="Reviews, review links, and requests belong to a specific business."
         />
       ) : (
         <>
           <section
-            className={`crm-review-access-banner ${reviewLoadStatus === "ready" ? "connected" : reviewLoadStatus === "error" ? "error" : "pending"}`}
+            className="crm-panel gbw-bar rv-bar"
+            aria-label="Google reviews connection"
             aria-live="polite"
           >
-            <span className="crm-review-google-mark" aria-hidden="true">
-              G
-            </span>
-            <div>
-              <strong>
-                {reviewLoadStatus === "ready"
-                  ? "Live Google reviews connected"
-                  : googleConnected
-                    ? profile?.locationName ||
-                      profile?.businessName ||
-                      "Google location connected"
-                    : "Connect a Google Business Profile"}
-              </strong>
-              <p>{reviewLoadStatus === "ready" ? "Reviews are synced." : googleConnected ? "Google is connected." : "Connect Google to load reviews."}</p>
+            <span className="gp-mark" aria-hidden="true"><i>G</i></span>
+            <div className="gbw-bar-copy">
+              <h3>{googleTitle}</h3>
+              <p><span>{googleDetail}</span></p>
             </div>
-            <Badge tone={reviewLoadStatus === "ready" ? "green" : "orange"}>
-              {reviewLoadStatus === "ready"
-                ? "Live"
-                  : reviewLoadStatus === "loading"
-                  ? "Checking"
-                  : reviewLoadStatus === "error"
-                    ? googleApprovalPending
-                      ? "Access pending"
-                      : "Needs attention"
-                  : googleConnected
-                    ? "Location ready"
-                    : "Setup needed"}
-            </Badge>
-            <button
-              className="crm-button-secondary"
-              type="button"
-              onClick={() => onOpenGoogleProfiles(client.id)}
-              disabled={!canManageGoogle}
-            >
-              {canManageGoogle
-                ? googleConnected
-                  ? "Manage Google"
-                  : "Google setup"
-                : "Owner setup required"}
-            </button>
+            <Badge tone={googleBadge.tone}>{googleBadge.label}</Badge>
+            <div className="gbw-bar-actions">
+              {googleConnected ? (
+                <button
+                  className="crm-button-secondary"
+                  type="button"
+                  onClick={refreshGoogleReviews}
+                  disabled={reviewLoadStatus === "loading"}
+                >
+                  <RefreshCw size={14} aria-hidden="true" /> Refresh
+                </button>
+              ) : null}
+              {canManageGoogle || !googleConnected ? (
+                <button
+                  className="crm-button-secondary"
+                  type="button"
+                  onClick={() => onOpenGoogleProfiles(client.id)}
+                  disabled={!canManageGoogle}
+                >
+                  {canManageGoogle
+                    ? googleConnected
+                      ? "Manage Google"
+                      : "Connect Google"
+                    : "Ask an owner to connect"}
+                </button>
+              ) : null}
+            </div>
           </section>
 
-          <div className="crm-review-tabs" role="tablist" aria-label="Reviews sections">
+          <SummaryCards
+            googleReviews={googleReviews}
+            reviewsReady={reviewsReady}
+            needsReplyCount={needsReplyCount}
+            requests={clientRequests}
+            onOpenInbox={() => chooseTab("inbox")}
+          />
+
+          <div className="gbw-tabs rv-tabs" role="tablist" aria-label="Reviews sections">
             {tabs.map((item, index) => (
               <button
                 id={`crm-review-tab-${item.id}`}
@@ -485,24 +550,16 @@ export function ReviewsView({
                 onClick={() => chooseTab(item.id)}
                 onKeyDown={(event) => handleTabKeyDown(event, index)}
               >
+                {item.icon}
                 {item.label}
-                {item.id === "requests" && clientRequests.length ? (
-                  <span>{clientRequests.length}</span>
+                {item.id === "inbox" && needsReplyCount ? (
+                  <span className="rv-count" aria-label={`${needsReplyCount} need a reply`}>
+                    {needsReplyCount}
+                  </span>
                 ) : null}
               </button>
             ))}
           </div>
-
-          {tab === "overview" ? (
-            <OverviewPanel
-              client={client}
-              requests={clientRequests}
-              googleReviews={googleReviews}
-              reviewLoadStatus={reviewLoadStatus}
-              reviewLoadError={reviewLoadError}
-              onOpenInbox={() => chooseTab("inbox")}
-            />
-          ) : null}
 
           {tab === "inbox" ? (
             <InboxPanel
@@ -566,20 +623,65 @@ export function ReviewsView({
   );
 }
 
-function OverviewPanel({ client, requests, googleReviews, reviewLoadStatus, reviewLoadError, onOpenInbox }: { client: CrmClient; requests: CrmReviewRequest[]; googleReviews: GoogleBusinessReviewsPage | null; reviewLoadStatus: ReviewLoadStatus; reviewLoadError: string; onOpenInbox: () => void; }) {
-  const sent = requests.filter((request) => ["sent", "delivered"].includes(request.status)).length;
-  const liveReviews = googleReviews?.reviews ?? [];
-  const ratingValue = reviewLoadStatus === "ready" && googleReviews?.averageRating !== null ? googleReviews?.averageRating?.toFixed(1) ?? "—" : "—";
-  const reviewCountValue = reviewLoadStatus === "ready" ? String(googleReviews?.totalReviewCount ?? 0) : "—";
-  return <section id="crm-review-panel-overview" className="crm-review-panel" role="tabpanel" aria-labelledby="crm-review-tab-overview"><div className="crm-review-metrics crm-review-metrics-simple" aria-label="Review summary"><Metric label="Average rating" value={ratingValue} note="Google rating" /><Metric label="Google reviews" value={reviewCountValue} note="Total reviews" /><Metric label="Requests sent" value={String(sent)} note="Customer requests" /></div><section className="crm-review-card crm-review-recent-card crm-review-recent-simple"><header><div><p>REVIEW INBOX</p><h3>Recent Google reviews</h3></div><button type="button" onClick={onOpenInbox}>Open inbox</button></header>{reviewLoadStatus === "loading" ? <div className="crm-review-honest-empty" aria-live="polite"><span aria-hidden="true">G</span><h4>Loading reviews</h4></div> : liveReviews.length ? <ul className="crm-review-recent-list">{liveReviews.slice(0, 3).map((review) => <li key={review.reviewId}><div><strong>{review.reviewerName}</strong><span aria-label={`${review.starRating} out of 5 stars`}>{"★".repeat(review.starRating)}<i>{"★".repeat(5 - review.starRating)}</i></span></div><p>{reviewExcerpt(review)}</p><small>{readableReviewDate(review.createTime)}</small></li>)}</ul> : <div className="crm-review-honest-empty"><span aria-hidden="true">★</span><h4>No Google reviews loaded</h4><p>{reviewLoadStatus === "error" ? reviewLoadError : `Reviews for ${client.businessName} will appear here after Google is connected.`}</p></div>}</section></section>;
-}
-function Metric({ label, value, note }: { label: string; value: string; note: string }) {
+/** Four numbers that answer "how are we doing?" before any tab is opened. */
+function SummaryCards({
+  googleReviews,
+  reviewsReady,
+  needsReplyCount,
+  requests,
+  onOpenInbox,
+}: {
+  googleReviews: GoogleBusinessReviewsPage | null;
+  reviewsReady: boolean;
+  needsReplyCount: number;
+  requests: CrmReviewRequest[];
+  onOpenInbox: () => void;
+}) {
+  const average = reviewsReady ? googleReviews?.averageRating ?? null : null;
+  const total = reviewsReady ? googleReviews?.totalReviewCount ?? 0 : null;
+  const partial = Boolean(googleReviews?.nextPageToken);
+  const sent = requests.filter((request) =>
+    ["sent", "delivered"].includes(request.status),
+  ).length;
   return (
-    <article>
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <small>{note}</small>
-    </article>
+    <div className="gbw-kpis rv-kpis" aria-label="Review summary">
+      <article className="gbw-kpi rv-kpi">
+        <span className="gbw-kpi-label">Average rating</span>
+        <strong>{average !== null ? average.toFixed(1) : "—"}</strong>
+        {average !== null ? (
+          <Stars rating={average} label={`${average.toFixed(1)} out of 5 stars`} />
+        ) : (
+          <small>Shown once reviews load</small>
+        )}
+      </article>
+      <article className="gbw-kpi rv-kpi">
+        <span className="gbw-kpi-label">Google reviews</span>
+        <strong>{total !== null ? total.toLocaleString() : "—"}</strong>
+        <small>All time</small>
+      </article>
+      <button
+        type="button"
+        className={`gbw-kpi rv-kpi${needsReplyCount ? " is-attention" : ""}`}
+        onClick={onOpenInbox}
+      >
+        <span className="gbw-kpi-label">Needs a reply</span>
+        <strong>{reviewsReady ? needsReplyCount : "—"}</strong>
+        <small>
+          {!reviewsReady
+            ? "Open the inbox"
+            : partial
+              ? "Among the reviews loaded so far"
+              : needsReplyCount
+                ? "Open the inbox to answer"
+                : "You're all caught up"}
+        </small>
+      </button>
+      <article className="gbw-kpi rv-kpi">
+        <span className="gbw-kpi-label">Requests sent</span>
+        <strong>{sent}</strong>
+        <small>Texts asking for a review</small>
+      </article>
+    </div>
   );
 }
 
@@ -616,6 +718,7 @@ function InboxPanel({
   const [rating, setRating] = useState("all");
   const [replyStatus, setReplyStatus] = useState("all");
   const [selectedReviewId, setSelectedReviewId] = useState("");
+  const detailRef = useRef<HTMLElement>(null);
   const reviews = useMemo(
     () => googleReviews?.reviews ?? [],
     [googleReviews],
@@ -642,43 +745,38 @@ function InboxPanel({
     filteredReviews[0] ??
     null;
 
+  // On a phone the reply pane sits under the list, so bring it into view
+  // when a review is picked.
+  useEffect(() => {
+    if (!selectedReviewId) return;
+    if (!window.matchMedia("(max-width: 900px)").matches) return;
+    detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [selectedReviewId]);
+
+  const ready = reviewLoadStatus === "ready";
+
   return (
     <section
       id="crm-review-panel-inbox"
-      className="crm-review-panel"
+      className="rv-panel"
       role="tabpanel"
       aria-labelledby="crm-review-tab-inbox"
     >
-      <div className="crm-review-inbox">
-        <aside aria-label="Google review list">
-          <header>
-            <div>
-              <strong>Google reviews</strong>
-              <small>
-                {reviewLoadStatus === "ready"
-                  ? `${reviews.length} loaded for this session`
-                  : "Live reviews only"}
-              </small>
-            </div>
-            <Badge tone={reviewLoadStatus === "ready" ? "blue" : "neutral"}>
-              {reviewLoadStatus === "ready"
-                ? `${googleReviews?.totalReviewCount ?? 0} reviews`
-                : "Not loaded"}
-            </Badge>
-          </header>
-          <div className="crm-review-inbox-filters">
-            <label>
-              <span>Search reviews</span>
+      <div className="crm-panel rv-inbox">
+        <aside className="rv-list" aria-label="Google review list">
+          <div className="rv-filters">
+            <label className="rv-search">
+              <span className="rv-sr-only">Search reviews</span>
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 disabled={reviewLoadStatus !== "ready"}
-                placeholder="Name or review text"
+                placeholder="Search by name or words"
               />
             </label>
-            <div>
+            <div className="rv-filter-row">
               <label>
-                <span>Rating</span>
+                <span className="rv-sr-only">Rating</span>
                 <select
                   value={rating}
                   onChange={(event) => setRating(event.target.value)}
@@ -693,63 +791,66 @@ function InboxPanel({
                 </select>
               </label>
               <label>
-                <span>Reply status</span>
+                <span className="rv-sr-only">Reply status</span>
                 <select
                   value={replyStatus}
                   onChange={(event) => setReplyStatus(event.target.value)}
                   disabled={reviewLoadStatus !== "ready"}
                 >
                   <option value="all">All replies</option>
-                  <option value="replied">Replied</option>
                   <option value="unreplied">Needs reply</option>
+                  <option value="replied">Replied</option>
                 </select>
               </label>
             </div>
           </div>
+
           {reviewLoadStatus === "loading" ? (
-            <div className="crm-review-inbox-list-empty" aria-live="polite">
+            <div className="rv-list-empty" aria-live="polite">
               <span className="crm-loading-dots" aria-hidden="true">
                 <i />
                 <i />
                 <i />
               </span>
-              <strong>Loading from Google</strong>
-              <p>Only real reviews will appear here.</p>
+              <strong>Loading reviews from Google</strong>
             </div>
           ) : reviewLoadStatus === "error" ? (
-            <div className="crm-review-inbox-list-empty">
-              <strong>Google reviews are not available yet</strong>
+            <div className="rv-list-empty">
+              <strong>Reviews couldn&apos;t load</strong>
               <p>{reviewLoadError}</p>
-              <button type="button" onClick={onRefresh}>Try again</button>
+              <button className="crm-button-secondary" type="button" onClick={onRefresh}>Try again</button>
             </div>
           ) : filteredReviews.length ? (
-            <div className="crm-review-inbox-list">
+            <div className="rv-rows">
               {filteredReviews.map((review) => (
                 <button
                   key={review.reviewId}
                   type="button"
-                  className={selectedReview?.reviewId === review.reviewId ? "active" : ""}
+                  className={`rv-row${selectedReview?.reviewId === review.reviewId ? " active" : ""}`}
                   aria-pressed={selectedReview?.reviewId === review.reviewId}
                   onClick={() => setSelectedReviewId(review.reviewId)}
                 >
-                  <span>
-                    <strong>{review.reviewerName}</strong>
-                    <small>{readableReviewDate(review.createTime)}</small>
+                  <span className="rv-avatar" aria-hidden="true">
+                    {initialOf(review.reviewerName)}
                   </span>
-                  <span
-                    className="crm-review-stars"
-                    aria-label={`${review.starRating} out of 5 stars`}
-                  >
-                    {"★".repeat(review.starRating)}
-                    <i>{"★".repeat(5 - review.starRating)}</i>
+                  <span className="rv-row-body">
+                    <span className="rv-row-top">
+                      <strong>{review.reviewerName}</strong>
+                      <em className={review.reply ? "is-done" : ""}>
+                        {review.reply ? "Replied" : "Needs reply"}
+                      </em>
+                    </span>
+                    <span className="rv-row-meta">
+                      <Stars rating={review.starRating} />
+                      <small>{readableReviewDate(review.createTime)}</small>
+                    </span>
+                    <span className="rv-row-text">{reviewExcerpt(review)}</span>
                   </span>
-                  <p>{reviewExcerpt(review)}</p>
-                  <em>{review.reply ? "Replied" : "Needs reply"}</em>
                 </button>
               ))}
               {googleReviews?.nextPageToken ? (
                 <button
-                  className="crm-review-load-more"
+                  className="crm-button-secondary rv-load-more"
                   type="button"
                   onClick={onLoadMore}
                   disabled={loadingMore}
@@ -758,25 +859,32 @@ function InboxPanel({
                 </button>
               ) : null}
               {reviewLoadError ? (
-                <p className="crm-review-page-error" role="alert">
+                <p className="rv-page-error" role="alert">
                   {reviewLoadError}
                 </p>
               ) : null}
             </div>
           ) : (
-            <div className="crm-review-inbox-list-empty">
+            <div className="rv-list-empty">
               <strong>
-                {reviewLoadStatus === "ready"
+                {ready
                   ? reviews.length
                     ? "No reviews match these filters"
                     : "No Google reviews yet"
-                  : "No reviews loaded"}
+                  : "No reviews to show"}
               </strong>
-              <p>No example or fabricated reviews are shown.</p>
+              <p>
+                {ready && !reviews.length
+                  ? "When customers review this business on Google, they'll show up here."
+                  : ready
+                    ? "Try a different rating or reply filter."
+                    : "Reviews appear once Google is connected."}
+              </p>
             </div>
           )}
         </aside>
-        <section>
+
+        <section className="rv-detail-pane" ref={detailRef}>
           {selectedReview ? (
             <GoogleReviewDetail
               key={`${selectedReview.reviewId}-${selectedReview.reply?.updateTime ?? "new"}`}
@@ -787,42 +895,47 @@ function InboxPanel({
               onRefresh={onRefresh}
             />
           ) : (
-            <div className="crm-review-inbox-detail-empty">
-              <span aria-hidden="true">G</span>
+            <div className="rv-detail-empty">
+              <span className="gp-mark" aria-hidden="true"><i>G</i></span>
               <h3>
-                {reviewLoadStatus === "ready"
-                  ? "Choose a Google review"
+                {ready
+                  ? reviews.length
+                    ? "Pick a review to answer it"
+                    : "Nothing to answer yet"
                   : googleConnected
-                    ? "Waiting for Google review access"
-                    : "Connect a Google location first"}
+                    ? "Waiting for Google"
+                    : "Connect Google to see reviews"}
               </h3>
-              <p>{reviewLoadStatus === "ready" ? "Reviews are synced." : googleConnected ? "Google is connected." : "Connect Google to load reviews."}</p>
-              <div>
-                <button
-                  className="crm-button-primary"
-                  type="button"
-                  onClick={onOpenGoogleProfiles}
-                  disabled={!canManageGoogle}
-                >
-                  {canManageGoogle
-                    ? googleConnected
-                      ? "Manage Google"
-                      : "Google setup"
-                    : "Ask an owner to manage Google"}
-                </button>
+              <p>
+                {ready
+                  ? "Ask recent customers for a review to get the first ones coming in."
+                  : googleConnected
+                    ? "Reviews will appear here as soon as Google sends them."
+                    : "Once this business's Google profile is connected, every review lands here."}
+              </p>
+              <div className="rv-actions">
+                {!ready ? (
+                  <button
+                    className="crm-button-primary"
+                    type="button"
+                    onClick={onOpenGoogleProfiles}
+                    disabled={!canManageGoogle}
+                  >
+                    {canManageGoogle
+                      ? googleConnected
+                        ? "Manage Google"
+                        : "Connect Google"
+                      : "Ask an owner to connect Google"}
+                  </button>
+                ) : null}
                 <button
                   className="crm-button-secondary"
                   type="button"
                   onClick={onOpenRequests}
                 >
-                  Review request tools
+                  Get more reviews
                 </button>
               </div>
-              <small>
-                {canReply
-                  ? "Nothing can publish without a person reviewing the exact message and clicking Publish reply."
-                  : "You can view reviews when they become available, but your role cannot publish replies."}
-              </small>
             </div>
           )}
         </section>
@@ -909,75 +1022,69 @@ function GoogleReviewDetail({
   }
 
   return (
-    <article className="crm-review-detail">
-      <header>
+    <article className="rv-detail">
+      <header className="rv-detail-head">
+        <span className="rv-avatar is-large" aria-hidden="true">
+          {initialOf(review.reviewerName)}
+        </span>
         <div>
           <strong>{review.reviewerName}</strong>
-          <span
-            className="crm-review-stars"
-            aria-label={`${review.starRating} out of 5 stars`}
-          >
-            {"★".repeat(review.starRating)}
-            <i>{"★".repeat(5 - review.starRating)}</i>
+          <span>
+            <Stars rating={review.starRating} />
+            <small>{readableReviewDate(review.createTime)}</small>
           </span>
         </div>
-        <small>{readableReviewDate(review.createTime)}</small>
       </header>
-      <section>
-        <p>{reviewExcerpt(review)}</p>
-      </section>
-      <form onSubmit={publishReply}>
-        <div className="crm-review-reply-heading">
-          <div>
-            <p>PUBLIC GOOGLE REPLY</p>
-            <h3>{review.reply ? "Review and update the reply" : "Write a reply"}</h3>
-          </div>
+      <p className="rv-detail-text">{reviewExcerpt(review)}</p>
+
+      <form className="rv-reply" onSubmit={publishReply}>
+        <div className="rv-reply-head">
+          <h3>{review.reply ? "Your reply" : "Write a reply"}</h3>
           {review.reply?.status ? (
             <Badge tone={review.reply.status === "APPROVED" ? "green" : "orange"}>
-              {review.reply.status.toLowerCase()}
+              {replyStatusLabel(review.reply.status)}
             </Badge>
           ) : null}
         </div>
         {review.reply?.policyViolation ? (
-          <div className="crm-review-callout warning" role="alert">
-            <strong>Google policy notice</strong>
+          <div className="rv-callout is-warning" role="alert">
+            <strong>Google flagged this reply</strong>
             <p>{review.reply.policyViolation}</p>
           </div>
         ) : null}
         <label>
-          <span>Reply text</span>
+          <span className="rv-sr-only">Reply text</span>
           <textarea
             value={comment}
             onChange={(event) => setComment(event.target.value)}
-            rows={6}
+            rows={5}
             disabled={!canReply || saving}
             maxLength={4096}
-            placeholder="Thank the customer and respond in the business's own voice."
+            placeholder="Thank the customer and answer in the business's own voice."
           />
-          <small className={replyBytes > 4096 ? "over-limit" : ""}>
-            {replyBytes.toLocaleString()} of 4,096 bytes
-          </small>
         </label>
-        <div className="crm-review-message-preview">
-          <span>Exact public reply preview</span>
-          <p>{comment.trim() || "Your reply preview will appear here."}</p>
+        <div className="rv-reply-meta">
+          <small>
+            {canReply
+              ? "Posts publicly on Google exactly as written. Nothing is ever posted for you."
+              : "Your role can read reviews but can't publish or delete replies."}
+          </small>
+          <small className={replyBytes > 4096 ? "is-over" : ""}>
+            {replyBytes.toLocaleString()} / 4,096
+          </small>
         </div>
-        <p className="crm-review-publish-note">
-          Google will publish this exact message. BrizBuilder never publishes a
-          reply automatically.
-        </p>
         {error ? <div className="crm-inline-error" role="alert">{error}</div> : null}
-        <div className="crm-review-reply-actions">
+        <div className="rv-actions">
           <button
             className="crm-button-primary"
             type="submit"
             disabled={!canPublish}
           >
-            {saving ? "Publishing…" : review.reply ? "Update public reply" : "Publish reply"}
+            {saving ? "Publishing…" : review.reply ? "Update reply" : "Publish reply"}
           </button>
           {review.reply ? (
             <button
-              className="crm-button-danger"
+              className="danger"
               type="button"
               onClick={() => void deleteReply()}
               disabled={!canReply || saving}
@@ -986,9 +1093,6 @@ function GoogleReviewDetail({
             </button>
           ) : null}
         </div>
-        {!canReply ? (
-          <small>Your role can read reviews but cannot publish or delete replies.</small>
-        ) : null}
       </form>
     </article>
   );
@@ -1052,21 +1156,21 @@ function RequestsPanel({
   ).length;
 
   let disabledReason = "";
-  if (!canRequest) disabledReason = "Your role cannot send review requests.";
+  if (!canRequest) disabledReason = "Your role can't send review requests.";
   else if (!reviewUrl)
-    disabledReason = "Save the official Google review link before sending.";
+    disabledReason = "Add the business's Google review link first.";
   else if (!smsReady) disabledReason = smsReadinessMessage;
   else if (!settings?.smsEnabled)
-    disabledReason = "Turn on SMS review requests in Settings before sending.";
+    disabledReason = "Turn on text review requests in Settings first.";
   else if (!contacts.length)
-    disabledReason = "Add an eligible contact with a phone number first.";
+    disabledReason = "Add a contact with a phone number first.";
 
   async function handleCopy() {
     if (!reviewUrl) return;
     setCopyStatus("");
     try {
       await copyText(reviewUrl);
-      setCopyStatus("Review link copied.");
+      setCopyStatus("Link copied.");
     } catch (error) {
       setCopyStatus(
         error instanceof Error ? error.message : "The link could not be copied.",
@@ -1120,51 +1224,40 @@ function RequestsPanel({
   return (
     <section
       id="crm-review-panel-requests"
-      className="crm-review-panel"
+      className="rv-panel"
       role="tabpanel"
       aria-labelledby="crm-review-tab-requests"
     >
-      <div className="crm-review-request-metrics" aria-label="Review request activity">
-        <Metric label="Requests sent" value={String(sent)} note={`${requests.length} total records`} />
-        <Metric label="Delivered" value={String(delivered)} note="Confirmed by the messaging provider" />
-        <Metric label="Pending" value={String(pending)} note="Queued or currently sending" />
-        <Metric label="Failed" value={String(failed)} note="Needs attention or retry" />
-      </div>
-
-      <div className="crm-review-tools-grid">
-        <section className="crm-review-card crm-review-link-tool">
-          <header>
+      <div className="rv-two-up">
+        <section className="crm-panel rv-card">
+          <div className="rv-card-head">
             <div>
-              <p>SHAREABLE LINK</p>
-              <h3>Google review link and QR code</h3>
+              <h3>Share your review link</h3>
+              <p>Print the QR code at the counter or paste the link anywhere.</p>
             </div>
             <Badge tone={reviewUrl ? "green" : "orange"}>
               {reviewUrl ? "Ready" : "Link needed"}
             </Badge>
-          </header>
+          </div>
           {reviewUrl ? (
-            <div className="crm-review-link-ready">
+            <div className="rv-share">
               <figure aria-label={`Google review QR code for ${client.businessName}`}>
                 <QRCodeCanvas
                   id={qrId}
                   value={reviewUrl}
-                  size={168}
+                  size={144}
                   marginSize={2}
                   level="M"
                   title={`Google review QR code for ${client.businessName}`}
                 />
-                <figcaption>Scan to write a Google review</figcaption>
+                <figcaption>Scan to review</figcaption>
               </figure>
-              <div>
+              <div className="rv-share-body">
                 <label>
-                  <span>Official Google review link</span>
+                  <span>Google review link</span>
                   <input value={reviewUrl} readOnly onFocus={(event) => event.currentTarget.select()} />
                 </label>
-                <p>
-                  Print the QR code or share the exact link. Customers always
-                  choose their own rating and review wording.
-                </p>
-                <div className="crm-review-tool-actions">
+                <div className="rv-actions">
                   <button className="crm-button-primary" type="button" onClick={() => void handleCopy()}>
                     Copy link
                   </button>
@@ -1172,150 +1265,133 @@ function RequestsPanel({
                     Download QR code
                   </button>
                 </div>
-                <span className="crm-review-live-status" aria-live="polite">
+                <span className="rv-live-status" aria-live="polite">
                   {copyStatus}
                 </span>
               </div>
             </div>
           ) : (
-            <div className="crm-review-tool-empty">
-              <h4>Add the official Google review link</h4>
+            <div className="rv-card-empty">
               <p>
-                Copy it from this business&apos;s Google Business Profile. BrizBuilder
-                will use the same link for QR codes and text requests.
+                Add the review link from this business&apos;s Google profile. The QR
+                code and text requests both use it.
               </p>
               {canManageGoogle ? (
                 <button className="crm-button-primary" type="button" onClick={onOpenGoogleProfiles}>
                   Add review link
                 </button>
               ) : (
-                <small>Ask an account owner to add this business&apos;s Google review link.</small>
+                <small>Ask an account owner to add the Google review link.</small>
               )}
             </div>
           )}
         </section>
 
-        <form className="crm-review-card crm-review-request-form" onSubmit={sendRequest}>
-          <header>
+        <form className="crm-panel rv-card rv-send" onSubmit={sendRequest}>
+          <div className="rv-card-head">
             <div>
-              <p>MANUAL SMS REQUEST</p>
-              <h3>Send one review request</h3>
+              <h3>Text a customer</h3>
+              <p>Send one customer a text asking for a review.</p>
             </div>
             <Badge tone={smsReady ? "green" : "orange"}>
-              {smsReady ? "Ready to send" : "Setup needed"}
+              {smsReady ? "Texting ready" : "Setup needed"}
             </Badge>
-          </header>
-          <div className="crm-review-form-body">
-            <label>
-              <span>Customer</span>
-              <select
-                value={effectiveContactId}
-                onChange={(event) => {
-                  setContactId(event.target.value);
-                  setConsentConfirmed(false);
-                }}
-                disabled={!canRequest || sending || !contacts.length}
-                required
-              >
-                {!contacts.length ? <option value="">No eligible contacts</option> : null}
-                {contacts.map((contact) => (
-                  <option key={contact.id} value={contact.id}>
-                    {contact.firstName} {contact.lastName} · {contact.phone}
-                  </option>
-                ))}
-              </select>
-              <small>Contacts who opted out of marketing texts are excluded.</small>
-            </label>
-            <label>
-              <span>Saved message template</span>
-              <textarea
-                value={body}
-                rows={5}
-                readOnly
-                aria-readonly="true"
-              />
-              <small>
-                BrizBuilder sends the saved, compliance-checked template. Change it
-                from Review Settings before sending.
-              </small>
-            </label>
-            <button
-              className="crm-review-edit-template"
-              type="button"
-              onClick={onOpenSettings}
-            >
-              Edit saved message in Settings
-            </button>
-            <div className="crm-review-message-preview">
-              <span>Exact message preview</span>
-              <p>{preview}</p>
-              <small>{preview.length} characters · Reply STOP language included</small>
-            </div>
-            <label className="crm-review-consent">
-              <input
-                type="checkbox"
-                checked={consentConfirmed}
-                onChange={(event) => setConsentConfirmed(event.target.checked)}
-                disabled={!canRequest || sending || !selectedContact}
-                required
-              />
-              <span>
-                I confirm this customer gave permission to receive this review-request
-                text and has not opted out.
-              </span>
-            </label>
-            {disabledReason ? (
-              <div className="crm-review-callout warning" role="note">
-                <strong>Before you can send</strong>
-                <p>{disabledReason}</p>
-                {!reviewUrl && canManageGoogle ? (
-                  <button type="button" onClick={onOpenGoogleProfiles}>Google setup</button>
-                ) : !smsReady && canManageConnections ? (
-                  <button type="button" onClick={onOpenConnections}>Connections</button>
-                ) : !settings?.smsEnabled && canManageSettings ? (
-                  <button type="button" onClick={onOpenSettings}>Review settings</button>
-                ) : null}
-              </div>
-            ) : null}
-            {formError ? <div className="crm-inline-error" role="alert">{formError}</div> : null}
-            <button
-              className="crm-button-primary crm-review-send-button"
-              type="submit"
-              disabled={Boolean(disabledReason) || !consentConfirmed || !selectedContact || sending}
-            >
-              {sending ? "Sending securely..." : "Send review request"}
-            </button>
-            <small className="crm-review-safety-note">
-              Sending a request does not guarantee a review. BrizBuilder reports
-              provider delivery status and never invents a completed-review result.
-            </small>
           </div>
+          <label>
+            <span>Customer</span>
+            <select
+              value={effectiveContactId}
+              onChange={(event) => {
+                setContactId(event.target.value);
+                setConsentConfirmed(false);
+              }}
+              disabled={!canRequest || sending || !contacts.length}
+              required
+            >
+              {!contacts.length ? <option value="">No contacts with a phone number</option> : null}
+              {contacts.map((contact) => (
+                <option key={contact.id} value={contact.id}>
+                  {contact.firstName} {contact.lastName} · {contact.phone}
+                </option>
+              ))}
+            </select>
+            <small>People who opted out of texts aren&apos;t listed.</small>
+          </label>
+          <div className="rv-message">
+            <div className="rv-message-head">
+              <span>Message they&apos;ll get</span>
+              <button
+                className="rv-link"
+                type="button"
+                onClick={onOpenSettings}
+              >
+                Edit message
+              </button>
+            </div>
+            <p>{preview}</p>
+            <small>{preview.length} characters</small>
+          </div>
+          <label className="rv-check">
+            <input
+              type="checkbox"
+              checked={consentConfirmed}
+              onChange={(event) => setConsentConfirmed(event.target.checked)}
+              disabled={!canRequest || sending || !selectedContact}
+              required
+            />
+            <span>
+              This customer agreed to get texts from us and hasn&apos;t opted out.
+            </span>
+          </label>
+          {disabledReason ? (
+            <div className="rv-callout is-warning" role="note">
+              <strong>Before you can send</strong>
+              <p>{disabledReason}</p>
+              {!reviewUrl && canManageGoogle ? (
+                <button className="crm-button-secondary" type="button" onClick={onOpenGoogleProfiles}>Add review link</button>
+              ) : !smsReady && canManageConnections ? (
+                <button className="crm-button-secondary" type="button" onClick={onOpenConnections}>Open Connections</button>
+              ) : !settings?.smsEnabled && canManageSettings ? (
+                <button className="crm-button-secondary" type="button" onClick={onOpenSettings}>Open Settings</button>
+              ) : null}
+            </div>
+          ) : null}
+          {formError ? <div className="crm-inline-error" role="alert">{formError}</div> : null}
+          <button
+            className="crm-button-primary rv-send-button"
+            type="submit"
+            disabled={Boolean(disabledReason) || !consentConfirmed || !selectedContact || sending}
+          >
+            {sending ? "Sending…" : "Send request"}
+          </button>
         </form>
       </div>
 
-      <section className="crm-review-card crm-review-request-history">
-        <header>
+      <section className="crm-panel rv-card rv-history">
+        <div className="rv-card-head">
           <div>
-            <p>REQUEST HISTORY</p>
-            <h3>Real messages sent by this business</h3>
+            <h3>Sent requests</h3>
+            <p>
+              {requests.length
+                ? `${sent} sent · ${delivered} delivered · ${pending} in progress · ${failed} failed`
+                : "Every request you send shows up here with its delivery status."}
+            </p>
           </div>
-          <Badge tone="neutral">{requests.length} total</Badge>
-        </header>
+        </div>
         {!requests.length ? (
-          <div className="crm-review-honest-empty compact">
-            <h4>No review requests yet</h4>
-            <p>The first real request will appear here after it is submitted.</p>
-          </div>
+          <p className="rv-history-empty">No review requests yet.</p>
         ) : (
           <ul>
             {requests.map((request) => (
               <li key={request.id}>
-                <span className="crm-review-request-icon" aria-hidden="true">SMS</span>
+                <span className="rv-avatar" aria-hidden="true">
+                  {initialOf(request.contactName)}
+                </span>
                 <div>
                   <strong>{request.contactName}</strong>
                   <p>{request.messageBody}</p>
                   <small>
-                    Requested by {request.requestedByEmail} · {readableDate(request.sentAt ?? request.createdAt)}
+                    {readableDate(request.sentAt ?? request.createdAt)} · by {request.requestedByEmail}
                   </small>
                   {request.errorMessage ? <em>{request.errorMessage}</em> : null}
                 </div>
@@ -1418,24 +1494,27 @@ function SettingsPanel({
     }
   }
 
+  const googleReady = profile?.status === "connected";
+
   return (
     <section
       id="crm-review-panel-settings"
-      className="crm-review-panel"
+      className="rv-panel"
       role="tabpanel"
       aria-labelledby="crm-review-tab-settings"
     >
-      <div className="crm-review-settings-status">
+      <div className="crm-panel rv-connections" aria-label="What reviews depend on">
         <article>
-          <span className="crm-review-google-mark" aria-hidden="true">G</span>
+          <span className="gp-mark" aria-hidden="true"><i>G</i></span>
           <div>
             <strong>Google Business Profile</strong>
             <p>{profile?.locationName || profile?.businessName || "No location connected"}</p>
           </div>
-          <Badge tone={profile?.status === "connected" ? "green" : "orange"}>
-            {profile?.status === "connected" ? "Connected" : "Needs setup"}
+          <Badge tone={googleReady ? "green" : "orange"}>
+            {googleReady ? "Connected" : "Needs setup"}
           </Badge>
           <button
+            className="crm-button-secondary"
             type="button"
             onClick={onOpenGoogleProfiles}
             disabled={!canManageGoogle}
@@ -1444,15 +1523,16 @@ function SettingsPanel({
           </button>
         </article>
         <article>
-          <span className="crm-provider-logo twilio" aria-hidden="true">T</span>
+          <span className="rv-provider-mark" aria-hidden="true">T</span>
           <div>
-            <strong>Twilio messaging</strong>
+            <strong>Twilio texting</strong>
             <p>{smsReadinessMessage}</p>
           </div>
           <Badge tone={smsReady ? "green" : "orange"}>
             {smsReady ? "Ready" : "Not ready"}
           </Badge>
           <button
+            className="crm-button-secondary"
             type="button"
             onClick={onOpenConnections}
             disabled={!canManageConnections}
@@ -1462,175 +1542,163 @@ function SettingsPanel({
         </article>
       </div>
 
-      <form className="crm-review-settings-form" onSubmit={save}>
-        <section className="crm-review-card">
-          <header>
-            <div>
-              <p>MESSAGE SETTINGS</p>
-              <h3>Manual SMS review requests</h3>
-            </div>
-            <Badge tone={smsEnabled ? "green" : "neutral"}>
-              {smsEnabled ? "Enabled" : "Off"}
-            </Badge>
-          </header>
-          <div className="crm-review-form-body">
-            <label className="crm-review-switch">
-              <span>
-                <strong>Allow manual SMS review requests</strong>
-                <small>A team member must still select a customer and confirm consent each time.</small>
-              </span>
-              <input
-                type="checkbox"
-                checked={smsEnabled}
-                onChange={(event) => setSmsEnabled(event.target.checked)}
-                disabled={!canManage || saving}
-              />
-            </label>
+      <form className="crm-panel rv-settings" onSubmit={save}>
+        <fieldset>
+          <legend>
+            <strong>Text requests</strong>
+            <span>How review requests are worded and how many go out.</span>
+          </legend>
+          <label className="rv-switch">
+            <span>
+              <strong>Allow text review requests</strong>
+              <small>Someone still picks each customer and confirms consent.</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={smsEnabled}
+              onChange={(event) => setSmsEnabled(event.target.checked)}
+              disabled={!canManage || saving}
+            />
+          </label>
+          <label>
+            <span>Message</span>
+            <textarea
+              value={defaultSmsTemplate}
+              onChange={(event) => setDefaultSmsTemplate(event.target.value)}
+              rows={4}
+              maxLength={1200}
+              disabled={!canManage || saving}
+              required
+            />
+            <small>
+              Must include {"{{business_name}}"}, {"{{review_link}}"} and STOP.
+              {" "}{"{{first_name}}"} is optional. Don&apos;t offer rewards or ask for a
+              certain star rating.
+            </small>
+          </label>
+          <label className="rv-narrow">
+            <span>Most texts per day</span>
+            <input
+              type="number"
+              min={1}
+              max={250}
+              value={dailyLimit}
+              onChange={(event) => setDailyLimit(Number(event.target.value))}
+              disabled={!canManage || saving}
+              required
+            />
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>
+            <strong>Quiet hours</strong>
+            <span>No texts go out between these times ({client.timeZone}).</span>
+          </legend>
+          <div className="rv-field-row">
             <label>
-              <span>Default SMS template</span>
-              <textarea
-                value={defaultSmsTemplate}
-                onChange={(event) => setDefaultSmsTemplate(event.target.value)}
-                rows={5}
-                maxLength={1200}
+              <span>From</span>
+              <input
+                type="time"
+                value={quietHoursStart}
+                onChange={(event) => setQuietHoursStart(event.target.value)}
                 disabled={!canManage || saving}
                 required
               />
-              <small>
-                Keep the request neutral. It must include {"{{business_name}}"}, {"{{review_link}}"}, and STOP. Do not offer rewards or ask only happy customers.
-              </small>
             </label>
             <label>
-              <span>Daily sending limit</span>
+              <span>Until</span>
               <input
-                type="number"
-                min={1}
-                max={250}
-                value={dailyLimit}
-                onChange={(event) => setDailyLimit(Number(event.target.value))}
+                type="time"
+                value={quietHoursEnd}
+                onChange={(event) => setQuietHoursEnd(event.target.value)}
                 disabled={!canManage || saving}
                 required
               />
-              <small>Limits review requests from this business each day.</small>
             </label>
           </div>
-        </section>
+        </fieldset>
 
-        <section className="crm-review-card">
-          <header>
-            <div>
-              <p>DELIVERY WINDOW</p>
-              <h3>Quiet hours and notifications</h3>
-            </div>
-            <Badge tone="neutral">{client.timeZone}</Badge>
-          </header>
-          <div className="crm-review-form-body">
-            <div className="crm-review-field-grid">
-              <label>
-                <span>Quiet hours start</span>
-                <input
-                  type="time"
-                  value={quietHoursStart}
-                  onChange={(event) => setQuietHoursStart(event.target.value)}
-                  disabled={!canManage || saving}
-                  required
-                />
-              </label>
-              <label>
-                <span>Quiet hours end</span>
-                <input
-                  type="time"
-                  value={quietHoursEnd}
-                  onChange={(event) => setQuietHoursEnd(event.target.value)}
-                  disabled={!canManage || saving}
-                  required
-                />
-              </label>
-            </div>
-            <label>
-              <span>Notification emails</span>
-              <textarea
-                value={notificationEmails}
-                onChange={(event) => setNotificationEmails(event.target.value)}
-                rows={3}
-                placeholder="owner@example.com, manager@example.com"
-                disabled={!canManage || saving}
-              />
-              <small>
-                Preference only—email notifications are not active yet. Separate
-                future recipients with commas.
-              </small>
-            </label>
-          </div>
-        </section>
+        <fieldset>
+          <legend>
+            <strong>
+              Follow-up reminder <Badge tone="orange">Coming soon</Badge>
+            </strong>
+            <span>
+              Saved for later. Automatic reminders aren&apos;t switched on yet, so
+              nothing sends from this today.
+            </span>
+          </legend>
+          <label className="rv-switch">
+            <span>
+              <strong>Send one reminder</strong>
+              <small>To customers who haven&apos;t left a review yet.</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={followUpEnabled}
+              onChange={(event) => setFollowUpEnabled(event.target.checked)}
+              disabled={!canManage || saving}
+            />
+          </label>
+          <label className="rv-narrow">
+            <span>Wait this many hours</span>
+            <input
+              type="number"
+              min={24}
+              max={720}
+              value={followUpDelayHours}
+              onChange={(event) => setFollowUpDelayHours(Number(event.target.value))}
+              disabled={!canManage || saving || !followUpEnabled}
+              required
+            />
+          </label>
+          <label>
+            <span>Reminder message</span>
+            <textarea
+              value={followUpTemplate}
+              onChange={(event) => setFollowUpTemplate(event.target.value)}
+              rows={3}
+              maxLength={1200}
+              disabled={!canManage || saving || !followUpEnabled}
+              required
+            />
+            <small>
+              Must include {"{{business_name}}"}, {"{{review_link}}"} and STOP.
+            </small>
+          </label>
+        </fieldset>
 
-        <section className="crm-review-card crm-review-follow-up-settings">
-          <header>
-            <div>
-              <p>FOLLOW-UP PREFERENCE</p>
-              <h3>Prepare one reminder</h3>
-            </div>
-            <Badge tone="orange">Automation not active</Badge>
-          </header>
-          <div className="crm-review-form-body">
-            <div className="crm-review-callout warning" role="note">
-              <strong>This saves the preference only</strong>
-              <p>
-                BrizBuilder does not schedule automatic review follow-ups yet.
-                A background job system must be activated before reminders can send.
-              </p>
-            </div>
-            <label className="crm-review-switch">
-              <span>
-                <strong>Prepare a follow-up preference</strong>
-                <small>This setting will not send anything automatically today.</small>
-              </span>
-              <input
-                type="checkbox"
-                checked={followUpEnabled}
-                onChange={(event) => setFollowUpEnabled(event.target.checked)}
-                disabled={!canManage || saving}
-              />
-            </label>
-            <label>
-              <span>Follow-up delay in hours</span>
-              <input
-                type="number"
-                min={24}
-                max={720}
-                value={followUpDelayHours}
-                onChange={(event) => setFollowUpDelayHours(Number(event.target.value))}
-                disabled={!canManage || saving || !followUpEnabled}
-                required
-              />
-            </label>
-            <label>
-              <span>Follow-up template</span>
-              <textarea
-                value={followUpTemplate}
-                onChange={(event) => setFollowUpTemplate(event.target.value)}
-                rows={4}
-                maxLength={1200}
-                disabled={!canManage || saving || !followUpEnabled}
-                required
-              />
-              <small>
-                Must include {"{{business_name}}"}, {"{{review_link}}"}, and STOP.
-              </small>
-            </label>
-          </div>
-        </section>
+        <fieldset>
+          <legend>
+            <strong>
+              Email alerts <Badge tone="orange">Coming soon</Badge>
+            </strong>
+            <span>Who should hear about new reviews once email alerts are switched on.</span>
+          </legend>
+          <label>
+            <span>Email addresses</span>
+            <textarea
+              value={notificationEmails}
+              onChange={(event) => setNotificationEmails(event.target.value)}
+              rows={2}
+              placeholder="owner@example.com, manager@example.com"
+              disabled={!canManage || saving}
+            />
+            <small>Separate addresses with commas.</small>
+          </label>
+        </fieldset>
 
-        {formError ? <div className="crm-inline-error crm-review-settings-error" role="alert">{formError}</div> : null}
-        <footer>
-          {!canManage ? <span>You can view these settings but cannot change them.</span> : null}
+        {formError ? <div className="crm-inline-error" role="alert">{formError}</div> : null}
+        <div className="rv-settings-foot">
+          {!canManage ? <span>You can view these settings but can&apos;t change them.</span> : null}
           {settings?.updatedAt ? <span>Last saved {readableDate(settings.updatedAt)}</span> : null}
           {canManage ? (
             <button className="crm-button-primary" type="submit" disabled={saving}>
-              {saving ? "Saving..." : "Save review settings"}
+              {saving ? "Saving…" : "Save settings"}
             </button>
           ) : null}
-        </footer>
+        </div>
       </form>
     </section>
   );

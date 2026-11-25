@@ -101,6 +101,18 @@ const restructured = {
     // pending.
     controls: /className="gp-picker"|gp-test-link|support\.google\.com\/business\/contact\/api_default|^<label> <span>Business<\/span> <select value=\{clientId\} onChange=\{\(event\) => setLocalClientId/,
   },
+  'app/crm/ReviewsView.tsx': {
+    // Same loading, reply, request and settings code; new layout and wording.
+    // Four sub-tabs became three: Overview turned into summary cards above the
+    // tabs (its "open inbox" action is the Needs-a-reply card). The Google
+    // banner became the Business Profile page's status bar and gained Refresh
+    // (the inbox's existing refresh). The reply's duplicate preview box and
+    // the request form's read-only template box were dropped: the reply box
+    // and the message preview already show the exact text that goes out.
+    // Every baseline handler, field and request is still required below.
+    reason: 'Reviews rebuilt as its own Growth page: Google status bar, four summary cards, three tabs (Reviews, Get more reviews, Settings)',
+    controls: /./,
+  },
   'app/crm/WorkflowViews.tsx': {
     // Two reviewed changes in Connections. The Twilio Connect link kept its
     // href and only changed class to crm-integration-primary (b71b903, Glass
