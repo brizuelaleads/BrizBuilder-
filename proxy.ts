@@ -18,6 +18,6 @@ export const config = {
     // sw.js and offline.html are static, brand-neutral PWA assets with no
     // session to refresh. The manifest route is deliberately NOT excluded:
     // it needs the session cookie to answer with the right tenant.
-    "/((?!_next/static|_next/image|favicon.ico|sw.js|offline.html|mcp|oauth/token|oauth/register|api/twilio|api/website-leads|api/integrations/stripe/webhook|api/integrations/twilio/deauthorize|\\.well-known|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|sw.js|offline.html|mcp|oauth/token|oauth/register|api/twilio|api/website-leads|api/integrations/stripe/webhook|api/integrations/twilio/deauthorize|api/integrations/(?:meta-social|instagram-social)/data-deletion|\\.well-known|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

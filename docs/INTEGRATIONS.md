@@ -59,6 +59,76 @@ The current application implements the outbox write boundary. Queue dispatch, cl
 
 Provider selection remains a product and operational decision. The domain model must not assume one provider's payload format.
 
+## Facebook and Instagram in Social
+
+The Social workspace uses a Facebook Login for Business configuration that
+returns a **user access token**. A business chooses one Facebook Page. If
+that Page has a linked professional Instagram account, BrizBuilder connects
+both accounts in the same flow. Use an account with content, messaging, and
+community access to the Page.
+
+1. Add Facebook Login for Business and the relevant Instagram and Messenger
+   use cases to a Meta app. In the login configuration, request
+   `pages_show_list`, `pages_read_engagement`, `pages_read_user_content`,
+   `pages_manage_posts`, `pages_manage_engagement`, `pages_manage_metadata`,
+   `pages_messaging`, `instagram_basic`, `instagram_content_publish`,
+   `instagram_manage_comments`, and `instagram_manage_messages`. Grant the
+   app the appropriate access level for the businesses it serves. Review
+   additional requirements on the Meta dashboard for the selected use cases.
+2. Register `https://brizbuilder.com/api/integrations/meta-social/callback`
+   as the valid OAuth redirect. Set
+   `https://brizbuilder.com/api/integrations/meta-social/data-deletion` for
+   the signed data deletion and deauthorization callbacks. The deletion
+   endpoint removes the authorization and issues a confirmation receipt.
+3. Apply `20261124000000_meta_social.sql` before enabling Meta on the
+   Worker. Set `META_SOCIAL_APP_ID`, `META_SOCIAL_APP_SECRET`,
+   `META_SOCIAL_LOGIN_CONFIG_ID`, and `META_SOCIAL_REDIRECT_URI` in the
+   runtime. The social credential store uses the existing
+   `META_TOKEN_ENCRYPTION_KEY` with a social-specific account scope.
+   If the runtime has that key, keep its existing value.
+4. Open **Social → Accounts → Connect Facebook**. Select a pilot Page.
+   A professional Instagram account linked to that Page also appears under
+   Instagram.
+
+For direct Instagram sign-in, configure the **Instagram API with Instagram
+Login** in the Meta app. This flow accepts business and creator accounts.
+Use the Instagram App ID and Instagram App Secret shown under Instagram
+API setup. Enable `instagram_business_basic`,
+`instagram_business_content_publish`, `instagram_business_manage_comments`,
+and `instagram_business_manage_messages`. Use Meta's app review for
+Advanced Access when serving clients outside the app's roles.
+
+1. Apply `20261125000000_social_instagram_login.sql` to Supabase.
+2. Register `https://brizbuilder.com/api/integrations/instagram-social/callback`
+   as a valid OAuth redirect, and
+   `https://brizbuilder.com/api/integrations/instagram-social/data-deletion`
+   for signed data deletion and deauthorization.
+3. Set `META_SOCIAL_INSTAGRAM_APP_ID`, `META_SOCIAL_INSTAGRAM_APP_SECRET`,
+   and `META_SOCIAL_INSTAGRAM_REDIRECT_URI` in the Worker runtime. The
+   redirect value must match the one registered in Meta. The connection uses
+   the existing `META_TOKEN_ENCRYPTION_KEY`.
+4. Open **Social → Accounts → Connect Instagram** and authorize a pilot
+   account. BrizBuilder uses this account for Instagram features whenever
+   it has a direct connection for the client.
+
+In **Social → New post → Post to**, select one or both channels. Check the
+destination names before publishing a test post with a publicly accessible
+JPEG URL. In the shared Inbox, test DMs and comments from a separate
+customer account.
+
+Facebook accepts text-only posts and single images. Instagram publishing uses
+a JPEG URL accessible to Meta. The planner date is a target for the team.
+**Publish now** sends immediately and records the outcome for each network.
+If a provider doesn't confirm an attempt, check the native account before
+reconciling publication. BrizBuilder will not repeat a confirmed or uncertain
+send.
+
+The inbox reads conversations and comments from Meta when opened or refreshed.
+Older pages depend on Meta's pagination, with up to 20 top-level comments
+shown per post. DMs use the standard 24-hour reply window and show text
+messages, with a marker for attachments. Inbox content is not persisted in
+BrizBuilder's database.
+
 ## Connection storage
 
 Future `integration_connections` records should contain tenant scope, adapter/provider name, status, external account identifier, encrypted credential reference, granted scopes, configuration JSON, health timestamp, and audit timestamps. Secrets should be stored through the deployment secret/encryption facility, not as plain D1 values.

@@ -140,10 +140,11 @@
   gap: 8px;
 }
 
-#crm-app .crm-social-channels input {
-  width: 16px;
-  min-height: 16px;
-  accent-color: var(--crm-purple);
+#crm-app .crm-social-channels input[type="checkbox"] {
+  appearance: auto;
+  width: 20px;
+  min-height: 20px;
+  accent-color: var(--crm-accent);
 }
 
 #crm-app .crm-social-detail {
@@ -182,6 +183,209 @@
 #crm-app .crm-social-error button,
 #crm-app .crm-social-message > button {
   margin-top: 8px;
+}
+
+#crm-app .crm-social-workspace {
+  display: grid;
+  gap: 16px;
+}
+
+#crm-app .crm-social-integration button {
+  margin-top: 12px;
+}
+
+#crm-app .crm-social-account {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px 24px;
+  padding: 20px 24px;
+  border-top: 1px solid var(--crm-line);
+}
+
+#crm-app .crm-social-account h4 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+#crm-app .crm-social-account p,
+#crm-app .crm-social-destination small {
+  margin: 0;
+  color: var(--crm-muted);
+  overflow-wrap: anywhere;
+}
+
+#crm-app .crm-social-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+#crm-app .crm-social-channels .crm-social-destination > span {
+  display: grid;
+  gap: 2px;
+}
+
+#crm-app .crm-social-inbox-filters,
+#crm-app .crm-social-inbox-warning {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--crm-line);
+}
+
+#crm-app .crm-social-inbox-body {
+  display: grid;
+  grid-template-columns: minmax(235px, 340px) minmax(0, 1fr);
+  min-height: 400px;
+  align-items: stretch;
+}
+
+#crm-app .crm-social-inbox-list {
+  max-height: 620px;
+  overflow-y: auto;
+  border-inline-end: 1px solid var(--crm-line);
+}
+
+#crm-app .crm-social-inbox-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px 8px;
+  width: 100%;
+  padding: 12px 16px;
+  min-height: 70px;
+  border: 0;
+  border-bottom: 1px solid var(--crm-line);
+  background: transparent;
+  color: var(--crm-ink);
+  text-align: start;
+}
+
+#crm-app .crm-social-inbox-row:is(:hover, [aria-pressed="true"]) {
+  background: var(--crm-subtle);
+}
+
+#crm-app .crm-social-inbox-row:focus-visible {
+  outline: 2px solid var(--crm-purple);
+  outline-offset: -3px;
+}
+
+#crm-app .crm-social-inbox-row :is(strong, span:not(.crm-badge), small) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#crm-app .crm-social-inbox-row :is(span:not(.crm-badge), small),
+#crm-app .crm-social-inbox-prompt {
+  color: var(--crm-muted);
+}
+
+#crm-app .crm-social-inbox-row :is(.crm-badge, small) {
+  justify-self: end;
+}
+
+#crm-app .crm-social-thread {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto minmax(160px, 1fr) auto;
+}
+
+#crm-app .crm-social-thread > header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--crm-line);
+}
+
+#crm-app .crm-social-thread h4 {
+  overflow-wrap: anywhere;
+}
+
+#crm-app .crm-social-thread-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 420px;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+#crm-app .crm-social-thread-content article {
+  align-self: flex-start;
+  max-width: min(100%, 55ch);
+  padding: 10px 12px;
+  border: 1px solid var(--crm-line);
+  border-radius: 10px;
+  overflow-wrap: anywhere;
+}
+
+#crm-app .crm-social-thread-content article.outgoing {
+  align-self: flex-end;
+  background: var(--crm-subtle);
+}
+
+#crm-app .crm-social-thread-content article > small {
+  color: var(--crm-muted);
+}
+
+#crm-app .crm-social-thread-content article > p {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+}
+
+#crm-app .crm-social-reply {
+  display: grid;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--crm-line);
+}
+
+#crm-app .crm-social-reply > label {
+  display: grid;
+  gap: 5px;
+}
+
+#crm-app .crm-social-reply > button {
+  justify-self: end;
+}
+
+@media (max-width: 740px) {
+  #crm-app .crm-social-account {
+    grid-template-columns: minmax(0, 1fr);
+    padding-inline: 16px;
+  }
+
+  #crm-app .crm-social-account-actions {
+    justify-content: flex-start;
+  }
+
+  #crm-app .crm-social > .crm-page-heading > label {
+    display: none;
+  }
+
+  #crm-app .crm-social-workspace .crm-tabs {
+    mask-image: none;
+  }
+
+  #crm-app .crm-social-inbox-filters > .crm-tabs {
+    flex-wrap: wrap;
+  }
+
+  #crm-app .crm-social-inbox-body {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 240px;
+  }
+
+  #crm-app .crm-social-inbox-body.has-thread > .crm-social-inbox-list,
+  #crm-app .crm-social-inbox-prompt {
+    display: none;
+  }
+
+  #crm-app .crm-social-inbox-list {
+    border-inline-end: 0;
+  }
 }
 
 @media (max-width: 1140px) {
