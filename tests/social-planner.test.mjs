@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { normalizeSocialContent, socialTransition } from "../lib/social-core.ts";
-import { canReplyToMetaMessage, metaPostContentError } from "../lib/meta-social-core.ts";
+import { canReplyToMetaMessage, firstNonEmptySocialPage, metaPostContentError } from "../lib/meta-social-core.ts";
 
 const sample = {
   title: "  Winter promotion  ",
@@ -57,4 +57,16 @@ test("the Worker does not forward Meta credentials on redirects", async () => {
   const source = await readFile(new URL("../lib/meta-social.ts", import.meta.url), "utf8");
   assert.match(source, /redirect: "manual"/);
   assert.match(source, /response\.status >= 300 && response\.status < 400/);
+});
+
+test("the social inbox skips empty Meta pages while an older page is available", async () => {
+  const requested = [];
+  const result = await firstNonEmptySocialPage(async (after) => {
+    requested.push(after ?? "start");
+    if (!after) return { items: [], after: "page-2" };
+    if (after === "page-2") return { items: [], after: "page-3" };
+    return { items: [{ id: "message-1" }], after: "page-4" };
+  });
+  assert.deepEqual(requested, ["start", "page-2", "page-3"]);
+  assert.deepEqual(result, { items: [{ id: "message-1" }], after: "page-4" });
 });

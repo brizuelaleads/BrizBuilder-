@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import type { CrmClient } from "../../db/crm";
-import type { MetaSocialWorkspace } from "../../lib/meta-social-core";
+import type { MetaSocialWorkspace, SocialPublishedPage } from "../../lib/meta-social-core";
 import {
   SOCIAL_CHANNELS,
   SOCIAL_STATUSES,
@@ -46,6 +46,13 @@ function formatDay(day: string) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short", day: "numeric", year: "numeric", timeZone: "UTC",
   }).format(new Date(`${day}T00:00:00Z`));
+}
+
+function formatPublishedDate(date: string) {
+  const timestamp = Date.parse(date);
+  return Number.isFinite(timestamp)
+    ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(timestamp)
+    : "Published on Instagram";
 }
 
 export function SocialView({
@@ -261,6 +268,7 @@ function SocialPlanner({ client, canReview, targets, onAccounts }: {
             </button>
           </div>
         )}
+        <PublishedInstagramPosts clientId={client.id} connected={Boolean(targets.instagram)} />
       </section>
       <aside className="crm-panel crm-social-integration" aria-label="Connected accounts">
         <div>
@@ -289,6 +297,72 @@ function SocialPlanner({ client, canReview, targets, onAccounts }: {
         />
       )}
     </div>
+  );
+}
+
+function PublishedInstagramPosts({ clientId, connected }: { clientId: string; connected: boolean }) {
+  const [reload, setReload] = useState(0);
+  const [result, setResult] = useState<{ data?: SocialPublishedPage; error?: string }>();
+
+  useEffect(() => {
+    if (!connected) return;
+    const controller = new AbortController();
+    void socialRead<SocialPublishedPage>({ clientId, view: "published" }, controller.signal)
+      .then((data) => { if (!controller.signal.aborted) setResult({ data }); })
+      .catch((error: Error) => { if (!controller.signal.aborted) setResult({ error: error.message }); });
+    return () => controller.abort();
+  }, [clientId, connected, reload]);
+
+  if (!connected) return null;
+  const items = result?.data?.items ?? [];
+  return (
+    <section className="crm-social-published" aria-label="Published Instagram posts">
+      <header>
+        <div>
+          <h3>Published on Instagram</h3>
+          <span className="crm-social-muted">Latest posts from the connected account</span>
+        </div>
+      </header>
+      {!result && <p className="crm-social-message" role="status">Loading Instagram posts…</p>}
+      {result?.error && (
+        <div className="crm-social-message" role="alert">
+          <p>{result.error}</p>
+          <button className="crm-button-secondary" type="button" onClick={() => setReload((value) => value + 1)}>Try again</button>
+        </div>
+      )}
+      {result?.data?.errors.map((error) => <p className="crm-social-message" role="alert" key={error}>{error}</p>)}
+      {result?.data && !items.length && !result.data.errors.length && (
+        <p className="crm-social-message">No published Instagram posts were returned.</p>
+      )}
+      {items.length > 0 && (
+        <ul className="crm-social-published-grid">
+          {items.map((post) => {
+            const content = (
+              <>
+                {post.imageUrl
+                  ? <>
+                    {/* Meta uses rotating CDN hosts, so these thumbnails cannot use a fixed Next Image allowlist. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={post.imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                  </>
+                  : <span className="crm-social-media-placeholder" aria-hidden="true">{post.mediaType.replaceAll("_", " ")}</span>}
+                <span className="crm-social-published-copy">
+                  <strong>{post.caption || post.mediaType.replaceAll("_", " ")}</strong>
+                  <small>
+                    <time dateTime={post.date}>{formatPublishedDate(post.date)}</time>
+                    {post.commentCount !== null && ` · ${post.commentCount} comment${post.commentCount === 1 ? "" : "s"}`}
+                  </small>
+                </span>
+              </>
+            );
+            return <li key={post.id}>{post.permalink
+              ? <a href={post.permalink} target="_blank" rel="noreferrer">{content}</a>
+              : <div>{content}</div>}
+            </li>;
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
 

@@ -4,7 +4,7 @@ import { SocialRequestError } from "../../../lib/social-core";
 import {
   beginMetaSocialConnect, disconnectMetaSocial, getMetaSocialWorkspace, metaAccess, publishSocialPost, selectMetaSocialPage,
 } from "../../../db/supabase-meta-social";
-import { loadSocialInbox, loadSocialThread, replySocialThread } from "../../../lib/meta-social-inbox";
+import { loadPublishedSocialPosts, loadSocialInbox, loadSocialThread, replySocialThread } from "../../../lib/meta-social-inbox";
 import { beginInstagramConnect, disconnectInstagram } from "../../../db/supabase-instagram-social";
 
 export const dynamic = "force-dynamic";
@@ -63,9 +63,11 @@ export async function GET(request: Request) {
     const clientId = searchParams.get("clientId");
     const view = searchParams.get("view");
     if (view === "accounts") return json({ data: await getMetaSocialWorkspace(await authorizeSocial(user, clientId)) });
-    if (view === "inbox" || view === "thread") {
+    if (view === "published" || view === "inbox" || view === "thread") {
       const access = await metaAccess(await authorizeSocial(user, clientId));
-      const data = view === "inbox"
+      const data = view === "published"
+        ? await loadPublishedSocialPosts(access)
+        : view === "inbox"
         ? await loadSocialInbox(access, searchParams.get("kind"), searchParams.get("after"))
         : await loadSocialThread(access, searchParams.get("ref"));
       return json({ data });
