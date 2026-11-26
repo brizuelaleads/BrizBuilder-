@@ -70,3 +70,10 @@ test("the social inbox skips empty Meta pages while an older page is available",
   assert.deepEqual(requested, ["start", "page-2", "page-3"]);
   assert.deepEqual(result, { items: [{ id: "message-1" }], after: "page-4" });
 });
+
+test("Instagram Login uses Meta's documented conversation and comment edges", async () => {
+  const source = await readFile(new URL("../lib/meta-social-inbox.ts", import.meta.url), "utf8");
+  assert.match(source, /access\.login === "instagram" \? \{\s*platform: "instagram", limit: "25"/);
+  assert.match(source, /`\$\{id\}\/comments`/);
+  assert.doesNotMatch(source, /isInstagram \? `\$\{access\.id\}\/media` : `\$\{access\.id\}\/published_posts`/);
+});

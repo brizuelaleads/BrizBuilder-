@@ -83,24 +83,18 @@ function isOwnId(access: SocialProviderAccount, id: string | undefined) {
 
 async function listDirectMessages(access: SocialProviderAccount, after?: string) {
   const { channel } = access;
-  const query = {
+  const endpoint = `${access.messagingId}/conversations`;
+  // Instagram Login documents the conversation list as an ID/time lookup. Expanded
+  // participants or messages can make Meta return an empty page without an error.
+  // Resolve message details only after the user opens a conversation.
+  const query = access.login === "instagram" ? {
+    platform: "instagram", limit: "25", ...(after ? { after } : {}),
+  } : {
     platform: channel === "instagram" ? "instagram" : "messenger",
     fields: "id,updated_time,participants,messages.limit(1){message,created_time}",
-    limit: "25",
-    ...(after ? { after } : {}),
+    limit: "25", ...(after ? { after } : {}),
   };
-  const endpoint = `${access.messagingId}/conversations`;
-  let data: Data<Conversation>;
-  try {
-    data = await socialAccountRequest<Data<Conversation>>(access, endpoint, access.messagingToken, query);
-  } catch (error) {
-    if (access.login !== "instagram" || !(error instanceof MetaSocialError) || error.uncertain) throw error;
-    // The base Instagram conversations endpoint works without expanded fields.
-    // Resolve participants from actual messages when opened.
-    data = await socialAccountRequest<Data<Conversation>>(access, endpoint, access.messagingToken, {
-      ...query, fields: "id,updated_time",
-    });
-  }
+  const data = await socialAccountRequest<Data<Conversation>>(access, endpoint, access.messagingToken, query);
 
   const items = await Promise.all((data.data ?? []).flatMap((thread) => {
     const participants = thread.participants?.data ?? [];
@@ -122,14 +116,36 @@ async function listDirectMessages(access: SocialProviderAccount, after?: string)
 async function listComments(access: SocialProviderAccount, after?: string) {
   const { channel } = access;
   const isInstagram = channel === "instagram";
-  const data = await socialAccountRequest<Data<{ comments?: Data<Comment> }>>(
-    access, isInstagram ? `${access.id}/media` : `${access.id}/published_posts`, access.token,
-    {
-      fields: `id,comments.limit(20){${commentFields[channel]}}`, limit: "12",
-      ...(after ? { after } : {}),
-    },
-  );
-  const comments = (data.data ?? []).flatMap(({ comments }) => comments?.data ?? []);
+  let comments: Comment[];
+  let next: string | undefined;
+  if (isInstagram) {
+    const media = await socialAccountRequest<Data<{ id: string }>>(
+      access, `${access.id}/media`, access.token,
+      { fields: "id", limit: "12", ...(after ? { after } : {}) },
+    );
+    const pages: Data<Comment>[] = [];
+    const posts = media.data ?? [];
+    // Meta documents comments as a direct media edge. Keep concurrency bounded to
+    // avoid a burst for accounts with a full page of recent posts.
+    for (let offset = 0; offset < posts.length; offset += 4) {
+      pages.push(...await Promise.all(posts.slice(offset, offset + 4).map(({ id }) =>
+        socialAccountRequest<Data<Comment>>(access, `${id}/comments`, access.token, {
+          fields: commentFields.instagram, limit: "20",
+        }))));
+    }
+    comments = pages.flatMap((page) => page.data ?? []);
+    next = media.paging?.next ? media.paging.cursors?.after : undefined;
+  } else {
+    const data = await socialAccountRequest<Data<{ comments?: Data<Comment> }>>(
+      access, `${access.id}/published_posts`, access.token,
+      {
+        fields: `id,comments.limit(20){${commentFields.facebook}}`, limit: "12",
+        ...(after ? { after } : {}),
+      },
+    );
+    comments = (data.data ?? []).flatMap(({ comments: page }) => page?.data ?? []);
+    next = data.paging?.next ? data.paging.cursors?.after : undefined;
+  }
   const items = await Promise.all(comments
     .filter((comment) => !isOwnId(access, comment.from?.id) && !comment.hidden && !comment.is_hidden)
     .map(async (comment): Promise<SocialInboxItem> => ({
@@ -137,7 +153,7 @@ async function listComments(access: SocialProviderAccount, after?: string) {
       channel, kind: "comment", name: displayName(comment.from, comment.username),
       text: comment.text || comment.message || "Comment with media", date: comment.timestamp || comment.created_time || "",
     })));
-  return { items, after: data.paging?.next ? data.paging.cursors?.after : undefined };
+  return { items, after: next };
 }
 
 function safeHttpsUrl(value: unknown) {
