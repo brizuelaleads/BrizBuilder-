@@ -4,8 +4,9 @@ import {
   metaSocialId, socialAccountRequest, MetaSocialError,
 } from "./meta-social";
 import {
-  canReplyToMetaMessage, socialDestination, type SocialInbox, type SocialInboxEntry, type SocialInboxItem,
-  type SocialInboxKind, type SocialThread, type SocialAccountAccess, type SocialProviderAccount,
+  canReplyToMetaMessage, firstNonEmptySocialPage, socialDestination, type SocialInbox, type SocialInboxEntry,
+  type SocialInboxItem, type SocialInboxKind, type SocialPublishedPage, type SocialPublishedPost, type SocialThread,
+  type SocialAccountAccess, type SocialProviderAccount,
 } from "./meta-social-core";
 import { SocialRequestError, type SocialChannel } from "./social-core";
 
@@ -16,6 +17,16 @@ type Conversation = { id: string; updated_time?: string; participants?: Data<Per
 type Comment = {
   id: string; created_time?: string; timestamp?: string; message?: string; text?: string;
   from?: Person; username?: string; is_hidden?: boolean; hidden?: boolean;
+};
+type PublishedMedia = {
+  id: string;
+  caption?: string;
+  media_type?: string;
+  media_url?: string;
+  thumbnail_url?: string;
+  permalink?: string;
+  timestamp?: string;
+  comments_count?: number;
 };
 type Ref = {
   kind: SocialInboxKind;
@@ -129,6 +140,43 @@ async function listComments(access: SocialProviderAccount, after?: string) {
   return { items, after: data.paging?.next ? data.paging.cursors?.after : undefined };
 }
 
+function safeHttpsUrl(value: unknown) {
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function loadPublishedSocialPosts(access: SocialAccountAccess): Promise<SocialPublishedPage> {
+  const errors = Object.values(access.errors);
+  const account = access.accounts.instagram;
+  if (!account) return { items: [], errors };
+  try {
+    const data = await socialAccountRequest<Data<PublishedMedia>>(account, `${account.id}/media`, account.token, {
+      fields: "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count",
+      limit: "25",
+    });
+    const items: SocialPublishedPost[] = (data.data ?? []).map((post) => ({
+      id: post.id,
+      channel: "instagram",
+      caption: post.caption?.trim() ?? "",
+      mediaType: post.media_type || "POST",
+      imageUrl: safeHttpsUrl(post.thumbnail_url) ?? safeHttpsUrl(post.media_url),
+      permalink: safeHttpsUrl(post.permalink),
+      date: post.timestamp || "",
+      commentCount: Number.isSafeInteger(post.comments_count) && (post.comments_count ?? -1) >= 0
+        ? post.comments_count ?? null : null,
+    }));
+    return { items, errors };
+  } catch (error) {
+    const message = error instanceof SocialRequestError ? error.message : "Could not load this channel.";
+    return { items: [], errors: [...errors, `Instagram posts: ${message}`] };
+  }
+}
+
 function inboxCursors(value: string | null) {
   if (!value) return null;
   try {
@@ -154,7 +202,10 @@ export async function loadSocialInbox(access: SocialAccountAccess, kind: unknown
     account, source, key: `${account.channel}:${source}`,
   }))).filter(({ key }) => !cursors || Boolean(cursors[key]));
   const results = await Promise.allSettled(feeds.map(({ account, source, key }) =>
-    source === "dm" ? listDirectMessages(account, cursors?.[key]) : listComments(account, cursors?.[key]),
+    firstNonEmptySocialPage(
+      (cursor) => source === "dm" ? listDirectMessages(account, cursor) : listComments(account, cursor),
+      cursors?.[key],
+    ),
   ));
   const items: SocialInboxItem[] = [];
   const errors: string[] = Object.values(access.errors);
