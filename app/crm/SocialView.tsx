@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clapperboard, ExternalLink, Grid3x3, Plus, SquareUserRound } from "lucide-react";
 import type { CrmClient } from "../../db/crm";
 import type { MetaSocialWorkspace, SocialPublishedPage } from "../../lib/meta-social-core";
 import {
@@ -53,6 +53,15 @@ function formatPublishedDate(date: string) {
   return Number.isFinite(timestamp)
     ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(timestamp)
     : "Published on Instagram";
+}
+
+function formatSocialMetric(value: number | null | undefined, fallback?: number) {
+  const resolved = value ?? fallback;
+  if (resolved === undefined) return "—";
+  return new Intl.NumberFormat("en-US", {
+    notation: resolved >= 10_000 ? "compact" : "standard",
+    maximumFractionDigits: 1,
+  }).format(resolved);
 }
 
 export function SocialView({
@@ -268,7 +277,11 @@ function SocialPlanner({ client, canReview, targets, onAccounts }: {
             </button>
           </div>
         )}
-        <PublishedInstagramPosts clientId={client.id} connected={Boolean(targets.instagram)} />
+        <PublishedInstagramPosts
+          clientId={client.id}
+          connected={Boolean(targets.instagram)}
+          fallbackName={targets.instagram?.name ?? client.businessName}
+        />
       </section>
       <aside className="crm-panel crm-social-integration" aria-label="Connected accounts">
         <div>
@@ -300,8 +313,15 @@ function SocialPlanner({ client, canReview, targets, onAccounts }: {
   );
 }
 
-function PublishedInstagramPosts({ clientId, connected }: { clientId: string; connected: boolean }) {
+type InstagramPreviewTab = "posts" | "reels" | "tagged";
+
+function PublishedInstagramPosts({ clientId, connected, fallbackName }: {
+  clientId: string;
+  connected: boolean;
+  fallbackName: string;
+}) {
   const [reload, setReload] = useState(0);
+  const [tab, setTab] = useState<InstagramPreviewTab>("posts");
   const [result, setResult] = useState<{ data?: SocialPublishedPage; error?: string }>();
 
   useEffect(() => {
@@ -315,15 +335,37 @@ function PublishedInstagramPosts({ clientId, connected }: { clientId: string; co
 
   if (!connected) return null;
   const items = result?.data?.items ?? [];
+  const profile = result?.data?.profile;
+  const username = profile?.username || fallbackName.replace(/^@/, "").replace(/\s+/g, "").toLowerCase();
+  const profileName = profile?.name || fallbackName.replace(/^@/, "");
+  const initials = profileName.split(/\s+/u).filter(Boolean).slice(0, 2)
+    .map((part) => part[0]).join("").toUpperCase() || "IG";
+  const reels = items.filter(({ mediaType }) => /reel|video/iu.test(mediaType));
+  const grids: Record<InstagramPreviewTab, typeof items> = {
+    posts: items,
+    reels,
+    tagged: result?.data?.tagged ?? [],
+  };
+  const visibleItems = grids[tab];
+  const stories = result?.data?.stories ?? [];
+  const profileUrl = /^[a-zA-Z0-9._]{1,30}$/.test(username) ? `https://www.instagram.com/${username}/` : null;
+  const tabs: { key: InstagramPreviewTab; label: string; icon: typeof Grid3x3 }[] = [
+    { key: "posts", label: "Posts", icon: Grid3x3 },
+    { key: "reels", label: "Reels", icon: Clapperboard },
+    { key: "tagged", label: "Tagged", icon: SquareUserRound },
+  ];
   return (
-    <section className="crm-social-published" aria-label="Published Instagram posts">
-      <header>
+    <section className="crm-social-published" aria-label="Instagram profile preview">
+      <header className="crm-instagram-preview-heading">
         <div>
-          <h3>Published on Instagram</h3>
-          <span className="crm-social-muted">Latest posts from the connected account</span>
+          <h3>Instagram profile preview</h3>
+          <span className="crm-social-muted">See the connected account as a mobile profile.</span>
         </div>
+        {profileUrl && <a className="crm-button-secondary" href={profileUrl} target="_blank" rel="noreferrer">
+          Open Instagram <ExternalLink size={14} aria-hidden="true" />
+        </a>}
       </header>
-      {!result && <p className="crm-social-message" role="status">Loading Instagram posts…</p>}
+      {!result && <p className="crm-social-message" role="status">Loading Instagram profile…</p>}
       {result?.error && (
         <div className="crm-social-message" role="alert">
           <p>{result.error}</p>
@@ -331,36 +373,92 @@ function PublishedInstagramPosts({ clientId, connected }: { clientId: string; co
         </div>
       )}
       {result?.data?.errors.map((error) => <p className="crm-social-message" role="alert" key={error}>{error}</p>)}
-      {result?.data && !items.length && !result.data.errors.length && (
-        <p className="crm-social-message">No published Instagram posts were returned.</p>
-      )}
-      {items.length > 0 && (
-        <ul className="crm-social-published-grid">
-          {items.map((post) => {
-            const content = (
-              <>
-                {post.imageUrl
+      {result?.data && (
+        <div className="crm-instagram-phone">
+          <div className="crm-instagram-topbar">
+            <strong>@{username}</strong>
+            <span>Profile preview</span>
+          </div>
+          <div className="crm-instagram-profile">
+            <div className="crm-instagram-profile-summary">
+              <div className="crm-instagram-avatar-ring">
+                {profile?.profilePictureUrl
+                  ? <>
+                    {/* Meta uses rotating CDN hosts, so this avatar cannot use a fixed Next Image allowlist. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={profile.profilePictureUrl} alt={`${profileName} profile`} referrerPolicy="no-referrer" />
+                  </>
+                  : <span>{initials}</span>}
+              </div>
+              <dl className="crm-instagram-stats">
+                <div><dt>{formatSocialMetric(profile?.mediaCount, items.length)}</dt><dd>posts</dd></div>
+                <div><dt>{formatSocialMetric(profile?.followersCount)}</dt><dd>followers</dd></div>
+                <div><dt>{formatSocialMetric(profile?.followsCount)}</dt><dd>following</dd></div>
+              </dl>
+            </div>
+            <div className="crm-instagram-bio">
+              <strong>{profileName}</strong>
+              {profile?.biography && <p>{profile.biography}</p>}
+              {profile?.website && <a href={profile.website} target="_blank" rel="noreferrer">{profile.website.replace(/^https?:\/\//, "")}</a>}
+            </div>
+            <div className="crm-instagram-highlights" aria-label="Stories and highlights">
+              {(stories.length ? stories.slice(0, 5) : [{
+                id: "story-placeholder", imageUrl: profile?.profilePictureUrl ?? null,
+              }]).map((story, index) => (
+                <div className="crm-instagram-highlight" key={story.id}>
+                  <span className="crm-instagram-highlight-ring">
+                    {story.imageUrl
+                      ? <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={story.imageUrl} alt="" referrerPolicy="no-referrer" />
+                      </>
+                      : <span>{initials}</span>}
+                  </span>
+                  <small>{stories.length ? `Story ${index + 1}` : "Stories"}</small>
+                </div>
+              ))}
+              <div className="crm-instagram-highlight">
+                <span className="crm-instagram-highlight-ring empty"><Plus size={21} aria-hidden="true" /></span>
+                <small>New</small>
+              </div>
+            </div>
+          </div>
+          <nav className="crm-instagram-tabs" aria-label="Instagram profile content">
+            {tabs.map(({ key, label, icon: Icon }) => (
+              <button type="button" key={key} className={tab === key ? "active" : ""}
+                aria-current={tab === key ? "page" : undefined} onClick={() => setTab(key)}>
+                <Icon size={20} aria-hidden="true" /><span>{label}</span>
+              </button>
+            ))}
+          </nav>
+          {visibleItems.length ? (
+            <ul className="crm-social-published-grid">
+              {visibleItems.map((post) => {
+                const label = `${post.caption || post.mediaType.replaceAll("_", " ")} — ${formatPublishedDate(post.date)}`;
+                const content = post.imageUrl
                   ? <>
                     {/* Meta uses rotating CDN hosts, so these thumbnails cannot use a fixed Next Image allowlist. */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={post.imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                    {/reel|video/iu.test(post.mediaType) && <Clapperboard className="crm-instagram-media-type" size={18} aria-hidden="true" />}
+                    {post.commentCount !== null && <span className="crm-instagram-comment-count">{post.commentCount}</span>}
                   </>
-                  : <span className="crm-social-media-placeholder" aria-hidden="true">{post.mediaType.replaceAll("_", " ")}</span>}
-                <span className="crm-social-published-copy">
-                  <strong>{post.caption || post.mediaType.replaceAll("_", " ")}</strong>
-                  <small>
-                    <time dateTime={post.date}>{formatPublishedDate(post.date)}</time>
-                    {post.commentCount !== null && ` · ${post.commentCount} comment${post.commentCount === 1 ? "" : "s"}`}
-                  </small>
-                </span>
-              </>
-            );
-            return <li key={post.id}>{post.permalink
-              ? <a href={post.permalink} target="_blank" rel="noreferrer">{content}</a>
-              : <div>{content}</div>}
-            </li>;
-          })}
-        </ul>
+                  : <span className="crm-social-media-placeholder" aria-hidden="true">{post.mediaType.replaceAll("_", " ")}</span>;
+                return <li key={post.id}>{post.permalink
+                  ? <a aria-label={label} href={post.permalink} target="_blank" rel="noreferrer">{content}</a>
+                  : <div role="img" aria-label={label}>{content}</div>}
+                </li>;
+              })}
+            </ul>
+          ) : (
+            <div className="crm-instagram-empty">
+              {tab === "posts" ? <Grid3x3 size={28} aria-hidden="true" /> : tab === "reels"
+                ? <Clapperboard size={28} aria-hidden="true" /> : <SquareUserRound size={28} aria-hidden="true" />}
+              <strong>{tab === "posts" ? "No posts yet" : tab === "reels" ? "No reels yet" : "No tagged posts yet"}</strong>
+              <span>{tab === "tagged" ? "Tagged Instagram posts will appear here when Meta returns them." : "Published content will appear here automatically."}</span>
+            </div>
+          )}
+        </div>
       )}
     </section>
   );

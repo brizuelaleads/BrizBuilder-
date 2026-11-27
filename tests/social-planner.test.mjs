@@ -77,3 +77,15 @@ test("Instagram Login uses Meta's documented conversation and comment edges", as
   assert.match(source, /`\$\{id\}\/comments`/);
   assert.doesNotMatch(source, /isInstagram \? `\$\{access\.id\}\/media` : `\$\{access\.id\}\/published_posts`/);
 });
+
+test("the Instagram preview includes live profile, story, reel, and tagged content", async () => {
+  const [reader, view] = await Promise.all([
+    readFile(new URL("../lib/meta-social-inbox.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/crm/SocialView.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(reader, /profile_picture_url,followers_count,follows_count,media_count/);
+  assert.match(reader, /`\$\{account\.id\}\/stories`/);
+  assert.match(reader, /`\$\{account\.id\}\/tags`/);
+  assert.match(view, /Instagram profile preview/);
+  assert.match(view, /"posts" \| "reels" \| "tagged"/);
+});
