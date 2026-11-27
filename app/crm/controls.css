@@ -1204,7 +1204,8 @@
 #crm-app .crm-square-form small { display: block; margin-top: 6px; font-size: 12px; line-height: 18px; color: var(--crm-muted); }
 #crm-app .crm-square-form-error { margin: 0; font-size: 13px; color: #b4233c; }
 @media(max-width: 600px) {
-  #crm-app .crm-square-line { grid-template-columns: minmax(0, 1fr) 60px 36px; }
+  #crm-app .crm-square-line { grid-template-columns: 72px minmax(0, 1fr) 36px; }
+  #crm-app .crm-square-form footer > button[type="submit"] { grid-column: 1 / -1; width: 100%; }
   #crm-app .crm-square-line > input:first-child { grid-column: 1 / -1; }
   /* Each invoice becomes a card, so amount and payment status stay on screen
      instead of behind a sideways scroll. */
@@ -1221,6 +1222,52 @@
   #crm-app .crm-square-actions { grid-column: 1 / -1; grid-row: 4; white-space: normal; text-align: left; }
   #crm-app .crm-square-actions :is(a, button) { margin: 4px 6px 0 0; }
   #crm-app .crm-square-actions:empty { display: none; }
+}
+/* Ready to invoice: won jobs with no invoice yet, one tap from a filled-in form. */
+#crm-app .crm-square-ready { overflow: hidden; }
+#crm-app .crm-square-ready > header { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; padding: 20px 24px; border-bottom: 1px solid var(--crm-line); }
+#crm-app .crm-square-ready > header h3 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; color: var(--crm-ink); }
+#crm-app .crm-square-ready > header span:not(.crm-badge) { font-size: 13px; line-height: 20px; color: var(--crm-muted); }
+#crm-app .crm-square-ready > ul { margin: 0; padding: 0; list-style: none; }
+#crm-app .crm-square-ready li { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto auto; align-items: center; gap: 14px; padding: 14px 24px; border-top: 1px solid var(--crm-line); }
+#crm-app .crm-square-ready li:first-child { border-top: 0; }
+#crm-app .crm-square-ready-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: #e8f7ef; color: #1a7f52; }
+#crm-app .crm-square-ready-icon svg { width: 16px; height: 16px; }
+#crm-app .crm-square-ready-copy { min-width: 0; }
+#crm-app .crm-square-ready-copy strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--crm-ink); }
+#crm-app .crm-square-ready-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 18px; color: var(--crm-muted); }
+#crm-app .crm-square-ready-amount { font-size: 15px; font-weight: 600; color: var(--crm-ink); font-variant-numeric: tabular-nums; }
+#crm-app .crm-square-ready li > button { --btn-h: 36px; --btn-px: 16px; --btn-fs: 13px; }
+#crm-app[data-theme="glass"] .crm-square-ready-icon { background: rgb(43 196 138 / 14%); color: #6ee7b7; }
+/* The invoice form: three short steps, the rest tucked under More options. */
+#crm-app .crm-square-step { margin-bottom: -6px; }
+#crm-app .crm-square-step-label, #crm-app .crm-square-form fieldset > legend { font-size: 12px; font-weight: 600; letter-spacing: .02em; color: var(--crm-ink); }
+#crm-app .crm-square-quick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+#crm-app .crm-square-quick > small { margin: 0 4px 0 0; }
+#crm-app .crm-square-chip { --btn-h: 30px; --btn-px: 12px; --btn-fs: 12px; --btn-gap: 4px; --btn-icon: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+#crm-app .crm-square-chip[aria-pressed="true"] { --btn-bg: var(--color-ink); --btn-fg: var(--color-cloud); --btn-bg-hover: #1a1f28; --btn-ring: 0 0 #0000; --btn-ring-hover: 0 0 #0000; }
+#crm-app[data-theme="glass"] .crm-square-chip[aria-pressed="true"] { --btn-bg: var(--crm-accent, #f25c3b); --btn-fg: var(--crm-on-accent, #fff); --btn-bg-hover: var(--crm-accent, #f25c3b); }
+#crm-app .crm-square-due { min-width: 0; margin: 0; padding: 0; border: 0; }
+#crm-app .crm-square-due > legend { padding: 0; margin-bottom: 8px; }
+#crm-app .crm-square-due-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+#crm-app .crm-square-due-row input[type="date"] { width: auto; min-width: 150px; margin-left: 4px; }
+#crm-app .crm-square-more { border: 1px solid var(--crm-line); border-radius: 10px; }
+#crm-app .crm-square-more > summary { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; padding: 12px 14px; font-size: 13px; font-weight: 600; color: var(--crm-ink); cursor: pointer; list-style: none; }
+#crm-app .crm-square-more > summary::-webkit-details-marker { display: none; }
+#crm-app .crm-square-more > summary::before { content: "+"; width: 12px; color: var(--crm-muted); }
+#crm-app .crm-square-more[open] > summary::before { content: "−"; }
+#crm-app .crm-square-more > summary small { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
+#crm-app .crm-square-more-body { display: grid; gap: 14px; padding: 0 14px 14px; }
+#crm-app .crm-square-summary { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 2px 12px; padding: 14px 16px; border-radius: 10px; background: var(--crm-subtle); }
+#crm-app .crm-square-summary > span { font-size: 13px; color: var(--crm-muted); }
+#crm-app .crm-square-summary > strong { justify-self: end; font-size: 22px; font-weight: 700; color: var(--crm-ink); font-variant-numeric: tabular-nums; }
+#crm-app .crm-square-summary > small { grid-column: 1 / -1; margin: 0; overflow-wrap: anywhere; }
+@media(max-width: 600px) {
+  #crm-app .crm-square-ready > header, #crm-app .crm-square-ready li { padding-left: 16px; padding-right: 16px; }
+  #crm-app .crm-square-ready li { grid-template-columns: 36px minmax(0, 1fr) auto; }
+  #crm-app .crm-square-ready li > button { grid-column: 1 / -1; width: 100%; }
+  #crm-app .crm-square-ready-copy :is(strong, small) { white-space: normal; }
+  #crm-app .crm-square-due-row input[type="date"] { flex: 1 1 100%; margin: 4px 0 0; }
 }
 /* Wide screens say "Due" in the column header, so the cell drops the word. */
 @media(min-width: 601px) { #crm-app .crm-square-due-label { display: none; } }

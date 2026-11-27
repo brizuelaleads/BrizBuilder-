@@ -285,7 +285,25 @@ export type SquareInvoiceView = {
   paidAt: string | null;
   /** False for invoices from a Square account that is no longer the linked one. */
   actionable: boolean;
+  /** The contact (client scope) or client business (agency scope) billed. */
+  recipientId: string | null;
+  message: string | null;
+  lineItems: { name: string; quantity: number; unitCents: number }[];
 };
+
+function storedLineItems(value: unknown): SquareInvoiceView["lineItems"] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    const name = typeof record.name === "string" ? record.name.trim() : "";
+    const quantity = Number(record.quantity);
+    const unitCents = Number(record.unitCents);
+    return name && Number.isInteger(quantity) && quantity > 0 && Number.isInteger(unitCents) && unitCents > 0
+      ? [{ name, quantity, unitCents }]
+      : [];
+  });
+}
 
 function invoiceView(row: Row, connection: Row | null): SquareInvoiceView {
   return {
@@ -309,7 +327,104 @@ function invoiceView(row: Row, connection: Row | null): SquareInvoiceView {
       isLive(connection) &&
       row.merchant_id === connection.merchant_id &&
       row.environment === connection.environment,
+    recipientId: row.contact_id ?? row.billed_client_id ?? null,
+    message: row.message ?? null,
+    lineItems: storedLineItems(row.line_items),
   };
+}
+
+// Statuses that mean an invoice did not go out, so the job still needs one.
+const UNBILLED_STATUSES = new Set(["failed", "canceled"]);
+const READY_LOOKBACK_DAYS = 120;
+const MAX_READY = 25;
+const MAX_SAVED_ITEMS = 60;
+
+/**
+ * Won jobs whose customer has an email and has not been invoiced since the
+ * job came in. Invoices do not record which lead they bill, so a job counts as
+ * billed once its contact has any invoice (other than a failed or canceled one)
+ * created after the lead was.
+ */
+async function readyToInvoiceFor(
+  context: SupabaseTenantContext,
+  clientId: string,
+  invoices: Row[],
+): Promise<SquareWorkspace["readyToInvoice"]> {
+  const since = new Date(Date.now() - READY_LOOKBACK_DAYS * 86_400_000).toISOString();
+  const leads = ((await assertOk(
+    supabase()
+      .from("leads")
+      .select("id,contact_id,service_requested,estimated_value_cents,final_revenue_cents,created_at,updated_at")
+      .eq("organization_id", context.organizationId)
+      .eq("client_id", clientId)
+      .eq("status", "WON")
+      .is("archived_at", null)
+      .not("contact_id", "is", null)
+      .gte("updated_at", since)
+      .order("updated_at", { ascending: false })
+      .limit(100),
+  )) ?? []) as Row[];
+  if (!leads.length) return [];
+
+  const contactIds = [...new Set(leads.map((lead) => String(lead.contact_id)))];
+  const contacts = ((await assertOk(
+    supabase()
+      .from("contacts")
+      .select("id,first_name,last_name,email")
+      .eq("organization_id", context.organizationId)
+      .eq("client_id", clientId)
+      .is("archived_at", null)
+      .in("id", contactIds),
+  )) ?? []) as Row[];
+  const byId = new Map(contacts.map((contact) => [String(contact.id), contact]));
+
+  const latestBilled = new Map<string, string>();
+  for (const invoice of invoices) {
+    if (!invoice.contact_id || UNBILLED_STATUSES.has(String(invoice.status))) continue;
+    const key = String(invoice.contact_id);
+    const at = String(invoice.created_at);
+    if (!latestBilled.has(key) || at > latestBilled.get(key)!) latestBilled.set(key, at);
+  }
+
+  const ready: SquareWorkspace["readyToInvoice"] = [];
+  for (const lead of leads) {
+    const contact = byId.get(String(lead.contact_id));
+    const email = String(contact?.email ?? "").trim().toLowerCase();
+    if (!contact || !email.includes("@")) continue;
+    const billed = latestBilled.get(String(contact.id));
+    if (billed && billed >= String(lead.created_at)) continue;
+    const valueCents = Number(lead.final_revenue_cents) || Number(lead.estimated_value_cents) || 0;
+    ready.push({
+      leadId: String(lead.id),
+      recipientId: String(contact.id),
+      name: `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim(),
+      email,
+      service: String(lead.service_requested ?? "").trim(),
+      valueCents: valueCents > 0 ? valueCents : 0,
+      wonAt: String(lead.updated_at),
+    });
+    if (ready.length >= MAX_READY) break;
+  }
+  return ready;
+}
+
+/** Line items used before, most recent price first, for one-tap reuse. */
+function savedItemsFrom(invoices: Row[]): SquareWorkspace["savedItems"] {
+  const seen = new Map<string, { name: string; unitCents: number; uses: number }>();
+  // Rows arrive newest first, so the first price seen is the latest one.
+  for (const invoice of invoices) {
+    if (invoice.status === "failed") continue;
+    for (const item of storedLineItems(invoice.line_items)) {
+      const key = item.name.toLowerCase();
+      const known = seen.get(key);
+      if (known) known.uses += 1;
+      else seen.set(key, { name: item.name, unitCents: item.unitCents, uses: 1 });
+    }
+  }
+  return [...seen.values()]
+    .sort((a, b) => b.uses - a.uses)
+    .slice(0, MAX_SAVED_ITEMS)
+    .map(({ name, unitCents }) => ({ name, unitCents }));
 }
 
 export type SquareWorkspace = {
@@ -333,6 +448,20 @@ export type SquareWorkspace = {
   } | null;
   invoices: SquareInvoiceView[];
   recipients: { id: string; name: string; email: string }[];
+  /** Won jobs with no invoice yet (client scope, invoicing roles only). */
+  readyToInvoice: {
+    leadId: string;
+    recipientId: string;
+    name: string;
+    email: string;
+    service: string;
+    valueCents: number;
+    wonAt: string;
+  }[];
+  /** Line items from earlier invoices, to pick instead of retyping. */
+  savedItems: { name: string; unitCents: number }[];
+  /** The message on the most recent invoice, offered as the default. */
+  lastMessage: string | null;
   totals: { outstandingCents: number; overdueCents: number; paidLast30DaysCents: number };
 };
 
@@ -438,6 +567,12 @@ export async function getSquareWorkspace(
       : null,
     invoices: rows.map((row) => invoiceView(row, connection)),
     recipients: canInvoice ? await recipientsFor(context, clientId) : [],
+    readyToInvoice:
+      canInvoice && clientId && visible ? await readyToInvoiceFor(context, clientId, rows) : [],
+    savedItems: canInvoice ? savedItemsFrom(rows) : [],
+    lastMessage: canInvoice
+      ? (rows.find((row) => row.status !== "failed" && row.message)?.message ?? null)
+      : null,
     totals,
   };
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { ExternalLink, FileText, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { ExternalLink, FileText, Plus, RefreshCw, Repeat, Trash2, Trophy } from "lucide-react";
 import type { SquareWorkspace as SquareWorkspaceData } from "../../../db/supabase-square";
 import {
   MAX_ATTACHMENT_BYTES,
@@ -17,6 +17,47 @@ export type SquareScopeChoice =
   | { kind: "client"; clientId: string; label: string };
 
 type Line = { key: number; name: string; quantity: string; unitPrice: string };
+
+/** What a new invoice starts from: a won job, an earlier invoice, or nothing. */
+type InvoicePreset = {
+  source: "blank" | "job" | "repeat";
+  recipientId?: string | null;
+  recipientName?: string;
+  recipientEmail?: string;
+  title?: string;
+  message?: string | null;
+  lines?: { name: string; quantity: number; unitCents: number }[];
+};
+
+const DUE_PRESETS = [
+  { label: "Today", days: 0 },
+  { label: "7 days", days: 7 },
+  { label: "14 days", days: 14 },
+  { label: "30 days", days: 30 },
+];
+
+function centsInput(cents: number) {
+  return cents > 0 ? (cents / 100).toFixed(2) : "";
+}
+
+function autoTitle(lines: Line[]) {
+  const named = lines.map((line) => line.name.trim()).filter(Boolean);
+  if (!named.length) return "";
+  const title = named.length > 1 ? `${named[0]} + ${named.length - 1} more` : named[0];
+  return title.slice(0, 120);
+}
+
+/** A due date is a calendar day, so read it in local time, not as UTC midnight. */
+function dayLabel(day: string) {
+  const [year, month, date] = day.split("-").map(Number);
+  const value = new Date(year, (month || 1) - 1, date || 1);
+  if (Number.isNaN(value.getTime())) return day;
+  return value.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: year !== new Date().getFullYear() ? "numeric" : undefined,
+  });
+}
 
 function scopeQuery(scope: SquareScopeChoice) {
   return scope.kind === "agency"
@@ -47,7 +88,7 @@ export function SquareWorkspace({ scope }: { scope: SquareScopeChoice }) {
   const [forbidden, setForbidden] = useState(false);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState<InvoicePreset | null>(null);
   const query = scopeQuery(scope);
 
   // The parent keys this component by scope, so a new business starts from a
@@ -286,6 +327,62 @@ export function SquareWorkspace({ scope }: { scope: SquareScopeChoice }) {
             </article>
           </section>
 
+          {data.canInvoice && data.readyToInvoice.length ? (
+            <section className="crm-panel crm-square-ready">
+              <header>
+                <div>
+                  <h3>Ready to invoice</h3>
+                  <span>
+                    Won jobs with no invoice yet. The customer, job and price
+                    are filled in for you. Check it and send.
+                  </span>
+                </div>
+                <Badge tone="blue">{data.readyToInvoice.length}</Badge>
+              </header>
+              <ul>
+                {data.readyToInvoice.map((job) => (
+                  <li key={job.leadId}>
+                    <span className="crm-square-ready-icon" aria-hidden="true">
+                      <Trophy />
+                    </span>
+                    <div className="crm-square-ready-copy">
+                      <strong>{job.name || job.email}</strong>
+                      <small>
+                        {job.service || "Won job"} · Won {shortDate(job.wonAt)}
+                      </small>
+                    </div>
+                    <strong className="crm-square-ready-amount">
+                      {job.valueCents ? formatMoney(job.valueCents, currency) : "No price yet"}
+                    </strong>
+                    <button
+                      type="button"
+                      className="crm-button-primary"
+                      disabled={needsReconnect}
+                      onClick={() =>
+                        setCreating({
+                          source: "job",
+                          recipientId: job.recipientId,
+                          recipientName: job.name,
+                          recipientEmail: job.email,
+                          title: job.service,
+                          lines: [
+                            {
+                              name: job.service || "Services",
+                              quantity: 1,
+                              unitCents: job.valueCents,
+                            },
+                          ],
+                        })
+                      }
+                    >
+                      Review and send
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
           <section className="crm-panel crm-square-invoices">
             <header>
               <div>
@@ -297,7 +394,7 @@ export function SquareWorkspace({ scope }: { scope: SquareScopeChoice }) {
                   type="button"
                   className="crm-button-primary"
                   disabled={needsReconnect}
-                  onClick={() => setCreating(true)}
+                  onClick={() => setCreating({ source: "blank" })}
                 >
                   <Plus aria-hidden="true" /> New invoice
                 </button>
@@ -347,7 +444,7 @@ export function SquareWorkspace({ scope }: { scope: SquareScopeChoice }) {
                               <small>{formatMoney(invoice.paidCents, invoice.currency)} paid</small>
                             ) : null}
                           </td>
-                          <td className="crm-square-cell-due"><span className="crm-square-due-label">Due </span>{shortDate(invoice.dueDate)}</td>
+                          <td className="crm-square-cell-due"><span className="crm-square-due-label">Due </span>{dayLabel(invoice.dueDate)}</td>
                           <td className="crm-square-cell-status">
                             <Badge tone={state.tone}>{state.label}</Badge>
                           </td>
@@ -356,6 +453,25 @@ export function SquareWorkspace({ scope }: { scope: SquareScopeChoice }) {
                               <a href={invoice.publicUrl} target="_blank" rel="noopener noreferrer">
                                 <ExternalLink aria-hidden="true" /> View
                               </a>
+                            ) : null}
+                            {data.canInvoice && !needsReconnect && invoice.lineItems.length ? (
+                              <button
+                                type="button"
+                                aria-label={`Bill ${invoice.recipientName} again`}
+                                onClick={() =>
+                                  setCreating({
+                                    source: "repeat",
+                                    recipientId: invoice.recipientId,
+                                    recipientName: invoice.recipientName,
+                                    recipientEmail: invoice.recipientEmail,
+                                    title: invoice.title,
+                                    message: invoice.message,
+                                    lines: invoice.lineItems,
+                                  })
+                                }
+                              >
+                                <Repeat aria-hidden="true" /> Bill again
+                              </button>
                             ) : null}
                             {data.canInvoice && invoice.actionable && invoice.status === "draft" ? (
                               <button
@@ -422,7 +538,11 @@ export function SquareWorkspace({ scope }: { scope: SquareScopeChoice }) {
             ) : (
               <EmptyState
                 title="No invoices yet"
-                description="Invoices you send from here will appear with their payment status."
+                description={
+                  scope.kind === "client"
+                    ? "Invoices you send from here will appear with their payment status. When a lead is marked Won and has an email, it shows up above, ready to invoice."
+                    : "Invoices you send from here will appear with their payment status. After the first one, Bill again repeats it in one step."
+                }
               />
             )}
           </section>
@@ -459,8 +579,12 @@ export function SquareWorkspace({ scope }: { scope: SquareScopeChoice }) {
           scope={scope}
           currency={currency}
           recipients={data.recipients}
+          readyToInvoice={data.readyToInvoice}
+          savedItems={data.savedItems}
+          lastMessage={data.lastMessage}
+          preset={creating}
           busy={busy === "create"}
-          onClose={() => setCreating(false)}
+          onClose={() => setCreating(null)}
           onSubmit={async (invoice, file) => {
             const ok = await act(
               { action: "create_invoice", invoice },
@@ -470,7 +594,7 @@ export function SquareWorkspace({ scope }: { scope: SquareScopeChoice }) {
               "create",
               file,
             );
-            if (ok) setCreating(false);
+            if (ok) setCreating(null);
             return ok;
           }}
         />
@@ -483,6 +607,10 @@ function NewInvoiceModal({
   scope,
   currency,
   recipients,
+  readyToInvoice,
+  savedItems,
+  lastMessage,
+  preset,
   busy,
   onClose,
   onSubmit,
@@ -490,16 +618,35 @@ function NewInvoiceModal({
   scope: SquareScopeChoice;
   currency: string;
   recipients: SquareWorkspaceData["recipients"];
+  readyToInvoice: SquareWorkspaceData["readyToInvoice"];
+  savedItems: SquareWorkspaceData["savedItems"];
+  lastMessage: string | null;
+  preset: InvoicePreset;
   busy: boolean;
   onClose: () => void;
   onSubmit: (invoice: Record<string, unknown>, file: File | null) => Promise<boolean>;
 }) {
-  const [recipientId, setRecipientId] = useState("");
-  const [recipientName, setRecipientName] = useState("");
-  const [recipientEmail, setRecipientEmail] = useState("");
-  const [lines, setLines] = useState<Line[]>([
-    { key: 1, name: "", quantity: "1", unitPrice: "" },
-  ]);
+  const itemListId = useId();
+  const [recipientId, setRecipientId] = useState(() =>
+    preset.recipientId && recipients.some((item) => item.id === preset.recipientId)
+      ? preset.recipientId
+      : "",
+  );
+  const [recipientName, setRecipientName] = useState(preset.recipientName ?? "");
+  const [recipientEmail, setRecipientEmail] = useState(preset.recipientEmail ?? "");
+  const [lines, setLines] = useState<Line[]>(() =>
+    preset.lines?.length
+      ? preset.lines.map((line, index) => ({
+          key: index + 1,
+          name: line.name,
+          quantity: String(line.quantity),
+          unitPrice: centsInput(line.unitCents),
+        }))
+      : [{ key: 1, name: "", quantity: "1", unitPrice: "" }],
+  );
+  // The title follows the line items until someone types their own.
+  const [customTitle, setCustomTitle] = useState(preset.title?.trim() ?? "");
+  const [message, setMessage] = useState(preset.message ?? lastMessage ?? "");
   const [file, setFile] = useState<File | null>(null);
   const [problem, setProblem] = useState("");
   // Every submit button in the CRM is styled as the primary action, so "Save
@@ -509,12 +656,12 @@ function NewInvoiceModal({
   // Read the clock once, when the form opens, not on every render.
   const [dates] = useState(() => {
     const now = new Date();
-    return {
-      today: isoDay(now),
-      defaultDue: isoDay(new Date(now.getTime() + 14 * 86_400_000)),
-    };
+    return { now: now.getTime(), today: isoDay(now) };
   });
+  const dueIn = (days: number) => isoDay(new Date(dates.now + days * 86_400_000));
+  const [dueDate, setDueDate] = useState(() => dueIn(14));
 
+  const title = customTitle || autoTitle(lines);
   const totalCents = lines.reduce((sum, line) => {
     const cents = parseMoneyToCents(line.unitPrice);
     const quantity = Number(line.quantity);
@@ -522,19 +669,60 @@ function NewInvoiceModal({
       ? sum + cents * quantity
       : sum;
   }, 0);
+  const usedNames = new Set(lines.map((line) => line.name.trim().toLowerCase()));
+  const quickItems = savedItems.filter((item) => !usedNames.has(item.name.toLowerCase())).slice(0, 6);
+  const heading =
+    preset.source === "job"
+      ? "Invoice a won job"
+      : preset.source === "repeat"
+        ? "Bill again"
+        : "New invoice";
 
   function chooseRecipient(id: string) {
     setRecipientId(id);
     const match = recipients.find((item) => item.id === id);
-    if (!match) return;
+    if (!match) {
+      setRecipientName("");
+      setRecipientEmail("");
+      return;
+    }
     setRecipientName(match.name);
     setRecipientEmail(match.email);
+    // A customer with a won job and an untouched form gets that job filled in.
+    const job = readyToInvoice.find((item) => item.recipientId === id);
+    const untouched = lines.every((line) => !line.name.trim() && !line.unitPrice.trim());
+    if (job && untouched) {
+      setLines([
+        { key: 1, name: job.service || "Services", quantity: "1", unitPrice: centsInput(job.valueCents) },
+      ]);
+    }
   }
 
   function updateLine(key: number, patch: Partial<Line>) {
     setLines((current) =>
-      current.map((line) => (line.key === key ? { ...line, ...patch } : line)),
+      current.map((line) => {
+        if (line.key !== key) return line;
+        const next = { ...line, ...patch };
+        // Typing or picking a saved item fills in the price it was last billed at.
+        if (patch.name !== undefined && !line.unitPrice.trim()) {
+          const saved = savedItems.find(
+            (item) => item.name.toLowerCase() === patch.name!.trim().toLowerCase(),
+          );
+          if (saved) next.unitPrice = centsInput(saved.unitCents);
+        }
+        return next;
+      }),
     );
+  }
+
+  function addSavedItem(item: SquareWorkspaceData["savedItems"][number]) {
+    setLines((current) => {
+      const filled = { name: item.name, quantity: "1", unitPrice: centsInput(item.unitCents) };
+      const blank = current.find((line) => !line.name.trim() && !line.unitPrice.trim());
+      if (blank) return current.map((line) => (line.key === blank.key ? { ...line, ...filled } : line));
+      if (current.length >= MAX_INVOICE_LINE_ITEMS) return current;
+      return [...current, { key: Math.max(...current.map((line) => line.key)) + 1, ...filled }];
+    });
   }
 
   function chooseFile(next: File | null) {
@@ -555,7 +743,6 @@ function NewInvoiceModal({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setProblem("");
-    const form = new FormData(event.currentTarget);
     const draft = saveAsDraft.current;
     saveAsDraft.current = false;
     void onSubmit(
@@ -563,9 +750,9 @@ function NewInvoiceModal({
         recipientId: recipientId || null,
         recipientName,
         recipientEmail,
-        title: String(form.get("title") ?? ""),
-        message: String(form.get("message") ?? ""),
-        dueDate: String(form.get("dueDate") ?? ""),
+        title: title || "Invoice",
+        message,
+        dueDate,
         lineItems: lines.map((line) => ({
           name: line.name,
           quantity: Number(line.quantity),
@@ -578,8 +765,11 @@ function NewInvoiceModal({
   }
 
   return (
-    <Modal title="New invoice" eyebrow={`SQUARE · ${scope.label.toUpperCase()}`} onClose={onClose} wide>
+    <Modal title={heading} eyebrow={`SQUARE · ${scope.label.toUpperCase()}`} onClose={onClose} wide>
       <form ref={formRef} className="crm-form crm-square-form" onSubmit={submit}>
+        <div className="crm-field-span crm-square-step">
+          <span className="crm-square-step-label">1 · Who it&apos;s for</span>
+        </div>
         {recipients.length ? (
           <Field label={scope.kind === "agency" ? "Bill a client business" : "Bill a contact"} span>
             <select value={recipientId} onChange={(event) => chooseRecipient(event.target.value)}>
@@ -599,7 +789,7 @@ function NewInvoiceModal({
             onChange={(event) => setRecipientName(event.target.value)}
             maxLength={120}
             required
-            autoFocus
+            autoFocus={!preset.recipientName && !recipients.length}
           />
         </Field>
         <Field label="Email the invoice to">
@@ -612,23 +802,35 @@ function NewInvoiceModal({
             required
           />
         </Field>
-        <Field label="Invoice title">
-          <input name="title" maxLength={120} placeholder="e.g. October marketing services" required />
-        </Field>
-        <Field label="Due date">
-          <input name="dueDate" type="date" defaultValue={dates.defaultDue} min={dates.today} required />
-        </Field>
 
         <fieldset className="crm-field-span crm-square-lines">
-          <legend>Line items</legend>
+          <legend>2 · What it&apos;s for</legend>
+          {quickItems.length ? (
+            <div className="crm-square-quick" aria-label="Items you have billed before">
+              <small>Billed before:</small>
+              {quickItems.map((item) => (
+                <button
+                  key={item.name}
+                  type="button"
+                  className="crm-square-chip"
+                  disabled={lines.length >= MAX_INVOICE_LINE_ITEMS && !lines.some((line) => !line.name.trim())}
+                  onClick={() => addSavedItem(item)}
+                >
+                  <Plus aria-hidden="true" /> {item.name} · {formatMoney(item.unitCents, currency)}
+                </button>
+              ))}
+            </div>
+          ) : null}
           {lines.map((line, index) => (
             <div key={line.key} className="crm-square-line">
               <input
                 aria-label={`Line ${index + 1} description`}
                 value={line.name}
                 onChange={(event) => updateLine(line.key, { name: event.target.value })}
-                placeholder="Description"
+                placeholder="What you did, e.g. Roof inspection"
                 maxLength={200}
+                list={savedItems.length ? itemListId : undefined}
+                autoComplete="off"
                 required
               />
               <input
@@ -661,6 +863,13 @@ function NewInvoiceModal({
               </button>
             </div>
           ))}
+          {savedItems.length ? (
+            <datalist id={itemListId}>
+              {savedItems.map((item) => (
+                <option key={item.name} value={item.name} />
+              ))}
+            </datalist>
+          ) : null}
           <div className="crm-square-lines-foot">
             <button
               type="button"
@@ -680,29 +889,95 @@ function NewInvoiceModal({
             >
               <Plus aria-hidden="true" /> Add line
             </button>
-            <strong>Total {formatMoney(totalCents, currency)}</strong>
           </div>
         </fieldset>
 
-        <Field label="Message to the customer (optional)" span>
-          <textarea name="message" rows={3} maxLength={1000} />
-        </Field>
-        <Field label="Contract or other PDF to send with it (optional)" span>
-          <input
-            type="file"
-            accept="application/pdf,.pdf"
-            onChange={(event) => chooseFile(event.target.files?.[0] ?? null)}
-          />
-          <small>
-            Square emails it with the invoice. It is not a signature request,
-            and BrizBuilder does not keep a copy.
-          </small>
-        </Field>
+        <fieldset className="crm-field-span crm-square-due">
+          <legend>3 · When it&apos;s due</legend>
+          <div className="crm-square-due-row">
+            {DUE_PRESETS.map((option) => {
+              const day = dueIn(option.days);
+              return (
+                <button
+                  key={option.label}
+                  type="button"
+                  className="crm-square-chip"
+                  aria-pressed={dueDate === day}
+                  onClick={() => setDueDate(day)}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+            <input
+              aria-label="Due date"
+              type="date"
+              value={dueDate}
+              min={dates.today}
+              onChange={(event) => setDueDate(event.target.value)}
+              required
+            />
+          </div>
+        </fieldset>
+
+        <details className="crm-field-span crm-square-more">
+          <summary>
+            More options
+            <small>
+              {title ? `Title: ${title}` : "Title fills in from the first line"}
+              {message.trim() ? " · message included" : ""}
+              {file ? ` · ${file.name}` : ""}
+            </small>
+          </summary>
+          <div className="crm-square-more-body">
+            <Field label="Invoice title" span>
+              <input
+                value={customTitle}
+                onChange={(event) => setCustomTitle(event.target.value)}
+                maxLength={120}
+                placeholder={autoTitle(lines) || "e.g. October marketing services"}
+              />
+              <small>Leave it blank to use the first line item.</small>
+            </Field>
+            <Field label="Message to the customer (optional)" span>
+              <textarea
+                rows={3}
+                maxLength={1000}
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                placeholder="Thanks for your business!"
+              />
+              {lastMessage && message === lastMessage ? (
+                <small>Same message as your last invoice. Edit it or clear it.</small>
+              ) : null}
+            </Field>
+            <Field label="Contract or other PDF to send with it (optional)" span>
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                onChange={(event) => chooseFile(event.target.files?.[0] ?? null)}
+              />
+              <small>
+                Square emails it with the invoice. It is not a signature request,
+                and BrizBuilder does not keep a copy.
+              </small>
+            </Field>
+          </div>
+        </details>
+
         {problem ? (
           <p className="crm-field-span crm-square-form-error" role="alert">
             {problem}
           </p>
         ) : null}
+        <div className="crm-field-span crm-square-summary">
+          <span>Total</span>
+          <strong>{formatMoney(totalCents, currency)}</strong>
+          <small>
+            {recipientEmail ? `Square emails it to ${recipientEmail}` : "Square emails it to the customer"}
+            {` · due ${dueDate === dates.today ? "today" : dayLabel(dueDate)}`}
+          </small>
+        </div>
         <footer>
           <button className="crm-button-secondary" type="button" onClick={onClose}>
             Cancel
@@ -720,7 +995,7 @@ function NewInvoiceModal({
             Save draft
           </button>
           <button className="crm-button-primary" type="submit" disabled={busy}>
-            {busy ? "Working…" : "Send invoice"}
+            {busy ? "Working…" : `Send ${formatMoney(totalCents, currency)}`}
           </button>
         </footer>
       </form>

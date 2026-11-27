@@ -342,3 +342,28 @@ test("Stripe stays agency-only while clients get Square invoicing", () => {
   assert.match(view, /const activeProvider: Provider = isAgency \? provider : "square";/);
   assert.match(view, /isAgency && AGENCY_OWNER_ROLES\.includes\(viewerRole\) && selectedClientId === "all"/);
 });
+
+test("ready-to-invoice jobs are pinned to the business and only shown to invoicers", () => {
+  const source = read("db/supabase-square.ts");
+  const start = source.indexOf("async function readyToInvoiceFor(");
+  const block = source.slice(start, source.indexOf("\n}\n", start));
+  assert.ok(start > 0, "readyToInvoiceFor exists");
+  // Both the leads and the contacts lookups are pinned to the tenant.
+  assert.equal(block.match(/\.eq\("organization_id", context\.organizationId\)/g)?.length, 2);
+  assert.equal(block.match(/\.eq\("client_id", clientId\)/g)?.length, 2);
+  assert.match(block, /\.eq\("status", "WON"\)/);
+  // The helper is only reached with a client the caller was authorized for,
+  // by someone allowed to invoice, while Square is connected.
+  assert.match(
+    source,
+    /readyToInvoice:\s*canInvoice && clientId && visible \? await readyToInvoiceFor\(context, clientId, rows\) : \[\]/,
+  );
+  assert.match(source, /savedItems: canInvoice \? savedItemsFrom\(rows\) : \[\]/);
+  assert.match(source, /lastMessage: canInvoice\s*\?/);
+});
+
+test("a canceled or failed invoice leaves the job ready to bill", () => {
+  const source = read("db/supabase-square.ts");
+  assert.match(source, /const UNBILLED_STATUSES = new Set\(\["failed", "canceled"\]\)/);
+  assert.match(source, /if \(billed && billed >= String\(lead\.created_at\)\) continue;/);
+});
