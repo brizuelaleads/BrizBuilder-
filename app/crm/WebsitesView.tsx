@@ -10,6 +10,7 @@ import type {
 } from "../../db/crm";
 import { buildDniSnippet, isCallRailScriptUrl } from "../../lib/callrail-dni";
 import { Badge, EmptyState, Field, getFormValue, Modal, shortDate } from "./ui";
+import { BusinessChoice, ChoiceCards, StepFlow } from "./StepFlow";
 
 type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
 
@@ -83,7 +84,10 @@ function WebsiteModal({ clients, website, mutate, onClose }: { clients: CrmClien
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    await saveForm(new FormData(event.currentTarget));
+  }
+
+  async function saveForm(form: FormData) {
     setBusy(true);
     try {
       await mutate({
@@ -100,16 +104,66 @@ function WebsiteModal({ clients, website, mutate, onClose }: { clients: CrmClien
     }
   }
 
-  return <Modal title={website ? "Update website information" : "Add a website to the CRM"} eyebrow="STEP 1 OF 2" onClose={onClose} wide>
+  // Editing an existing website stays one screen; adding one is a short flow.
+  if (website) return <Modal title="Update website information" eyebrow="STEP 1 OF 2" onClose={onClose} wide>
     <form className="crm-form" onSubmit={save}>
-      <Field label="Which client owns this website?" span><select name="clientId" defaultValue={website?.clientId} required disabled={Boolean(website)}>{clients.map((client) => <option key={client.id} value={client.id}>{client.businessName}</option>)}</select></Field>
-      <Field label="What do you call this website?"><input name="name" defaultValue={website?.name ?? ""} placeholder="Example: Main website" required autoFocus /></Field>
-      <Field label="Where was the website built?"><select name="platform" defaultValue={website?.platform ?? "other"}>{Object.entries(platformNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
-      <Field label="Website address" span><input name="domain" defaultValue={website?.domain ?? ""} placeholder="Example: segoviapest.com" inputMode="url" required /></Field>
+      <Field label="Which client owns this website?" span><select name="clientId" defaultValue={website.clientId} required disabled>{clients.map((client) => <option key={client.id} value={client.id}>{client.businessName}</option>)}</select></Field>
+      <Field label="What do you call this website?"><input name="name" defaultValue={website.name ?? ""} placeholder="Example: Main website" required autoFocus /></Field>
+      <Field label="Where was the website built?"><select name="platform" defaultValue={website.platform ?? "other"}>{Object.entries(platformNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
+      <Field label="Website address" span><input name="domain" defaultValue={website.domain ?? ""} placeholder="Example: segoviapest.com" inputMode="url" required /></Field>
       <div className="crm-form-note crm-field-span"><strong>This will not change the live website.</strong><br />It saves the website in BrizBuilder. After you save it, Step 2 gives you a message to send to the person who manages the website.</div>
-      <footer><button className="crm-button-secondary" type="button" onClick={onClose}>Cancel</button><button className="crm-button-primary" type="submit" disabled={busy}>{busy ? "Saving..." : website ? "Save Website" : "Save and Continue"}</button></footer>
+      <footer><button className="crm-button-secondary" type="button" onClick={onClose}>Cancel</button><button className="crm-button-primary" type="submit" disabled={busy}>{busy ? "Saving..." : "Save Website"}</button></footer>
     </form>
   </Modal>;
+
+  const single = clients.length <= 1;
+  const get = (form: FormData, key: string) => getFormValue(form, key);
+  const platforms = Object.entries(platformNames).map(([value, label]) => ({ value, label }));
+  return <StepFlow
+    title="Add a website to the CRM"
+    eyebrow="STEP 1 OF 2"
+    wide
+    onClose={onClose}
+    busy={busy}
+    submitLabel="Save and Continue"
+    reviewQuestion="Ready to save"
+    onSubmit={(form) => void saveForm(form)}
+    reviewExtra={<div className="crm-form-note"><strong>This will not change the live website.</strong><br />It saves the website in BrizBuilder. After you save it, Step 2 gives you a message to send to the person who manages the website.</div>}
+    steps={[
+      {
+        id: "business",
+        label: "Business",
+        question: "Which client owns this website?",
+        skip: single,
+        summary: (form) => clients.find((client) => client.id === get(form, "clientId"))?.businessName ?? "",
+        review: (form) => [{ label: "Client", value: clients.find((client) => client.id === get(form, "clientId"))?.businessName ?? "" }],
+        content: <BusinessChoice name="clientId" clients={clients} />,
+      },
+      {
+        id: "site",
+        label: "Website",
+        question: "What's the website?",
+        summary: (form) => get(form, "domain"),
+        review: (form) => [
+          { label: "Name", value: get(form, "name") },
+          { label: "Address", value: get(form, "domain") },
+        ],
+        content: <>
+          {single && clients[0] ? <input type="hidden" name="clientId" value={clients[0].id} /> : null}
+          <Field label="Website address"><input name="domain" placeholder="Example: segoviapest.com" inputMode="url" required autoFocus={single} className="crm-flow-big" /></Field>
+          <Field label="What do you call this website?"><input name="name" placeholder="Example: Main website" required /></Field>
+        </>,
+      },
+      {
+        id: "platform",
+        label: "Built with",
+        question: "Where was the website built?",
+        summary: (form) => platformNames[get(form, "platform")] ?? "",
+        review: (form) => [{ label: "Built with", value: platformNames[get(form, "platform")] ?? "" }],
+        content: <ChoiceCards name="platform" label="Website platform" defaultValue="other" options={platforms} />,
+      },
+    ]}
+  />;
 }
 
 export function WebsitesView({ websites, clients, leads, connections, mutate, canManage }: { websites: CrmWebsite[]; clients: CrmClient[]; leads: CrmLead[]; connections: CrmProviderConnection[]; mutate: Mutate; canManage: boolean }) {

@@ -46,7 +46,8 @@
       .crm-ads-campaign-leads button, .crm-workflow-list > button, .crm-appearance-option,
       .gbw-kpi, .gbw-tabs > button, .gbw-segmented > button, .gbw-icon-button, .gbw-link-button,
       .gbw-chip button, .gbw-category-results button, .gbp-hours-toggle, .gbp-actions > button, .gbw-fix,
-      .crm-square-steps button, .crm-square-person, .crm-square-saved-item, .crm-square-cadence, .crm-square-edit)) {
+      .crm-square-steps button, .crm-square-person, .crm-square-saved-item, .crm-square-cadence, .crm-square-edit,
+      .crm-flow-steps button, .crm-flow-edit)) {
     display: var(--btn-display, inline-flex);
     flex-direction: var(--btn-direction, row);
     align-items: center;
@@ -1476,6 +1477,83 @@
   #crm-app .crm-square-cadences, #crm-app .crm-square-saved > div { grid-template-columns: 1fr 1fr; }
   #crm-app .crm-square-stage { min-height: 0; }
   #crm-app .crm-square-stage > h3 { font-size: 20px; }
+}
+/* Step-by-step pop-up forms (app/crm/StepFlow.tsx): one question per step,
+   tap cards for short choices, a review card at the end. */
+#crm-app .crm-flow { gap: 18px; }
+#crm-app .crm-flow-steps { display: grid; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+#crm-app .crm-flow-steps button { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 8px 10px 10px; border: 0; border-bottom: 3px solid var(--crm-line); border-radius: 0; background: transparent; color: var(--crm-muted); font: inherit; text-align: left; cursor: pointer; transition: border-color 220ms ease, color 220ms ease; }
+#crm-app .crm-flow-steps button.is-done { border-bottom-color: #2bc48a; color: var(--crm-ink); }
+#crm-app .crm-flow-steps button.is-current { border-bottom-color: var(--crm-ink); color: var(--crm-ink); }
+#crm-app .crm-flow-steps button:focus-visible { outline: 2px solid #2e7def; outline-offset: 2px; }
+#crm-app .crm-flow-dot { display: grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--crm-subtle); font-size: 11px; font-weight: 700; }
+#crm-app .crm-flow-steps .is-done .crm-flow-dot { background: #2bc48a; color: #fff; }
+#crm-app .crm-flow-steps .is-current .crm-flow-dot { background: var(--crm-ink); color: var(--crm-surface, #fff); }
+#crm-app .crm-flow-dot svg { width: 12px; height: 12px; }
+#crm-app .crm-flow-step-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
+#crm-app .crm-flow-step-text small { display: block; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--crm-muted); }
+#crm-app .crm-flow-stage { display: grid; gap: 14px; min-width: 0; min-height: 260px; align-content: start; animation: crm-flow-in 260ms cubic-bezier(.16, 1, .3, 1); }
+#crm-app .crm-flow-stage[hidden] { display: none; }
+@keyframes crm-flow-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { #crm-app .crm-flow-stage { animation: none; } }
+#crm-app .crm-flow-stage > h3 { margin: 4px 0 2px; font-size: 22px; line-height: 28px; font-weight: 700; letter-spacing: -.01em; color: var(--crm-ink); }
+#crm-app .crm-flow-fields { display: grid; gap: 14px; min-width: 0; }
+#crm-app .crm-flow-fields > label, #crm-app .crm-flow-grid > label { display: grid; gap: 6px; min-width: 0; }
+#crm-app .crm-flow-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+#crm-app .crm-flow-grid > .crm-field-span { grid-column: 1 / -1; }
+#crm-app .crm-flow input.crm-flow-big { height: 52px; font-size: 18px; font-weight: 600; }
+#crm-app .crm-flow-label { margin-top: 4px; font-size: 13px; font-weight: 600; color: var(--crm-ink); }
+#crm-app .crm-flow-hint { margin: 0; font-size: 13px; line-height: 20px; color: var(--crm-muted); }
+#crm-app .crm-flow-optional { border: 1px dashed var(--crm-line); border-radius: 10px; }
+#crm-app .crm-flow-optional > summary { padding: 10px 14px; font-size: 13px; font-weight: 600; color: var(--crm-ink); cursor: pointer; }
+#crm-app .crm-flow-optional[open] > summary { border-bottom: 1px dashed var(--crm-line); }
+#crm-app .crm-flow-optional > .crm-flow-grid { padding: 14px; }
+#crm-app .crm-flow-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+#crm-app .crm-flow-choices.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#crm-app .crm-flow-choices.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+#crm-app .crm-flow-choice { position: relative; display: block; min-width: 0; cursor: pointer; }
+#crm-app .crm-flow-choice > input { position: absolute; top: 0; left: 0; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
+#crm-app .crm-flow-choice > span { display: grid; gap: 2px; height: 100%; padding: 13px 14px; border: 1px solid var(--crm-line); border-radius: 12px; background: var(--crm-surface, #fff); color: var(--crm-ink); transition: border-color 160ms ease, transform 160ms ease, background-color 160ms ease; }
+#crm-app .crm-flow-choice:hover > span { border-color: var(--crm-ink); transform: translateY(-1px); }
+#crm-app .crm-flow-choice > span strong { overflow: hidden; text-overflow: ellipsis; font-size: 14px; font-weight: 700; }
+#crm-app .crm-flow-choice > span small { font-size: 12px; line-height: 16px; color: var(--crm-muted); }
+#crm-app .crm-flow-choice > input:checked + span { border-color: var(--crm-ink); background: var(--crm-ink); color: var(--crm-surface, #fff); }
+#crm-app .crm-flow-choice > input:checked + span small { color: inherit; opacity: .75; }
+#crm-app .crm-flow-choice > input:focus-visible + span { outline: 2px solid #2e7def; outline-offset: 2px; }
+#crm-app .crm-flow-quick { display: flex; flex-wrap: wrap; gap: 6px; }
+#crm-app .crm-flow-chip { --btn-h: 34px; --btn-px: 14px; --btn-fs: 13px; }
+#crm-app .crm-flow-drop { position: relative; display: grid; gap: 4px; justify-items: center; padding: 28px 16px; border: 2px dashed var(--crm-line); border-radius: 14px; background: var(--crm-subtle); text-align: center; cursor: pointer; transition: border-color 160ms ease; }
+#crm-app .crm-flow-drop:hover, #crm-app .crm-flow-drop:focus-within { border-color: var(--crm-ink); }
+#crm-app .crm-flow-drop strong { font-size: 16px; color: var(--crm-ink); }
+#crm-app .crm-flow-drop span { font-size: 13px; color: var(--crm-muted); }
+#crm-app .crm-flow-drop input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+#crm-app .crm-flow-review { display: grid; border: 1px solid var(--crm-line); border-radius: 16px; background: var(--crm-surface, #fff); box-shadow: 0 24px 48px -32px rgba(14, 17, 22, .5); overflow: hidden; }
+#crm-app .crm-flow-review-part { padding: 14px 20px 16px; border-top: 1px solid var(--crm-line); }
+#crm-app .crm-flow-review-part:first-child { border-top: 0; }
+#crm-app .crm-flow-review-head { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--crm-muted); }
+#crm-app .crm-flow-review dl { display: grid; gap: 6px; margin: 0; }
+#crm-app .crm-flow-review dl > div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; align-items: baseline; }
+#crm-app .crm-flow-review dt { font-size: 13px; color: var(--crm-muted); }
+#crm-app .crm-flow-review dd { margin: 0; font-size: 14px; font-weight: 600; color: var(--crm-ink); overflow-wrap: anywhere; white-space: pre-line; }
+#crm-app .crm-flow-edit { display: inline-grid; place-items: center; flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--crm-muted); cursor: pointer; transition: background-color 140ms ease, color 140ms ease; }
+#crm-app .crm-flow-edit:hover { background: var(--crm-subtle); color: var(--crm-ink); }
+#crm-app .crm-flow-edit:focus-visible { outline: 2px solid #2e7def; outline-offset: 1px; }
+#crm-app .crm-flow-edit svg { width: 13px; height: 13px; }
+#crm-app .crm-flow-stage > .crm-form-note, #crm-app .crm-flow-stage > .crm-import-preview { margin: 0; }
+#crm-app[data-theme="glass"] .crm-flow-choice > span, #crm-app[data-theme="glass"] .crm-flow-review { background: rgb(255 255 255 / 4%); }
+#crm-app[data-theme="glass"] .crm-flow-drop { background: rgb(255 255 255 / 4%); }
+#crm-app[data-theme="glass"] .crm-flow-choice > input:checked + span { border-color: var(--crm-accent, #f25c3b); background: var(--crm-accent, #f25c3b); color: var(--crm-on-accent, #fff); }
+#crm-app[data-theme="glass"] .crm-flow-steps .is-current .crm-flow-dot { background: var(--crm-accent, #f25c3b); color: var(--crm-on-accent, #fff); }
+#crm-app[data-theme="glass"] .crm-flow-steps button.is-current { border-bottom-color: var(--crm-accent, #f25c3b); }
+@media(max-width: 600px) {
+  #crm-app .crm-flow-steps .crm-flow-step-text small { display: none; }
+  #crm-app .crm-flow-steps button { flex-direction: column; align-items: flex-start; gap: 4px; padding: 6px 2px 8px; }
+  #crm-app .crm-flow-step-text { width: 100%; font-size: 12px; }
+  #crm-app .crm-flow-grid, #crm-app .crm-flow-choices, #crm-app .crm-flow-choices.cols-4 { grid-template-columns: 1fr 1fr; }
+  #crm-app .crm-flow-choices.cols-2 { grid-template-columns: 1fr; }
+  #crm-app .crm-flow-stage { min-height: 0; }
+  #crm-app .crm-flow-stage > h3 { font-size: 20px; }
+  #crm-app .crm-flow-review dl > div { grid-template-columns: 1fr; gap: 0; }
 }
 /* Wide screens say "Due" in the column header, so the cell drops the word. */
 @media(min-width: 601px) { #crm-app .crm-square-due-label { display: none; } }

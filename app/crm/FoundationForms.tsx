@@ -3,6 +3,7 @@
 import { useState, type ChangeEvent, type FormEvent } from "react";
 import type { CrmClient } from "../../db/crm";
 import { Field, getFormValue, Modal } from "./ui";
+import { BusinessChoice, StepFlow } from "./StepFlow";
 
 type Mutate = (input: Record<string, unknown>, success: string) => Promise<unknown>;
 
@@ -12,9 +13,8 @@ function SubmitButton({ busy, children }: { busy: boolean; children: string }) {
 
 export function AddCompanyModal({ clients, mutate, onClose }: { clients: CrmClient[]; mutate: Mutate; onClose: () => void }) {
   const [busy, setBusy] = useState(false);
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
+  const single = clients.length <= 1;
+  async function save(form: FormData) {
     setBusy(true);
     try {
       await mutate({ action: "create_company", clientId: getFormValue(form, "clientId"), name: getFormValue(form, "name"), industry: getFormValue(form, "industry"), website: getFormValue(form, "website"), phone: getFormValue(form, "phone"), email: getFormValue(form, "email"), address: getFormValue(form, "address"), city: getFormValue(form, "city"), state: getFormValue(form, "state"), zip: getFormValue(form, "zip"), tags: getFormValue(form, "tags"), notes: getFormValue(form, "notes") }, "Company created");
@@ -23,7 +23,77 @@ export function AddCompanyModal({ clients, mutate, onClose }: { clients: CrmClie
       setBusy(false);
     }
   }
-  return <Modal title="Add a company" eyebrow="COMPANY DATABASE" onClose={onClose} wide><form className="crm-form" onSubmit={save}><Field label="Client"><select name="clientId" required>{clients.map((client) => <option key={client.id} value={client.id}>{client.businessName}</option>)}</select></Field><Field label="Company name"><input name="name" required autoFocus /></Field><Field label="Industry"><input name="industry" /></Field><Field label="Website"><input name="website" type="url" /></Field><Field label="Phone"><input name="phone" type="tel" /></Field><Field label="Email"><input name="email" type="email" /></Field><Field label="Address" span><input name="address" /></Field><Field label="City"><input name="city" /></Field><Field label="State"><input name="state" maxLength={2} /></Field><Field label="ZIP"><input name="zip" /></Field><Field label="Tags"><input name="tags" placeholder="Commercial, recurring" /></Field><Field label="Notes" span><textarea name="notes" rows={3} /></Field><footer><button className="crm-button-secondary" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={busy}>Create Company</SubmitButton></footer></form></Modal>;
+  const get = (form: FormData, key: string) => getFormValue(form, key);
+  const business = (form: FormData) => clients.find((client) => client.id === get(form, "clientId"))?.businessName ?? "";
+  return <StepFlow
+    title="Add a company"
+    eyebrow="COMPANY DATABASE"
+    wide
+    onClose={onClose}
+    busy={busy}
+    submitLabel="Create Company"
+    onSubmit={(form) => void save(form)}
+    steps={[
+      {
+        id: "business",
+        label: "Business",
+        question: "Which business is this company for?",
+        skip: single,
+        summary: business,
+        review: (form) => [{ label: "Business", value: business(form) }],
+        content: <BusinessChoice name="clientId" clients={clients} />,
+      },
+      {
+        id: "company",
+        label: "Company",
+        question: "What's the company?",
+        summary: (form) => get(form, "name"),
+        review: (form) => [
+          { label: "Company", value: get(form, "name") },
+          { label: "Industry", value: get(form, "industry") },
+          { label: "Website", value: get(form, "website") },
+          { label: "Tags", value: get(form, "tags") },
+        ],
+        content: <>
+          {single && clients[0] ? <input type="hidden" name="clientId" value={clients[0].id} /> : null}
+          <Field label="Company name"><input name="name" required autoFocus={single} className="crm-flow-big" /></Field>
+          <div className="crm-flow-grid">
+            <Field label="Industry (optional)"><input name="industry" /></Field>
+            <Field label="Website (optional)"><input name="website" type="url" placeholder="https://" /></Field>
+          </div>
+          <Field label="Tags (optional)"><input name="tags" placeholder="Commercial, recurring" /></Field>
+        </>,
+      },
+      {
+        id: "contact",
+        label: "Contact",
+        question: "How do you reach them?",
+        summary: (form) => get(form, "phone") || get(form, "email"),
+        review: (form) => [
+          { label: "Phone", value: get(form, "phone") },
+          { label: "Email", value: get(form, "email") },
+          { label: "Address", value: [get(form, "address"), get(form, "city"), get(form, "state"), get(form, "zip")].filter(Boolean).join(", ") },
+          { label: "Notes", value: get(form, "notes") },
+        ],
+        content: <>
+          <div className="crm-flow-grid">
+            <Field label="Phone"><input name="phone" type="tel" /></Field>
+            <Field label="Email"><input name="email" type="email" /></Field>
+          </div>
+          <details className="crm-flow-optional">
+            <summary>Add an address (optional)</summary>
+            <div className="crm-flow-grid">
+              <Field label="Address" span><input name="address" /></Field>
+              <Field label="City"><input name="city" /></Field>
+              <Field label="State"><input name="state" maxLength={2} /></Field>
+              <Field label="ZIP"><input name="zip" /></Field>
+            </div>
+          </details>
+          <Field label="Notes (optional)"><textarea name="notes" rows={3} /></Field>
+        </>,
+      },
+    ]}
+  />;
 }
 
 const fieldTypes = [
@@ -100,6 +170,7 @@ export function ContactImportModal({ clients, mutate, onClose }: { clients: CrmC
   const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const single = clients.length <= 1;
   async function chooseFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     setError(""); setRows([]); setFileName(file?.name ?? "");
@@ -108,14 +179,53 @@ export function ContactImportModal({ clients, mutate, onClose }: { clients: CrmC
     try { const parsed = parseContactCsv(await file.text()); if (parsed.length > 500) throw new Error("A single import can contain at most 500 contacts."); setRows(parsed); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "The CSV could not be read."); }
   }
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
+  async function save(form: FormData) {
     if (!rows.length) { setError("Choose a valid CSV before importing."); return; }
     setBusy(true); setError("");
     try { await mutate({ action: "import_contacts", clientId: getFormValue(form, "clientId"), rows }, `${rows.length} CSV rows processed`); onClose(); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "The contacts could not be imported."); }
     finally { setBusy(false); }
   }
-  return <Modal title="Import contacts" eyebrow="CSV IMPORT" onClose={onClose} wide><form className="crm-form" onSubmit={save}><Field label="Client"><select name="clientId" required>{clients.map((client) => <option key={client.id} value={client.id}>{client.businessName}</option>)}</select></Field><Field label="CSV file"><input type="file" accept=".csv,text/csv" onChange={(event) => void chooseFile(event)} required /></Field><div className="crm-form-note crm-field-span">Required columns: <code>first_name</code> and <code>last_name</code>, plus a phone or email. Optional: address, city, state, zip, company, tags, and marketing_consent. Existing phone/email matches are skipped.</div>{error ? <div className="crm-inline-error crm-field-span" role="alert">{error}</div> : null}{rows.length ? <div className="crm-import-preview crm-field-span"><strong>{fileName}: {rows.length} contacts ready</strong><table><thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Company</th></tr></thead><tbody>{rows.slice(0, 5).map((row, index) => <tr key={`${row.email}-${index}`}><td>{row.firstName} {row.lastName}</td><td>{row.phone || "—"}</td><td>{row.email || "—"}</td><td>{row.company || "—"}</td></tr>)}</tbody></table>{rows.length > 5 ? <small>Previewing 5 of {rows.length} rows</small> : null}</div> : null}<footer><button className="crm-button-secondary" type="button" onClick={onClose}>Cancel</button><SubmitButton busy={busy}>Import Contacts</SubmitButton></footer></form></Modal>;
+  const business = (form: FormData) => clients.find((client) => client.id === getFormValue(form, "clientId"))?.businessName ?? "";
+  const preview = rows.length ? <div className="crm-import-preview"><strong>{fileName}: {rows.length} contacts ready</strong><table><thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Company</th></tr></thead><tbody>{rows.slice(0, 5).map((row, index) => <tr key={`${row.email}-${index}`}><td>{row.firstName} {row.lastName}</td><td>{row.phone || "—"}</td><td>{row.email || "—"}</td><td>{row.company || "—"}</td></tr>)}</tbody></table>{rows.length > 5 ? <small>Previewing 5 of {rows.length} rows</small> : null}</div> : null;
+  return <StepFlow
+    title="Import contacts"
+    eyebrow="CSV IMPORT"
+    wide
+    onClose={onClose}
+    busy={busy}
+    error={error}
+    submitLabel={rows.length ? `Import ${rows.length} Contacts` : "Import Contacts"}
+    reviewQuestion="Ready to import"
+    onSubmit={(form) => void save(form)}
+    steps={[
+      {
+        id: "business",
+        label: "Business",
+        question: "Which business are these contacts for?",
+        skip: single,
+        summary: business,
+        review: (form) => [{ label: "Business", value: business(form) }],
+        content: <BusinessChoice name="clientId" clients={clients} />,
+      },
+      {
+        id: "file",
+        label: "File",
+        question: "Choose your CSV file",
+        summary: () => (rows.length ? `${rows.length} contacts` : ""),
+        review: () => [{ label: "File", value: rows.length ? `${fileName} · ${rows.length} contacts` : "" }],
+        content: <>
+          {single && clients[0] ? <input type="hidden" name="clientId" value={clients[0].id} /> : null}
+          <label className="crm-flow-drop">
+            <strong>{fileName || "Pick a .csv file"}</strong>
+            <span>{rows.length ? `${rows.length} contacts found` : "Exported from a spreadsheet, Google Contacts or another CRM"}</span>
+            <input type="file" accept=".csv,text/csv" onChange={(event) => void chooseFile(event)} required />
+          </label>
+          <div className="crm-form-note">Required columns: <code>first_name</code> and <code>last_name</code>, plus a phone or email. Optional: address, city, state, zip, company, tags, and marketing_consent. Existing phone/email matches are skipped.</div>
+          {preview}
+        </>,
+      },
+    ]}
+    reviewExtra={preview}
+  />;
 }
