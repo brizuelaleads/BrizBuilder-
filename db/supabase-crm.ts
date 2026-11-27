@@ -5164,6 +5164,12 @@ export async function executeSupabaseCrmAction(
     return disconnectSupabaseGoogleProfile(user, clientId, "calendar");
   }
 
+  if (action === "disconnect_calendly") {
+    // Loaded on demand: the Calendly module imports this one for tenant checks.
+    const { disconnectCalendly } = await import("./supabase-calendly");
+    return disconnectCalendly(user, input.clientId);
+  }
+
   if (action === "disconnect_google_profile") {
     const clientId = requireText(input.clientId, "Client", 100);
     return disconnectSupabaseGoogleProfile(user, clientId);

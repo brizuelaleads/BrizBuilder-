@@ -67,6 +67,7 @@ type LinkedIntegrationCard = {
   canManage?: boolean;
   connectUnavailable?: string;
   connectLabel?: string;
+  onDisconnect?: () => void;
 };
 
 /**
@@ -526,7 +527,11 @@ export function ConnectionsView({
   const calendarConnection = connections.find((item) => item.clientId === clientId && item.provider === "google_calendar");
   const calendarStatus: IntegrationStatus =
     calendarConnection?.isActive ? "connected" : calendarConnection?.isLinked || calendarUnavailable ? "setup" : "available";
+  const calendlyConnection = connections.find((item) => item.clientId === clientId && item.provider === "calendly");
+  const calendlyStatus: IntegrationStatus =
+    calendlyConnection?.isActive ? "connected" : calendlyConnection?.isLinked ? "setup" : "available";
   const integrationStatuses = [
+    calendlyStatus,
     twilioStatus,
     aiStatus,
     callRailStatus,
@@ -635,6 +640,30 @@ export function ConnectionsView({
       ],
     },
   ];
+  const schedulingCards: LinkedIntegrationCard[] = [
+    {
+      id: "calendly",
+      logo: "/integrations/calendly.svg",
+      name: "Calendly",
+      description: "Bookings from the business's own Calendly become leads and appointments",
+      status: calendlyStatus,
+      view: "calendar",
+      connectHref: `/api/integrations/calendly/connect?clientId=${encodeURIComponent(clientId)}`,
+      connectLabel: calendlyConnection?.isLinked ? "Reconnect Calendly" : "Connect",
+      connectUnavailable: googleAccess.connectCalendar ? undefined : "A workspace owner or manager can connect Calendly.",
+      facts: [
+        ["Account", calendlyConnection?.accountLabel ?? "Not connected"],
+        ["Bookings", calendlyStatus === "connected" ? "Added to Calendar" : calendlyStatus === "setup" ? "Paused" : "—"],
+      ],
+      onDisconnect: calendlyConnection?.isLinked && googleAccess.connectCalendar
+        ? () => {
+            if (!window.confirm("Disconnect Calendly? New bookings will stop coming into BrizBuilder. Appointments already added stay on the Calendar.")) return;
+            void mutate({ action: "disconnect_calendly", clientId }, "Calendly disconnected.");
+          }
+        : undefined,
+    },
+  ];
+  const visibleSchedulingCards = schedulingCards.filter((card) => integrationMatches(card.name, card.description, card.status));
   const visibleGoogleCards = googleCards.filter((card) => integrationMatches(card.name, card.description, card.status));
   const visiblePaymentCards = paymentCards.filter((card) => integrationMatches(card.name, card.description, card.status));
   const visibleIntegrationCount = [
@@ -643,7 +672,7 @@ export function ConnectionsView({
     callRailVisible,
     metaVisible,
     metaAdsVisible,
-  ].filter(Boolean).length + visibleGoogleCards.length + visiblePaymentCards.length;
+  ].filter(Boolean).length + visibleGoogleCards.length + visiblePaymentCards.length + visibleSchedulingCards.length;
   const renderLinkedCard = (card: LinkedIntegrationCard) => (
     <article key={card.id} className={`crm-connection-card crm-integration-card crm-integration-linked is-${card.id}`}>
       <header>
@@ -677,6 +706,9 @@ export function ConnectionsView({
             {card.connectLabel ?? "Connect"}
           </a>
         ) : null}
+        {card.onDisconnect ? (
+          <button className="crm-button-secondary" type="button" onClick={card.onDisconnect}>Disconnect</button>
+        ) : null}
         {card.connectUnavailable && (card.status !== "connected" || card.canManage === false) ? (
           <span className="crm-integration-linked-note">{card.connectUnavailable}</span>
         ) : card.status !== "connected" && card.id === "square" && squareSandbox ? (
@@ -687,7 +719,7 @@ export function ConnectionsView({
           </span>
         ) : card.status !== "connected" ? (
           <span className="crm-integration-linked-note">
-            {card.view === "calendar" || card.view === "profiles"
+            {card.id.startsWith("google")
               ? <a href="/privacy#google">Google data use</a>
               : `Secure sign-in on ${card.name}`}
           </span>
@@ -829,6 +861,7 @@ export function ConnectionsView({
           </div>
           <div className="crm-integration-card-grid">
           {visibleGoogleCards.map(renderLinkedCard)}
+          {visibleSchedulingCards.map(renderLinkedCard)}
           {twilioVisible ? (
           <article className={`crm-connection-card crm-integration-card featured ${expandedIntegration === "twilio" ? "expanded" : ""}`}>
             <header>

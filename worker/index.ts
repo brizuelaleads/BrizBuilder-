@@ -10,6 +10,7 @@ import { runNotificationSweeps } from "../lib/notification-sweeps";
 import { sweepGoogleProfileAlerts } from "../lib/google-profile-alerts";
 import { syncMetaAdsInsights } from "../lib/meta-ads-sync";
 import { advanceMetaAdsBackfills } from "../lib/meta-ads-backfill";
+import { syncCalendlyConnections } from "../db/supabase-calendly";
 import { legacyPasswordResetRedirect } from "../lib/password-recovery-url";
 
 interface Env {
@@ -140,6 +141,14 @@ const worker = {
     ctx.waitUntil(
       advanceMetaAdsBackfills().catch(() => {
         console.error("Meta Ads backfill could not enumerate open runs.");
+      }),
+    );
+    // Calendly bookings normally arrive by webhook; this re-reads changed
+    // bookings in case a delivery was missed. Per-connection failures are
+    // recorded on the connection, so only the enumeration can land here.
+    ctx.waitUntil(
+      syncCalendlyConnections().catch(() => {
+        console.error("Calendly sync could not enumerate connections.");
       }),
     );
   },

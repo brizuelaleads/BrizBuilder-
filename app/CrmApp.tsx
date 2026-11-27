@@ -600,6 +600,11 @@ export function CrmApp({
           "Google Calendar linked. BrizBuilder appointments will sync automatically.",
         );
         window.setTimeout(() => setToast(""), 5000);
+      } else if (query.get("connected") === "calendly") {
+        setToast(
+          "Calendly connected. New bookings will appear as leads and appointments.",
+        );
+        window.setTimeout(() => setToast(""), 5000);
       }
     }, 0);
     return () => window.clearTimeout(timer);
