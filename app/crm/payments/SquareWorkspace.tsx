@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { ExternalLink, FileText, Plus, RefreshCw, Repeat, Trash2, Trophy } from "lucide-react";
+import { Check, ExternalLink, FileText, Plus, RefreshCw, Repeat, Trash2, Trophy } from "lucide-react";
 import type { SquareWorkspace as SquareWorkspaceData } from "../../../db/supabase-square";
 import {
   MAX_ATTACHMENT_BYTES,
@@ -45,13 +45,20 @@ type RecurringSubmit = {
   endAfterCount: number | null;
 };
 
-const REPEAT_OPTIONS: { value: RecurringFrequency; label: string; sentence: string }[] = [
-  { value: "weekly", label: "Weekly", sentence: "every week" },
-  { value: "biweekly", label: "Every 2 weeks", sentence: "every 2 weeks" },
-  { value: "monthly", label: "Monthly", sentence: "every month" },
-  { value: "quarterly", label: "Every 3 months", sentence: "every 3 months" },
-  { value: "yearly", label: "Yearly", sentence: "every year" },
+type Step = 0 | 1 | 2 | 3;
+
+const REPEAT_OPTIONS: { value: RecurringFrequency; label: string; sentence: string; hint: string }[] = [
+  { value: "weekly", label: "Weekly", sentence: "every week", hint: "Same day each week" },
+  { value: "biweekly", label: "Every 2 weeks", sentence: "every 2 weeks", hint: "Every other week" },
+  { value: "monthly", label: "Monthly", sentence: "every month", hint: "Same date each month" },
+  { value: "quarterly", label: "Every 3 months", sentence: "every 3 months", hint: "Four times a year" },
+  { value: "yearly", label: "Yearly", sentence: "every year", hint: "Once a year" },
 ];
+
+function initials(name: string) {
+  const parts = name.trim().split(/[\s@.]+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[1][0] : "")).toUpperCase() || "?";
+}
 
 const PAY_WITHIN = [
   { value: "0", label: "On receipt" },
@@ -839,7 +846,6 @@ function NewInvoiceModal({
   );
   const [payWithin, setPayWithin] = useState(String(preset.dueInDays ?? 14));
   const [endAfter, setEndAfter] = useState(preset.endAfterCount ? String(preset.endAfterCount) : "");
-  const [editingRecipient, setEditingRecipient] = useState(false);
   const [quantitiesOpen, setQuantitiesOpen] = useState(false);
 
   const title = customTitle || autoTitle(lines);
@@ -924,9 +930,58 @@ function NewInvoiceModal({
     setFile(next);
   }
 
+  // ---- Step flow ----------------------------------------------------------
+  // One question per step. Anything already known (a won job, Bill again, a
+  // plan being edited) opens on the review step, so the fast path is one tap.
+  const [step, setStep] = useState<Step>(() => {
+    const knowsWho = Boolean(preset.recipientName?.trim() && preset.recipientEmail?.trim());
+    const knowsWhat = Boolean(preset.lines?.length && preset.lines.every((line) => line.unitCents > 0));
+    if (knowsWho && knowsWhat) return 3;
+    return knowsWho ? 1 : 0;
+  });
+  const [search, setSearch] = useState("");
+  const [typingNew, setTypingNew] = useState(() => !recipients.length);
+
+  const showQuantity = quantitiesOpen || lines.some((line) => line.quantity.trim() !== "1");
+  const endsAfterCount = endAfter !== "";
+  const when = (day: string) => (day === dates.today ? "today" : dayLabel(day));
+  const cadence = REPEAT_OPTIONS.find((option) => option.value === repeat);
+  const query = search.trim().toLowerCase();
+  const matches = (query
+    ? recipients.filter(
+        (item) => item.name.toLowerCase().includes(query) || item.email.toLowerCase().includes(query),
+      )
+    : recipients
+  ).slice(0, 8);
+  const whoDone = Boolean(recipientName.trim() && recipientEmail.trim());
+  const whatDone = totalCents > 0 && lines.every((line) => line.name.trim());
+  const singleLine = lines.length === 1 && !showQuantity;
+  const firstItem = lines[0];
+
+  function pick(id: string) {
+    chooseRecipient(id);
+    setTypingNew(false);
+    setSearch("");
+    setStep(1);
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setProblem("");
+    // Before the last step, Enter or Continue moves on. The browser has
+    // already checked the fields on screen.
+    if (step === 0) {
+      if (!typingNew && !whoDone) {
+        if (matches[0]) pick(matches[0].id);
+        return;
+      }
+      setStep(1);
+      return;
+    }
+    if (step < 3) {
+      setStep((step + 1) as Step);
+      return;
+    }
     const draft = saveAsDraft.current;
     saveAsDraft.current = false;
     void onSubmit(
@@ -957,405 +1012,558 @@ function NewInvoiceModal({
     );
   }
 
-  const showRecipientFields = !recipientId || editingRecipient || !recipientEmail.trim();
-  const showQuantity = quantitiesOpen || lines.some((line) => line.quantity.trim() !== "1");
-  const endsAfterCount = endAfter !== "";
-  const when = (day: string) => (day === dates.today ? "today" : dayLabel(day));
-  const cadence = REPEAT_OPTIONS.find((option) => option.value === repeat)?.sentence ?? "";
+  const progress: { label: string; value: string; done: boolean }[] = [
+    { label: "Who", value: whoDone ? recipientName.trim() : "Customer", done: whoDone },
+    { label: "What", value: whatDone ? formatMoney(totalCents, currency) : "Amount", done: whatDone },
+    { label: "When", value: cadence ? cadence.label : "One time", done: step > 2 },
+    { label: "Send", value: "Review", done: false },
+  ];
 
   return (
     <Modal title={heading} eyebrow={`SQUARE · ${scope.label.toUpperCase()}`} onClose={onClose} wide>
-      <form ref={formRef} className="crm-form crm-square-form crm-square-simple" onSubmit={submit}>
-        <section className="crm-field-span crm-square-block">
-          <h4>Who</h4>
-          {recipients.length ? (
-            <select
-              aria-label={scope.kind === "agency" ? "Bill a client business" : "Bill a contact"}
-              value={recipientId}
-              onChange={(event) => {
-                setEditingRecipient(false);
-                chooseRecipient(event.target.value);
-              }}
-            >
-              <option value="">Someone new — type their details</option>
-              {recipients.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                  {item.email ? ` — ${item.email}` : ""}
-                </option>
-              ))}
-            </select>
-          ) : null}
-          {showRecipientFields ? (
-            <div className="crm-square-pair">
-              <input
-                aria-label="Name on the invoice"
-                value={recipientName}
-                onChange={(event) => setRecipientName(event.target.value)}
-                maxLength={120}
-                placeholder="Name on the invoice"
-                required
-                autoFocus={!preset.recipientName && !recipients.length}
-              />
-              <input
-                aria-label="Email the invoice to"
-                type="email"
-                value={recipientEmail}
-                onChange={(event) => setRecipientEmail(event.target.value)}
-                maxLength={254}
-                placeholder="Email, e.g. customer@example.com"
-                required
-              />
-            </div>
-          ) : (
-            <p className="crm-square-recipient-note">
-              Square emails it to <strong>{recipientEmail}</strong>
-              <button type="button" className="crm-square-link" onClick={() => setEditingRecipient(true)}>
-                Edit
+      <form ref={formRef} className="crm-form crm-square-form crm-square-wizard" onSubmit={submit}>
+        <ol className="crm-field-span crm-square-steps" aria-label="Steps">
+          {progress.map((item, index) => (
+            <li key={item.label}>
+              <button
+                type="button"
+                className={index === step ? "is-current" : item.done ? "is-done" : undefined}
+                aria-current={index === step ? "step" : undefined}
+                // Moving forward past an unanswered step is what Continue is for.
+                disabled={index > step && !(index <= 1 ? whoDone : whoDone && whatDone)}
+                onClick={() => setStep(index as Step)}
+              >
+                <span className="crm-square-step-dot" aria-hidden="true">
+                  {item.done && index !== step ? <Check /> : index + 1}
+                </span>
+                <span className="crm-square-step-text">
+                  <small>{item.label}</small>
+                  {item.value}
+                </span>
               </button>
-            </p>
-          )}
-        </section>
-
-        <section className="crm-field-span crm-square-block">
-          <h4>What for</h4>
-          {quickItems.length ? (
-            <div className="crm-square-quick" aria-label="Items you have billed before">
-              {quickItems.map((item) => (
-                <button
-                  key={item.name}
-                  type="button"
-                  className="crm-square-chip"
-                  disabled={lines.length >= MAX_INVOICE_LINE_ITEMS && !lines.some((line) => !line.name.trim())}
-                  onClick={() => addSavedItem(item)}
-                >
-                  <Plus aria-hidden="true" /> {item.name} · {formatMoney(item.unitCents, currency)}
-                </button>
-              ))}
-            </div>
-          ) : null}
-          {lines.map((line, index) => (
-            <div key={line.key} className={`crm-square-item${showQuantity ? " has-quantity" : ""}`}>
-              <input
-                aria-label={`Line ${index + 1} description`}
-                value={line.name}
-                onChange={(event) => updateLine(line.key, { name: event.target.value })}
-                placeholder="What you're billing for"
-                maxLength={200}
-                list={savedItems.length ? itemListId : undefined}
-                autoComplete="off"
-                required
-              />
-              {showQuantity ? (
-                <input
-                  aria-label={`Line ${index + 1} quantity`}
-                  type="number"
-                  min={1}
-                  max={999}
-                  step={1}
-                  value={line.quantity}
-                  onChange={(event) => updateLine(line.key, { quantity: event.target.value })}
-                  required
-                />
-              ) : null}
-              <span className="crm-square-money">
-                <span aria-hidden="true">$</span>
-                <input
-                  aria-label={`Line ${index + 1} price`}
-                  inputMode="decimal"
-                  value={line.unitPrice}
-                  onChange={(event) => updateLine(line.key, { unitPrice: event.target.value })}
-                  placeholder="0.00"
-                  pattern="\$?[0-9,]+(\.[0-9]{1,2})?"
-                  title="An amount such as 250 or 250.00"
-                  required
-                />
-              </span>
-              {lines.length > 1 ? (
-                <button
-                  type="button"
-                  className="crm-square-remove"
-                  aria-label={`Remove line ${index + 1}`}
-                  onClick={() => setLines((current) => current.filter((item) => item.key !== line.key))}
-                >
-                  <Trash2 aria-hidden="true" />
-                </button>
-              ) : null}
-            </div>
+            </li>
           ))}
-          {savedItems.length ? (
-            <datalist id={itemListId}>
-              {savedItems.map((item) => (
-                <option key={item.name} value={item.name} />
-              ))}
-            </datalist>
-          ) : null}
-          <div className="crm-square-item-links">
-            <button
-              type="button"
-              className="crm-square-link"
-              disabled={lines.length >= MAX_INVOICE_LINE_ITEMS}
-              onClick={() =>
-                setLines((current) => [
-                  ...current,
-                  {
-                    key: Math.max(...current.map((item) => item.key)) + 1,
-                    name: "",
-                    quantity: "1",
-                    unitPrice: "",
-                  },
-                ])
-              }
-            >
-              <Plus aria-hidden="true" /> Add another item
-            </button>
-            {showQuantity ? null : (
-              <button type="button" className="crm-square-link" onClick={() => setQuantitiesOpen(true)}>
-                Bill more than one of something
-              </button>
-            )}
-          </div>
-        </section>
+        </ol>
 
-        <section className="crm-field-span crm-square-block">
-          <h4>How often</h4>
-          <div className="crm-square-chips" role="group" aria-label="How often">
-            {editingPlan ? null : (
-              <button
-                type="button"
-                className="crm-square-chip"
-                aria-pressed={repeat === ""}
-                onClick={() => setRepeat("")}
-              >
-                One time
-              </button>
-            )}
-            {REPEAT_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className="crm-square-chip"
-                aria-pressed={repeat === option.value}
-                onClick={() => setRepeat(option.value)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-
-          {repeat ? (
-            <div className="crm-square-rows">
-              <div className="crm-square-row">
-                <span>{editingPlan ? "Next one" : "Starts"}</span>
-                <div className="crm-square-chips">
-                  <button
-                    type="button"
-                    className="crm-square-chip"
-                    aria-pressed={startDate === dates.today}
-                    onClick={() => setStartDate(dates.today)}
-                  >
-                    Today
-                  </button>
+        <div key={step} className="crm-field-span crm-square-stage">
+          {step === 0 ? (
+            <>
+              <h3>Who are you billing?</h3>
+              {typingNew ? (
+                <div className="crm-square-new-person">
                   <input
-                    aria-label={editingPlan ? "Next invoice date" : "First invoice date"}
-                    type="date"
-                    value={startDate}
-                    min={dates.today}
-                    onChange={(event) => setStartDate(event.target.value)}
+                    aria-label="Name on the invoice"
+                    value={recipientName}
+                    onChange={(event) => {
+                      setRecipientId("");
+                      setRecipientName(event.target.value);
+                    }}
+                    maxLength={120}
+                    placeholder="Their name"
+                    autoFocus
                     required
                   />
-                </div>
-              </div>
-              <div className="crm-square-row">
-                <span>Due</span>
-                <div className="crm-square-chips" role="group" aria-label="When each invoice is due">
-                  {PAY_WITHIN.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      className="crm-square-chip"
-                      aria-pressed={payWithin === option.value}
-                      onClick={() => setPayWithin(option.value)}
-                    >
-                      {option.label}
+                  <input
+                    aria-label="Email the invoice to"
+                    type="email"
+                    value={recipientEmail}
+                    onChange={(event) => {
+                      setRecipientId("");
+                      setRecipientEmail(event.target.value);
+                    }}
+                    maxLength={254}
+                    placeholder="Their email"
+                    required
+                  />
+                  {recipients.length ? (
+                    <button type="button" className="crm-square-link" onClick={() => setTypingNew(false)}>
+                      Pick from your {scope.kind === "agency" ? "clients" : "contacts"} instead
                     </button>
-                  ))}
-                </div>
-              </div>
-              <div className="crm-square-row">
-                <span>Ends</span>
-                <div className="crm-square-chips" role="group" aria-label="When billing stops">
-                  <button
-                    type="button"
-                    className="crm-square-chip"
-                    aria-pressed={!endsAfterCount}
-                    onClick={() => setEndAfter("")}
-                  >
-                    Never
-                  </button>
-                  <button
-                    type="button"
-                    className="crm-square-chip"
-                    aria-pressed={endsAfterCount}
-                    onClick={() => setEndAfter(endAfter || "12")}
-                  >
-                    After a set number
-                  </button>
-                  {endsAfterCount ? (
-                    <label className="crm-square-count">
-                      <input
-                        aria-label="Number of invoices"
-                        type="number"
-                        min={1}
-                        max={500}
-                        step={1}
-                        value={endAfter}
-                        onChange={(event) => setEndAfter(event.target.value)}
-                        required
-                      />
-                      invoices
-                    </label>
                   ) : null}
                 </div>
-              </div>
-            </div>
-          ) : (
-            <div className="crm-square-rows">
-              <div className="crm-square-row">
-                <span>Due</span>
-                <div className="crm-square-chips">
-                  {DUE_PRESETS.map((option) => {
-                    const day = dueIn(option.days);
-                    return (
-                      <button
-                        key={option.label}
-                        type="button"
-                        className="crm-square-chip"
-                        aria-pressed={dueDate === day}
-                        onClick={() => setDueDate(day)}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
+              ) : (
+                <>
                   <input
-                    aria-label="Due date"
-                    type="date"
-                    value={dueDate}
-                    min={dates.today}
-                    onChange={(event) => setDueDate(event.target.value)}
+                    className="crm-square-search"
+                    aria-label={scope.kind === "agency" ? "Search your clients" : "Search your contacts"}
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder={scope.kind === "agency" ? "Search clients…" : "Search by name or email…"}
+                    autoFocus
+                  />
+                  <div className="crm-square-people">
+                    {matches.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`crm-square-person${item.id === recipientId ? " is-selected" : ""}`}
+                        onClick={() => pick(item.id)}
+                      >
+                        <span className="crm-square-avatar" aria-hidden="true">
+                          {initials(item.name || item.email)}
+                        </span>
+                        <span>
+                          <strong>{item.name || item.email}</strong>
+                          <small>{item.email || "No email yet"}</small>
+                        </span>
+                        {readyToInvoice.some((job) => job.recipientId === item.id) ? (
+                          <em>Won job</em>
+                        ) : null}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className="crm-square-person is-new"
+                      onClick={() => {
+                        setRecipientId("");
+                        setRecipientName(search.includes("@") ? "" : search.trim());
+                        setRecipientEmail(search.includes("@") ? search.trim() : "");
+                        setTypingNew(true);
+                      }}
+                    >
+                      <span className="crm-square-avatar" aria-hidden="true">
+                        <Plus />
+                      </span>
+                      <span>
+                        <strong>{search.trim() ? `Bill "${search.trim()}"` : "Someone new"}</strong>
+                        <small>Type their name and email</small>
+                      </span>
+                    </button>
+                  </div>
+                  {query && !matches.length ? (
+                    <p className="crm-square-hint">No match. Add them as someone new.</p>
+                  ) : null}
+                </>
+              )}
+            </>
+          ) : null}
+
+          {step === 1 ? (
+            <>
+              <h3>What are you billing {recipientName.trim().split(/\s+/)[0] || "them"} for?</h3>
+              {singleLine && firstItem ? (
+                <div className="crm-square-hero">
+                  <label className="crm-square-hero-amount">
+                    <span aria-hidden="true">$</span>
+                    <input
+                      aria-label="Amount"
+                      inputMode="decimal"
+                      value={firstItem.unitPrice}
+                      onChange={(event) => updateLine(firstItem.key, { unitPrice: event.target.value })}
+                      placeholder="0"
+                      pattern="\$?[0-9,]+(\.[0-9]{1,2})?"
+                      title="An amount such as 250 or 250.00"
+                      autoFocus={!firstItem.unitPrice}
+                      required
+                    />
+                  </label>
+                  <input
+                    className="crm-square-hero-what"
+                    aria-label="What it's for"
+                    value={firstItem.name}
+                    onChange={(event) => updateLine(firstItem.key, { name: event.target.value })}
+                    placeholder="What's it for? e.g. Gutter installation"
+                    maxLength={200}
+                    list={savedItems.length ? itemListId : undefined}
+                    autoComplete="off"
+                    autoFocus={Boolean(firstItem.unitPrice) && !firstItem.name}
                     required
                   />
                 </div>
-              </div>
-            </div>
-          )}
-        </section>
-
-        <details className="crm-field-span crm-square-more">
-          <summary>
-            Title, message{repeat ? "" : " and attachment"}
-            <small>
-              {title ? title : "Uses the first item"}
-              {message.trim() ? " · message included" : ""}
-              {file && !repeat ? ` · ${file.name}` : ""}
-            </small>
-          </summary>
-          <div className="crm-square-more-body">
-            <Field label="Invoice title" span>
-              <input
-                value={customTitle}
-                onChange={(event) => setCustomTitle(event.target.value)}
-                maxLength={120}
-                placeholder={autoTitle(lines) || "e.g. October marketing services"}
-              />
-              <small>Leave it blank to use the first item.</small>
-            </Field>
-            <Field label="Message to the customer (optional)" span>
-              <textarea
-                rows={3}
-                maxLength={1000}
-                value={message}
-                onChange={(event) => setMessage(event.target.value)}
-                placeholder="Thanks for your business!"
-              />
-              {lastMessage && message === lastMessage ? (
-                <small>Same message as your last invoice. Edit it or clear it.</small>
+              ) : (
+                <div className="crm-square-items">
+                  {lines.map((line, index) => (
+                    <div key={line.key} className={`crm-square-item${showQuantity ? " has-quantity" : ""}`}>
+                      <input
+                        aria-label={`Line ${index + 1} description`}
+                        value={line.name}
+                        onChange={(event) => updateLine(line.key, { name: event.target.value })}
+                        placeholder="What you're billing for"
+                        maxLength={200}
+                        list={savedItems.length ? itemListId : undefined}
+                        autoComplete="off"
+                        required
+                      />
+                      {showQuantity ? (
+                        <input
+                          aria-label={`Line ${index + 1} quantity`}
+                          type="number"
+                          min={1}
+                          max={999}
+                          step={1}
+                          value={line.quantity}
+                          onChange={(event) => updateLine(line.key, { quantity: event.target.value })}
+                          required
+                        />
+                      ) : null}
+                      <span className="crm-square-money">
+                        <span aria-hidden="true">$</span>
+                        <input
+                          aria-label={`Line ${index + 1} price`}
+                          inputMode="decimal"
+                          value={line.unitPrice}
+                          onChange={(event) => updateLine(line.key, { unitPrice: event.target.value })}
+                          placeholder="0.00"
+                          pattern="\$?[0-9,]+(\.[0-9]{1,2})?"
+                          title="An amount such as 250 or 250.00"
+                          required
+                        />
+                      </span>
+                      {lines.length > 1 ? (
+                        <button
+                          type="button"
+                          className="crm-square-remove"
+                          aria-label={`Remove line ${index + 1}`}
+                          onClick={() => setLines((current) => current.filter((item) => item.key !== line.key))}
+                        >
+                          <Trash2 aria-hidden="true" />
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+                  <p className="crm-square-items-total">
+                    Total <strong>{formatMoney(totalCents, currency)}</strong>
+                  </p>
+                </div>
+              )}
+              {savedItems.length ? (
+                <datalist id={itemListId}>
+                  {savedItems.map((item) => (
+                    <option key={item.name} value={item.name} />
+                  ))}
+                </datalist>
               ) : null}
-            </Field>
-            {repeat ? null : (
-              <Field label="Contract or other PDF to send with it (optional)" span>
-                <input
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  onChange={(event) => chooseFile(event.target.files?.[0] ?? null)}
-                />
-                <small>
-                  Square emails it with the invoice. It is not a signature request,
-                  and BrizBuilder does not keep a copy.
-                </small>
-              </Field>
-            )}
-          </div>
-        </details>
+              {quickItems.length ? (
+                <div className="crm-square-saved">
+                  <small>Billed before — tap to add</small>
+                  <div>
+                    {quickItems.map((item) => (
+                      <button
+                        key={item.name}
+                        type="button"
+                        className="crm-square-saved-item"
+                        disabled={lines.length >= MAX_INVOICE_LINE_ITEMS && !lines.some((line) => !line.name.trim())}
+                        onClick={() => addSavedItem(item)}
+                      >
+                        <span>{item.name}</span>
+                        <strong>{formatMoney(item.unitCents, currency)}</strong>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <div className="crm-square-item-links">
+                <button
+                  type="button"
+                  className="crm-square-link"
+                  disabled={lines.length >= MAX_INVOICE_LINE_ITEMS}
+                  onClick={() =>
+                    setLines((current) => [
+                      ...current,
+                      {
+                        key: Math.max(...current.map((item) => item.key)) + 1,
+                        name: "",
+                        quantity: "1",
+                        unitPrice: "",
+                      },
+                    ])
+                  }
+                >
+                  <Plus aria-hidden="true" /> Add another item
+                </button>
+                {showQuantity ? null : (
+                  <button type="button" className="crm-square-link" onClick={() => setQuantitiesOpen(true)}>
+                    Set quantities
+                  </button>
+                )}
+              </div>
+            </>
+          ) : null}
+
+          {step === 2 ? (
+            <>
+              <h3>How often?</h3>
+              <div className="crm-square-cadences" role="group" aria-label="How often">
+                {editingPlan ? null : (
+                  <button
+                    type="button"
+                    className="crm-square-cadence"
+                    aria-pressed={repeat === ""}
+                    onClick={() => setRepeat("")}
+                  >
+                    <strong>One time</strong>
+                    <small>A single invoice</small>
+                  </button>
+                )}
+                {REPEAT_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className="crm-square-cadence"
+                    aria-pressed={repeat === option.value}
+                    onClick={() => setRepeat(option.value)}
+                  >
+                    <strong>{option.label}</strong>
+                    <small>{option.hint}</small>
+                  </button>
+                ))}
+              </div>
+              {repeat ? (
+                <div className="crm-square-rows">
+                  <div className="crm-square-row">
+                    <span>{editingPlan ? "Next one" : "Starts"}</span>
+                    <div className="crm-square-chips">
+                      <button
+                        type="button"
+                        className="crm-square-chip"
+                        aria-pressed={startDate === dates.today}
+                        onClick={() => setStartDate(dates.today)}
+                      >
+                        Today
+                      </button>
+                      <input
+                        aria-label={editingPlan ? "Next invoice date" : "First invoice date"}
+                        type="date"
+                        value={startDate}
+                        min={dates.today}
+                        onChange={(event) => setStartDate(event.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="crm-square-row">
+                    <span>Due</span>
+                    <div className="crm-square-chips" role="group" aria-label="When each invoice is due">
+                      {PAY_WITHIN.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className="crm-square-chip"
+                          aria-pressed={payWithin === option.value}
+                          onClick={() => setPayWithin(option.value)}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="crm-square-row">
+                    <span>Ends</span>
+                    <div className="crm-square-chips" role="group" aria-label="When billing stops">
+                      <button
+                        type="button"
+                        className="crm-square-chip"
+                        aria-pressed={!endsAfterCount}
+                        onClick={() => setEndAfter("")}
+                      >
+                        Never
+                      </button>
+                      <button
+                        type="button"
+                        className="crm-square-chip"
+                        aria-pressed={endsAfterCount}
+                        onClick={() => setEndAfter(endAfter || "12")}
+                      >
+                        After a set number
+                      </button>
+                      {endsAfterCount ? (
+                        <label className="crm-square-count">
+                          <input
+                            aria-label="Number of invoices"
+                            type="number"
+                            min={1}
+                            max={500}
+                            step={1}
+                            value={endAfter}
+                            onChange={(event) => setEndAfter(event.target.value)}
+                            required
+                          />
+                          invoices
+                        </label>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="crm-square-rows">
+                  <div className="crm-square-row">
+                    <span>Due</span>
+                    <div className="crm-square-chips">
+                      {DUE_PRESETS.map((option) => {
+                        const day = dueIn(option.days);
+                        return (
+                          <button
+                            key={option.label}
+                            type="button"
+                            className="crm-square-chip"
+                            aria-pressed={dueDate === day}
+                            onClick={() => setDueDate(day)}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                      <input
+                        aria-label="Due date"
+                        type="date"
+                        value={dueDate}
+                        min={dates.today}
+                        onChange={(event) => setDueDate(event.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : null}
+
+          {step === 3 ? (
+            <>
+              <h3>{repeat ? "Ready to start billing" : "Ready to send"}</h3>
+              <article className="crm-square-paper">
+                <header>
+                  <div>
+                    <small>INVOICE</small>
+                    <strong>{title || "Invoice"}</strong>
+                  </div>
+                  <span>{scope.label}</span>
+                </header>
+                <button type="button" className="crm-square-paper-part" onClick={() => setStep(0)}>
+                  <small>Bill to</small>
+                  <strong>{recipientName || "—"}</strong>
+                  <span>{recipientEmail}</span>
+                  <em>Change</em>
+                </button>
+                <button type="button" className="crm-square-paper-part" onClick={() => setStep(1)}>
+                  <small>Items</small>
+                  <span className="crm-square-paper-lines">
+                    {lines.map((line) => {
+                      const cents = parseMoneyToCents(line.unitPrice) ?? 0;
+                      const quantity = Number(line.quantity) || 1;
+                      return (
+                        <span key={line.key}>
+                          <span>
+                            {line.name || "Item"}
+                            {quantity > 1 ? ` × ${quantity}` : ""}
+                          </span>
+                          <span>{formatMoney(cents * quantity, currency)}</span>
+                        </span>
+                      );
+                    })}
+                  </span>
+                  <em>Change</em>
+                </button>
+                <button type="button" className="crm-square-paper-part" onClick={() => setStep(2)}>
+                  <small>{repeat ? "Schedule" : "Due"}</small>
+                  <strong>
+                    {repeat && cadence
+                      ? `${cadence.label}, ${editingPlan ? "next on" : "starting"} ${when(startDate)}`
+                      : `Due ${when(dueDate)}`}
+                  </strong>
+                  {repeat ? (
+                    <span>
+                      Each due {payWithin === "0" ? "on receipt" : `in ${payWithin} days`}
+                      {endsAfterCount && Number(endAfter) > 0 ? ` · ${endAfter} invoices` : " · until you stop it"}
+                    </span>
+                  ) : null}
+                  <em>Change</em>
+                </button>
+                <footer>
+                  <span>Total{repeat && cadence ? `, ${cadence.sentence}` : ""}</span>
+                  <strong>{formatMoney(totalCents, currency)}</strong>
+                </footer>
+              </article>
+
+              <details className="crm-square-more">
+                <summary>
+                  Title, message{repeat ? "" : " and attachment"}
+                  <small>
+                    {message.trim() ? "Message included" : "No message"}
+                    {file && !repeat ? ` · ${file.name}` : ""}
+                  </small>
+                </summary>
+                <div className="crm-square-more-body">
+                  <Field label="Invoice title" span>
+                    <input
+                      value={customTitle}
+                      onChange={(event) => setCustomTitle(event.target.value)}
+                      maxLength={120}
+                      placeholder={autoTitle(lines) || "e.g. October marketing services"}
+                    />
+                  </Field>
+                  <Field label="Message to the customer (optional)" span>
+                    <textarea
+                      rows={3}
+                      maxLength={1000}
+                      value={message}
+                      onChange={(event) => setMessage(event.target.value)}
+                      placeholder="Thanks for your business!"
+                    />
+                  </Field>
+                  {repeat ? null : (
+                    <Field label="Contract or other PDF to send with it (optional)" span>
+                      <input
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        onChange={(event) => chooseFile(event.target.files?.[0] ?? null)}
+                      />
+                      <small>
+                        Square emails it with the invoice. It is not a signature request,
+                        and BrizBuilder does not keep a copy.
+                      </small>
+                    </Field>
+                  )}
+                </div>
+              </details>
+              {repeat && startDate === dates.today && !editingPlan ? (
+                <p className="crm-square-hint">The first invoice goes out the moment you start billing.</p>
+              ) : null}
+            </>
+          ) : null}
+        </div>
 
         {problem ? (
           <p className="crm-field-span crm-square-form-error" role="alert">
             {problem}
           </p>
         ) : null}
-        <div className="crm-field-span crm-square-summary">
-          <p>
-            {repeat ? (
-              <>
-                <strong>{recipientName.trim() || "Your customer"}</strong> gets a{" "}
-                <strong>{formatMoney(totalCents, currency)}</strong> invoice{" "}
-                <strong>{cadence}</strong>,{" "}
-                {editingPlan ? "next on" : "starting"} <strong>{when(startDate)}</strong>
-                {startDate === dates.today && !editingPlan ? " (sent as soon as you save)" : ""}.
-                {" "}Each one is due{" "}
-                {payWithin === "0" ? "when it arrives" : `${payWithin} days after it's sent`}
-                {endsAfterCount && Number(endAfter) > 0
-                  ? `, for ${endAfter} invoice${endAfter === "1" ? "" : "s"}.`
-                  : ", until you stop it."}
-              </>
-            ) : (
-              <>
-                Square emails <strong>{formatMoney(totalCents, currency)}</strong> to{" "}
-                <strong>{recipientEmail.trim() || "your customer"}</strong>, due{" "}
-                <strong>{when(dueDate)}</strong>.
-              </>
-            )}
-          </p>
-          <strong className="crm-square-summary-total">{formatMoney(totalCents, currency)}</strong>
-        </div>
         <footer>
-          <button className="crm-button-secondary" type="button" onClick={onClose}>
-            Cancel
-          </button>
-          {repeat ? null : (
+          {step > 0 ? (
+            <button className="crm-button-secondary" type="button" onClick={() => setStep((step - 1) as Step)}>
+              Back
+            </button>
+          ) : (
+            <button className="crm-button-secondary" type="button" onClick={onClose}>
+              Cancel
+            </button>
+          )}
+          {step === 3 && !repeat ? (
             <button
               className="crm-button-secondary"
               type="button"
               disabled={busy}
               onClick={() => {
                 saveAsDraft.current = true;
-                // requestSubmit runs the browser's required-field checks first.
                 formRef.current?.requestSubmit();
               }}
             >
               Save draft
             </button>
+          ) : null}
+          {step === 0 && !typingNew && !whoDone ? null : (
+            <button className="crm-button-primary" type="submit" disabled={busy}>
+              {step < 3
+                ? "Continue"
+                : busy
+                  ? "Working…"
+                  : editingPlan
+                    ? "Save changes"
+                    : repeat
+                      ? `Start billing ${formatMoney(totalCents, currency)}`
+                      : `Send ${formatMoney(totalCents, currency)}`}
+            </button>
           )}
-          <button className="crm-button-primary" type="submit" disabled={busy}>
-            {busy
-              ? "Working…"
-              : editingPlan
-                ? "Save changes"
-                : repeat
-                  ? "Start billing"
-                  : "Send invoice"}
-          </button>
         </footer>
       </form>
     </Modal>
