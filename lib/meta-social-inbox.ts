@@ -27,6 +27,7 @@ type PublishedMedia = {
   permalink?: string;
   timestamp?: string;
   comments_count?: number;
+  like_count?: number;
 };
 type PublishedProfile = {
   username?: string;
@@ -194,6 +195,7 @@ function publishedPost(post: PublishedMedia): SocialPublishedPost {
     permalink: safeHttpsUrl(post.permalink),
     date: post.timestamp || "",
     commentCount: safeCount(post.comments_count),
+    likeCount: safeCount(post.like_count),
   };
 }
 
@@ -221,7 +223,8 @@ export async function loadPublishedSocialPosts(access: SocialAccountAccess): Pro
     const mediaFields = "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count";
     const [data, profile, stories, tagged] = await Promise.all([
       socialAccountRequest<Data<PublishedMedia>>(account, `${account.id}/media`, account.token, {
-        fields: mediaFields, limit: "25",
+        // Like counts only on the account's own media; stories and tags keep the shared field list.
+        fields: `${mediaFields},like_count`, limit: "25",
       }),
       socialAccountRequest<PublishedProfile>(account, account.id, account.token, {
         fields: "username,name,biography,website,profile_picture_url,followers_count,follows_count,media_count",

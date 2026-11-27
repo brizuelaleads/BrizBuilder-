@@ -79,13 +79,22 @@ test("Instagram Login uses Meta's documented conversation and comment edges", as
 });
 
 test("the Instagram preview includes live profile, story, reel, and tagged content", async () => {
-  const [reader, view] = await Promise.all([
+  const [reader, view, phone, controls] = await Promise.all([
     readFile(new URL("../lib/meta-social-inbox.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/crm/SocialView.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/crm/InstagramPhone.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/crm/controls.css", import.meta.url), "utf8"),
   ]);
   assert.match(reader, /profile_picture_url,followers_count,follows_count,media_count/);
   assert.match(reader, /`\$\{account\.id\}\/stories`/);
   assert.match(reader, /`\$\{account\.id\}\/tags`/);
+  // Like counts are requested for the account's own media only, so the optional story/tag reads keep working.
+  assert.match(reader, /fields: `\$\{mediaFields\},like_count`/);
+  assert.match(reader, /const mediaFields = "[^"]*comments_count";/);
   assert.match(view, /Instagram profile preview/);
-  assert.match(view, /"posts" \| "reels" \| "tagged"/);
+  assert.match(view, /<InstagramProfilePhone /);
+  assert.match(view, /<InstagramDraftPreview /);
+  assert.match(phone, /"posts" \| "reels" \| "tagged"/);
+  // Phone controls opt out of the CRM's pill-button styling.
+  assert.match(controls, /\.crm-ig-btn,/);
 });

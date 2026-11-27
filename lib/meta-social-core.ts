@@ -70,6 +70,7 @@ export type SocialPublishedPost = {
   permalink: string | null;
   date: string;
   commentCount: number | null;
+  likeCount: number | null;
 };
 
 export type SocialPublishedProfile = {

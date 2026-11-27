@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { ChevronLeft, ChevronRight, Clapperboard, ExternalLink, Grid3x3, Plus, SquareUserRound } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import type { CrmClient } from "../../db/crm";
 import type { MetaSocialWorkspace, SocialPublishedPage } from "../../lib/meta-social-core";
 import {
@@ -14,6 +14,7 @@ import {
 } from "../../lib/social-core";
 import { Badge, EmptyState, Field, Modal } from "./ui";
 import { SocialAccounts, SocialInboxView } from "./SocialMetaViews";
+import { InstagramDraftPreview, InstagramProfilePhone } from "./InstagramPhone";
 import { socialData, socialRead } from "./social-api";
 
 const channelName = { facebook: "Facebook", instagram: "Instagram" };
@@ -46,22 +47,6 @@ function formatDay(day: string) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short", day: "numeric", year: "numeric", timeZone: "UTC",
   }).format(new Date(`${day}T00:00:00Z`));
-}
-
-function formatPublishedDate(date: string) {
-  const timestamp = Date.parse(date);
-  return Number.isFinite(timestamp)
-    ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(timestamp)
-    : "Published on Instagram";
-}
-
-function formatSocialMetric(value: number | null | undefined, fallback?: number) {
-  const resolved = value ?? fallback;
-  if (resolved === undefined) return "—";
-  return new Intl.NumberFormat("en-US", {
-    notation: resolved >= 10_000 ? "compact" : "standard",
-    maximumFractionDigits: 1,
-  }).format(resolved);
 }
 
 export function SocialView({
@@ -294,6 +279,7 @@ function SocialPlanner({ client, canReview, targets, onAccounts }: {
         <SocialPostModal
           key={editor === "new" ? "new" : `${editor.id}/${editor.revision}`}
           clientId={client.id}
+          businessName={client.businessName}
           post={editor === "new" ? null : editor}
           canReview={canReview}
           targets={targets}
@@ -313,15 +299,12 @@ function SocialPlanner({ client, canReview, targets, onAccounts }: {
   );
 }
 
-type InstagramPreviewTab = "posts" | "reels" | "tagged";
-
 function PublishedInstagramPosts({ clientId, connected, fallbackName }: {
   clientId: string;
   connected: boolean;
   fallbackName: string;
 }) {
   const [reload, setReload] = useState(0);
-  const [tab, setTab] = useState<InstagramPreviewTab>("posts");
   const [result, setResult] = useState<{ data?: SocialPublishedPage; error?: string }>();
 
   useEffect(() => {
@@ -334,36 +317,13 @@ function PublishedInstagramPosts({ clientId, connected, fallbackName }: {
   }, [clientId, connected, reload]);
 
   if (!connected) return null;
-  const items = result?.data?.items ?? [];
-  const profile = result?.data?.profile;
-  const username = profile?.username || fallbackName.replace(/^@/, "").replace(/\s+/g, "").toLowerCase();
-  const profileName = profile?.name || fallbackName.replace(/^@/, "");
-  const initials = profileName.split(/\s+/u).filter(Boolean).slice(0, 2)
-    .map((part) => part[0]).join("").toUpperCase() || "IG";
-  const reels = items.filter(({ mediaType }) => /reel|video/iu.test(mediaType));
-  const grids: Record<InstagramPreviewTab, typeof items> = {
-    posts: items,
-    reels,
-    tagged: result?.data?.tagged ?? [],
-  };
-  const visibleItems = grids[tab];
-  const stories = result?.data?.stories ?? [];
-  const profileUrl = /^[a-zA-Z0-9._]{1,30}$/.test(username) ? `https://www.instagram.com/${username}/` : null;
-  const tabs: { key: InstagramPreviewTab; label: string; icon: typeof Grid3x3 }[] = [
-    { key: "posts", label: "Posts", icon: Grid3x3 },
-    { key: "reels", label: "Reels", icon: Clapperboard },
-    { key: "tagged", label: "Tagged", icon: SquareUserRound },
-  ];
   return (
     <section className="crm-social-published" aria-label="Instagram profile preview">
       <header className="crm-instagram-preview-heading">
         <div>
           <h3>Instagram profile preview</h3>
-          <span className="crm-social-muted">See the connected account as a mobile profile.</span>
+          <span className="crm-social-muted">How the connected account looks on a phone. Tap a post to open it.</span>
         </div>
-        {profileUrl && <a className="crm-button-secondary" href={profileUrl} target="_blank" rel="noreferrer">
-          Open Instagram <ExternalLink size={14} aria-hidden="true" />
-        </a>}
       </header>
       {!result && <p className="crm-social-message" role="status">Loading Instagram profile…</p>}
       {result?.error && (
@@ -373,99 +333,14 @@ function PublishedInstagramPosts({ clientId, connected, fallbackName }: {
         </div>
       )}
       {result?.data?.errors.map((error) => <p className="crm-social-message" role="alert" key={error}>{error}</p>)}
-      {result?.data && (
-        <div className="crm-instagram-phone">
-          <div className="crm-instagram-topbar">
-            <strong>@{username}</strong>
-            <span>Profile preview</span>
-          </div>
-          <div className="crm-instagram-profile">
-            <div className="crm-instagram-profile-summary">
-              <div className="crm-instagram-avatar-ring">
-                {profile?.profilePictureUrl
-                  ? <>
-                    {/* Meta uses rotating CDN hosts, so this avatar cannot use a fixed Next Image allowlist. */}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={profile.profilePictureUrl} alt={`${profileName} profile`} referrerPolicy="no-referrer" />
-                  </>
-                  : <span>{initials}</span>}
-              </div>
-              <dl className="crm-instagram-stats">
-                <div><dt>{formatSocialMetric(profile?.mediaCount, items.length)}</dt><dd>posts</dd></div>
-                <div><dt>{formatSocialMetric(profile?.followersCount)}</dt><dd>followers</dd></div>
-                <div><dt>{formatSocialMetric(profile?.followsCount)}</dt><dd>following</dd></div>
-              </dl>
-            </div>
-            <div className="crm-instagram-bio">
-              <strong>{profileName}</strong>
-              {profile?.biography && <p>{profile.biography}</p>}
-              {profile?.website && <a href={profile.website} target="_blank" rel="noreferrer">{profile.website.replace(/^https?:\/\//, "")}</a>}
-            </div>
-            <div className="crm-instagram-highlights" aria-label="Stories and highlights">
-              {(stories.length ? stories.slice(0, 5) : [{
-                id: "story-placeholder", imageUrl: profile?.profilePictureUrl ?? null,
-              }]).map((story, index) => (
-                <div className="crm-instagram-highlight" key={story.id}>
-                  <span className="crm-instagram-highlight-ring">
-                    {story.imageUrl
-                      ? <>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={story.imageUrl} alt="" referrerPolicy="no-referrer" />
-                      </>
-                      : <span>{initials}</span>}
-                  </span>
-                  <small>{stories.length ? `Story ${index + 1}` : "Stories"}</small>
-                </div>
-              ))}
-              <div className="crm-instagram-highlight">
-                <span className="crm-instagram-highlight-ring empty"><Plus size={21} aria-hidden="true" /></span>
-                <small>New</small>
-              </div>
-            </div>
-          </div>
-          <nav className="crm-instagram-tabs" aria-label="Instagram profile content">
-            {tabs.map(({ key, label, icon: Icon }) => (
-              <button type="button" key={key} className={tab === key ? "active" : ""}
-                aria-current={tab === key ? "page" : undefined} onClick={() => setTab(key)}>
-                <Icon size={20} aria-hidden="true" /><span>{label}</span>
-              </button>
-            ))}
-          </nav>
-          {visibleItems.length ? (
-            <ul className="crm-social-published-grid">
-              {visibleItems.map((post) => {
-                const label = `${post.caption || post.mediaType.replaceAll("_", " ")} — ${formatPublishedDate(post.date)}`;
-                const content = post.imageUrl
-                  ? <>
-                    {/* Meta uses rotating CDN hosts, so these thumbnails cannot use a fixed Next Image allowlist. */}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={post.imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" />
-                    {/reel|video/iu.test(post.mediaType) && <Clapperboard className="crm-instagram-media-type" size={18} aria-hidden="true" />}
-                    {post.commentCount !== null && <span className="crm-instagram-comment-count">{post.commentCount}</span>}
-                  </>
-                  : <span className="crm-social-media-placeholder" aria-hidden="true">{post.mediaType.replaceAll("_", " ")}</span>;
-                return <li key={post.id}>{post.permalink
-                  ? <a aria-label={label} href={post.permalink} target="_blank" rel="noreferrer">{content}</a>
-                  : <div role="img" aria-label={label}>{content}</div>}
-                </li>;
-              })}
-            </ul>
-          ) : (
-            <div className="crm-instagram-empty">
-              {tab === "posts" ? <Grid3x3 size={28} aria-hidden="true" /> : tab === "reels"
-                ? <Clapperboard size={28} aria-hidden="true" /> : <SquareUserRound size={28} aria-hidden="true" />}
-              <strong>{tab === "posts" ? "No posts yet" : tab === "reels" ? "No reels yet" : "No tagged posts yet"}</strong>
-              <span>{tab === "tagged" ? "Tagged Instagram posts will appear here when Meta returns them." : "Published content will appear here automatically."}</span>
-            </div>
-          )}
-        </div>
-      )}
+      {result?.data && <InstagramProfilePhone data={result.data} fallbackName={fallbackName} />}
     </section>
   );
 }
 
-function SocialPostModal({ clientId, post, canReview, targets, onClose, onReload, onSave }: {
+function SocialPostModal({ clientId, businessName, post, canReview, targets, onClose, onReload, onSave }: {
   clientId: string;
+  businessName: string;
   post: SocialPost | null;
   canReview: boolean;
   targets: PublishingTargets;
@@ -485,6 +360,27 @@ function SocialPostModal({ clientId, post, canReview, targets, onClose, onReload
   const mayPublish = canReview && missing.length === 0 && !uncertain && !post?.publishingStartedAt &&
     (post?.status === "draft" || post?.status === "approved");
   const destinationNames = remaining.map((channel) => `${channelName[channel]} (${targets[channel]?.name ?? "Not connected"})`);
+  // The edit form is uncontrolled; mirror the fields the Instagram preview needs as they change.
+  const [draft, setDraft] = useState(() => ({
+    caption: post?.caption ?? "",
+    mediaUrl: post?.mediaUrl ?? "",
+    instagram: !post?.channels.length || post.channels.includes("instagram"),
+  }));
+  // Hide the preview only once the post is explicitly Facebook-only.
+  const trackDraft = (event: FormEvent<HTMLFormElement>) => {
+    const form = new FormData(event.currentTarget);
+    const channels = form.getAll("channels");
+    setDraft({
+      caption: String(form.get("caption") ?? ""),
+      mediaUrl: String(form.get("mediaUrl") ?? ""),
+      instagram: !channels.length || channels.includes("instagram"),
+    });
+  };
+  const preview = mode === "edit" ? draft : {
+    caption: post?.caption ?? "", mediaUrl: post?.mediaUrl ?? "", instagram: Boolean(post?.channels.includes("instagram")),
+  };
+  const previewUsername = targets.instagram?.name.replace(/^@/, "") ||
+    businessName.replace(/[^a-zA-Z0-9._]/g, "").toLowerCase() || "yourbusiness";
 
   async function save(action: string, details: Record<string, unknown> = {}) {
     setBusy(true);
@@ -533,121 +429,126 @@ function SocialPostModal({ clientId, post, canReview, targets, onClose, onReload
   return (
     <Modal title={mode === "edit" ? (post ? "Edit draft" : "New social post") : post?.title ?? "Social post"}
       onClose={() => { if (!busy) onClose(); }} wide>
-      {mode === "edit" && (
-        <form className="crm-form crm-social-form" onSubmit={saveContent}>
-          <Field label="Working title" span>
-            <input name="title" required maxLength={120} defaultValue={post?.title} />
-          </Field>
-          <fieldset className="crm-social-channels crm-field-span">
-            <legend>Post to</legend>
-            {SOCIAL_CHANNELS.map((channel) => (
-              <label key={channel} className="crm-social-destination">
-                <input aria-label={channelName[channel]} type="checkbox" name="channels" value={channel} defaultChecked={post?.channels.includes(channel)} />
-                <span>
-                  <strong>{channelName[channel]}</strong>
-                  <small>{targets[channel]?.name ?? "Connect before publishing"}</small>
-                </span>
-              </label>
-            ))}
-          </fieldset>
-          <Field label="Caption" span>
-            <textarea name="caption" rows={5} maxLength={2200} defaultValue={post?.caption} />
-          </Field>
-          <Field label="Planned date">
-            <input name="plannedDate" type="date" max="9999-12-31" defaultValue={post?.plannedDate ?? ""} />
-          </Field>
-          <Field label="Public image link">
-            <input name="mediaUrl" type="url" placeholder="https://" maxLength={2000} defaultValue={post?.mediaUrl ?? ""} />
-          </Field>
-          {errorMessage}
-          <footer>
-            <button className="crm-button-secondary" type="button" disabled={busy} onClick={post ? back : onClose}>Cancel</button>
-            <button className="crm-button-primary" type="submit" disabled={submitDisabled}>{busy ? "Saving…" : "Save draft"}</button>
-          </footer>
-        </form>
-      )}
-      {post && mode !== "edit" && (
-        <form className="crm-form crm-social-form" onSubmit={(event) => {
-          event.preventDefault();
-          if (mode === "feedback") void save("request_changes", { feedback: new FormData(event.currentTarget).get("feedback") });
-          if (mode === "publication") void save("record_published");
-          if (mode === "publish_now") void save("publish_now", {
-            destinations: Object.fromEntries(remaining.flatMap((channel) => {
-              const target = targets[channel];
-              return target ? [[channel, `${target.source}:${target.id}`]] : [];
-            })),
-          });
-        }}>
-          <div className="crm-social-detail crm-field-span">
-            <Badge tone={statusTone[post.status]}>{statusLabel[post.status]}</Badge>
-            <dl>
-              <div><dt>Channels</dt><dd>{post.channels.map((channel) => channelName[channel]).join(" and ")}</dd></div>
-              <div><dt>Planned date</dt><dd>{post.plannedDate ? formatDay(post.plannedDate) : "Not set"}</dd></div>
-              {post.publishedAt && (
-                <div><dt>Recorded published</dt><dd>{new Date(post.publishedAt).toLocaleDateString()}</dd></div>
-              )}
-            </dl>
-            <div><h3>Caption</h3><p>{post.caption || "No caption yet."}</p></div>
-            {post.mediaUrl && <a href={post.mediaUrl} target="_blank" rel="noreferrer">Open media link</a>}
-            {deliveries.length > 0 && <div><h3>Publishing results</h3><ul>
-              {post.channels.map((channel) => post.deliveries[channel] && (
-                <li key={channel}><strong>{channelName[channel]}</strong> {post.deliveries[channel].detail}</li>
+      <div className={`crm-social-compose${preview.instagram ? " has-preview" : ""}`}>
+        {mode === "edit" && (
+          <form className="crm-form crm-social-form" onSubmit={saveContent} onChange={trackDraft}>
+            <Field label="Working title" span>
+              <input name="title" required maxLength={120} defaultValue={post?.title} />
+            </Field>
+            <fieldset className="crm-social-channels crm-field-span">
+              <legend>Post to</legend>
+              {SOCIAL_CHANNELS.map((channel) => (
+                <label key={channel} className="crm-social-destination">
+                  <input aria-label={channelName[channel]} type="checkbox" name="channels" value={channel} defaultChecked={post?.channels.includes(channel)} />
+                  <span>
+                    <strong>{channelName[channel]}</strong>
+                    <small>{targets[channel]?.name ?? "Connect before publishing"}</small>
+                  </span>
+                </label>
               ))}
-            </ul></div>}
-            {post.status !== "published" && (post.publishingStartedAt || uncertain) &&
-              <p>Check Facebook or Instagram for this post before recording publication.</p>}
-            {canReview && (post.status === "draft" || post.status === "approved") && missing.length > 0 &&
-              <p>Connect {missing.map((channel) => channelName[channel]).join(" and ")} under Accounts to publish this post.</p>}
-            {post.feedback && <div><h3>Review feedback</h3><p>{post.feedback}</p></div>}
-          </div>
-          {mode === "feedback" && (
-            <Field label="Changes needed" span><textarea name="feedback" required rows={4} maxLength={1000} /></Field>
-          )}
-          {mode === "publication" && (
-            <p className="crm-form-note crm-field-span">Confirm this post has been published on every selected channel.</p>
-          )}
-          {mode === "publish_now" && (
-            <p className="crm-form-note crm-field-span">
-              Publish to {destinationNames.join(" and ")} now.
-              {remaining.includes("instagram") && " Instagram requires a public JPEG image link."}
-            </p>
-          )}
-          {errorMessage}
-          <footer>
-            {mode !== "details" ? (
-              <>
-                <button type="button" className="crm-button-secondary" disabled={busy} onClick={back}>Back</button>
-                <button type="submit" className="crm-button-primary" disabled={submitDisabled}>
-                  {busy ? "Working…" : mode === "feedback" ? "Request changes" : mode === "publish_now" ? "Publish now" : "Record as published"}
-                </button>
-              </>
-            ) : (
-              <>
-                {isEditable && <>
-                  <button type="button" className="crm-button-secondary" disabled={submitDisabled} onClick={() => setMode("edit")}>Edit draft</button>
-                  <button type="button" className="crm-button-primary" disabled={submitDisabled} onClick={() => void save("submit")}>Submit for review</button>
-                </>}
-                {canReturnToDraft && (post.status === "in_review" || post.status === "approved") && (
-                  <button type="button" className="crm-button-secondary" disabled={submitDisabled} onClick={() => void save("withdraw")}>Return to draft</button>
+            </fieldset>
+            <Field label="Caption" span>
+              <textarea name="caption" rows={5} maxLength={2200} defaultValue={post?.caption} />
+            </Field>
+            <Field label="Planned date">
+              <input name="plannedDate" type="date" max="9999-12-31" defaultValue={post?.plannedDate ?? ""} />
+            </Field>
+            <Field label="Public image link">
+              <input name="mediaUrl" type="url" placeholder="https://" maxLength={2000} defaultValue={post?.mediaUrl ?? ""} />
+            </Field>
+            {errorMessage}
+            <footer>
+              <button className="crm-button-secondary" type="button" disabled={busy} onClick={post ? back : onClose}>Cancel</button>
+              <button className="crm-button-primary" type="submit" disabled={submitDisabled}>{busy ? "Saving…" : "Save draft"}</button>
+            </footer>
+          </form>
+        )}
+        {post && mode !== "edit" && (
+          <form className="crm-form crm-social-form" onSubmit={(event) => {
+            event.preventDefault();
+            if (mode === "feedback") void save("request_changes", { feedback: new FormData(event.currentTarget).get("feedback") });
+            if (mode === "publication") void save("record_published");
+            if (mode === "publish_now") void save("publish_now", {
+              destinations: Object.fromEntries(remaining.flatMap((channel) => {
+                const target = targets[channel];
+                return target ? [[channel, `${target.source}:${target.id}`]] : [];
+              })),
+            });
+          }}>
+            <div className="crm-social-detail crm-field-span">
+              <Badge tone={statusTone[post.status]}>{statusLabel[post.status]}</Badge>
+              <dl>
+                <div><dt>Channels</dt><dd>{post.channels.map((channel) => channelName[channel]).join(" and ")}</dd></div>
+                <div><dt>Planned date</dt><dd>{post.plannedDate ? formatDay(post.plannedDate) : "Not set"}</dd></div>
+                {post.publishedAt && (
+                  <div><dt>Recorded published</dt><dd>{new Date(post.publishedAt).toLocaleDateString()}</dd></div>
                 )}
-                {canReview && post.status === "in_review" && <>
-                  <button type="button" className="crm-button-secondary" disabled={submitDisabled} onClick={() => setMode("feedback")}>Request changes</button>
-                  <button type="button" className="crm-button-primary" disabled={submitDisabled} onClick={() => void save("approve")}>Approve post</button>
-                </>}
-                {canReview && post.status === "approved" && (
-                  <button type="button" className="crm-button-secondary" disabled={submitDisabled} onClick={() => setMode("publication")}>Record as published</button>
-                )}
-                {mayPublish && (
-                  <button type="button" className="crm-button-primary" disabled={submitDisabled} onClick={() => setMode("publish_now")}>
-                    {deliveries.length ? "Retry failed channels" : "Publish now"}
-                  </button>
-                )}
-                {post.status === "published" && <button type="button" className="crm-button-secondary" onClick={onClose}>Close</button>}
-              </>
+              </dl>
+              <div><h3>Caption</h3><p>{post.caption || "No caption yet."}</p></div>
+              {post.mediaUrl && <a href={post.mediaUrl} target="_blank" rel="noreferrer">Open media link</a>}
+              {deliveries.length > 0 && <div><h3>Publishing results</h3><ul>
+                {post.channels.map((channel) => post.deliveries[channel] && (
+                  <li key={channel}><strong>{channelName[channel]}</strong> {post.deliveries[channel].detail}</li>
+                ))}
+              </ul></div>}
+              {post.status !== "published" && (post.publishingStartedAt || uncertain) &&
+                <p>Check Facebook or Instagram for this post before recording publication.</p>}
+              {canReview && (post.status === "draft" || post.status === "approved") && missing.length > 0 &&
+                <p>Connect {missing.map((channel) => channelName[channel]).join(" and ")} under Accounts to publish this post.</p>}
+              {post.feedback && <div><h3>Review feedback</h3><p>{post.feedback}</p></div>}
+            </div>
+            {mode === "feedback" && (
+              <Field label="Changes needed" span><textarea name="feedback" required rows={4} maxLength={1000} /></Field>
             )}
-          </footer>
-        </form>
-      )}
+            {mode === "publication" && (
+              <p className="crm-form-note crm-field-span">Confirm this post has been published on every selected channel.</p>
+            )}
+            {mode === "publish_now" && (
+              <p className="crm-form-note crm-field-span">
+                Publish to {destinationNames.join(" and ")} now.
+                {remaining.includes("instagram") && " Instagram requires a public JPEG image link."}
+              </p>
+            )}
+            {errorMessage}
+            <footer>
+              {mode !== "details" ? (
+                <>
+                  <button type="button" className="crm-button-secondary" disabled={busy} onClick={back}>Back</button>
+                  <button type="submit" className="crm-button-primary" disabled={submitDisabled}>
+                    {busy ? "Working…" : mode === "feedback" ? "Request changes" : mode === "publish_now" ? "Publish now" : "Record as published"}
+                  </button>
+                </>
+              ) : (
+                <>
+                  {isEditable && <>
+                    <button type="button" className="crm-button-secondary" disabled={submitDisabled} onClick={() => setMode("edit")}>Edit draft</button>
+                    <button type="button" className="crm-button-primary" disabled={submitDisabled} onClick={() => void save("submit")}>Submit for review</button>
+                  </>}
+                  {canReturnToDraft && (post.status === "in_review" || post.status === "approved") && (
+                    <button type="button" className="crm-button-secondary" disabled={submitDisabled} onClick={() => void save("withdraw")}>Return to draft</button>
+                  )}
+                  {canReview && post.status === "in_review" && <>
+                    <button type="button" className="crm-button-secondary" disabled={submitDisabled} onClick={() => setMode("feedback")}>Request changes</button>
+                    <button type="button" className="crm-button-primary" disabled={submitDisabled} onClick={() => void save("approve")}>Approve post</button>
+                  </>}
+                  {canReview && post.status === "approved" && (
+                    <button type="button" className="crm-button-secondary" disabled={submitDisabled} onClick={() => setMode("publication")}>Record as published</button>
+                  )}
+                  {mayPublish && (
+                    <button type="button" className="crm-button-primary" disabled={submitDisabled} onClick={() => setMode("publish_now")}>
+                      {deliveries.length ? "Retry failed channels" : "Publish now"}
+                    </button>
+                  )}
+                  {post.status === "published" && <button type="button" className="crm-button-secondary" onClick={onClose}>Close</button>}
+                </>
+              )}
+            </footer>
+          </form>
+        )}
+        {preview.instagram && (
+          <InstagramDraftPreview username={previewUsername} caption={preview.caption} mediaUrl={preview.mediaUrl} />
+        )}
+      </div>
     </Modal>
   );
 }
