@@ -5,7 +5,7 @@ import {
 } from "./meta-social";
 import {
   canReplyToMetaMessage, firstNonEmptySocialPage, socialDestination, type SocialInbox, type SocialInboxEntry,
-  type SocialInboxItem, type SocialInboxKind, type SocialPublishedPage, type SocialPublishedPost, type SocialThread,
+  type SocialInboxItem, type SocialInboxKind, type SocialPublishedPage, type SocialPublishedPost, type SocialPublishedProfile, type SocialThread,
   type SocialAccountAccess, type SocialProviderAccount,
 } from "./meta-social-core";
 import { SocialRequestError, type SocialChannel } from "./social-core";
@@ -27,6 +27,16 @@ type PublishedMedia = {
   permalink?: string;
   timestamp?: string;
   comments_count?: number;
+};
+type PublishedProfile = {
+  username?: string;
+  name?: string;
+  biography?: string;
+  website?: string;
+  profile_picture_url?: string;
+  followers_count?: number;
+  follows_count?: number;
+  media_count?: number;
 };
 type Ref = {
   kind: SocialInboxKind;
@@ -166,30 +176,73 @@ function safeHttpsUrl(value: unknown) {
   }
 }
 
+function safeCount(value: unknown) {
+  return Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : null;
+}
+
+function safeProfileText(value: unknown, limit: number) {
+  return typeof value === "string" ? value.trim().slice(0, limit) : "";
+}
+
+function publishedPost(post: PublishedMedia): SocialPublishedPost {
+  return {
+    id: post.id,
+    channel: "instagram",
+    caption: post.caption?.trim() ?? "",
+    mediaType: post.media_type || "POST",
+    imageUrl: safeHttpsUrl(post.thumbnail_url) ?? safeHttpsUrl(post.media_url),
+    permalink: safeHttpsUrl(post.permalink),
+    date: post.timestamp || "",
+    commentCount: safeCount(post.comments_count),
+  };
+}
+
+function publishedProfile(profile: PublishedProfile | null): SocialPublishedProfile | null {
+  if (!profile) return null;
+  const username = safeProfileText(profile.username, 30);
+  if (!/^[a-zA-Z0-9._]{1,30}$/.test(username)) return null;
+  return {
+    username,
+    name: safeProfileText(profile.name, 100),
+    biography: safeProfileText(profile.biography, 500),
+    website: safeHttpsUrl(profile.website),
+    profilePictureUrl: safeHttpsUrl(profile.profile_picture_url),
+    followersCount: safeCount(profile.followers_count),
+    followsCount: safeCount(profile.follows_count),
+    mediaCount: safeCount(profile.media_count),
+  };
+}
+
 export async function loadPublishedSocialPosts(access: SocialAccountAccess): Promise<SocialPublishedPage> {
   const errors = Object.values(access.errors);
   const account = access.accounts.instagram;
-  if (!account) return { items: [], errors };
+  if (!account) return { items: [], stories: [], tagged: [], profile: null, errors };
   try {
-    const data = await socialAccountRequest<Data<PublishedMedia>>(account, `${account.id}/media`, account.token, {
-      fields: "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count",
-      limit: "25",
-    });
-    const items: SocialPublishedPost[] = (data.data ?? []).map((post) => ({
-      id: post.id,
-      channel: "instagram",
-      caption: post.caption?.trim() ?? "",
-      mediaType: post.media_type || "POST",
-      imageUrl: safeHttpsUrl(post.thumbnail_url) ?? safeHttpsUrl(post.media_url),
-      permalink: safeHttpsUrl(post.permalink),
-      date: post.timestamp || "",
-      commentCount: Number.isSafeInteger(post.comments_count) && (post.comments_count ?? -1) >= 0
-        ? post.comments_count ?? null : null,
-    }));
-    return { items, errors };
+    const mediaFields = "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count";
+    const [data, profile, stories, tagged] = await Promise.all([
+      socialAccountRequest<Data<PublishedMedia>>(account, `${account.id}/media`, account.token, {
+        fields: mediaFields, limit: "25",
+      }),
+      socialAccountRequest<PublishedProfile>(account, account.id, account.token, {
+        fields: "username,name,biography,website,profile_picture_url,followers_count,follows_count,media_count",
+      }).catch(() => null),
+      socialAccountRequest<Data<PublishedMedia>>(account, `${account.id}/stories`, account.token, {
+        fields: mediaFields, limit: "12",
+      }).catch(() => null),
+      socialAccountRequest<Data<PublishedMedia>>(account, `${account.id}/tags`, account.token, {
+        fields: mediaFields, limit: "25",
+      }).catch(() => null),
+    ]);
+    return {
+      items: (data.data ?? []).map(publishedPost),
+      stories: (stories?.data ?? []).map(publishedPost),
+      tagged: (tagged?.data ?? []).map(publishedPost),
+      profile: publishedProfile(profile),
+      errors,
+    };
   } catch (error) {
     const message = error instanceof SocialRequestError ? error.message : "Could not load this channel.";
-    return { items: [], errors: [...errors, `Instagram posts: ${message}`] };
+    return { items: [], stories: [], tagged: [], profile: null, errors: [...errors, `Instagram posts: ${message}`] };
   }
 }
 

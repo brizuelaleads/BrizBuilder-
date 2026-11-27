@@ -72,8 +72,22 @@ export type SocialPublishedPost = {
   commentCount: number | null;
 };
 
+export type SocialPublishedProfile = {
+  username: string;
+  name: string;
+  biography: string;
+  website: string | null;
+  profilePictureUrl: string | null;
+  followersCount: number | null;
+  followsCount: number | null;
+  mediaCount: number | null;
+};
+
 export type SocialPublishedPage = {
   items: SocialPublishedPost[];
+  stories: SocialPublishedPost[];
+  tagged: SocialPublishedPost[];
+  profile: SocialPublishedProfile | null;
   errors: string[];
 };
 
