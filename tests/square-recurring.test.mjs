@@ -95,7 +95,7 @@ test("a billing period is claimed before it is sent, so it cannot go out twice",
   assert.ok(claim > 0 && send > claim, "claim happens before the send");
   assert.match(run, /\.eq\("status", "active"\)\s*\.eq\("next_run_on", period\)/);
   assert.match(run, /recurring: \{ planId: String\(plan\.id\), period \}/);
-  const migration = read("supabase/migrations/20261127000000_square_recurring_plans.sql");
+  const migration = read("supabase/migrations/20261127054132_square_recurring_plans.sql");
   assert.match(migration, /create unique index if not exists square_invoices_recurring_period_uidx\s+on public\.square_invoices\(recurring_plan_id, recurring_period\)/);
 });
 
@@ -108,7 +108,7 @@ test("a disconnected Square account holds the plan instead of skipping the perio
 });
 
 test("recurring plans are server-only and run from the Worker cron", () => {
-  const migration = read("supabase/migrations/20261127000000_square_recurring_plans.sql");
+  const migration = read("supabase/migrations/20261127054132_square_recurring_plans.sql");
   assert.match(migration, /alter table public\.square_recurring_plans enable row level security;/);
   assert.match(migration, /revoke all on table public\.square_recurring_plans from anon, authenticated;/);
   const worker = read("worker/index.ts");
