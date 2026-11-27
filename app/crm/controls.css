@@ -1300,6 +1300,49 @@
   #crm-app .crm-square-schedule { grid-template-columns: 1fr; }
   #crm-app .crm-square-repeat { max-width: none; }
 }
+/* The invoice form, simplified: Who / What for / How often, one sentence summary. */
+#crm-app .crm-square-simple { gap: 22px; }
+#crm-app .crm-square-block { display: grid; gap: 10px; min-width: 0; }
+#crm-app .crm-square-block > h4 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .01em; color: var(--crm-muted); }
+#crm-app .crm-square-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+#crm-app .crm-square-recipient-note { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin: 0; font-size: 13px; color: var(--crm-muted); }
+#crm-app .crm-square-recipient-note strong { color: var(--crm-ink); font-weight: 600; overflow-wrap: anywhere; }
+#crm-app .crm-square-link { --btn-h: 28px; --btn-px: 0px; --btn-fs: 13px; --btn-gap: 4px; --btn-icon: 14px; --btn-bg: transparent; --btn-bg-hover: transparent; --btn-fg: var(--crm-ink); --btn-ring: 0 0 #0000; --btn-ring-hover: 0 0 #0000; --btn-shadow: 0 0 #0000; --btn-shadow-hover: 0 0 #0000; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--crm-line); }
+#crm-app .crm-square-link:hover { text-decoration-color: currentColor; }
+#crm-app[data-theme="glass"] .crm-square-link { --btn-bg: transparent; --btn-bg-hover: transparent; --btn-fg: #f4f4f5; --btn-ring: 0 0 #0000; --btn-ring-hover: 0 0 #0000; --btn-shadow: 0 0 #0000; --btn-shadow-hover: 0 0 #0000; }
+#crm-app .crm-square-item { display: grid; grid-template-columns: minmax(0, 1fr) 150px 36px; gap: 10px; align-items: center; }
+#crm-app .crm-square-item.has-quantity { grid-template-columns: minmax(0, 1fr) 64px 150px 36px; }
+#crm-app .crm-square-item:not(:has(.crm-square-remove)) { grid-template-columns: minmax(0, 1fr) 150px; }
+#crm-app .crm-square-item.has-quantity:not(:has(.crm-square-remove)) { grid-template-columns: minmax(0, 1fr) 64px 150px; }
+#crm-app .crm-square-money { position: relative; display: block; }
+#crm-app .crm-square-money > span { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--crm-muted); font-size: 14px; pointer-events: none; }
+#crm-app .crm-square-money > input { width: 100%; padding-left: 26px; text-align: right; font-variant-numeric: tabular-nums; }
+#crm-app .crm-square-remove { --btn-h: 36px; --btn-icon-px: 0px; --btn-bg: transparent; --btn-bg-hover: rgba(14, 17, 22, 0.06); --btn-fg: var(--crm-muted); --btn-ring: 0 0 #0000; --btn-ring-hover: 0 0 #0000; --btn-shadow: 0 0 #0000; --btn-shadow-hover: 0 0 #0000; width: 36px; justify-content: center; }
+#crm-app[data-theme="glass"] .crm-square-remove { --btn-bg: transparent; --btn-ring: 0 0 #0000; --btn-fg: #a1a1aa; }
+#crm-app .crm-square-item-links { display: flex; flex-wrap: wrap; gap: 4px 20px; }
+#crm-app .crm-square-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+#crm-app .crm-square-simple .crm-square-chip { --btn-h: 34px; --btn-px: 14px; --btn-fs: 13px; }
+#crm-app .crm-square-chips input[type="date"] { width: auto; min-width: 150px; height: 34px; }
+#crm-app .crm-square-rows { display: grid; gap: 10px; margin-top: 4px; padding: 14px 16px; border: 1px solid var(--crm-line); border-radius: 12px; }
+#crm-app .crm-square-row { display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 12px; }
+#crm-app .crm-square-row > span { font-size: 13px; font-weight: 600; color: var(--crm-ink); }
+#crm-app .crm-square-count { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--crm-muted); }
+#crm-app .crm-square-count input { width: 72px; height: 34px; }
+#crm-app .crm-square-simple .crm-square-summary { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px; }
+#crm-app .crm-square-simple .crm-square-summary > p { margin: 0; font-size: 14px; line-height: 22px; color: var(--crm-muted); }
+#crm-app .crm-square-simple .crm-square-summary > p strong { font-weight: 600; color: var(--crm-ink); }
+#crm-app .crm-square-summary-total { font-size: 24px; font-weight: 700; color: var(--crm-ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media(max-width: 600px) {
+  #crm-app .crm-square-pair { grid-template-columns: 1fr; }
+  #crm-app .crm-square-item, #crm-app .crm-square-item:not(:has(.crm-square-remove)) { grid-template-columns: minmax(0, 1fr) 120px; }
+  #crm-app .crm-square-item:has(.crm-square-remove) { grid-template-columns: minmax(0, 1fr) 120px 36px; }
+  #crm-app .crm-square-item.has-quantity, #crm-app .crm-square-item.has-quantity:not(:has(.crm-square-remove)) { grid-template-columns: 64px minmax(0, 1fr); }
+  #crm-app .crm-square-item.has-quantity > input:first-child { grid-column: 1 / -1; }
+  #crm-app .crm-square-item.has-quantity:has(.crm-square-remove) { grid-template-columns: 64px minmax(0, 1fr) 36px; }
+  #crm-app .crm-square-row { grid-template-columns: 1fr; gap: 6px; }
+  #crm-app .crm-square-simple .crm-square-summary { grid-template-columns: 1fr; }
+  #crm-app .crm-square-summary-total { order: -1; }
+}
 /* Wide screens say "Due" in the column header, so the cell drops the word. */
 @media(min-width: 601px) { #crm-app .crm-square-due-label { display: none; } }
 

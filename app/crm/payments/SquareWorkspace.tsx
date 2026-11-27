@@ -45,12 +45,19 @@ type RecurringSubmit = {
   endAfterCount: number | null;
 };
 
-const REPEAT_OPTIONS: { value: RecurringFrequency; label: string; short: string }[] = [
-  { value: "weekly", label: "Every week", short: "weekly" },
-  { value: "biweekly", label: "Every 2 weeks", short: "every 2 weeks" },
-  { value: "monthly", label: "Every month", short: "monthly" },
-  { value: "quarterly", label: "Every 3 months", short: "every 3 months" },
-  { value: "yearly", label: "Every year", short: "yearly" },
+const REPEAT_OPTIONS: { value: RecurringFrequency; label: string; sentence: string }[] = [
+  { value: "weekly", label: "Weekly", sentence: "every week" },
+  { value: "biweekly", label: "Every 2 weeks", sentence: "every 2 weeks" },
+  { value: "monthly", label: "Monthly", sentence: "every month" },
+  { value: "quarterly", label: "Every 3 months", sentence: "every 3 months" },
+  { value: "yearly", label: "Yearly", sentence: "every year" },
+];
+
+const PAY_WITHIN = [
+  { value: "0", label: "On receipt" },
+  { value: "7", label: "In 7 days" },
+  { value: "14", label: "In 14 days" },
+  { value: "30", label: "In 30 days" },
 ];
 
 const DUE_PRESETS = [
@@ -832,6 +839,8 @@ function NewInvoiceModal({
   );
   const [payWithin, setPayWithin] = useState(String(preset.dueInDays ?? 14));
   const [endAfter, setEndAfter] = useState(preset.endAfterCount ? String(preset.endAfterCount) : "");
+  const [editingRecipient, setEditingRecipient] = useState(false);
+  const [quantitiesOpen, setQuantitiesOpen] = useState(false);
 
   const title = customTitle || autoTitle(lines);
   const totalCents = lines.reduce((sum, line) => {
@@ -852,7 +861,6 @@ function NewInvoiceModal({
         : preset.source === "repeat"
           ? "Bill again"
           : "New invoice";
-  const repeatLabel = REPEAT_OPTIONS.find((option) => option.value === repeat)?.short ?? "";
 
   function chooseRecipient(id: string) {
     setRecipientId(id);
@@ -949,16 +957,27 @@ function NewInvoiceModal({
     );
   }
 
+  const showRecipientFields = !recipientId || editingRecipient || !recipientEmail.trim();
+  const showQuantity = quantitiesOpen || lines.some((line) => line.quantity.trim() !== "1");
+  const endsAfterCount = endAfter !== "";
+  const when = (day: string) => (day === dates.today ? "today" : dayLabel(day));
+  const cadence = REPEAT_OPTIONS.find((option) => option.value === repeat)?.sentence ?? "";
+
   return (
     <Modal title={heading} eyebrow={`SQUARE · ${scope.label.toUpperCase()}`} onClose={onClose} wide>
-      <form ref={formRef} className="crm-form crm-square-form" onSubmit={submit}>
-        <div className="crm-field-span crm-square-step">
-          <span className="crm-square-step-label">1 · Who it&apos;s for</span>
-        </div>
-        {recipients.length ? (
-          <Field label={scope.kind === "agency" ? "Bill a client business" : "Bill a contact"} span>
-            <select value={recipientId} onChange={(event) => chooseRecipient(event.target.value)}>
-              <option value="">Someone else — type their details below</option>
+      <form ref={formRef} className="crm-form crm-square-form crm-square-simple" onSubmit={submit}>
+        <section className="crm-field-span crm-square-block">
+          <h4>Who</h4>
+          {recipients.length ? (
+            <select
+              aria-label={scope.kind === "agency" ? "Bill a client business" : "Bill a contact"}
+              value={recipientId}
+              onChange={(event) => {
+                setEditingRecipient(false);
+                chooseRecipient(event.target.value);
+              }}
+            >
+              <option value="">Someone new — type their details</option>
               {recipients.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
@@ -966,33 +985,42 @@ function NewInvoiceModal({
                 </option>
               ))}
             </select>
-          </Field>
-        ) : null}
-        <Field label="Name on the invoice">
-          <input
-            value={recipientName}
-            onChange={(event) => setRecipientName(event.target.value)}
-            maxLength={120}
-            required
-            autoFocus={!preset.recipientName && !recipients.length}
-          />
-        </Field>
-        <Field label="Email the invoice to">
-          <input
-            type="email"
-            value={recipientEmail}
-            onChange={(event) => setRecipientEmail(event.target.value)}
-            maxLength={254}
-            placeholder="customer@example.com"
-            required
-          />
-        </Field>
+          ) : null}
+          {showRecipientFields ? (
+            <div className="crm-square-pair">
+              <input
+                aria-label="Name on the invoice"
+                value={recipientName}
+                onChange={(event) => setRecipientName(event.target.value)}
+                maxLength={120}
+                placeholder="Name on the invoice"
+                required
+                autoFocus={!preset.recipientName && !recipients.length}
+              />
+              <input
+                aria-label="Email the invoice to"
+                type="email"
+                value={recipientEmail}
+                onChange={(event) => setRecipientEmail(event.target.value)}
+                maxLength={254}
+                placeholder="Email, e.g. customer@example.com"
+                required
+              />
+            </div>
+          ) : (
+            <p className="crm-square-recipient-note">
+              Square emails it to <strong>{recipientEmail}</strong>
+              <button type="button" className="crm-square-link" onClick={() => setEditingRecipient(true)}>
+                Edit
+              </button>
+            </p>
+          )}
+        </section>
 
-        <fieldset className="crm-field-span crm-square-lines">
-          <legend>2 · What it&apos;s for</legend>
+        <section className="crm-field-span crm-square-block">
+          <h4>What for</h4>
           {quickItems.length ? (
             <div className="crm-square-quick" aria-label="Items you have billed before">
-              <small>Billed before:</small>
               {quickItems.map((item) => (
                 <button
                   key={item.name}
@@ -1007,45 +1035,52 @@ function NewInvoiceModal({
             </div>
           ) : null}
           {lines.map((line, index) => (
-            <div key={line.key} className="crm-square-line">
+            <div key={line.key} className={`crm-square-item${showQuantity ? " has-quantity" : ""}`}>
               <input
                 aria-label={`Line ${index + 1} description`}
                 value={line.name}
                 onChange={(event) => updateLine(line.key, { name: event.target.value })}
-                placeholder="What you did, e.g. Roof inspection"
+                placeholder="What you're billing for"
                 maxLength={200}
                 list={savedItems.length ? itemListId : undefined}
                 autoComplete="off"
                 required
               />
-              <input
-                aria-label={`Line ${index + 1} quantity`}
-                type="number"
-                min={1}
-                max={999}
-                step={1}
-                value={line.quantity}
-                onChange={(event) => updateLine(line.key, { quantity: event.target.value })}
-                required
-              />
-              <input
-                aria-label={`Line ${index + 1} price`}
-                inputMode="decimal"
-                value={line.unitPrice}
-                onChange={(event) => updateLine(line.key, { unitPrice: event.target.value })}
-                placeholder="0.00"
-                pattern="\$?[0-9,]+(\.[0-9]{1,2})?"
-                title="An amount such as 250 or 250.00"
-                required
-              />
-              <button
-                type="button"
-                aria-label={`Remove line ${index + 1}`}
-                disabled={lines.length === 1}
-                onClick={() => setLines((current) => current.filter((item) => item.key !== line.key))}
-              >
-                <Trash2 aria-hidden="true" />
-              </button>
+              {showQuantity ? (
+                <input
+                  aria-label={`Line ${index + 1} quantity`}
+                  type="number"
+                  min={1}
+                  max={999}
+                  step={1}
+                  value={line.quantity}
+                  onChange={(event) => updateLine(line.key, { quantity: event.target.value })}
+                  required
+                />
+              ) : null}
+              <span className="crm-square-money">
+                <span aria-hidden="true">$</span>
+                <input
+                  aria-label={`Line ${index + 1} price`}
+                  inputMode="decimal"
+                  value={line.unitPrice}
+                  onChange={(event) => updateLine(line.key, { unitPrice: event.target.value })}
+                  placeholder="0.00"
+                  pattern="\$?[0-9,]+(\.[0-9]{1,2})?"
+                  title="An amount such as 250 or 250.00"
+                  required
+                />
+              </span>
+              {lines.length > 1 ? (
+                <button
+                  type="button"
+                  className="crm-square-remove"
+                  aria-label={`Remove line ${index + 1}`}
+                  onClick={() => setLines((current) => current.filter((item) => item.key !== line.key))}
+                >
+                  <Trash2 aria-hidden="true" />
+                </button>
+              ) : null}
             </div>
           ))}
           {savedItems.length ? (
@@ -1055,10 +1090,10 @@ function NewInvoiceModal({
               ))}
             </datalist>
           ) : null}
-          <div className="crm-square-lines-foot">
+          <div className="crm-square-item-links">
             <button
               type="button"
-              className="crm-button-secondary"
+              className="crm-square-link"
               disabled={lines.length >= MAX_INVOICE_LINE_ITEMS}
               onClick={() =>
                 setLines((current) => [
@@ -1072,100 +1107,156 @@ function NewInvoiceModal({
                 ])
               }
             >
-              <Plus aria-hidden="true" /> Add line
+              <Plus aria-hidden="true" /> Add another item
             </button>
+            {showQuantity ? null : (
+              <button type="button" className="crm-square-link" onClick={() => setQuantitiesOpen(true)}>
+                Bill more than one of something
+              </button>
+            )}
           </div>
-        </fieldset>
+        </section>
 
-        <fieldset className="crm-field-span crm-square-due">
-          <legend>3 · {repeat ? "How often" : "When it's due"}</legend>
-          <div className="crm-square-repeat">
-            <label>
-              <span>Repeats</span>
-              <select value={repeat} onChange={(event) => setRepeat(event.target.value as RecurringFrequency | "")}>
-                {editingPlan ? null : <option value="">Does not repeat (one invoice)</option>}
-                {REPEAT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+        <section className="crm-field-span crm-square-block">
+          <h4>How often</h4>
+          <div className="crm-square-chips" role="group" aria-label="How often">
+            {editingPlan ? null : (
+              <button
+                type="button"
+                className="crm-square-chip"
+                aria-pressed={repeat === ""}
+                onClick={() => setRepeat("")}
+              >
+                One time
+              </button>
+            )}
+            {REPEAT_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className="crm-square-chip"
+                aria-pressed={repeat === option.value}
+                onClick={() => setRepeat(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
           </div>
+
           {repeat ? (
-            <div className="crm-square-schedule">
-              <label>
-                <span>{editingPlan ? "Next invoice" : "First invoice"}</span>
-                <input
-                  type="date"
-                  value={startDate}
-                  min={dates.today}
-                  onChange={(event) => setStartDate(event.target.value)}
-                  required
-                />
-              </label>
-              <label>
-                <span>Customer pays within</span>
-                <select value={payWithin} onChange={(event) => setPayWithin(event.target.value)}>
-                  <option value="0">Due on receipt</option>
-                  <option value="7">7 days</option>
-                  <option value="14">14 days</option>
-                  <option value="30">30 days</option>
-                </select>
-              </label>
-              <label>
-                <span>Stop after</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={500}
-                  step={1}
-                  value={endAfter}
-                  onChange={(event) => setEndAfter(event.target.value)}
-                  placeholder="Never"
-                  aria-describedby="square-stop-after-help"
-                />
-              </label>
-              <small id="square-stop-after-help">
-                {startDate === dates.today && !editingPlan
-                  ? "The first invoice goes out as soon as you save, then "
-                  : `The ${editingPlan ? "next" : "first"} invoice goes out ${dayLabel(startDate)}, then `}
-                {repeatLabel}. Leave Stop after empty to bill until you stop it.
-              </small>
-            </div>
-          ) : (
-            <div className="crm-square-due-row">
-              {DUE_PRESETS.map((option) => {
-                const day = dueIn(option.days);
-                return (
+            <div className="crm-square-rows">
+              <div className="crm-square-row">
+                <span>{editingPlan ? "Next one" : "Starts"}</span>
+                <div className="crm-square-chips">
                   <button
-                    key={option.label}
                     type="button"
                     className="crm-square-chip"
-                    aria-pressed={dueDate === day}
-                    onClick={() => setDueDate(day)}
+                    aria-pressed={startDate === dates.today}
+                    onClick={() => setStartDate(dates.today)}
                   >
-                    {option.label}
+                    Today
                   </button>
-                );
-              })}
-              <input
-                aria-label="Due date"
-                type="date"
-                value={dueDate}
-                min={dates.today}
-                onChange={(event) => setDueDate(event.target.value)}
-                required
-              />
+                  <input
+                    aria-label={editingPlan ? "Next invoice date" : "First invoice date"}
+                    type="date"
+                    value={startDate}
+                    min={dates.today}
+                    onChange={(event) => setStartDate(event.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="crm-square-row">
+                <span>Due</span>
+                <div className="crm-square-chips" role="group" aria-label="When each invoice is due">
+                  {PAY_WITHIN.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className="crm-square-chip"
+                      aria-pressed={payWithin === option.value}
+                      onClick={() => setPayWithin(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="crm-square-row">
+                <span>Ends</span>
+                <div className="crm-square-chips" role="group" aria-label="When billing stops">
+                  <button
+                    type="button"
+                    className="crm-square-chip"
+                    aria-pressed={!endsAfterCount}
+                    onClick={() => setEndAfter("")}
+                  >
+                    Never
+                  </button>
+                  <button
+                    type="button"
+                    className="crm-square-chip"
+                    aria-pressed={endsAfterCount}
+                    onClick={() => setEndAfter(endAfter || "12")}
+                  >
+                    After a set number
+                  </button>
+                  {endsAfterCount ? (
+                    <label className="crm-square-count">
+                      <input
+                        aria-label="Number of invoices"
+                        type="number"
+                        min={1}
+                        max={500}
+                        step={1}
+                        value={endAfter}
+                        onChange={(event) => setEndAfter(event.target.value)}
+                        required
+                      />
+                      invoices
+                    </label>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="crm-square-rows">
+              <div className="crm-square-row">
+                <span>Due</span>
+                <div className="crm-square-chips">
+                  {DUE_PRESETS.map((option) => {
+                    const day = dueIn(option.days);
+                    return (
+                      <button
+                        key={option.label}
+                        type="button"
+                        className="crm-square-chip"
+                        aria-pressed={dueDate === day}
+                        onClick={() => setDueDate(day)}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                  <input
+                    aria-label="Due date"
+                    type="date"
+                    value={dueDate}
+                    min={dates.today}
+                    onChange={(event) => setDueDate(event.target.value)}
+                    required
+                  />
+                </div>
+              </div>
             </div>
           )}
-        </fieldset>
+        </section>
 
         <details className="crm-field-span crm-square-more">
           <summary>
-            More options
+            Title, message{repeat ? "" : " and attachment"}
             <small>
-              {title ? `Title: ${title}` : "Title fills in from the first line"}
+              {title ? title : "Uses the first item"}
               {message.trim() ? " · message included" : ""}
               {file && !repeat ? ` · ${file.name}` : ""}
             </small>
@@ -1178,7 +1269,7 @@ function NewInvoiceModal({
                 maxLength={120}
                 placeholder={autoTitle(lines) || "e.g. October marketing services"}
               />
-              <small>Leave it blank to use the first line item.</small>
+              <small>Leave it blank to use the first item.</small>
             </Field>
             <Field label="Message to the customer (optional)" span>
               <textarea
@@ -1193,17 +1284,17 @@ function NewInvoiceModal({
               ) : null}
             </Field>
             {repeat ? null : (
-            <Field label="Contract or other PDF to send with it (optional)" span>
-              <input
-                type="file"
-                accept="application/pdf,.pdf"
-                onChange={(event) => chooseFile(event.target.files?.[0] ?? null)}
-              />
-              <small>
-                Square emails it with the invoice. It is not a signature request,
-                and BrizBuilder does not keep a copy.
-              </small>
-            </Field>
+              <Field label="Contract or other PDF to send with it (optional)" span>
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  onChange={(event) => chooseFile(event.target.files?.[0] ?? null)}
+                />
+                <small>
+                  Square emails it with the invoice. It is not a signature request,
+                  and BrizBuilder does not keep a copy.
+                </small>
+              </Field>
             )}
           </div>
         </details>
@@ -1214,14 +1305,29 @@ function NewInvoiceModal({
           </p>
         ) : null}
         <div className="crm-field-span crm-square-summary">
-          <span>{repeat ? `Total, ${repeatLabel}` : "Total"}</span>
-          <strong>{formatMoney(totalCents, currency)}</strong>
-          <small>
-            {recipientEmail ? `Square emails it to ${recipientEmail}` : "Square emails it to the customer"}
-            {repeat
-              ? ` · each invoice due ${payWithin === "0" ? "on receipt" : `in ${payWithin} days`}`
-              : ` · due ${dueDate === dates.today ? "today" : dayLabel(dueDate)}`}
-          </small>
+          <p>
+            {repeat ? (
+              <>
+                <strong>{recipientName.trim() || "Your customer"}</strong> gets a{" "}
+                <strong>{formatMoney(totalCents, currency)}</strong> invoice{" "}
+                <strong>{cadence}</strong>,{" "}
+                {editingPlan ? "next on" : "starting"} <strong>{when(startDate)}</strong>
+                {startDate === dates.today && !editingPlan ? " (sent as soon as you save)" : ""}.
+                {" "}Each one is due{" "}
+                {payWithin === "0" ? "when it arrives" : `${payWithin} days after it's sent`}
+                {endsAfterCount && Number(endAfter) > 0
+                  ? `, for ${endAfter} invoice${endAfter === "1" ? "" : "s"}.`
+                  : ", until you stop it."}
+              </>
+            ) : (
+              <>
+                Square emails <strong>{formatMoney(totalCents, currency)}</strong> to{" "}
+                <strong>{recipientEmail.trim() || "your customer"}</strong>, due{" "}
+                <strong>{when(dueDate)}</strong>.
+              </>
+            )}
+          </p>
+          <strong className="crm-square-summary-total">{formatMoney(totalCents, currency)}</strong>
         </div>
         <footer>
           <button className="crm-button-secondary" type="button" onClick={onClose}>
@@ -1240,15 +1346,15 @@ function NewInvoiceModal({
             >
               Save draft
             </button>
-            )}
+          )}
           <button className="crm-button-primary" type="submit" disabled={busy}>
             {busy
               ? "Working…"
               : editingPlan
                 ? "Save changes"
                 : repeat
-                  ? `Start billing ${formatMoney(totalCents, currency)} ${repeatLabel}`
-                  : `Send ${formatMoney(totalCents, currency)}`}
+                  ? "Start billing"
+                  : "Send invoice"}
           </button>
         </footer>
       </form>
