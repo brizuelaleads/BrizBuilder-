@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { Check, ExternalLink, FileText, Plus, RefreshCw, Repeat, Trash2, Trophy } from "lucide-react";
+import { Check, ExternalLink, FileText, Lock, Paperclip, Pencil, Plus, RefreshCw, Repeat, Trash2, Trophy } from "lucide-react";
 import type { SquareWorkspace as SquareWorkspaceData } from "../../../db/supabase-square";
 import {
   MAX_ATTACHMENT_BYTES,
@@ -11,7 +11,7 @@ import {
   parseMoneyToCents,
   type RecurringFrequency,
 } from "../../../lib/square-core";
-import { Badge, EmptyState, Field, Modal, dateTime, shortDate } from "../ui";
+import { Badge, EmptyState, Modal, dateTime, shortDate } from "../ui";
 
 export type SquareScopeChoice =
   | { kind: "agency"; label: string }
@@ -54,6 +54,11 @@ const REPEAT_OPTIONS: { value: RecurringFrequency; label: string; sentence: stri
   { value: "quarterly", label: "Every 3 months", sentence: "every 3 months", hint: "Four times a year" },
   { value: "yearly", label: "Yearly", sentence: "every year", hint: "Once a year" },
 ];
+
+/** Whole days from one calendar day to another. */
+function daysBetween(from: string, to: string) {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
 
 function initials(name: string) {
   const parts = name.trim().split(/[\s@.]+/).filter(Boolean);
@@ -1422,100 +1427,143 @@ function NewInvoiceModal({
             <>
               <h3>{repeat ? "Ready to start billing" : "Ready to send"}</h3>
               <article className="crm-square-paper">
-                <header>
-                  <div>
-                    <small>INVOICE</small>
-                    <strong>{title || "Invoice"}</strong>
-                  </div>
-                  <span>{scope.label}</span>
-                </header>
-                <button type="button" className="crm-square-paper-part" onClick={() => setStep(0)}>
-                  <small>Bill to</small>
-                  <strong>{recipientName || "—"}</strong>
-                  <span>{recipientEmail}</span>
-                  <em>Change</em>
-                </button>
-                <button type="button" className="crm-square-paper-part" onClick={() => setStep(1)}>
-                  <small>Items</small>
-                  <span className="crm-square-paper-lines">
-                    {lines.map((line) => {
-                      const cents = parseMoneyToCents(line.unitPrice) ?? 0;
-                      const quantity = Number(line.quantity) || 1;
-                      return (
-                        <span key={line.key}>
-                          <span>
-                            {line.name || "Item"}
-                            {quantity > 1 ? ` × ${quantity}` : ""}
-                          </span>
-                          <span>{formatMoney(cents * quantity, currency)}</span>
-                        </span>
-                      );
-                    })}
-                  </span>
-                  <em>Change</em>
-                </button>
-                <button type="button" className="crm-square-paper-part" onClick={() => setStep(2)}>
-                  <small>{repeat ? "Schedule" : "Due"}</small>
-                  <strong>
-                    {repeat && cadence
-                      ? `${cadence.label}, ${editingPlan ? "next on" : "starting"} ${when(startDate)}`
-                      : `Due ${when(dueDate)}`}
-                  </strong>
-                  {repeat ? (
+                {repeat && cadence ? (
+                  <div className="crm-square-paper-repeat">
+                    <Repeat aria-hidden="true" />
                     <span>
-                      Each due {payWithin === "0" ? "on receipt" : `in ${payWithin} days`}
-                      {endsAfterCount && Number(endAfter) > 0 ? ` · ${endAfter} invoices` : " · until you stop it"}
+                      <strong>Repeats {cadence.sentence}</strong>
+                      {` · ${editingPlan ? "next on" : "starting"} ${when(startDate)}`}
+                      {endsAfterCount && Number(endAfter) > 0
+                        ? ` · ${endAfter} invoices`
+                        : " · until you stop it"}
                     </span>
-                  ) : null}
-                  <em>Change</em>
-                </button>
-                <footer>
-                  <span>Total{repeat && cadence ? `, ${cadence.sentence}` : ""}</span>
-                  <strong>{formatMoney(totalCents, currency)}</strong>
-                </footer>
-              </article>
+                    <button type="button" className="crm-square-edit" aria-label="Change schedule" onClick={() => setStep(2)}>
+                      <Pencil aria-hidden="true" />
+                    </button>
+                  </div>
+                ) : null}
 
-              <details className="crm-square-more">
-                <summary>
-                  Title, message{repeat ? "" : " and attachment"}
-                  <small>
-                    {message.trim() ? "Message included" : "No message"}
-                    {file && !repeat ? ` · ${file.name}` : ""}
-                  </small>
-                </summary>
-                <div className="crm-square-more-body">
-                  <Field label="Invoice title" span>
-                    <input
-                      value={customTitle}
-                      onChange={(event) => setCustomTitle(event.target.value)}
-                      maxLength={120}
-                      placeholder={autoTitle(lines) || "e.g. October marketing services"}
-                    />
-                  </Field>
-                  <Field label="Message to the customer (optional)" span>
-                    <textarea
-                      rows={3}
-                      maxLength={1000}
-                      value={message}
-                      onChange={(event) => setMessage(event.target.value)}
-                      placeholder="Thanks for your business!"
-                    />
-                  </Field>
+                <header className="crm-square-paper-head">
+                  <div className="crm-square-paper-brand">
+                    <span aria-hidden="true">{initials(scope.label)}</span>
+                    <strong>{scope.label}</strong>
+                  </div>
+                  <small>INVOICE</small>
+                </header>
+
+                <input
+                  className="crm-square-paper-title"
+                  aria-label="Invoice title"
+                  value={customTitle}
+                  onChange={(event) => setCustomTitle(event.target.value)}
+                  maxLength={120}
+                  placeholder={autoTitle(lines) || "Invoice title"}
+                />
+
+                <dl className="crm-square-paper-meta">
+                  <div>
+                    <dt>
+                      Bill to
+                      <button type="button" className="crm-square-edit" aria-label="Change customer" onClick={() => setStep(0)}>
+                        <Pencil aria-hidden="true" />
+                      </button>
+                    </dt>
+                    <dd>
+                      <strong>{recipientName || "—"}</strong>
+                      <span>{recipientEmail}</span>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{repeat ? "First invoice" : "Issued"}</dt>
+                    <dd>
+                      <strong>{repeat && startDate !== dates.today ? dayLabel(startDate) : "Today"}</strong>
+                      <span>{repeat ? "Then " + (cadence?.sentence ?? "") : dayLabel(dates.today)}</span>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>
+                      Due
+                      <button type="button" className="crm-square-edit" aria-label="Change due date" onClick={() => setStep(2)}>
+                        <Pencil aria-hidden="true" />
+                      </button>
+                    </dt>
+                    <dd>
+                      {repeat ? (
+                        <>
+                          <strong>{payWithin === "0" ? "On receipt" : `${payWithin} days`}</strong>
+                          <span>{payWithin === "0" ? "Each time it's sent" : "After each is sent"}</span>
+                        </>
+                      ) : (
+                        <>
+                          <strong>{dayLabel(dueDate)}</strong>
+                          <span>{dueDate === dates.today ? "Due today" : `In ${daysBetween(dates.today, dueDate)} days`}</span>
+                        </>
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+
+                <div className="crm-square-paper-items">
+                  <div className="crm-square-paper-row is-head">
+                    <span>
+                      Description
+                      <button type="button" className="crm-square-edit" aria-label="Change items" onClick={() => setStep(1)}>
+                        <Pencil aria-hidden="true" />
+                      </button>
+                    </span>
+                    <span>Amount</span>
+                  </div>
+                  {lines.map((line) => {
+                    const cents = parseMoneyToCents(line.unitPrice) ?? 0;
+                    const quantity = Number(line.quantity) || 1;
+                    return (
+                      <div key={line.key} className="crm-square-paper-row">
+                        <span>
+                          {line.name || "Item"}
+                          {quantity > 1 ? (
+                            <small>
+                              {quantity} × {formatMoney(cents, currency)}
+                            </small>
+                          ) : null}
+                        </span>
+                        <span>{formatMoney(cents * quantity, currency)}</span>
+                      </div>
+                    );
+                  })}
+                  <div className="crm-square-paper-row is-total">
+                    <span>{repeat && cadence ? `Total ${cadence.sentence}` : "Total due"}</span>
+                    <strong>{formatMoney(totalCents, currency)}</strong>
+                  </div>
+                </div>
+
+                <label className="crm-square-paper-note">
+                  <span>Note to {recipientName.trim().split(/\s+/)[0] || "the customer"}</span>
+                  <textarea
+                    rows={2}
+                    maxLength={1000}
+                    value={message}
+                    onChange={(event) => setMessage(event.target.value)}
+                    placeholder="Optional — e.g. Thanks for your business!"
+                  />
+                </label>
+
+                <footer className="crm-square-paper-foot">
+                  <span>
+                    <Lock aria-hidden="true" /> {recipientName.trim().split(/\s+/)[0] || "Your customer"} pays online by card through Square
+                  </span>
                   {repeat ? null : (
-                    <Field label="Contract or other PDF to send with it (optional)" span>
+                    <label className="crm-square-attach">
+                      <Paperclip aria-hidden="true" />
+                      {file ? file.name : "Attach a PDF"}
                       <input
                         type="file"
                         accept="application/pdf,.pdf"
                         onChange={(event) => chooseFile(event.target.files?.[0] ?? null)}
                       />
-                      <small>
-                        Square emails it with the invoice. It is not a signature request,
-                        and BrizBuilder does not keep a copy.
-                      </small>
-                    </Field>
+                    </label>
                   )}
-                </div>
-              </details>
+                </footer>
+              </article>
               {repeat && startDate === dates.today && !editingPlan ? (
                 <p className="crm-square-hint">The first invoice goes out the moment you start billing.</p>
               ) : null}
