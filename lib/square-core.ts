@@ -538,3 +538,148 @@ export function parseSquareWebhook(body: string): SquareWebhookEvent {
       type === "invoice.deleted" && data.deleted === true ? text(data.id, 255) || null : null,
   };
 }
+
+// ---- Recurring plans ------------------------------------------------------
+
+export const RECURRING_FREQUENCIES = ["weekly", "biweekly", "monthly", "quarterly", "yearly"] as const;
+export type RecurringFrequency = (typeof RECURRING_FREQUENCIES)[number];
+export const RECURRING_STATUSES = ["active", "paused", "ended"] as const;
+export type RecurringStatus = (typeof RECURRING_STATUSES)[number];
+
+/** Hour (UTC) from which a plan's billing day counts as arrived: 9am Eastern, 6am Pacific. */
+export const RECURRING_SEND_HOUR_UTC = 14;
+export const MAX_DUE_IN_DAYS = 90;
+export const MAX_RECURRING_COUNT = 500;
+
+function dayParts(day: string) {
+  const [year, month, date] = day.split("-").map(Number);
+  return { year, month, date };
+}
+
+function daysInMonth(year: number, month: number) {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+export function addDays(day: string, days: number): string {
+  return isoDay(new Date(Date.parse(`${day}T00:00:00Z`) + days * 86_400_000));
+}
+
+function addMonthsAnchored(day: string, months: number, anchorDay: number): string {
+  const { year, month } = dayParts(day);
+  const index = year * 12 + (month - 1) + months;
+  const nextYear = Math.floor(index / 12);
+  const nextMonth = (index % 12) + 1;
+  const date = Math.min(anchorDay, daysInMonth(nextYear, nextMonth));
+  return `${nextYear}-${String(nextMonth).padStart(2, "0")}-${String(date).padStart(2, "0")}`;
+}
+
+/** The billing day after `day`. Monthly plans keep their day of the month. */
+export function nextRecurringDay(day: string, frequency: RecurringFrequency, anchorDay: number): string {
+  switch (frequency) {
+    case "weekly":
+      return addDays(day, 7);
+    case "biweekly":
+      return addDays(day, 14);
+    case "monthly":
+      return addMonthsAnchored(day, 1, anchorDay);
+    case "quarterly":
+      return addMonthsAnchored(day, 3, anchorDay);
+    case "yearly":
+      return addMonthsAnchored(day, 12, anchorDay);
+  }
+}
+
+/** The first billing day strictly after `today`, so a paused plan never bills for the months it missed. */
+export function nextRecurringDayAfter(
+  from: string,
+  today: string,
+  frequency: RecurringFrequency,
+  anchorDay: number,
+): string {
+  let day = from;
+  for (let guard = 0; day <= today && guard < 2000; guard += 1)
+    day = nextRecurringDay(day, frequency, anchorDay);
+  return day;
+}
+
+/** Whether a plan whose next billing day is `nextRunOn` should bill now. */
+export function isRecurringDue(nextRunOn: string, now: Date): boolean {
+  const today = isoDay(now);
+  if (nextRunOn < today) return true;
+  return nextRunOn === today && now.getUTCHours() >= RECURRING_SEND_HOUR_UTC;
+}
+
+function ordinal(n: number) {
+  const tail = n % 100 >= 11 && n % 100 <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");
+  return `${n}${tail}`;
+}
+
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "Monthly on the 1st", "Every 2 weeks on Friday". */
+export function recurringLabel(frequency: RecurringFrequency, anchorDay: number, nextRunOn: string | null): string {
+  const weekday = nextRunOn ? WEEKDAYS[new Date(`${nextRunOn}T00:00:00Z`).getUTCDay()] : null;
+  switch (frequency) {
+    case "weekly":
+      return weekday ? `Weekly on ${weekday}` : "Weekly";
+    case "biweekly":
+      return weekday ? `Every 2 weeks on ${weekday}` : "Every 2 weeks";
+    case "monthly":
+      return anchorDay === 31 ? "Monthly on the last day" : `Monthly on the ${ordinal(anchorDay)}`;
+    case "quarterly":
+      return `Every 3 months on the ${ordinal(anchorDay)}`;
+    case "yearly": {
+      const month = nextRunOn ? MONTHS[dayParts(nextRunOn).month - 1] : null;
+      return month ? `Yearly on ${month} ${anchorDay}` : "Yearly";
+    }
+  }
+}
+
+export type RecurringInput = Omit<InvoiceInput, "dueDate" | "send"> & {
+  frequency: RecurringFrequency;
+  startDate: string;
+  anchorDay: number;
+  dueInDays: number;
+  endAfterCount: number | null;
+};
+
+/**
+ * Checks a recurring plan the same way as a one-off invoice (the first billing
+ * day stands in for the due date), plus the schedule fields.
+ */
+export function normalizeRecurringInput(raw: unknown, now = new Date()): RecurringInput {
+  const source = asRecord(raw);
+  const frequency = text(source.frequency, 20) as RecurringFrequency;
+  if (!RECURRING_FREQUENCIES.includes(frequency)) throw new Error("Choose how often to bill.");
+  const startDate = text(source.startDate, 10);
+  if (!isRealDay(startDate)) throw new Error("Choose the first billing day.");
+  const latestStart = isoDay(new Date(now.getTime() + 366 * 86_400_000));
+  if (startDate > latestStart) throw new Error("Start billing within the next year.");
+  const dueInDays = Number(source.dueInDays);
+  if (!Number.isInteger(dueInDays) || dueInDays < 0 || dueInDays > MAX_DUE_IN_DAYS)
+    throw new Error(`Give customers 0 to ${MAX_DUE_IN_DAYS} days to pay.`);
+  const rawCount = source.endAfterCount;
+  let endAfterCount: number | null = null;
+  if (rawCount !== null && rawCount !== undefined && rawCount !== "") {
+    endAfterCount = Number(rawCount);
+    if (!Number.isInteger(endAfterCount) || endAfterCount < 1 || endAfterCount > MAX_RECURRING_COUNT)
+      throw new Error(`Stop after 1 to ${MAX_RECURRING_COUNT} invoices, or leave it open.`);
+  }
+  // Reuse the invoice rules for recipient, title, message and line items.
+  const invoice = normalizeInvoiceInput({ ...source, dueDate: startDate, send: true }, now);
+  return {
+    recipientName: invoice.recipientName,
+    recipientEmail: invoice.recipientEmail,
+    recipientId: invoice.recipientId,
+    title: invoice.title,
+    message: invoice.message,
+    lineItems: invoice.lineItems,
+    totalCents: invoice.totalCents,
+    frequency,
+    startDate,
+    anchorDay: dayParts(startDate).date,
+    dueInDays,
+    endAfterCount,
+  };
+}

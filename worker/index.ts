@@ -10,6 +10,7 @@ import { runNotificationSweeps } from "../lib/notification-sweeps";
 import { sweepGoogleProfileAlerts } from "../lib/google-profile-alerts";
 import { syncMetaAdsInsights } from "../lib/meta-ads-sync";
 import { advanceMetaAdsBackfills } from "../lib/meta-ads-backfill";
+import { runRecurringSquareBilling } from "../db/supabase-square";
 import { legacyPasswordResetRedirect } from "../lib/password-recovery-url";
 
 interface Env {
@@ -140,6 +141,15 @@ const worker = {
     ctx.waitUntil(
       advanceMetaAdsBackfills().catch(() => {
         console.error("Meta Ads backfill could not enumerate open runs.");
+      }),
+    );
+    // Recurring Square invoices go out on their billing day. Each plan claims
+    // its period before sending, so an overlapping tick cannot bill twice.
+    // Per-plan failures are recorded on the plan; this only logs a failure to
+    // list due plans, without the exception (it can carry connection details).
+    ctx.waitUntil(
+      runRecurringSquareBilling().catch(() => {
+        console.error("Recurring Square billing could not list due plans.");
       }),
     );
   },

@@ -9,6 +9,7 @@ import {
   invoiceDisplayState,
   isoDay,
   parseMoneyToCents,
+  type RecurringFrequency,
 } from "../../../lib/square-core";
 import { Badge, EmptyState, Field, Modal, dateTime, shortDate } from "../ui";
 
@@ -20,7 +21,14 @@ type Line = { key: number; name: string; quantity: string; unitPrice: string };
 
 /** What a new invoice starts from: a won job, an earlier invoice, or nothing. */
 type InvoicePreset = {
-  source: "blank" | "job" | "repeat";
+  source: "blank" | "job" | "repeat" | "plan";
+  /** Editing an existing recurring plan. */
+  planId?: string;
+  /** Start with "Repeats" set to this. */
+  repeat?: RecurringFrequency;
+  startDate?: string | null;
+  dueInDays?: number;
+  endAfterCount?: number | null;
   recipientId?: string | null;
   recipientName?: string;
   recipientEmail?: string;
@@ -28,6 +36,22 @@ type InvoicePreset = {
   message?: string | null;
   lines?: { name: string; quantity: number; unitCents: number }[];
 };
+
+type RecurringSubmit = {
+  planId: string | null;
+  frequency: RecurringFrequency;
+  startDate: string;
+  dueInDays: number;
+  endAfterCount: number | null;
+};
+
+const REPEAT_OPTIONS: { value: RecurringFrequency; label: string; short: string }[] = [
+  { value: "weekly", label: "Every week", short: "weekly" },
+  { value: "biweekly", label: "Every 2 weeks", short: "every 2 weeks" },
+  { value: "monthly", label: "Every month", short: "monthly" },
+  { value: "quarterly", label: "Every 3 months", short: "every 3 months" },
+  { value: "yearly", label: "Every year", short: "yearly" },
+];
 
 const DUE_PRESETS = [
   { label: "Today", days: 0 },
@@ -383,6 +407,126 @@ export function SquareWorkspace({ scope }: { scope: SquareScopeChoice }) {
             </section>
           ) : null}
 
+          {data.canInvoice ? (
+            <section className="crm-panel crm-square-recurring">
+              <header>
+                <div>
+                  <h3>Recurring clients</h3>
+                  <span>
+                    Customers billed on a schedule. BrizBuilder sends each
+                    invoice through Square on the billing day, around 9 am
+                    Eastern.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="crm-button-secondary"
+                  disabled={needsReconnect}
+                  onClick={() => setCreating({ source: "blank", repeat: "monthly" })}
+                >
+                  <Repeat aria-hidden="true" /> Set up recurring
+                </button>
+              </header>
+              {data.recurringPlans.length ? (
+                <ul>
+                  {data.recurringPlans.map((plan) => {
+                    const planBusy = busy === plan.id;
+                    const setStatus = (change: "pause" | "resume" | "end", done: string) =>
+                      void act({ action: "recurring_status", planId: plan.id, change }, done, plan.id);
+                    return (
+                      <li key={plan.id} className={plan.status === "paused" ? "is-paused" : undefined}>
+                        <div className="crm-square-plan-copy">
+                          <strong>{plan.recipientName}</strong>
+                          <small>
+                            {plan.title} · {plan.scheduleLabel}
+                          </small>
+                          {plan.lastError ? (
+                            <small className="crm-square-row-error">{plan.lastError}</small>
+                          ) : null}
+                        </div>
+                        <div className="crm-square-plan-amount">
+                          <strong>{formatMoney(plan.amountCents, currency)}</strong>
+                          <small>
+                            {plan.invoicesCreated} billed
+                            {plan.endAfterCount ? ` of ${plan.endAfterCount}` : ""}
+                          </small>
+                        </div>
+                        <div className="crm-square-plan-next">
+                          {plan.status === "paused" ? (
+                            <Badge tone="orange">Paused</Badge>
+                          ) : (
+                            <>
+                              <small>Next invoice</small>
+                              <strong>{plan.nextRunOn ? dayLabel(plan.nextRunOn) : "—"}</strong>
+                            </>
+                          )}
+                        </div>
+                        <div className="crm-square-actions">
+                          <button
+                            type="button"
+                            disabled={planBusy}
+                            onClick={() =>
+                              setCreating({
+                                source: "plan",
+                                planId: plan.id,
+                                repeat: plan.frequency,
+                                recipientId: plan.recipientId,
+                                recipientName: plan.recipientName,
+                                recipientEmail: plan.recipientEmail,
+                                title: plan.title,
+                                message: plan.message,
+                                lines: plan.lineItems,
+                                startDate: plan.nextRunOn,
+                                dueInDays: plan.dueInDays,
+                                endAfterCount: plan.endAfterCount,
+                              })
+                            }
+                          >
+                            Edit
+                          </button>
+                          {plan.status === "active" ? (
+                            <button
+                              type="button"
+                              disabled={planBusy}
+                              onClick={() => setStatus("pause", `Billing for ${plan.recipientName} is paused.`)}
+                            >
+                              Pause
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={planBusy}
+                              onClick={() => setStatus("resume", `Billing for ${plan.recipientName} is back on.`)}
+                            >
+                              Resume
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="danger"
+                            disabled={planBusy}
+                            onClick={() =>
+                              window.confirm(
+                                `Stop billing ${plan.recipientName}? Invoices already sent are not affected.`,
+                              ) && setStatus("end", `Recurring billing for ${plan.recipientName} stopped.`)
+                            }
+                          >
+                            Stop
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="crm-square-recurring-empty">
+                  No recurring clients yet. Set one up, or use Bill again on
+                  any invoice and choose how often it repeats.
+                </p>
+              )}
+            </section>
+          ) : null}
+
           <section className="crm-panel crm-square-invoices">
             <header>
               <div>
@@ -424,6 +568,11 @@ export function SquareWorkspace({ scope }: { scope: SquareScopeChoice }) {
                             <small>
                               {invoice.invoiceNumber ? `#${invoice.invoiceNumber} · ` : ""}
                               Created {shortDate(invoice.createdAt)}
+                              {invoice.recurringPlanId ? (
+                                <span className="crm-square-attachment">
+                                  <Repeat aria-hidden="true" /> Recurring
+                                </span>
+                              ) : null}
                               {invoice.attachmentName ? (
                                 <span className="crm-square-attachment">
                                   <FileText aria-hidden="true" /> {invoice.attachmentName}
@@ -585,15 +734,27 @@ export function SquareWorkspace({ scope }: { scope: SquareScopeChoice }) {
           preset={creating}
           busy={busy === "create"}
           onClose={() => setCreating(null)}
-          onSubmit={async (invoice, file) => {
-            const ok = await act(
-              { action: "create_invoice", invoice },
-              invoice.send
-                ? `Invoice sent to ${String(invoice.recipientEmail)}.`
-                : "Draft saved. Send it when you are ready.",
-              "create",
-              file,
-            );
+          onSubmit={async (invoice, file, plan) => {
+            const ok = plan
+              ? await act(
+                  plan.planId
+                    ? { action: "update_recurring", planId: plan.planId, plan: { ...invoice, ...plan } }
+                    : { action: "create_recurring", plan: { ...invoice, ...plan } },
+                  plan.planId
+                    ? "Recurring plan updated."
+                    : plan.startDate <= today
+                      ? `Recurring billing started. The first invoice went to ${String(invoice.recipientEmail)}.`
+                      : `Recurring billing set. The first invoice goes out ${dayLabel(plan.startDate)}.`,
+                  "create",
+                )
+              : await act(
+                  { action: "create_invoice", invoice },
+                  invoice.send
+                    ? `Invoice sent to ${String(invoice.recipientEmail)}.`
+                    : "Draft saved. Send it when you are ready.",
+                  "create",
+                  file,
+                );
             if (ok) setCreating(null);
             return ok;
           }}
@@ -624,7 +785,11 @@ function NewInvoiceModal({
   preset: InvoicePreset;
   busy: boolean;
   onClose: () => void;
-  onSubmit: (invoice: Record<string, unknown>, file: File | null) => Promise<boolean>;
+  onSubmit: (
+    invoice: Record<string, unknown>,
+    file: File | null,
+    plan: RecurringSubmit | null,
+  ) => Promise<boolean>;
 }) {
   const itemListId = useId();
   const [recipientId, setRecipientId] = useState(() =>
@@ -660,6 +825,13 @@ function NewInvoiceModal({
   });
   const dueIn = (days: number) => isoDay(new Date(dates.now + days * 86_400_000));
   const [dueDate, setDueDate] = useState(() => dueIn(14));
+  const editingPlan = Boolean(preset.planId);
+  const [repeat, setRepeat] = useState<RecurringFrequency | "">(preset.repeat ?? "");
+  const [startDate, setStartDate] = useState(() =>
+    preset.startDate && preset.startDate > dates.today ? preset.startDate : dates.today,
+  );
+  const [payWithin, setPayWithin] = useState(String(preset.dueInDays ?? 14));
+  const [endAfter, setEndAfter] = useState(preset.endAfterCount ? String(preset.endAfterCount) : "");
 
   const title = customTitle || autoTitle(lines);
   const totalCents = lines.reduce((sum, line) => {
@@ -671,12 +843,16 @@ function NewInvoiceModal({
   }, 0);
   const usedNames = new Set(lines.map((line) => line.name.trim().toLowerCase()));
   const quickItems = savedItems.filter((item) => !usedNames.has(item.name.toLowerCase())).slice(0, 6);
-  const heading =
-    preset.source === "job"
-      ? "Invoice a won job"
-      : preset.source === "repeat"
-        ? "Bill again"
-        : "New invoice";
+  const heading = editingPlan
+    ? "Edit recurring plan"
+    : repeat
+      ? "Set up recurring billing"
+      : preset.source === "job"
+        ? "Invoice a won job"
+        : preset.source === "repeat"
+          ? "Bill again"
+          : "New invoice";
+  const repeatLabel = REPEAT_OPTIONS.find((option) => option.value === repeat)?.short ?? "";
 
   function chooseRecipient(id: string) {
     setRecipientId(id);
@@ -760,7 +936,16 @@ function NewInvoiceModal({
         })),
         send: !draft,
       },
-      file,
+      repeat ? null : file,
+      repeat
+        ? {
+            planId: preset.planId ?? null,
+            frequency: repeat,
+            startDate,
+            dueInDays: Number(payWithin),
+            endAfterCount: endAfter ? Number(endAfter) : null,
+          }
+        : null,
     );
   }
 
@@ -893,31 +1078,87 @@ function NewInvoiceModal({
         </fieldset>
 
         <fieldset className="crm-field-span crm-square-due">
-          <legend>3 · When it&apos;s due</legend>
-          <div className="crm-square-due-row">
-            {DUE_PRESETS.map((option) => {
-              const day = dueIn(option.days);
-              return (
-                <button
-                  key={option.label}
-                  type="button"
-                  className="crm-square-chip"
-                  aria-pressed={dueDate === day}
-                  onClick={() => setDueDate(day)}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-            <input
-              aria-label="Due date"
-              type="date"
-              value={dueDate}
-              min={dates.today}
-              onChange={(event) => setDueDate(event.target.value)}
-              required
-            />
+          <legend>3 · {repeat ? "How often" : "When it's due"}</legend>
+          <div className="crm-square-repeat">
+            <label>
+              <span>Repeats</span>
+              <select value={repeat} onChange={(event) => setRepeat(event.target.value as RecurringFrequency | "")}>
+                {editingPlan ? null : <option value="">Does not repeat (one invoice)</option>}
+                {REPEAT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
+          {repeat ? (
+            <div className="crm-square-schedule">
+              <label>
+                <span>{editingPlan ? "Next invoice" : "First invoice"}</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  min={dates.today}
+                  onChange={(event) => setStartDate(event.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                <span>Customer pays within</span>
+                <select value={payWithin} onChange={(event) => setPayWithin(event.target.value)}>
+                  <option value="0">Due on receipt</option>
+                  <option value="7">7 days</option>
+                  <option value="14">14 days</option>
+                  <option value="30">30 days</option>
+                </select>
+              </label>
+              <label>
+                <span>Stop after</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={500}
+                  step={1}
+                  value={endAfter}
+                  onChange={(event) => setEndAfter(event.target.value)}
+                  placeholder="Never"
+                  aria-describedby="square-stop-after-help"
+                />
+              </label>
+              <small id="square-stop-after-help">
+                {startDate === dates.today && !editingPlan
+                  ? "The first invoice goes out as soon as you save, then "
+                  : `The ${editingPlan ? "next" : "first"} invoice goes out ${dayLabel(startDate)}, then `}
+                {repeatLabel}. Leave Stop after empty to bill until you stop it.
+              </small>
+            </div>
+          ) : (
+            <div className="crm-square-due-row">
+              {DUE_PRESETS.map((option) => {
+                const day = dueIn(option.days);
+                return (
+                  <button
+                    key={option.label}
+                    type="button"
+                    className="crm-square-chip"
+                    aria-pressed={dueDate === day}
+                    onClick={() => setDueDate(day)}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+              <input
+                aria-label="Due date"
+                type="date"
+                value={dueDate}
+                min={dates.today}
+                onChange={(event) => setDueDate(event.target.value)}
+                required
+              />
+            </div>
+          )}
         </fieldset>
 
         <details className="crm-field-span crm-square-more">
@@ -926,7 +1167,7 @@ function NewInvoiceModal({
             <small>
               {title ? `Title: ${title}` : "Title fills in from the first line"}
               {message.trim() ? " · message included" : ""}
-              {file ? ` · ${file.name}` : ""}
+              {file && !repeat ? ` · ${file.name}` : ""}
             </small>
           </summary>
           <div className="crm-square-more-body">
@@ -951,6 +1192,7 @@ function NewInvoiceModal({
                 <small>Same message as your last invoice. Edit it or clear it.</small>
               ) : null}
             </Field>
+            {repeat ? null : (
             <Field label="Contract or other PDF to send with it (optional)" span>
               <input
                 type="file"
@@ -962,6 +1204,7 @@ function NewInvoiceModal({
                 and BrizBuilder does not keep a copy.
               </small>
             </Field>
+            )}
           </div>
         </details>
 
@@ -971,31 +1214,41 @@ function NewInvoiceModal({
           </p>
         ) : null}
         <div className="crm-field-span crm-square-summary">
-          <span>Total</span>
+          <span>{repeat ? `Total, ${repeatLabel}` : "Total"}</span>
           <strong>{formatMoney(totalCents, currency)}</strong>
           <small>
             {recipientEmail ? `Square emails it to ${recipientEmail}` : "Square emails it to the customer"}
-            {` · due ${dueDate === dates.today ? "today" : dayLabel(dueDate)}`}
+            {repeat
+              ? ` · each invoice due ${payWithin === "0" ? "on receipt" : `in ${payWithin} days`}`
+              : ` · due ${dueDate === dates.today ? "today" : dayLabel(dueDate)}`}
           </small>
         </div>
         <footer>
           <button className="crm-button-secondary" type="button" onClick={onClose}>
             Cancel
           </button>
-          <button
-            className="crm-button-secondary"
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              saveAsDraft.current = true;
-              // requestSubmit runs the browser's required-field checks first.
-              formRef.current?.requestSubmit();
-            }}
-          >
-            Save draft
-          </button>
+          {repeat ? null : (
+            <button
+              className="crm-button-secondary"
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                saveAsDraft.current = true;
+                // requestSubmit runs the browser's required-field checks first.
+                formRef.current?.requestSubmit();
+              }}
+            >
+              Save draft
+            </button>
+            )}
           <button className="crm-button-primary" type="submit" disabled={busy}>
-            {busy ? "Working…" : `Send ${formatMoney(totalCents, currency)}`}
+            {busy
+              ? "Working…"
+              : editingPlan
+                ? "Save changes"
+                : repeat
+                  ? `Start billing ${formatMoney(totalCents, currency)} ${repeatLabel}`
+                  : `Send ${formatMoney(totalCents, currency)}`}
           </button>
         </footer>
       </form>

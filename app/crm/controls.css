@@ -1269,6 +1269,37 @@
   #crm-app .crm-square-ready-copy :is(strong, small) { white-space: normal; }
   #crm-app .crm-square-due-row input[type="date"] { flex: 1 1 100%; margin: 4px 0 0; }
 }
+/* Recurring clients: saved invoices the cron sends on a schedule. */
+#crm-app .crm-square-recurring { overflow: hidden; }
+#crm-app .crm-square-recurring > header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 16px; padding: 20px 24px; border-bottom: 1px solid var(--crm-line); }
+#crm-app .crm-square-recurring > header h3 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; color: var(--crm-ink); }
+#crm-app .crm-square-recurring > header span { display: block; max-width: 560px; font-size: 13px; line-height: 20px; color: var(--crm-muted); }
+#crm-app .crm-square-recurring > header button { --btn-h: 40px; --btn-px: 16px; --btn-fs: 13px; }
+#crm-app .crm-square-recurring > ul { margin: 0; padding: 0; list-style: none; }
+#crm-app .crm-square-recurring li { display: grid; grid-template-columns: minmax(0, 1fr) 120px 110px auto; align-items: center; gap: 16px; padding: 14px 24px; border-top: 1px solid var(--crm-line); }
+#crm-app .crm-square-recurring li:first-child { border-top: 0; }
+#crm-app .crm-square-recurring li.is-paused .crm-square-plan-copy, #crm-app .crm-square-recurring li.is-paused .crm-square-plan-amount { opacity: .6; }
+#crm-app .crm-square-recurring li :is(strong, small) { display: block; }
+#crm-app .crm-square-recurring li strong { font-weight: 600; color: var(--crm-ink); }
+#crm-app .crm-square-recurring li small { font-size: 12px; line-height: 18px; color: var(--crm-muted); }
+#crm-app .crm-square-recurring li small.crm-square-row-error { color: #b4233c; }
+#crm-app .crm-square-plan-copy { min-width: 0; }
+#crm-app .crm-square-plan-amount strong, #crm-app .crm-square-plan-next strong { font-variant-numeric: tabular-nums; }
+#crm-app .crm-square-recurring-empty { margin: 0; padding: 18px 24px; font-size: 13px; line-height: 20px; color: var(--crm-muted); }
+#crm-app .crm-square-repeat label, #crm-app .crm-square-schedule label { display: grid; gap: 6px; font-size: 13px; color: var(--crm-ink); }
+#crm-app .crm-square-repeat { margin-bottom: 10px; max-width: 320px; }
+#crm-app .crm-square-schedule { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+#crm-app .crm-square-schedule > small { grid-column: 1 / -1; margin: 0; }
+@media(max-width: 760px) {
+  #crm-app .crm-square-recurring > header, #crm-app .crm-square-recurring li { padding-left: 16px; padding-right: 16px; }
+  #crm-app .crm-square-recurring li { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; }
+  #crm-app .crm-square-plan-amount { text-align: right; }
+  #crm-app .crm-square-plan-next { grid-column: 1 / -1; display: flex; gap: 6px; align-items: baseline; }
+  #crm-app .crm-square-recurring li .crm-square-actions { grid-column: 1 / -1; text-align: left; white-space: normal; }
+  #crm-app .crm-square-recurring li .crm-square-actions :is(a, button) { margin: 0 6px 0 0; }
+  #crm-app .crm-square-schedule { grid-template-columns: 1fr; }
+  #crm-app .crm-square-repeat { max-width: none; }
+}
 /* Wide screens say "Due" in the column header, so the cell drops the word. */
 @media(min-width: 601px) { #crm-app .crm-square-due-label { display: none; } }
 

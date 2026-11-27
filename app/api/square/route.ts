@@ -1,13 +1,16 @@
 import { getChatGPTUser } from "../../chatgpt-auth";
 import {
   cancelSquareInvoiceForScope,
+  createRecurringPlan,
   createSquareInvoiceForScope,
   deleteSquareInvoiceForScope,
   disconnectSquare,
   getSquareWorkspace,
   parseSquareScope,
   sendSquareInvoice,
+  setRecurringPlanStatus,
   syncSquareInvoices,
+  updateRecurringPlan,
   type InvoiceFile,
 } from "../../../db/supabase-square";
 import { MAX_ATTACHMENT_BYTES } from "../../../lib/square-core";
@@ -115,6 +118,15 @@ export async function POST(request: Request) {
         break;
       case "delete_invoice":
         result = await deleteSquareInvoiceForScope(user, scope, input.invoiceId);
+        break;
+      case "create_recurring":
+        result = await createRecurringPlan(user, scope, input.plan);
+        break;
+      case "update_recurring":
+        result = await updateRecurringPlan(user, scope, input.planId, input.plan);
+        break;
+      case "recurring_status":
+        result = await setRecurringPlanStatus(user, scope, input.planId, input.change);
         break;
       case "sync":
         result = await syncSquareInvoices(user, scope);

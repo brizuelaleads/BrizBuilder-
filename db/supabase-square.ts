@@ -44,7 +44,14 @@ import {
   isPdf,
   isoDay,
   normalizeInvoiceInput,
+  normalizeRecurringInput,
+  addDays,
+  isRecurringDue,
+  nextRecurringDayAfter,
+  recurringLabel,
   safePdfName,
+  type InvoiceInput,
+  type RecurringFrequency,
   type SquareInvoiceSummary,
   type SquareWebhookEvent,
 } from "../lib/square-core";
@@ -289,6 +296,8 @@ export type SquareInvoiceView = {
   recipientId: string | null;
   message: string | null;
   lineItems: { name: string; quantity: number; unitCents: number }[];
+  /** Set when a recurring plan created this invoice. */
+  recurringPlanId: string | null;
 };
 
 function storedLineItems(value: unknown): SquareInvoiceView["lineItems"] {
@@ -330,6 +339,54 @@ function invoiceView(row: Row, connection: Row | null): SquareInvoiceView {
     recipientId: row.contact_id ?? row.billed_client_id ?? null,
     message: row.message ?? null,
     lineItems: storedLineItems(row.line_items),
+    recurringPlanId: row.recurring_plan_id ?? null,
+  };
+}
+
+export type SquareRecurringPlanView = {
+  id: string;
+  recipientId: string | null;
+  recipientName: string;
+  recipientEmail: string;
+  title: string;
+  message: string | null;
+  lineItems: SquareInvoiceView["lineItems"];
+  amountCents: number;
+  frequency: RecurringFrequency;
+  scheduleLabel: string;
+  anchorDay: number;
+  dueInDays: number;
+  status: "active" | "paused" | "ended";
+  nextRunOn: string | null;
+  endAfterCount: number | null;
+  invoicesCreated: number;
+  lastRunAt: string | null;
+  lastError: string | null;
+};
+
+function recurringPlanView(row: Row): SquareRecurringPlanView {
+  const frequency = String(row.frequency) as RecurringFrequency;
+  const anchorDay = Number(row.anchor_day);
+  const nextRunOn = row.next_run_on ? String(row.next_run_on) : null;
+  return {
+    id: String(row.id),
+    recipientId: row.contact_id ?? row.billed_client_id ?? null,
+    recipientName: String(row.recipient_name),
+    recipientEmail: String(row.recipient_email),
+    title: String(row.title),
+    message: row.message ?? null,
+    lineItems: storedLineItems(row.line_items),
+    amountCents: Number(row.amount_cents),
+    frequency,
+    scheduleLabel: recurringLabel(frequency, anchorDay, nextRunOn),
+    anchorDay,
+    dueInDays: Number(row.due_in_days),
+    status: row.status,
+    nextRunOn,
+    endAfterCount: row.end_after_count ?? null,
+    invoicesCreated: Number(row.invoices_created ?? 0),
+    lastRunAt: row.last_run_at ?? null,
+    lastError: row.last_error ?? null,
   };
 }
 
@@ -462,6 +519,8 @@ export type SquareWorkspace = {
   savedItems: { name: string; unitCents: number }[];
   /** The message on the most recent invoice, offered as the default. */
   lastMessage: string | null;
+  /** Customers billed on a schedule, newest first. Ended plans are left out. */
+  recurringPlans: SquareRecurringPlanView[];
   totals: { outstandingCents: number; overdueCents: number; paidLast30DaysCents: number };
 };
 
@@ -573,6 +632,7 @@ export async function getSquareWorkspace(
     lastMessage: canInvoice
       ? (rows.find((row) => row.status !== "failed" && row.message)?.message ?? null)
       : null,
+    recurringPlans: canInvoice ? await recurringPlansFor(context.organizationId, clientId) : [],
     totals,
   };
 }
@@ -878,66 +938,42 @@ function requireSameAccount(row: Row, connection: Row | null): asserts connectio
 
 export type InvoiceFile = { name: string; bytes: Uint8Array };
 
-export async function createSquareInvoiceForScope(
-  user: ChatGPTUser,
-  scope: SquareScope,
-  rawInput: unknown,
-  file: InvoiceFile | null,
-): Promise<{ invoiceId: string; status: string }> {
-  const { context, clientId } = await authorize(user, scope, "invoice");
-  const input = normalizeInvoiceInput(rawInput);
-  if (file && !isPdf(file.bytes))
-    throw new Error("The attachment must be a PDF file.");
-
-  const connection = await connectionFor(context.organizationId, clientId);
-  if (!isLive(connection)) throw new Error("Connect Square first.");
-  if (!connection.location_id || !connection.currency)
-    throw new Error(
-      "This Square account has no active location. Add one in Square, then reconnect.",
-    );
-  // Square's sandbox accepts at most 1 KB of attachments per invoice, which no
-  // real contract fits. Refuse before anything is created rather than leave a
-  // half-built invoice behind.
-  if (file && connection.environment === "sandbox" && file.bytes.byteLength > SANDBOX_ATTACHMENT_LIMIT_BYTES)
-    throw new Error(
-      "Square's test mode only accepts attachments up to 1 KB. Send this without the PDF while testing; attachments work once Square is in live mode.",
-    );
-
-  // The recipient link is checked against the tenant rather than trusted.
-  let contactId: string | null = null;
-  let billedClientId: string | null = null;
-  if (input.recipientId) {
-    if (clientId) {
-      const contact = await assertOk(
-        supabase()
-          .from("contacts")
-          .select("id")
-          .eq("id", input.recipientId)
-          .eq("organization_id", context.organizationId)
-          .eq("client_id", clientId)
-          .maybeSingle(),
-      );
-      contactId = contact ? input.recipientId : null;
-    } else {
-      const billed = await assertOk(
-        supabase()
-          .from("clients")
-          .select("id")
-          .eq("id", input.recipientId)
-          .eq("organization_id", context.organizationId)
-          .maybeSingle(),
-      );
-      billedClientId = billed ? input.recipientId : null;
-    }
-  }
-
+/**
+ * Creates the invoice row, builds it in Square and (unless it is a draft)
+ * sends it. Callers have already authorized the request and checked the
+ * recipient link against the tenant; the recurring runner passes the links a
+ * plan stored when it was saved, which were checked the same way.
+ */
+async function issueInvoice({
+  organizationId,
+  clientId,
+  connection,
+  input,
+  file,
+  contactId,
+  billedClientId,
+  createdByEmail,
+  recurring,
+  audit,
+}: {
+  organizationId: string;
+  clientId: string | null;
+  connection: Row;
+  input: InvoiceInput;
+  file: InvoiceFile | null;
+  contactId: string | null;
+  billedClientId: string | null;
+  createdByEmail: string;
+  recurring: { planId: string; period: string } | null;
+  audit: (action: string, invoiceId: string, metadata: Record<string, unknown>) => Promise<void>;
+}): Promise<{ invoiceId: string; status: string }> {
   const accessToken = await liveAccessToken(connection);
   const fileName = file ? safePdfName(file.name) : null;
   const row = (await assertOk(
     supabase()
       .from("square_invoices")
       .insert({
-        organization_id: context.organizationId,
+        organization_id: organizationId,
         connection_id: connection.id,
         client_id: clientId,
         billed_client_id: billedClientId,
@@ -955,7 +991,9 @@ export async function createSquareInvoiceForScope(
         status: "draft",
         attachment_name: fileName,
         attachment_bytes: file ? file.bytes.byteLength : null,
-        created_by_email: context.email,
+        created_by_email: createdByEmail,
+        recurring_plan_id: recurring?.planId ?? null,
+        recurring_period: recurring?.period ?? null,
       })
       .select("*")
       .single(),
@@ -1038,7 +1076,7 @@ export async function createSquareInvoiceForScope(
           updated_at: new Date().toISOString(),
         })
         .eq("id", invoiceId)
-        .eq("organization_id", context.organizationId),
+        .eq("organization_id", organizationId),
     );
     throw new Error(message);
   }
@@ -1053,18 +1091,88 @@ export async function createSquareInvoiceForScope(
         square_customer_id: result.customerId,
       })
       .eq("id", invoiceId)
-      .eq("organization_id", context.organizationId),
+      .eq("organization_id", organizationId),
   );
   await applySummary(row, result.final);
-  await writeSupabaseAuditEvent(
-    context,
+  await audit(
     input.send ? "square.invoice.sent" : "square.invoice.drafted",
-    "square_invoice",
     invoiceId,
-    { amountCents: input.totalCents, currency: connection.currency, attachment: Boolean(file) },
-    clientId,
+    {
+      amountCents: input.totalCents,
+      currency: connection.currency,
+      attachment: Boolean(file),
+      ...(recurring ? { recurringPlanId: recurring.planId } : {}),
+    },
   );
   return { invoiceId, status: result.final.status };
+}
+
+export async function createSquareInvoiceForScope(
+  user: ChatGPTUser,
+  scope: SquareScope,
+  rawInput: unknown,
+  file: InvoiceFile | null,
+): Promise<{ invoiceId: string; status: string }> {
+  const { context, clientId } = await authorize(user, scope, "invoice");
+  const input = normalizeInvoiceInput(rawInput);
+  if (file && !isPdf(file.bytes))
+    throw new Error("The attachment must be a PDF file.");
+
+  const connection = await connectionFor(context.organizationId, clientId);
+  if (!isLive(connection)) throw new Error("Connect Square first.");
+  if (!connection.location_id || !connection.currency)
+    throw new Error(
+      "This Square account has no active location. Add one in Square, then reconnect.",
+    );
+  // Square's sandbox accepts at most 1 KB of attachments per invoice, which no
+  // real contract fits. Refuse before anything is created rather than leave a
+  // half-built invoice behind.
+  if (file && connection.environment === "sandbox" && file.bytes.byteLength > SANDBOX_ATTACHMENT_LIMIT_BYTES)
+    throw new Error(
+      "Square's test mode only accepts attachments up to 1 KB. Send this without the PDF while testing; attachments work once Square is in live mode.",
+    );
+
+  // The recipient link is checked against the tenant rather than trusted.
+  let contactId: string | null = null;
+  let billedClientId: string | null = null;
+  if (input.recipientId) {
+    if (clientId) {
+      const contact = await assertOk(
+        supabase()
+          .from("contacts")
+          .select("id")
+          .eq("id", input.recipientId)
+          .eq("organization_id", context.organizationId)
+          .eq("client_id", clientId)
+          .maybeSingle(),
+      );
+      contactId = contact ? input.recipientId : null;
+    } else {
+      const billed = await assertOk(
+        supabase()
+          .from("clients")
+          .select("id")
+          .eq("id", input.recipientId)
+          .eq("organization_id", context.organizationId)
+          .maybeSingle(),
+      );
+      billedClientId = billed ? input.recipientId : null;
+    }
+  }
+
+  return issueInvoice({
+    organizationId: context.organizationId,
+    clientId,
+    connection,
+    input,
+    file,
+    contactId,
+    billedClientId,
+    createdByEmail: context.email,
+    recurring: null,
+    audit: (action, invoiceId, metadata) =>
+      writeSupabaseAuditEvent(context, action, "square_invoice", invoiceId, metadata, clientId),
+  });
 }
 
 export async function sendSquareInvoice(
@@ -1362,4 +1470,350 @@ export async function handleSquareWebhook(event: SquareWebhookEvent) {
     );
     throw error;
   }
+}
+
+// ---- Recurring plans ------------------------------------------------------
+//
+// A plan is a saved invoice plus a schedule. People manage plans through the
+// same authorize() gate as invoices; the Worker cron then sends each billing
+// period's invoice through issueInvoice() with no signed-in user, using only
+// what the plan stored when an authorized person saved it.
+
+const MAX_PLANS_PER_SWEEP = 25;
+const RECURRING_ACTOR = "Recurring billing";
+
+async function recurringPlansFor(organizationId: string, clientId: string | null) {
+  const rows = ((await assertOk(
+    scoped(
+      supabase()
+        .from("square_recurring_plans")
+        .select("*")
+        .eq("organization_id", organizationId),
+      clientId,
+    )
+      .neq("status", "ended")
+      .order("created_at", { ascending: false })
+      .limit(200),
+  )) ?? []) as Row[];
+  return rows.map(recurringPlanView);
+}
+
+async function planFor(organizationId: string, clientId: string | null, planId: unknown) {
+  if (typeof planId !== "string" || !/^[0-9a-f-]{36}$/i.test(planId))
+    throw new Error("That recurring plan was not found.");
+  const row = (await assertOk(
+    scoped(
+      supabase()
+        .from("square_recurring_plans")
+        .select("*")
+        .eq("id", planId)
+        .eq("organization_id", organizationId),
+      clientId,
+    ).maybeSingle(),
+  )) as Row | null;
+  if (!row) throw new Error("That recurring plan was not found.");
+  return row;
+}
+
+/** A recipient picked in the browser, re-checked against the tenant. */
+async function checkedRecipient(
+  organizationId: string,
+  clientId: string | null,
+  recipientId: string | null,
+): Promise<{ contactId: string | null; billedClientId: string | null }> {
+  if (!recipientId) return { contactId: null, billedClientId: null };
+  if (clientId) {
+    const contact = await assertOk(
+      supabase()
+        .from("contacts")
+        .select("id")
+        .eq("id", recipientId)
+        .eq("organization_id", organizationId)
+        .eq("client_id", clientId)
+        .maybeSingle(),
+    );
+    return { contactId: contact ? recipientId : null, billedClientId: null };
+  }
+  const billed = await assertOk(
+    supabase()
+      .from("clients")
+      .select("id")
+      .eq("id", recipientId)
+      .eq("organization_id", organizationId)
+      .maybeSingle(),
+  );
+  return { contactId: null, billedClientId: billed ? recipientId : null };
+}
+
+function planFields(input: ReturnType<typeof normalizeRecurringInput>) {
+  return {
+    recipient_name: input.recipientName,
+    recipient_email: input.recipientEmail,
+    title: input.title,
+    message: input.message,
+    line_items: input.lineItems,
+    amount_cents: input.totalCents,
+    frequency: input.frequency,
+    anchor_day: input.anchorDay,
+    due_in_days: input.dueInDays,
+    end_after_count: input.endAfterCount,
+    next_run_on: input.startDate,
+  };
+}
+
+export async function createRecurringPlan(user: ChatGPTUser, scope: SquareScope, raw: unknown) {
+  const { context, clientId } = await authorize(user, scope, "invoice");
+  const input = normalizeRecurringInput(raw);
+  const connection = await connectionFor(context.organizationId, clientId);
+  if (!isLive(connection)) throw new Error("Connect Square first.");
+  const links = await checkedRecipient(context.organizationId, clientId, input.recipientId);
+  const row = (await assertOk(
+    supabase()
+      .from("square_recurring_plans")
+      .insert({
+        organization_id: context.organizationId,
+        client_id: clientId,
+        billed_client_id: links.billedClientId,
+        contact_id: links.contactId,
+        ...planFields(input),
+        status: "active",
+        created_by_email: context.email,
+      })
+      .select("*")
+      .single(),
+  )) as Row;
+  await writeSupabaseAuditEvent(
+    context,
+    "square.recurring.created",
+    "square_recurring_plan",
+    String(row.id),
+    { amountCents: input.totalCents, frequency: input.frequency, startDate: input.startDate },
+    clientId,
+  );
+  // A plan that starts today sends its first invoice now, so the person who
+  // set it up sees it go out rather than waiting for the next cron tick.
+  const now = new Date();
+  if (input.startDate <= isoDay(now)) {
+    const outcome = await runPlan(row, now);
+    if (outcome === "failed") {
+      const fresh = await planFor(context.organizationId, clientId, row.id);
+      throw new Error(
+        `The plan is saved, but the first invoice did not send: ${fresh.last_error ?? "Square did not accept it."}`,
+      );
+    }
+  }
+  return { planId: String(row.id) };
+}
+
+export async function updateRecurringPlan(
+  user: ChatGPTUser,
+  scope: SquareScope,
+  planId: unknown,
+  raw: unknown,
+) {
+  const { context, clientId } = await authorize(user, scope, "invoice");
+  const plan = await planFor(context.organizationId, clientId, planId);
+  if (plan.status === "ended") throw new Error("This plan has ended. Start a new one instead.");
+  const input = normalizeRecurringInput(raw);
+  const links = await checkedRecipient(context.organizationId, clientId, input.recipientId);
+  if (input.endAfterCount !== null && input.endAfterCount <= Number(plan.invoices_created))
+    throw new Error(
+      `This plan has already billed ${plan.invoices_created} times. Choose a higher number, or leave it open.`,
+    );
+  await assertOk(
+    supabase()
+      .from("square_recurring_plans")
+      .update({
+        ...planFields(input),
+        billed_client_id: links.billedClientId,
+        contact_id: links.contactId,
+        last_error: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", plan.id)
+      .eq("organization_id", context.organizationId),
+  );
+  await writeSupabaseAuditEvent(
+    context,
+    "square.recurring.updated",
+    "square_recurring_plan",
+    String(plan.id),
+    { amountCents: input.totalCents, frequency: input.frequency, nextRunOn: input.startDate },
+    clientId,
+  );
+  return { planId: String(plan.id) };
+}
+
+export async function setRecurringPlanStatus(
+  user: ChatGPTUser,
+  scope: SquareScope,
+  planId: unknown,
+  change: unknown,
+) {
+  const { context, clientId } = await authorize(user, scope, "invoice");
+  const plan = await planFor(context.organizationId, clientId, planId);
+  const today = isoDay(new Date());
+  let update: Row;
+  if (change === "pause" && plan.status === "active") update = { status: "paused" };
+  else if (change === "resume" && plan.status === "paused") {
+    // Billing days that passed while paused are skipped, not billed late.
+    const next = String(plan.next_run_on);
+    update = {
+      status: "active",
+      next_run_on:
+        next < today
+          ? nextRecurringDayAfter(next, today, plan.frequency, Number(plan.anchor_day))
+          : next,
+    };
+  } else if (change === "end" && plan.status !== "ended")
+    update = { status: "ended", next_run_on: null };
+  else throw new Error("That change does not apply to this plan.");
+  await assertOk(
+    supabase()
+      .from("square_recurring_plans")
+      .update({ ...update, updated_at: new Date().toISOString() })
+      .eq("id", plan.id)
+      .eq("organization_id", context.organizationId),
+  );
+  await writeSupabaseAuditEvent(
+    context,
+    `square.recurring.${change}`,
+    "square_recurring_plan",
+    String(plan.id),
+    {},
+    clientId,
+  );
+  return { status: update.status };
+}
+
+/**
+ * Sends one billing period's invoice for a plan. The period is claimed first
+ * by moving next_run_on forward only if it still holds the period being billed,
+ * so two overlapping runs cannot both send it (the unique index on
+ * square_invoices(recurring_plan_id, recurring_period) is the backstop).
+ */
+async function runPlan(plan: Row, now: Date): Promise<"sent" | "skipped" | "failed"> {
+  const organizationId = String(plan.organization_id);
+  const clientId: string | null = plan.client_id ?? null;
+  const today = isoDay(now);
+  const period = String(plan.next_run_on);
+
+  const connection = await connectionFor(organizationId, clientId);
+  if (!isLive(connection) || !connection.location_id || !connection.currency) {
+    // Not claimed: the period stays due and is billed once Square is back.
+    const message = "Square is not connected, so this plan is waiting. Reconnect Square and the invoice goes out within 15 minutes.";
+    if (plan.last_error !== message)
+      await assertOk(
+        supabase()
+          .from("square_recurring_plans")
+          .update({ last_error: message, updated_at: now.toISOString() })
+          .eq("id", plan.id),
+      );
+    return "skipped";
+  }
+
+  const billed = Number(plan.invoices_created ?? 0) + 1;
+  const finished = plan.end_after_count !== null && billed >= Number(plan.end_after_count);
+  const claimed = (await assertOk(
+    supabase()
+      .from("square_recurring_plans")
+      .update({
+        status: finished ? "ended" : "active",
+        next_run_on: finished
+          ? null
+          : nextRecurringDayAfter(period, today, plan.frequency, Number(plan.anchor_day)),
+        invoices_created: billed,
+        last_run_at: now.toISOString(),
+        updated_at: now.toISOString(),
+      })
+      .eq("id", plan.id)
+      .eq("status", "active")
+      .eq("next_run_on", period)
+      .select("id"),
+  )) as Row[] | null;
+  if (!claimed?.length) return "skipped";
+
+  const lineItems = storedLineItems(plan.line_items);
+  const input: InvoiceInput = {
+    recipientName: String(plan.recipient_name),
+    recipientEmail: String(plan.recipient_email),
+    recipientId: plan.contact_id ?? plan.billed_client_id ?? null,
+    title: String(plan.title),
+    message: plan.message ?? null,
+    dueDate: addDays(today, Number(plan.due_in_days)),
+    lineItems,
+    totalCents: lineItems.reduce((sum, item) => sum + item.quantity * item.unitCents, 0),
+    send: true,
+  };
+  try {
+    const result = await issueInvoice({
+      organizationId,
+      clientId,
+      connection,
+      input,
+      file: null,
+      contactId: plan.contact_id ?? null,
+      billedClientId: plan.billed_client_id ?? null,
+      createdByEmail: String(plan.created_by_email),
+      recurring: { planId: String(plan.id), period },
+      audit: async (action, invoiceId, metadata) => {
+        await assertOk(
+          supabase().from("audit_events").insert({
+            organization_id: organizationId,
+            client_id: clientId,
+            actor_email: RECURRING_ACTOR,
+            action,
+            record_type: "square_invoice",
+            record_id: invoiceId,
+            metadata,
+          }),
+        );
+      },
+    });
+    await assertOk(
+      supabase()
+        .from("square_recurring_plans")
+        .update({ last_invoice_id: result.invoiceId, last_error: null })
+        .eq("id", plan.id),
+    );
+    return "sent";
+  } catch (error) {
+    await assertOk(
+      supabase()
+        .from("square_recurring_plans")
+        .update({
+          last_error: `The ${period} invoice was not sent: ${friendly(error)}`.slice(0, 500),
+        })
+        .eq("id", plan.id),
+    );
+    return "failed";
+  }
+}
+
+/** Called by the Worker cron. Sends every plan whose billing day has arrived. */
+export async function runRecurringSquareBilling(now = new Date()) {
+  if (!getSquareRuntimeStatus().ready) return { sent: 0, failed: 0 };
+  const due = ((await assertOk(
+    supabase()
+      .from("square_recurring_plans")
+      .select("*")
+      .eq("status", "active")
+      .lte("next_run_on", isoDay(now))
+      .order("next_run_on")
+      .limit(MAX_PLANS_PER_SWEEP),
+  )) ?? []) as Row[];
+  let sent = 0;
+  let failed = 0;
+  // One at a time: a business's plans share one Square account and its limits.
+  for (const plan of due) {
+    if (!isRecurringDue(String(plan.next_run_on), now)) continue;
+    try {
+      const outcome = await runPlan(plan, now);
+      if (outcome === "sent") sent += 1;
+      if (outcome === "failed") failed += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { sent, failed };
 }

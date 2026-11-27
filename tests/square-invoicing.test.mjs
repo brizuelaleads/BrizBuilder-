@@ -213,7 +213,7 @@ const webhook = read("app/api/integrations/square/webhook/route.ts");
 const migration = read("supabase/migrations/20261112195619_square_invoicing.sql");
 
 function fnBody(source, name) {
-  const start = source.indexOf(`export async function ${name}(`);
+  const start = source.indexOf(`async function ${name}(`);
   assert.ok(start >= 0, `${name} exists`);
   const end = source.indexOf("\n}\n", start);
   return source.slice(start, end);
@@ -305,7 +305,8 @@ test("tokens and tables stay server-side", () => {
 });
 
 test("a send is only reported as failed when Square itself failed", () => {
-  const body = fnBody(store, "createSquareInvoiceForScope");
+  // One-off and recurring invoices share issueInvoice, which talks to Square.
+  const body = fnBody(store, "issueInvoice");
   const squareTry = body.indexOf("result = await withSquare(connection,");
   const cleanup = body.indexOf("} catch (error) {", squareTry);
   const bookkeeping = body.indexOf("await applySummary(row, result.final);");
@@ -322,7 +323,7 @@ test("sandbox attachments are refused before anything is created", () => {
   const body = fnBody(store, "createSquareInvoiceForScope");
   const guard = body.indexOf("SANDBOX_ATTACHMENT_LIMIT_BYTES)");
   assert.ok(guard > 0, "the sandbox limit is checked");
-  assert.ok(guard < body.indexOf('.from("square_invoices")'), "before a row or a Square draft exists");
+  assert.ok(guard < body.indexOf("return issueInvoice("), "before a row or a Square draft exists");
 });
 
 test("deleting a row Square may have sent asks Square first", () => {
