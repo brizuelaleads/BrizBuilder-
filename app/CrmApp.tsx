@@ -162,6 +162,8 @@ type NavItem = {
   permission?: CrmPermission;
   section: string;
   preview?: boolean;
+  /** Built but waiting on something outside the app (e.g. Meta business verification). */
+  comingSoon?: boolean;
 };
 
 const clientNavigation: NavItem[] = [
@@ -171,7 +173,7 @@ const clientNavigation: NavItem[] = [
   { id: "calls", label: "Calls", icon: <PhoneCall />, section: "MAIN" },
   { id: "calendar", label: "Calendar", icon: <CalendarDays />, section: "MAIN" },
   { id: "ads", label: "Ads", icon: <Megaphone />, section: "MAIN" },
-  { id: "social", label: "Social", icon: <Share2 />, section: "MAIN", permission: "social.plan" },
+  { id: "social", label: "Social", icon: <Share2 />, section: "MAIN", permission: "social.plan", comingSoon: true },
   { id: "connections", label: "Connections", icon: <Plug />, section: "MAIN" },
   // Invoicing through the business's own Square account. The server decides
   // who may use it: owners and managers, never by what the browser sends.
@@ -228,7 +230,7 @@ const agencyNavigation: NavItem[] = [
     permission: "automations.manage",
   },
   { id: "websites", label: "Websites", icon: <Globe2 />, section: "GROWTH" },
-  { id: "social", label: "Social", icon: <Share2 />, section: "GROWTH", permission: "social.plan" },
+  { id: "social", label: "Social", icon: <Share2 />, section: "GROWTH", permission: "social.plan", comingSoon: true },
   {
     id: "reviews",
     label: "Reviews",
@@ -1131,6 +1133,7 @@ export function CrmApp({
                   </em>
                 )}
                 {item.preview && <em className="crm-nav-preview">Preview</em>}
+                {item.comingSoon && <em className="crm-nav-preview">Coming soon</em>}
               </button>
             </div>
           ))}

@@ -11,6 +11,19 @@
   min-width: min(100%, 220px);
 }
 
+#crm-app .crm-social > .crm-page-heading .crm-social-coming-soon {
+  display: block;
+  width: fit-content;
+  margin-top: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: var(--crm-ink);
+  background: var(--crm-subtle);
+  box-shadow: inset 0 0 0 1px var(--crm-line);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 #crm-app .crm-social-muted,
 #crm-app .crm-social-post-content span,
 #crm-app .crm-social-date,
@@ -130,7 +143,8 @@
   --ig-focus: #0095f6;
   --ig-story: linear-gradient(45deg, #feda75, #fa7e1e 30%, #d62976 60%, #962fbf 85%, #4f5bd5);
   box-sizing: border-box;
-  width: 375px;
+  /* A real iPhone 15/16 viewport (393 × 852) inside an 11px bezel. */
+  width: 415px;
   max-width: 100%;
   margin: 0 auto;
   padding: 11px;
@@ -149,7 +163,7 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  height: clamp(560px, 78vh, 742px);
+  height: 852px;
   overflow: hidden;
   border-radius: 47px;
   color: var(--ig-ink);
@@ -774,6 +788,7 @@
   }
 
   #crm-app .crm-ig-device:not(.compact) .crm-ig-screen {
+    height: min(852px, max(560px, calc(100dvh - 160px)));
     border-radius: 20px;
   }
 

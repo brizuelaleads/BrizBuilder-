@@ -67,6 +67,7 @@ export function SocialView({
         <div>
           <h2>Social</h2>
           <span>Publish posts and reply across Facebook and Instagram.</span>
+          <span className="crm-social-coming-soon">Coming soon · waiting on Meta business verification</span>
         </div>
         {isAgency && activeClients.length > 0 && (
           <Field label="Business">
